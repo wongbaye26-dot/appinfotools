@@ -188,8 +188,8 @@ Archive _ipa({
     }
   }
   if (provision != null) {
-    archive
-        .addFile(_file('Payload/MyApp.app/embedded.mobileprovision', provision));
+    archive.addFile(
+        _file('Payload/MyApp.app/embedded.mobileprovision', provision));
   }
   return archive;
 }
@@ -237,8 +237,7 @@ void main() {
       expect((map['TeamIdentifier'] as PlistArray).value.single.asString,
           'ABCDE12345');
       expect(
-          (map['CreationDate'] as PlistDate).value,
-          DateTime.utc(2024, 1, 1));
+          (map['CreationDate'] as PlistDate).value, DateTime.utc(2024, 1, 1));
       expect(
           (map['ExpirationDate'] as PlistDate).value, DateTime.utc(2025, 1, 1));
 
@@ -246,8 +245,8 @@ void main() {
       expect((entitlements['application-identifier'] as PlistString).value,
           'ABCDE12345.com.example.app');
       expect((entitlements['get-task-allow'] as PlistBoolean).value, isFalse);
-      expect((entitlements['aps-environment'] as PlistString).value,
-          'production');
+      expect(
+          (entitlements['aps-environment'] as PlistString).value, 'production');
     });
 
     test('eContent 之后还有证书与签名者信息时不会提前收尾', () {
@@ -261,8 +260,8 @@ void main() {
 
   group('CmsContentExtractor — 定长与不定长编码', () {
     test('定长（DER）外壳同样能取出载荷', () {
-      final cms = _buildCms(utf8.encode(_provisionPlist),
-          indefiniteLengths: false);
+      final cms =
+          _buildCms(utf8.encode(_provisionPlist), indefiniteLengths: false);
       final result = CmsContentExtractor.extract(cms);
 
       expect(result.ok, isTrue, reason: result.failure);
@@ -308,8 +307,8 @@ void main() {
     });
 
     test('内容类型不是 pkcs7-signedData', () {
-      final cms = _buildCms(utf8.encode(_provisionPlist),
-          outerContentType: _dataOid);
+      final cms =
+          _buildCms(utf8.encode(_provisionPlist), outerContentType: _dataOid);
       final result = CmsContentExtractor.extract(cms);
 
       expect(result.ok, isFalse);
@@ -317,8 +316,8 @@ void main() {
     });
 
     test('encapContentInfo 的内容类型不是 pkcs7-data', () {
-      final cms = _buildCms(utf8.encode(_provisionPlist),
-          contentType: _signedDataOid);
+      final cms =
+          _buildCms(utf8.encode(_provisionPlist), contentType: _signedDataOid);
       final result = CmsContentExtractor.extract(cms);
 
       expect(result.ok, isFalse);
@@ -414,8 +413,8 @@ void main() {
           IpaSignatureMaterialReader.read(archive, _mainApp(archive));
 
       expect(materials.hasCodeSignatureDirectory, isTrue);
-      expect(materials.codeSignatureEntries,
-          ['CodeDirectory', 'CodeResources']);
+      expect(
+          materials.codeSignatureEntries, ['CodeDirectory', 'CodeResources']);
       expect(materials.hasEmbeddedProvision, isTrue);
       expect(materials.embeddedProvisionSize, _provisionFixture().length);
       expect(materials.hasAnyMaterial, isTrue);
@@ -444,7 +443,8 @@ void main() {
       expect(materials.verificationStatus.hasConclusiveResult, isFalse);
       expect(materials.isVerified, isFalse);
       expect(materials.verificationDetail, isNotNull);
-      expect(materials.verificationDetail, contains('no signature verification'));
+      expect(
+          materials.verificationDetail, contains('no signature verification'));
     });
 
     test('bundle 之外的签名材料不算在它头上', () {

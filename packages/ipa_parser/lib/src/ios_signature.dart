@@ -32,8 +32,7 @@ class IosEntitlement {
         PlistBoolean(:final value) => '$value',
         PlistDate(:final value) => value.toUtc().toIso8601String(),
         PlistData(:final value) => '<${value.length} bytes>',
-        PlistArray(:final value) =>
-          value.map(_describe).join(', '),
+        PlistArray(:final value) => value.map(_describe).join(', '),
         PlistDict(:final value) => value.keys.join(', '),
       };
 }
@@ -85,22 +84,22 @@ class IosProvisioningProfile {
   final PlistDict? entitlementsRaw;
 
   const IosProvisioningProfile({
-    this.name = const FieldValue<String>.absent(
-        source: FieldSource.signatureMaterials),
-    this.appIdName = const FieldValue<String>.absent(
-        source: FieldSource.signatureMaterials),
+    this.name =
+        const FieldValue<String>.absent(source: FieldSource.signatureMaterials),
+    this.appIdName =
+        const FieldValue<String>.absent(source: FieldSource.signatureMaterials),
     this.teamIdentifiers = const FieldValue<List<String>>.absent(
         source: FieldSource.signatureMaterials),
     this.applicationIdentifierPrefixes = const FieldValue<List<String>>.absent(
         source: FieldSource.signatureMaterials),
-    this.uuid = const FieldValue<String>.absent(
-        source: FieldSource.signatureMaterials),
+    this.uuid =
+        const FieldValue<String>.absent(source: FieldSource.signatureMaterials),
     this.creationDate = const FieldValue<DateTime>.absent(
         source: FieldSource.signatureMaterials),
     this.expirationDate = const FieldValue<DateTime>.absent(
         source: FieldSource.signatureMaterials),
-    this.applicationIdentifier = const FieldValue<String>.absent(
-        source: FieldSource.signatureMaterials),
+    this.applicationIdentifier =
+        const FieldValue<String>.absent(source: FieldSource.signatureMaterials),
     this.entitlements = const [],
     this.entitlementsRaw,
   });
@@ -189,8 +188,7 @@ class IosSignatureMaterials {
   });
 
   /// 是否找到了任何签名材料。
-  bool get hasAnyMaterial =>
-      hasCodeSignatureDirectory || hasEmbeddedProvision;
+  bool get hasAnyMaterial => hasCodeSignatureDirectory || hasEmbeddedProvision;
 
   /// 材料存在，但**没有任何工具验证过**。
   bool get isVerified => verificationStatus == SignatureStatus.verified;
@@ -421,7 +419,8 @@ class IpaSignatureMaterialReader {
     final entry = archive.findFile(path);
     if (entry == null) {
       // 容器层说有、归档里却没有 —— 内部不一致。
-      const message = 'embedded.mobileprovision was listed but could not be read';
+      const message =
+          'embedded.mobileprovision was listed but could not be read';
       diagnostics.add(
         AnalysisDiagnostic.error(
           'ios.provision.vanished',
@@ -495,7 +494,8 @@ class IpaSignatureMaterialReader {
     try {
       parsed = PlistParser.parse(extracted.content!);
     } on PlistParseException catch (e) {
-      final message = 'the plist inside $path could not be parsed: ${e.message}';
+      final message =
+          'the plist inside $path could not be parsed: ${e.message}';
       diagnostics.add(
         AnalysisDiagnostic.error(
           'ios.provision.unparsable',

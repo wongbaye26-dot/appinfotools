@@ -17,8 +17,9 @@ class CmsContentResult {
   bool get ok => content != null;
 
   @override
-  String toString() =>
-      ok ? 'CmsContentResult(${content!.length} bytes)' : 'CmsContentResult($failure)';
+  String toString() => ok
+      ? 'CmsContentResult(${content!.length} bytes)'
+      : 'CmsContentResult($failure)';
 }
 
 /// 从 CMS/PKCS#7 `SignedData` 中取出 `encapContentInfo` 的载荷。
@@ -86,8 +87,7 @@ class CmsContentExtractor {
     }
 
     final contentType = outerChildren.first;
-    if (contentType.tag != _oid ||
-        !_matches(der, contentType, signedDataOid)) {
+    if (contentType.tag != _oid || !_matches(der, contentType, signedDataOid)) {
       return const CmsContentResult.failure(
         'the content type is not pkcs7-signedData',
       );
