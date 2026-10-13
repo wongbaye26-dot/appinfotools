@@ -142,6 +142,14 @@
     "obb_files": "OBB 파일",
     "permissions": "권한 목록",
     "signature_info": "서명 정보",
+    "max_sdk": "최대 SDK",
+    "components": "구성 요소",
+    "debuggable": "디버그 가능",
+    "exported": "내보내짐",
+    "not_exported": "내보내지 않음",
+    "exported_by_default": "기본으로 내보내짐",
+    "component_permission": "권한",
+    "component_unnamed": "(이름을 가져올 수 없음)",
     "text_info": "텍스트 정보"
   },
   "icon": {

@@ -12,6 +12,7 @@ import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
+import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -19,7 +20,6 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
-import 'package:apk_parser/apk_parser.dart' show ArchiveOpenResult;
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -82,88 +82,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   String getSdkVersionText(int? sdkVersion) {
     if (sdkVersion == null) return "";
     return "$sdkVersion (${AndroidVersion.getAndroidVersion(sdkVersion)})";
-  }
-
-  /// 把容器打开失败的原因映射为可展示文案。
-  ///
-  /// 这四种原因对用户的含义完全不同，不能统一退化成「解析失败」；
-  /// 其中 [ArchiveOpenResult.resourceBudgetExceeded] 是**安全拒绝**，
-  /// 必须让用户看到真实原因。
-  String _describeOpenFailure(ArchiveOpenResult result) {
-    return switch (result) {
-      ArchiveOpenResult.notArchive => t.parse.open_failure_not_archive,
-      ArchiveOpenResult.corrupt => t.parse.open_failure_corrupt,
-      ArchiveOpenResult.resourceBudgetExceeded => t.parse.open_failure_budget,
-      ArchiveOpenResult.ioError => t.parse.open_failure_io,
-      ArchiveOpenResult.ok => t.parse.parse_apk_info_fail,
-    };
-  }
-
-  /// 签名状态的本地化标签。
-  ///
-  /// 关键在于**不能把「工具不可用」说成「验证失败」**—— 那会把没装
-  /// Android SDK 的机器误报成恶意应用；同样也不能把「结果未知」说成「通过」，
-  /// 那会让用户以为已经验证过了。
-  String _signatureStatusLabel(SignatureStatus status) {
-    return switch (status) {
-      SignatureStatus.verified => t.signature.status_verified,
-      SignatureStatus.verificationFailed => t.signature.status_failed,
-      SignatureStatus.toolUnavailable => t.signature.status_tool_unavailable,
-      SignatureStatus.unknown => t.signature.status_unknown,
-    };
-  }
-
-  /// 把签名分析结果渲染为详情页展示的多行文本。
-  String _renderSignature(SignatureAnalysis? analysis) {
-    if (analysis == null) return '';
-
-    final sb = StringBuffer()..writeln(_signatureStatusLabel(analysis.status));
-
-    if (analysis.status == SignatureStatus.toolUnavailable) {
-      sb.writeln(t.signature.tool_hint);
-    }
-
-    if (analysis.verifiedSchemes.isNotEmpty) {
-      final schemes = analysis.verifiedSchemes.toList()..sort();
-      sb.writeln('${t.signature.schemes}: ${schemes.join(', ')}');
-    }
-
-    for (final signer in analysis.signers) {
-      if (signer.isEmpty) continue;
-      sb.writeln('');
-      sb.writeln(t.signature.signer(index: signer.index));
-      if (signer.subjectDn != null) {
-        sb.writeln('  ${t.signature.subject}: ${signer.subjectDn}');
-      }
-      if (signer.sha256Digest != null) {
-        sb.writeln('  ${t.signature.sha256}: ${signer.sha256Digest}');
-      }
-      if (signer.sha1Digest != null) {
-        sb.writeln('  ${t.signature.sha1}: ${signer.sha1Digest}');
-      }
-      if (signer.keyAlgorithm != null) {
-        final bits = signer.keySizeBits;
-        final suffix =
-            bits == null ? '' : ' (${t.signature.key_size_bits(bits: bits)})';
-        sb.writeln(
-            '  ${t.signature.key_algorithm}: ${signer.keyAlgorithm}$suffix');
-      }
-      if (signer.validity != null) {
-        sb.writeln('  ${t.signature.validity}: ${signer.validity}');
-      }
-    }
-
-    // 没有结论时把工具的原始输出一并给出 —— 否则用户无从判断为什么没有结论。
-    if (!analysis.status.hasConclusiveResult) {
-      final raw = analysis.rawOutput;
-      if (raw.isNotEmpty) {
-        sb.writeln('');
-        sb.writeln('${t.signature.diagnostics}:');
-        sb.writeln(raw);
-      }
-    }
-
-    return sb.toString().trimRight();
   }
 
   Future<void> loadApkInfo(String filePath) async {
@@ -257,7 +175,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       log.warning('loadApkInfo: $e');
       if (mounted) {
         final message = e is ApkOpenException
-            ? _describeOpenFailure(e.result)
+            ? DetailRenderer.openFailure(e.result, t)
             : e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
@@ -727,6 +645,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                         maxLines: textMaxLines,
                         selectable: true,
                       )),
+                      if (apkInfo?.maxSdkVersion != null)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.max_sdk,
+                          value: getSdkVersionText(apkInfo?.maxSdkVersion),
+                        )),
+                      if (apkInfo?.components.isNotEmpty ?? false)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.components,
+                          value: DetailRenderer.components(apkInfo, t),
+                          minLines: 1,
+                          maxLines: textMaxLines,
+                          selectable: true,
+                        )),
                       // MD5 哈希值
                       if (enableHash)
                         Card(
@@ -759,7 +692,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                           title: t.apk_info.signature_info,
                           value: fileState.isComputingSignature
                               ? t.file_info.computing_hash
-                              : _renderSignature(fileState.signature),
+                              : DetailRenderer.signature(
+                                  fileState.signature, t),
                           minLines: 1,
                           maxLines: textMaxLines,
                           selectable: !fileState.isComputingSignature,

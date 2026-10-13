@@ -593,6 +593,9 @@ void _applyMetaToApkInfo(apk_parser.ApkMeta meta, ApkInfo apkInfo) {
   apkInfo.versionName = meta.versionName;
   apkInfo.sdkVersion = meta.minSdkVersion;
   apkInfo.targetSdkVersion = meta.targetSdkVersion;
+  apkInfo.maxSdkVersion = meta.maxSdkVersion;
+  apkInfo.applicationDebuggable = meta.applicationDebuggable;
+  apkInfo.components = List.of(meta.components);
   apkInfo.compileSdkVersion = meta.compileSdkVersion;
   apkInfo.compileSdkVersionCodename = meta.compileSdkVersionCodename;
   apkInfo.platformBuildVersionName = meta.platformBuildVersionName;
@@ -755,6 +758,16 @@ class ApkInfo {
   String? compileSdkVersionCodename;
   int? sdkVersion;
   int? targetSdkVersion;
+
+  /// `<uses-sdk android:maxSdkVersion>`。绝大多数应用不声明，此时为 `null`。
+  int? maxSdkVersion;
+
+  /// `<application android:debuggable>`。未声明时为 `null`（不等于 `false`）。
+  bool? applicationDebuggable;
+
+  /// manifest 中声明的全部组件（activity / service / receiver / provider
+  /// 等），含 `exported` 与 `permission` 声明。
+  List<apk_parser.AndroidComponent> components = [];
   String? label;
   String? mainIconPath; // 主图标路径
   Image? mainIconImage;
@@ -1423,6 +1436,9 @@ class ApkInfo {
     compileSdkVersionCodename = null;
     sdkVersion = null;
     targetSdkVersion = null;
+    maxSdkVersion = null;
+    applicationDebuggable = null;
+    components.clear();
     label = null;
     mainIconPath = null;
     for (final candidate in iconCandidates) {
