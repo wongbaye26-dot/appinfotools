@@ -102,11 +102,20 @@ else
   cat <<'EOF'
 
     [i] 没有可用的 CocoaPods。
-        Flutter 3.47 默认用 Swift Package Manager 集成插件，因此**通常不需要**它。
-        若构建时报 "Adding Swift Package Manager integration" 之后失败，
-        说明 SPM 这条路走不通，那时才需要装 CocoaPods：
-            sudo gem install cocoapods      # 权限受限时：brew install cocoapods
-        注意 CocoaPods 需要 Ruby >= 3.1；macOS 自带的 Ruby 2.6 装不上。
+        Flutter 3.47 默认用 Swift Package Manager（SPM）集成插件。本项目所有
+        插件都已确认支持 SPM，因此**不需要** CocoaPods。
+
+        若构建时报「The following plugins do not support Swift Package Manager」，
+        说明某个插件（或其传递依赖）的版本太老。先试升级，别急着装 CocoaPods：
+
+            flutter pub upgrade <包名>
+            flutter pub get --enforce-lockfile
+
+        （实测踩过一次：screen_retriever_macos 锁在 0.2.0 时不支持 SPM，
+          升到 0.2.1+ 即可。）
+
+        升级仍不行时才装 CocoaPods —— 它需要 Ruby >= 3.1，而 macOS 自带的是 2.6：
+            brew install cocoapods        # 或先 brew install ruby 再 gem install
 EOF
 fi
 
