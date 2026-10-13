@@ -577,6 +577,7 @@ Bad state: No ProviderScope found
 11. **已处理**（iOS 起步）：
    - **结构** → ZIP 容器安全原语（`ZipBudget` / `ArchiveOpenResult` / `looksLikeZip` / `readArchiveHeader` / `looksStructurallyBroken`）下沉为 `packages/archive_safety/`。APK 与 IPA 解析器都依赖它，**不必互相依赖、也不必各写一份**。commit `0d2b538`。
    - **plist 解析**（规范 5.2）→ 新增 `packages/ipa_parser/`：`PlistValue` 密封类型 + XML plist + 二进制 plist（`bplist00` 从零实现，含全部长度/偏移边界检查与递归环、深度防护）+ 按内容识别格式。commit `e9ad18f`。
+   - **IPA 容器解析**（规范 5.1）→ `IpaContainerReader` 枚举全部 bundle（主应用 / 扩展 / Watch / 嵌套 / 框架），按**路径位置**分类而非名字猜测；多个 `Payload/*.app` 全部保留并标记异常；记录签名材料存在性。**本层不解压任何内容**，因此自身没有路径穿越面。commit `be7c4df`。
    - **顺带修门禁两处真问题**：
      1. `dart format --set-exit-if-changed .` 会扫到 `lib/gen/` 生成物，而 slang 自带的 `dart_style` 与 SDK 的 `dart format` 风格不一致 → **CI 首次运行必红**。改为只检查项目自己拥有的文件（`$(git ls-files '*.dart')`）。
      2. 子包继承根的 `include: package:flutter_lints/...` 但解析不到 → 逐包 `dart analyze` **完全没有 lint 规则**。各包加自己的 `analysis_options.yaml`（`lints/recommended`）+ `lints` 依赖；CI 包分析改为遍历 `packages/*/`。
