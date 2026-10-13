@@ -242,7 +242,12 @@ class IpaAnalysisReader {
       }
     }
 
-    final nestedBinaries = _readNestedBinaries(archive, container, mainApp);
+    final nestedBinaries = _readNestedBinaries(
+      archive,
+      container,
+      mainApp,
+      diagnostics,
+    );
 
     onStage?.call(IpaParseStage.signature);
     final signature = IpaSignatureMaterialReader.read(archive, mainApp);
@@ -288,6 +293,7 @@ class IpaAnalysisReader {
     Archive archive,
     IpaContainer container,
     IosBundle mainApp,
+    List<AnalysisDiagnostic> diagnostics,
   ) {
     // 只列真正「装着代码」的 bundle 类型；`Payload/` 直属的其他 .app 已经
     // 在主应用之外被容器层标记为 nestedApp，这里一并纳入。
@@ -298,11 +304,26 @@ class IpaAnalysisReader {
       IosBundleKind.nestedApp,
     };
 
+    final candidates = container.bundles
+        .where((b) => b.path != mainApp.path && interesting.contains(b.kind))
+        .toList();
+
     final result = <IosNestedBinary>[];
-    for (final bundle in container.bundles) {
-      if (bundle.path == mainApp.path) continue;
-      if (!interesting.contains(bundle.kind)) continue;
-      if (result.length >= maxNestedBinaries) break;
+    for (final bundle in candidates) {
+      if (result.length >= maxNestedBinaries) {
+        // **不许静默截断。** 用户看到一份 24 条的清单，会以为这个包只有
+        // 24 个框架 —— 而实测的真实样本有 27 个。截断了就要说出来，
+        // 否则清单看起来是完整的。
+        diagnostics.add(
+          AnalysisDiagnostic.info(
+            'ios.nested.truncated',
+            'only the first $maxNestedBinaries of ${candidates.length} nested '
+                'bundles were parsed',
+            source: FieldSource.zipDirectory,
+          ),
+        );
+        break;
+      }
 
       final info = IpaInfoPlistReader.read(archive, bundle);
       final path = _executablePath(bundle, info);
