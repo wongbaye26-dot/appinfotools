@@ -23,8 +23,7 @@ class IosIconSet {
   bool get isEmpty => iconFiles.isEmpty && iconName == null;
 
   @override
-  String toString() =>
-      'IosIconSet(files: $iconFiles, name: $iconName)';
+  String toString() => 'IosIconSet(files: $iconFiles, name: $iconName)';
 }
 
 /// `CFBundleIcons` 及相关图标配置。
@@ -183,7 +182,7 @@ class IpaInfoPlistReader {
         AnalysisDiagnostic.warning(
           'ios.info_plist.too_large',
           '$path declares ${entry.size} bytes, above the '
-          '$maxInfoPlistBytes byte limit',
+              '$maxInfoPlistBytes byte limit',
         ),
       );
     }
@@ -199,7 +198,7 @@ class IpaInfoPlistReader {
         AnalysisDiagnostic.error(
           'ios.info_plist.size_lie',
           '$path declared ${entry.size} bytes but decompressed to '
-          '${content.length}; refusing to parse it',
+              '${content.length}; refusing to parse it',
         ),
       );
     }
@@ -230,8 +229,7 @@ class IpaInfoPlistReader {
     return _extract(bundle, parsed, path);
   }
 
-  static IpaInfoPlist _extract(
-      IosBundle bundle, PlistDict root, String path) {
+  static IpaInfoPlist _extract(IosBundle bundle, PlistDict root, String path) {
     final diagnostics = <AnalysisDiagnostic>[
       AnalysisDiagnostic.info(
         'ios.info_plist.parsed',
@@ -275,7 +273,8 @@ class IpaInfoPlistReader {
         source: FieldSource.infoPlist,
       );
     }
-    return FieldValue<String>.extracted(raw.value, source: FieldSource.infoPlist);
+    return FieldValue<String>.extracted(raw.value,
+        source: FieldSource.infoPlist);
   }
 
   /// 宽松取字符串：整数/浮点也接受。
@@ -324,14 +323,16 @@ class IpaInfoPlistReader {
       }
       values.add(value);
     }
-    return FieldValue<List<int>>.extracted(values, source: FieldSource.infoPlist);
+    return FieldValue<List<int>>.extracted(values,
+        source: FieldSource.infoPlist);
   }
 
   /// 取字符串数组。同样要求确实是数组。
   static FieldValue<List<String>> _stringList(PlistDict root, String key) {
     final raw = root.value[key];
     if (raw == null) {
-      return const FieldValue<List<String>>.absent(source: FieldSource.infoPlist);
+      return const FieldValue<List<String>>.absent(
+          source: FieldSource.infoPlist);
     }
     if (raw is! PlistArray) {
       return FieldValue<List<String>>.wrongType(
@@ -350,18 +351,19 @@ class IpaInfoPlistReader {
       }
       values.add(value);
     }
-    return FieldValue<List<String>>.extracted(values, source: FieldSource.infoPlist);
+    return FieldValue<List<String>>.extracted(values,
+        source: FieldSource.infoPlist);
   }
 
   /// 提取图标配置。
   static FieldValue<IosIconConfiguration> _icons(PlistDict root) {
     final config = IosIconConfiguration(
-      primary: _iconSetFrom(_dictAt(root, 'CFBundleIcons', 'CFBundlePrimaryIcon')),
+      primary:
+          _iconSetFrom(_dictAt(root, 'CFBundleIcons', 'CFBundlePrimaryIcon')),
       alternate: _alternateIcons(root),
-      primaryIpad:
-          _iconSetFrom(_dictAt(root, 'CFBundleIcons~ipad', 'CFBundlePrimaryIcon')),
-      legacyIconFiles:
-          _stringList(root, 'CFBundleIconFiles').value ?? const [],
+      primaryIpad: _iconSetFrom(
+          _dictAt(root, 'CFBundleIcons~ipad', 'CFBundlePrimaryIcon')),
+      legacyIconFiles: _stringList(root, 'CFBundleIconFiles').value ?? const [],
       legacyIconFile: _strictString(root, 'CFBundleIconFile').value,
     );
 

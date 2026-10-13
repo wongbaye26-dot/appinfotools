@@ -9,8 +9,10 @@
 // - plist 解析（XML 与二进制 `bplist00`）
 // - IPA 容器结构解析（bundle 枚举、主应用定位、签名材料存在性）
 // - `Info.plist` 字段提取（带状态与来源）
+// - 图标资源定位（只按配置点名的文件，不扫描目录）
 
 export 'src/ipa_container.dart';
+export 'src/ipa_icon.dart';
 export 'src/ipa_info_plist.dart';
 export 'src/plist/binary_plist_parser.dart';
 export 'src/plist/plist_parser.dart';

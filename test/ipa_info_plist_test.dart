@@ -170,8 +170,7 @@ void main() {
     });
 
     test('图标配置同样完整', () {
-      final config =
-          _read(base64.decode(_binaryInfoPlistBase64)).icons.value!;
+      final config = _read(base64.decode(_binaryInfoPlistBase64)).icons.value!;
 
       expect(config.primary!.iconName, 'AppIcon');
       expect(config.alternate, hasLength(1));
@@ -205,8 +204,8 @@ void main() {
     });
 
     test('根不是字典时同样记为 failed', () {
-      final info = _read(
-          utf8.encode('<?xml version="1.0"?><plist version="1.0">'
+      final info =
+          _read(utf8.encode('<?xml version="1.0"?><plist version="1.0">'
               '<array><string>x</string></array></plist>'));
 
       expect(info.bundleIdentifier.status, FieldStatus.failed);
@@ -276,8 +275,8 @@ void main() {
     });
 
     test('LSApplicationQueriesSchemes 写成裸字符串 → wrongType，不自动补成数组', () {
-      final info =
-          readWith('<key>LSApplicationQueriesSchemes</key><string>weixin</string>');
+      final info = readWith(
+          '<key>LSApplicationQueriesSchemes</key><string>weixin</string>');
 
       expect(info.queriesSchemes.status, FieldStatus.wrongType,
           reason: '把裸标量当成单元素数组是在替文件补结构');
@@ -291,8 +290,8 @@ void main() {
     });
 
     test('CFBundleVersion 是数组时才是 wrongType', () {
-      final info =
-          readWith('<key>CFBundleVersion</key><array><integer>7</integer></array>');
+      final info = readWith(
+          '<key>CFBundleVersion</key><array><integer>7</integer></array>');
 
       expect(info.bundleVersion.status, FieldStatus.wrongType);
     });
@@ -336,7 +335,8 @@ void main() {
     });
 
     test('完全没有名称字段时 preferredName 无值，不伪造空串', () {
-      final info = readWith('<key>CFBundleIdentifier</key><string>a.b</string>');
+      final info =
+          readWith('<key>CFBundleIdentifier</key><string>a.b</string>');
 
       expect(info.preferredName.hasValue, isFalse);
       expect(info.preferredName.status, FieldStatus.absent);
@@ -355,7 +355,8 @@ void main() {
         '<?xml version="1.0"?><plist version="1.0"><dict>$body</dict></plist>'));
 
     test('完全没有图标配置 → absent', () {
-      final info = readWith('<key>CFBundleIdentifier</key><string>a.b</string>');
+      final info =
+          readWith('<key>CFBundleIdentifier</key><string>a.b</string>');
 
       expect(info.icons.status, FieldStatus.absent);
     });
