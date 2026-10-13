@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/image/icon_512.png" width="120" alt="APK Info Tool">
+  <img src="docs/assets/icon_512.png" width="120" alt="APK Info Tool">
 </p>
 
 <h1 align="center">APK Info Tool</h1>
