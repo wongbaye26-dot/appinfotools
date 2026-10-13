@@ -21,23 +21,25 @@
 
 ## 1. 运行环境（关键阻塞）
 
-| 检查项 | 实测结果 | 命令/证据 |
-|---|---|---|
-| `flutter` | **不存在** | `which flutter` → not found |
-| `dart` | **不存在** | `which dart` → not found |
-| `~/flutter`, `~/development/flutter`, `~/fvm`, `~/sdks/flutter`, `/opt/flutter`, `/usr/local/flutter`, `~/.puro` | **均不存在** | `for d in ...; [ -e "$d" ]` 无输出 |
-| `fvm` / `puro` / `asdf` / `melos` | **均未安装** | `which` → none |
-| Homebrew cask `flutter` | **未安装** | `brew list --cask \| grep flutter` → 无 |
-| Spotlight 搜索 `$HOME` 下 `bin/flutter` | **无结果** | `mdfind` → 空 |
-| Xcode | **仅 Command Line Tools**，无完整 Xcode | `xcodebuild -version` → requires Xcode |
-| Java | **OpenJDK 17.0.14 (JBR)** 可用 | `java -version` |
+| 检查项                                                                                                              | 实测结果                               | 命令/证据                                  |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------- |
+| `flutter`                                                                                                        | **不存在**                            | `which flutter` → not found            |
+| `dart`                                                                                                           | **不存在**                            | `which dart` → not found               |
+| `~/flutter`, `~/development/flutter`, `~/fvm`, `~/sdks/flutter`, `/opt/flutter`, `/usr/local/flutter`, `~/.puro` | **均不存在**                           | `for d in ...; [ -e "$d" ]` 无输出        |
+| `fvm` / `puro` / `asdf` / `melos`                                                                                | **均未安装**                           | `which` → none                         |
+| Homebrew cask `flutter`                                                                                          | **未安装**                            | `brew list --cask \| grep flutter` → 无 |
+| Spotlight 搜索 `$HOME` 下 `bin/flutter`                                                                             | **无结果**                            | `mdfind` → 空                           |
+| Xcode                                                                                                            | **仅 Command Line Tools**，无完整 Xcode | `xcodebuild -version` → requires Xcode |
+| Java                                                                                                             | **OpenJDK 17.0.14 (JBR)** 可用       | `java -version`                        |
 
 **结论**：
+
 - 静态分析、单元测试、格式化、跨平台构建**全部无法在本机执行**。
 - 本机也**无法产出真实 IPA / 加固 APK 样本的解析结果**（无 SDK 无法运行应用）。
 - 唯一可做的验证是「源码级证据」与「结构级证据」，不能替代 `flutter test` 的绿色结果。
 
 **Git 状态**：`git status` → `fatal: not a git repository`。目录中无 `.git`。因此：
+
 - 无「基线 commit」可比对；本报告采用「文件系统快照 + 内容证据」作为基线替代。
 - 第二步起要求的「每阶段独立提交」，需先 `git init` 或恢复 `.git` 才能满足。
 
@@ -89,6 +91,7 @@ AppInfoTool/
 ```
 
 **关键事实**：
+
 - **`lib/apkparser/binary_xml.dart` 与 `lib/utils/byte_data_reader.dart` 已不存在** —— 实测 `ls` 返回 No such file，双副本分叉（T0-4）确已消除。
 - 全仓库**不存在** `Info.plist` / `plist` / `Mach-O` / `mobileprovision` / `codesign` / `entitlements` 的任何实现代码（已 grep 全量源码，仅命中审计文档文字）。**IPA 能力为 0**。
 - `lib/gen/` 不存在、无任何 `*.g.dart`（被 `.gitignore` 排除），因此**必须先跑 `dart run build_runner build` 才能编译** —— 测试无法在裸克隆上直接运行。
@@ -99,13 +102,13 @@ AppInfoTool/
 
 ### 3.1 文件进入（5 条入口，全部只认 Android 格式）
 
-| 入口 | 位置 |
-|---|---|
-| 拖放 | `info_page.dart:493` `DropTarget.onDragDone` → 后缀白名单（apk/xapk/apkm/apks/zip）→ `openApk` |
-| 文件选择 | `info_page.dart:41` `openFilePicker`（`allowedExtensions` 同上）→ `openApk` |
-| 命令行参数 | `main.dart:42` `apkByArgs` → `info_page.dart:231` |
-| macOS 文件关联 | `info_page.dart:195` `MethodChannel('file_association')` → `openApk` |
-| 二次打开（macOS） | `info_page.dart:211` `setMethodCallHandler('fileOpened')` |
+| 入口          | 位置                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------- |
+| 拖放          | `info_page.dart:493` `DropTarget.onDragDone` → 后缀白名单（apk/xapk/apkm/apks/zip）→ `openApk` |
+| 文件选择        | `info_page.dart:41` `openFilePicker`（`allowedExtensions` 同上）→ `openApk`                 |
+| 命令行参数       | `main.dart:42` `apkByArgs` → `info_page.dart:231`                                       |
+| macOS 文件关联  | `info_page.dart:195` `MethodChannel('file_association')` → `openApk`                    |
+| 二次打开（macOS） | `info_page.dart:211` `setMethodCallHandler('fileOpened')`                               |
 
 **没有任何 `.ipa` 分支**。拖放与文件选择器的后缀白名单都需要为 IPA 扩展。
 
@@ -162,23 +165,23 @@ getSignatureInfo (apk_info.dart:685)
 
 ## 4. 历史整改核验（逐条实测）
 
-| 编号 | 报告声称 | 实测结论 | 证据 |
-|---|---|---|---|
-| T0-1 | 新增 `ZipGuard.safeJoin`，XAPK/工具解包统一走校验 | ✅ **真实** | `lib/utils/zip_guard.dart:34-61` 拒绝 `..`/绝对路径/盘符/UNC/`~`；`zip_helper.dart:78`、`xapk_installer`、`tool_downloader` 均调用 |
-| T0-2 | 官方源优先 + 解包前校验 checksum | ✅ **真实** | `tool_downloader.dart:102-113` 官方 `repositoryIndexUrl` 居首、镜像兜底；`_parseChecksums`(473)、`_verifyArchiveChecksum`(565)、`_digestFile`(547) 优先 SHA-256 回退 SHA-1 |
-| T0-3 | `arsc_parser` / `binary_xml` 无界分配加界校验 | ✅ **真实** | `arsc_parser.dart:394,428` `if (entryCount > reader.remain ~/ 4) return;`；`string_pool.dart:40-45`；`binary_xml.dart:705-710` `numStrings > dataSize ~/ 4 \|\| > 1<<20` 则返回空 |
-| T0-4 | 删除两份 `lib/` 副本，图标链改指 package | ✅ **真实** | `ls lib/apkparser/binary_xml.dart` → No such file；`ls lib/utils/byte_data_reader.dart` → No such file |
-| T0-5 | ZIP bomb 三重预算 | ✅ **真实**（**但有重复实现**，见 5.3） | `zip_guard.dart:16-28,66-97`；`zip_helper.dart:20`；`apk_reader.dart:19-42` |
-| T1-1 | 两处 pubspec 固定同一 SHA，lockfile 同步 | ⚠️ **部分** | pubspec 两处均为 `cb3a07c8…`；**但 lockfile 仍为 `ref: HEAD`** → 见 5.1 |
-| T1-2 | 新增 `utils_test` / `split_type_test`，替换模板测试 | ✅ **真实**（内容正确） | `test/utils_test.dart` 覆盖 formatFileSize 边界与 ZipGuard 穿越/盘符/UNC；`test/split_type_test.dart` 覆盖回归项 |
-| T1-3 | CI 加 quality 闸门 + PR 触发 | ✅ **真实** | `.github/workflows/build.yml:15-43` quality job（format→analyze→test→包 analyze），三个 build job `needs: quality`，`pull_request` 已加，`--enforce-lockfile` 已加 |
-| T1-4 | `info_page` 补 `dispose()` 反注册 MethodChannel | ✅ **真实** | `info_page.dart:857-860` |
-| T1-5 | 引入 `_loadGeneration` 代次令牌 | ✅ **真实** | `info_page.dart:39,86,113,137,167,184` |
-| T1-6 | `InstallDialog` 补 `dispose()` + `mounted` 守卫 | ⚠️ **部分** | `dispose()` 真实存在且正确（`install_dialog.dart:310-315` 置 `_isCancelled` 并 kill 进程/取消安装器）；**但 `mounted` 守卫只加在 `_installApk` 的 `finally` 一处（:268）**，其余 await 后的 `setState` 全部无守卫 → 见 5.11 |
-| T1-7 | `ConfigItem.flush()` + `flushAll()` + 生命周期落盘 | ✅ **真实** | `config.dart:58-62,148-156`；`main.dart:58-64` `AppLifecycleListener` |
-| T1-8 | entitlements 补 `network.client`、移除 `network.server` | ✅ **真实** | 两份 entitlements 均含 `network.client`，无 `network.server` |
-| T1-9 | `compare.dart` 失败时 `exit(1)` | ✅ **真实** | `bin/compare.dart` 已改 |
-| 逻辑 bug | `formatFileSize` / `SplitType.fromId` / `trimSQ` | ✅ **真实** | `format.dart:20-25` 进位修正；`split_type.dart:11-38` 正则重写；`apk_info.dart:729-735` `trimSQ` 用 `RegExp(r"[^']")` |
+| 编号     | 报告声称                                                | 实测结论                       | 证据                                                                                                                                                                                 |
+| ------ | --------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T0-1   | 新增 `ZipGuard.safeJoin`，XAPK/工具解包统一走校验               | ✅ **真实**                   | `lib/utils/zip_guard.dart:34-61` 拒绝 `..`/绝对路径/盘符/UNC/`~`；`zip_helper.dart:78`、`xapk_installer`、`tool_downloader` 均调用                                                               |
+| T0-2   | 官方源优先 + 解包前校验 checksum                              | ✅ **真实**                   | `tool_downloader.dart:102-113` 官方 `repositoryIndexUrl` 居首、镜像兜底；`_parseChecksums`(473)、`_verifyArchiveChecksum`(565)、`_digestFile`(547) 优先 SHA-256 回退 SHA-1                         |
+| T0-3   | `arsc_parser` / `binary_xml` 无界分配加界校验               | ✅ **真实**                   | `arsc_parser.dart:394,428` `if (entryCount > reader.remain ~/ 4) return;`；`string_pool.dart:40-45`；`binary_xml.dart:705-710` `numStrings > dataSize ~/ 4 \|\| > 1<<20` 则返回空        |
+| T0-4   | 删除两份 `lib/` 副本，图标链改指 package                        | ✅ **真实**                   | `ls lib/apkparser/binary_xml.dart` → No such file；`ls lib/utils/byte_data_reader.dart` → No such file                                                                              |
+| T0-5   | ZIP bomb 三重预算                                       | ✅ **真实**（**但有重复实现**，见 5.3） | `zip_guard.dart:16-28,66-97`；`zip_helper.dart:20`；`apk_reader.dart:19-42`                                                                                                          |
+| T1-1   | 两处 pubspec 固定同一 SHA，lockfile 同步                     | ⚠️ **部分**                  | pubspec 两处均为 `cb3a07c8…`；**但 lockfile 仍为 `ref: HEAD`** → 见 5.1                                                                                                                     |
+| T1-2   | 新增 `utils_test` / `split_type_test`，替换模板测试          | ✅ **真实**（内容正确）             | `test/utils_test.dart` 覆盖 formatFileSize 边界与 ZipGuard 穿越/盘符/UNC；`test/split_type_test.dart` 覆盖回归项                                                                                  |
+| T1-3   | CI 加 quality 闸门 + PR 触发                             | ✅ **真实**                   | `.github/workflows/build.yml:15-43` quality job（format→analyze→test→包 analyze），三个 build job `needs: quality`，`pull_request` 已加，`--enforce-lockfile` 已加                             |
+| T1-4   | `info_page` 补 `dispose()` 反注册 MethodChannel         | ✅ **真实**                   | `info_page.dart:857-860`                                                                                                                                                           |
+| T1-5   | 引入 `_loadGeneration` 代次令牌                           | ✅ **真实**                   | `info_page.dart:39,86,113,137,167,184`                                                                                                                                             |
+| T1-6   | `InstallDialog` 补 `dispose()` + `mounted` 守卫        | ⚠️ **部分**                  | `dispose()` 真实存在且正确（`install_dialog.dart:310-315` 置 `_isCancelled` 并 kill 进程/取消安装器）；**但 `mounted` 守卫只加在 `_installApk` 的 `finally` 一处（:268）**，其余 await 后的 `setState` 全部无守卫 → 见 5.11 |
+| T1-7   | `ConfigItem.flush()` + `flushAll()` + 生命周期落盘        | ✅ **真实**                   | `config.dart:58-62,148-156`；`main.dart:58-64` `AppLifecycleListener`                                                                                                               |
+| T1-8   | entitlements 补 `network.client`、移除 `network.server` | ✅ **真实**                   | 两份 entitlements 均含 `network.client`，无 `network.server`                                                                                                                             |
+| T1-9   | `compare.dart` 失败时 `exit(1)`                        | ✅ **真实**                   | `bin/compare.dart` 已改                                                                                                                                                              |
+| 逻辑 bug | `formatFileSize` / `SplitType.fromId` / `trimSQ`    | ✅ **真实**                   | `format.dart:20-25` 进位修正；`split_type.dart:11-38` 正则重写；`apk_info.dart:729-735` `trimSQ` 用 `RegExp(r"[^']")`                                                                         |
 
 **核验小结**：前次整改整体是**诚实的**，无「声称已改但实际未改」的情况。两处为**部分完成**：T1-1 的「lockfile 同步」（见 5.1）、T1-6 的「mounted 守卫」（见 5.11）。
 
@@ -202,6 +205,7 @@ getSignatureInfo (apk_info.dart:685)
     version: "4.0.9"
 ```
 
+
 `pubspec.yaml` 声明 `ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e`，而 lockfile 记录 `ref: HEAD`。二者不一致。
 
 **影响**：CI 中新增的 `flutter pub get --enforce-lockfile`（`build.yml:27,81,141,203`）在 pubspec 声明与 lockfile 记录不符时**会失败**，即 T1-3 新增的质量门禁自身可能红在第一行。**更根本的是**：`resolved-ref` 只是「上次解析到的提交」，若 pubspec 仍被 pub 视为 `HEAD`，任何 `pub upgrade` 都会静默拉到当日 HEAD —— 而这正是 T1-1 想消除的风险。
@@ -210,9 +214,9 @@ getSignatureInfo (apk_info.dart:685)
 
 **修复方向**：执行一次普通的 `flutter pub get` 重新生成两个 lockfile，确认 `ref:` 字段变为 SHA。
 
-> **✅ 已实证（2026-10-13，SDK 就绪后）**：执行 `flutter pub get` 后，`pubspec.lock` 的
-> `archive.ref` 已由 `HEAD` 刷新为 `cb3a07c80d6a475ef8d36e5642bc2691612d074e`，
-> 与 pubspec 声明一致。随后 `flutter pub get --enforce-lockfile` **返回 exit 0**。
+> **✅ 已实证（2026-10-13，SDK 就绪后）**：执行 `flutter pub get` 后，`pubspec.lock` 的  
+> `archive.ref` 已由 `HEAD` 刷新为 `cb3a07c80d6a475ef8d36e5642bc2691612d074e`，  
+> 与 pubspec 声明一致。随后 `flutter pub get --enforce-lockfile` **返回 exit 0**。  
 > 结论：该缺陷**确实存在过**，且**已通过重新解析依赖修复**。
 
 ### 5.2 【中】lint 规则仍全部注释掉
@@ -243,7 +247,7 @@ getSignatureInfo (apk_info.dart:685)
 
 ### 5.8 【已更正·非问题】`freezed` 实际在使用
 
-**初判有误，特此更正**：初次静态审计时因仓库内不存在 `*.freezed.dart`（被 `.gitignore` 排除）而误判「freezed 声明未使用」。
+**初判有误，特此更正**：初次静态审计时因仓库内不存在 `*.freezed.dart`（被 `.gitignore` 排除）而误判「freezed 声明未使用」。  
 运行 `dart run build_runner build` 后实际产出：
 
 ```
@@ -265,12 +269,12 @@ lib/providers/ui_config_provider.freezed.dart
 
 `install_dialog.dart` 的 `dispose()` 已正确实现（:310-315），但 **`mounted` 守卫仅存在于 `_installApk` 的 `finally`（:268）**。以下 await 之后的 `setState` 全部无守卫：
 
-| 位置 | 场景 |
-|---|---|
-| `_loadDevices` :132, :138 | `Process.run(adb devices)` 期间用户关闭对话框 → `setState` on disposed |
-| `_loadSplitApks` :150 | `getSplitApks` 期间关闭 |
-| `_showStopConfirmDialog` :300 | 确认弹窗期间关闭 |
-| `_installApk` 循环 :189, :237, :244, :255, :261 | `dispose()` 置 `_isCancelled` 后，循环内 `setState` 仍会执行 |
+| 位置                                            | 场景                                                            |
+| --------------------------------------------- | ------------------------------------------------------------- |
+| `_loadDevices` :132, :138                     | `Process.run(adb devices)` 期间用户关闭对话框 → `setState` on disposed |
+| `_loadSplitApks` :150                         | `getSplitApks` 期间关闭                                           |
+| `_showStopConfirmDialog` :300                 | 确认弹窗期间关闭                                                      |
+| `_installApk` 循环 :189, :237, :244, :255, :261 | `dispose()` 置 `_isCancelled` 后，循环内 `setState` 仍会执行            |
 
 前次报告称「21 处 `setState`、0 处 `mounted` 守卫」已修复，实测**仅修复 1 处**。T1-6 应重开为**部分完成**。
 
@@ -286,13 +290,13 @@ which depends on intl ^0.20.3, intl ^0.20.3 is required.
 So, because apk_info_tool depends on intl 0.20.2, version solving failed.
 ```
 
-项目把 `intl` 死锁在 `0.20.2`，而 Flutter 3.47.7（当前 stable）的 `flutter_localizations` 要求 `^0.20.3`。
+项目把 `intl` 死锁在 `0.20.2`，而 Flutter 3.47.7（当前 stable）的 `flutter_localizations` 要求 `^0.20.3`。  
 经实测各版本 `flutter_localizations/pubspec.yaml`：
 
-| Flutter | `intl` 约束 |
-|---|---|
-| 3.35.0 / 3.38.0 / 3.41.0 / 3.44.0 | `0.20.2` |
-| 3.47.7（当前 stable） | `^0.20.3` |
+| Flutter                           | `intl` 约束 |
+| --------------------------------- | --------- |
+| 3.35.0 / 3.38.0 / 3.41.0 / 3.44.0 | `0.20.2`  |
+| 3.47.7（当前 stable）                 | `^0.20.3` |
 
 即该 pin 在 3.44 → 3.47 之间被 SDK 演进打破。**CI 用 `channel: stable`，因此必然失败。**
 
@@ -312,16 +316,17 @@ Dart 3.7+ 引入新格式化器，本仓库代码仍是旧格式。**37/49 个�
 
 这是本次审计**最重要**的发现，且**前次审计不可能发现**（无 SDK，只做了静态阅读）。`flutter analyze` 报 4 个 `error`：
 
-| # | 位置 | 错误 | 根因 |
-|---|---|---|---|
-| 1 | `lib/pages/setting_page.dart:938` | `non_exhaustive_switch_statement` | **T0-2 的连带遗漏**：`tool_downloader.dart` 新增了 `ToolDownloadError.checksumMismatch`，但 `setting_page.dart` 的 `switch (e.code)` 未同步补 case |
-| 2 | `lib/pages/setting_page.dart:1118` | `undefined_method` | 调用了不存在的 `openDirectoryInExplorer`（`lib/utils/platform.dart` 里只有 `openFileInExplorer`） |
-| 3 | `packages/apk_parser/bin/compare.dart:223` | `undefined_identifier` `failCount` | **T1-9 的误粘贴**：`exit(1)` 块被复制到 `_parseAapt2Output` 的 `return result;` **之后**，成为引用未定义变量的死代码 |
-| 4 | `packages/apk_parser/bin/compare.dart:223` | `undefined_identifier` `skipCount` | 同上 |
+| # | 位置                                         | 错误                                 | 根因                                                                                                                                 |
+| - | ------------------------------------------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1 | `lib/pages/setting_page.dart:938`          | `non_exhaustive_switch_statement`  | **T0-2 的连带遗漏**：`tool_downloader.dart` 新增了 `ToolDownloadError.checksumMismatch`，但 `setting_page.dart` 的 `switch (e.code)` 未同步补 case |
+| 2 | `lib/pages/setting_page.dart:1118`         | `undefined_method`                 | 调用了不存在的 `openDirectoryInExplorer`（`lib/utils/platform.dart` 里只有 `openFileInExplorer`）                                              |
+| 3 | `packages/apk_parser/bin/compare.dart:223` | `undefined_identifier` `failCount` | **T1-9 的误粘贴**：`exit(1)` 块被复制到 `_parseAapt2Output` 的 `return result;` **之后**，成为引用未定义变量的死代码                                          |
+| 4 | `packages/apk_parser/bin/compare.dart:223` | `undefined_identifier` `skipCount` | 同上                                                                                                                                 |
 
 **要点**：错误 1、3、4 全部是**前次「已完成」整改的连带破损**。T0-2 与 T1-9 在报告中被标记为已完成，但两者都把仓库改成了无法编译的状态 —— 因为当时没有任何 SDK 能编译一次。`main()` 第 150-152 行本身已有**正确**的 `exit(1)`，`compare.dart` 里那份纯属重复粘贴。
 
 **修复**（commit `f2af93b`）：
+
 - 补 `case ToolDownloadError.checksumMismatch:`，并在 6 个语言文件新增 i18n key `settings.download_error_checksum`（校验和不匹配是安全相关的拒绝路径，必须让用户看到真实原因，不能退化为「未知错误」）。
 - 在 `lib/utils/platform.dart` 新增 `openDirectoryInExplorer`：语义是**打开目录本身**，与 `openFileInExplorer`（定位到条目、macOS 用 `open -R`）区分。路径以参数数组传入，不经 shell 拼接（符合约束 9）。
 - 删除 `compare.dart` 中的重复死代码块。
@@ -338,22 +343,22 @@ Bad state: No ProviderScope found
 
 ### 5.15 【中·已实证·已修复】CI 的 analyze 门禁曾是红的：0 error，但 9 warning + 91 info
 
-修复编译错误后，`flutter analyze` 为 **0 error / 9 warning / 91 info**。CI 用的是
+修复编译错误后，`flutter analyze` 为 **0 error / 9 warning / 91 info**。CI 用的是  
 `flutter analyze --fatal-infos --fatal-warnings`，因此**仍然 exit 1**。`packages/apk_parser` 同理（82 issue，0 error）。
 
 9 个 warning **全部是真实缺陷**（非噪声）：
 
-| 位置 | 问题 |
-|---|---|
-| `analysis_options.yaml:37` | `custom_lint` 旧式插件机制已废弃 |
-| `lib/apkparser/xapk_info.dart:2` | 未使用的 `import 'dart:io'` |
+| 位置                                 | 问题                                          |
+| ---------------------------------- | ------------------------------------------- |
+| `analysis_options.yaml:37`         | `custom_lint` 旧式插件机制已废弃                     |
+| `lib/apkparser/xapk_info.dart:2`   | 未使用的 `import 'dart:io'`                     |
 | `lib/apkparser/xapk_info.dart:116` | `invalid_null_aware_operator`（短路后不可能为 null） |
-| `lib/main.dart:79` | `_appLifecycleListener` 只写不读 |
-| `lib/pages/install_page.dart:4` | 未使用的 import |
-| `lib/pages/setting_page.dart:757` | 未使用字段 `_isCustomDirSelected` |
-| `lib/utils/zip_helper.dart:11` | 未使用字段 `_filePath`（T0-1 重构残留） |
-| `lib/utils/zip_helper.dart:36` | 多余 cast |
-| `lib/utils/zip_helper.dart:55` | 未使用的 `_safeJoin` 包装（T0-1 重构残留） |
+| `lib/main.dart:79`                 | `_appLifecycleListener` 只写不读                |
+| `lib/pages/install_page.dart:4`    | 未使用的 import                                 |
+| `lib/pages/setting_page.dart:757`  | 未使用字段 `_isCustomDirSelected`                |
+| `lib/utils/zip_helper.dart:11`     | 未使用字段 `_filePath`（T0-1 重构残留）                |
+| `lib/utils/zip_helper.dart:36`     | 多余 cast                                     |
+| `lib/utils/zip_helper.dart:55`     | 未使用的 `_safeJoin` 包装（T0-1 重构残留）              |
 
 91 个 info 的构成：`avoid_print` 60（全部在 `bin/` 下的 CLI 脚本）、`constant_identifier_names` 14（`resource_value.dart` 里对齐 Android `Res_value` 的规范常量名）、`deprecated_member_use` 6（`withOpacity`）、`prefer_conditional_assignment` 4，其余零散。
 
@@ -361,31 +366,31 @@ Bad state: No ProviderScope found
 
 **修掉的真实缺陷（12 处）**：
 
-| 位置 | 问题 | 修法 |
-|---|---|---|
-| `lib/main.dart` | `_appLifecycleListener` 只写不读 | 删除该顶层变量。**同时纠正了错误注释**：`AppLifecycleListener` 构造函数内即 `WidgetsBinding.instance.addObserver(this)`，而 `WidgetsBinding.instance` 是进程级单例，早已强引用持有，不需要额外变量防 GC |
-| `lib/pages/setting_page.dart` | `_isCustomDirSelected` 只写不读（6 处赋值、0 处读取） | 删除字段与全部 6 处赋值 |
-| `lib/utils/zip_helper.dart` | `_filePath` 未使用字段 | 删除字段及其读写 |
-| `lib/utils/zip_helper.dart` | `_safeJoin` 未使用包装（T0-1 重构残留） | 删除 |
-| `lib/utils/zip_helper.dart` | 多余 cast | `file?.content as Uint8List?` → `file?.content`（archive fork 的 `content` 本就是非空 `Uint8List`） |
-| `lib/apkparser/xapk_info.dart` | 未使用 `dart:io` | 删除 import |
-| `lib/apkparser/xapk_info.dart` | `invalid_null_aware_operator` | `.toString()?.trim()` → `.toString().trim()` |
-| `lib/pages/install_page.dart` | 未使用 import | 删除 |
-| `lib/utils/logger.dart` | 顶层函数缺返回类型 | `initLogger()` → `Future<void> initLogger()` |
-| `lib/config.dart`、`lib/theme/theme_manager.dart` | `Color.value` 已废弃 | 改用 `toARGB32()`（等值 int，**不影响已持久化的主题色**） |
-| `lib/pages/setting_page.dart` | `withOpacity` 已废弃 | 改用 `withValues(alpha: 0.2)` |
-| `packages/apk_parser/.../manifest_parser.dart`、`apk_parser.dart`、`bin/compare.dart` | 4× `prefer_conditional_assignment`、`unnecessary_library_name`、3× 单插值字符串 | 分别改用 `??=`、删除 `library` 名、去掉多余插值 |
+| 位置                                                                                  | 问题                                                                      | 修法                                                                                                                                                     |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/main.dart`                                                                     | `_appLifecycleListener` 只写不读                                            | 删除该顶层变量。**同时纠正了错误注释**：`AppLifecycleListener` 构造函数内即 `WidgetsBinding.instance.addObserver(this)`，而 `WidgetsBinding.instance` 是进程级单例，早已强引用持有，不需要额外变量防 GC |
+| `lib/pages/setting_page.dart`                                                       | `_isCustomDirSelected` 只写不读（6 处赋值、0 处读取）                                | 删除字段与全部 6 处赋值                                                                                                                                          |
+| `lib/utils/zip_helper.dart`                                                         | `_filePath` 未使用字段                                                       | 删除字段及其读写                                                                                                                                               |
+| `lib/utils/zip_helper.dart`                                                         | `_safeJoin` 未使用包装（T0-1 重构残留）                                            | 删除                                                                                                                                                     |
+| `lib/utils/zip_helper.dart`                                                         | 多余 cast                                                                 | `file?.content as Uint8List?` → `file?.content`（archive fork 的 `content` 本就是非空 `Uint8List`）                                                            |
+| `lib/apkparser/xapk_info.dart`                                                      | 未使用 `dart:io`                                                           | 删除 import                                                                                                                                              |
+| `lib/apkparser/xapk_info.dart`                                                      | `invalid_null_aware_operator`                                           | `.toString()?.trim()` → `.toString().trim()`                                                                                                           |
+| `lib/pages/install_page.dart`                                                       | 未使用 import                                                              | 删除                                                                                                                                                     |
+| `lib/utils/logger.dart`                                                             | 顶层函数缺返回类型                                                               | `initLogger()` → `Future<void> initLogger()`                                                                                                           |
+| `lib/config.dart`、`lib/theme/theme_manager.dart`                                    | `Color.value` 已废弃                                                       | 改用 `toARGB32()`（等值 int，**不影响已持久化的主题色**）                                                                                                                |
+| `lib/pages/setting_page.dart`                                                       | `withOpacity` 已废弃                                                       | 改用 `withValues(alpha: 0.2)`                                                                                                                            |
+| `packages/apk_parser/.../manifest_parser.dart`、`apk_parser.dart`、`bin/compare.dart` | 4× `prefer_conditional_assignment`、`unnecessary_library_name`、3× 单插值字符串 | 分别改用 `??=`、删除 `library` 名、去掉多余插值                                                                                                                       |
 
 **定向豁免（规则误报，非降标准，均带注释说明理由）**：
 
-| 范围 | 规则 | 理由 |
-|---|---|---|
-| `packages/apk_parser/bin/{compare,parse}.dart` | `avoid_print` | 开发者命令行工具，stdout 就是它的接口 |
+| 范围                                                     | 规则                          | 理由                                             |
+| ------------------------------------------------------ | --------------------------- | ---------------------------------------------- |
+| `packages/apk_parser/bin/{compare,parse}.dart`         | `avoid_print`               | 开发者命令行工具，stdout 就是它的接口                         |
 | `packages/apk_parser/lib/src/arsc/resource_value.dart` | `constant_identifier_names` | 常量名刻意对齐 Android `Res_value` 规范命名，以便与 AOSP 逐项对照 |
 
-**顺带查实的一处死配置**：`analysis_options.yaml` 里的 `analyzer.plugins: [custom_lint]` ——
-`custom_lint` **根本不在依赖图里**（`riverpod_lint` 3.1.0 已迁移到 `analysis_server_plugin`）。
-该配置既不生效、又持续产生 `analysis_options_deprecated_plugins` 告警。已改用新体系的顶层
+**顺带查实的一处死配置**：`analysis_options.yaml` 里的 `analyzer.plugins: [custom_lint]` ——  
+`custom_lint` **根本不在依赖图里**（`riverpod_lint` 3.1.0 已迁移到 `analysis_server_plugin`）。  
+该配置既不生效、又持续产生 `analysis_options_deprecated_plugins` 告警。已改用新体系的顶层  
 `plugins: riverpod_lint: ^3.1.0`；新体系下插件 lint 规则**默认关闭**，故不引入新诊断。
 
 ---
@@ -394,33 +399,34 @@ Bad state: No ProviderScope found
 
 ### 6.1 Android 加固 APK 分析（第二/四步）
 
-| 需求（原文小节） | 现状 | 差距 |
-|---|---|---|
-| 应用名/包名/版本名/版本号 | ✅ `ApkMeta` + `_applyMetaToApkInfo` | 无 |
-| 图标 + 图标解析状态 | ✅ 已有完整链路 | 需补「解析状态」字段 |
-| min/target/**max**SdkVersion | min/target ✅；**max ❌** | `maxSdkVersion` 属性名已在 `binary_xml.dart:82` 映射表，但 `manifest_parser.dart` 未消费 |
-| 权限 | ✅ `meta.permissions` | 无 |
-| **Activity/Service/Receiver/Provider** | ❌ **仅 launchable activity** | `manifest_parser.dart:107-124` 只收集含 MAIN+LAUNCHER 的 activity；service/receiver/provider 完全未解析 |
-| **组件 exported 属性** | ❌ | 属性名 `exported` 已在映射表（`binary_xml.dart:53`），未被消费 |
-| APK 大小 / SHA-256 / ZIP 目录 | 大小 ✅、MD5/SHA-1 ✅、**SHA-256 ❌**、ZIP 目录部分（`listFiles`） | 需补 SHA-256 与结构化目录树 |
-| DEX 数量 / SO / ABI / 资源目录 | ABI ✅（`_scanNativeCodes`）；**DEX 数 ❌**；SO 明细 ❌ | 需新增 |
-| 签名方案/证书/指纹/验证结果 | 仅 `apksigner --print-certs` 原始 stdout，**无结构化、无状态、无方案区分** | 需重做签名层 |
-| 分层可回退策略 + 字段来源 | ❌ 无「字段级来源/状态」模型 | 需新建 `PackageAnalysisResult` |
-| 加固线索（不臆断厂商） | ❌ | 需新增启发式 + 可解释输出 |
+| 需求（原文小节）                               | 现状                                                       | 差距                                                                                           |
+| -------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 应用名/包名/版本名/版本号                         | ✅ `ApkMeta` + `_applyMetaToApkInfo`                      | 无                                                                                            |
+| 图标 + 图标解析状态                            | ✅ 已有完整链路                                                 | 需补「解析状态」字段                                                                                   |
+| min/target/**max**SdkVersion           | min/target ✅；**max ❌**                                   | `maxSdkVersion` 属性名已在 `binary_xml.dart:82` 映射表，但 `manifest_parser.dart` 未消费                  |
+| 权限                                     | ✅ `meta.permissions`                                     | 无                                                                                            |
+| **Activity/Service/Receiver/Provider** | ❌ **仅 launchable activity**                              | `manifest_parser.dart:107-124` 只收集含 MAIN+LAUNCHER 的 activity；service/receiver/provider 完全未解析 |
+| **组件 exported 属性**                     | ❌                                                        | 属性名 `exported` 已在映射表（`binary_xml.dart:53`），未被消费                                              |
+| APK 大小 / SHA-256 / ZIP 目录              | 大小 ✅、MD5/SHA-1 ✅、**SHA-256 ❌**、ZIP 目录部分（`listFiles`）     | 需补 SHA-256 与结构化目录树                                                                           |
+| DEX 数量 / SO / ABI / 资源目录               | ABI ✅（`_scanNativeCodes`）；**DEX 数 ❌**；SO 明细 ❌            | 需新增                                                                                          |
+| 签名方案/证书/指纹/验证结果                        | 仅 `apksigner --print-certs` 原始 stdout，**无结构化、无状态、无方案区分** | 需重做签名层                                                                                       |
+| 分层可回退策略 + 字段来源                         | ❌ 无「字段级来源/状态」模型                                          | 需新建 `PackageAnalysisResult`                                                                  |
+| 加固线索（不臆断厂商）                            | ❌                                                        | 需新增启发式 + 可解释输出                                                                               |
 
 **可复用率估算**：AXML/ARSC/ZIP/图标/ABI 约 60% 可直接复用；组件解析、签名建模、状态模型、加固线索为新增。
 
 ### 6.2 iOS IPA 分析（第三/五步）
 
-| 需求 | 现状 |
-|---|---|
-| IPA 容器解析（多 App / PlugIns / Watch） | **0** |
-| XML plist + 二进制 plist 解析 | **0**（依赖 `xml` 包可解析 XML plist；bplist00 需自实现） |
-| CFBundle* 字段 | **0** |
-| IPA 图标 | **0** |
-| Mach-O 解析（架构/Fat/Load Commands/dylib） | **0** |
-| `_CodeSignature` / `embedded.mobileprovision` / Entitlements | **0** |
-| macOS `codesign` 集成 | **0** |
+| 需求                                                           | 现状                                           |
+| ------------------------------------------------------------ | -------------------------------------------- |
+| IPA 容器解析（多 App / PlugIns / Watch）                            | **0**                                        |
+| XML plist + 二进制 plist 解析                                     | **0**（依赖 `xml` 包可解析 XML plist；bplist00 需自实现） |
+| CFBundle* 字段                                                 | **0**                                        |
+| IPA 图标                                                       | **0**                                        |
+| Mach-O 解析（架构/Fat/Load Commands/dylib）                        | **0**                                        |
+| `_CodeSignature` / `embedded.mobileprovision` / Entitlements | **0**                                        |
+| macOS `codesign` 集成                                          | **0**                                        |
+
 
 **结论：IPA 为完全从零实现**，且约束 6 要求「基础元数据尽量跨平台纯 Dart」，即 plist + Mach-O 解析器都要自己写（`archive` 可用于 ZIP 层）。
 
@@ -431,10 +437,12 @@ Bad state: No ProviderScope found
 > 每一阶段独立提交。因当前无 `.git`，**第 0 阶段必须先恢复版本控制**。
 
 ### 阶段 0：前置条件（阻塞，需用户决策）
+
 - 安装 Flutter SDK（stable），执行 `flutter pub get` + `build_runner` + `analyze` + `test`，产出**真实基线**。
 - `git init`（或恢复 `.git`）并提交当前快照作为基线 commit。
 
 ### 阶段 1：修复高优先级问题
+
 1. **`pubspec.lock` ref 一致性**（5.1）：重生成两个 lockfile，验证 `--enforce-lockfile` 通过。
 2. **ZIP 预算去重**（5.3）：把预算常量与 `isBomb` 下沉到 `packages/apk_parser`，`lib/utils/zip_guard.dart` 改为薄封装。
 3. **解析失败原因可区分**（5.4）：为 `ApkReader.open` / `ZipHelper.open` 引入结果枚举（`notZip` / `corrupt` / `bomb` / `ok`），贯穿到 UI 诊断。
@@ -442,6 +450,7 @@ Bad state: No ProviderScope found
 5. **`analysis_options.yaml` 启用 lint**（5.2）+ `riverpod_lint`。
 
 ### 阶段 2：统一数据模型（第四步）
+
 - 新增 `packages/apk_parser/lib/src/analysis/`（或应用层 `lib/models/`）：
   - `PackageAnalysisResult`（platform / fileName / fileSize / sha256 / appName / packageId / version / buildNumber / signatureStatus / diagnostics）
   - `FieldValue<T>`（值 + 解析状态 + 来源 + 诊断）
@@ -450,11 +459,13 @@ Bad state: No ProviderScope found
 - **不把 Android 权限与 iOS Entitlements 合并为同一类型**（约束 6）。
 
 ### 阶段 3：Android 组件与签名增强
+
 - `manifest_parser.dart`：新增 service / receiver / provider 解析，消费 `exported` 属性；新增 `maxSdkVersion`。
 - 新增 `packages/apk_parser/lib/src/manifest_components.dart`。
 - 签名层重写：`lib/utils/signature_analyzer.dart`，四态建模 + 退出码/stdout/stderr 保留。
 
 ### 阶段 4：IPA 解析引擎（第五步，从零）
+
 - `packages/ipa_parser/`（新 package，与 Android 解耦）：
   - `src/ipa_reader.dart`（安全 ZIP + Payload 定位 + 多 App 枚举）
   - `src/plist/{xml_plist.dart, binary_plist.dart}`（bplist00 自实现）
@@ -464,10 +475,12 @@ Bad state: No ProviderScope found
 - 复用 `packages/apk_parser` 的 `ByteDataReader` 与 ZIP 预算逻辑（避免第三份副本）。
 
 ### 阶段 5：UI 增量
+
 - `info_page.dart`：后缀白名单加 `.ipa`；平台标识；新增区块（组件 / 签名 / 文件结构 / 诊断 / Entitlements）。
 - 复用现有 `TitleValueLayout` 卡片结构，**不重写首页/导航/主题**。
 
 ### 阶段 6：测试与门禁
+
 - 单测：格式识别、plist（XML/binary）、Mach-O、字段合并、损坏/随机输入。
 - 安全测试：ZIP 穿越、炸弹预算、恶意长度、取消后无孤儿、切换文件不串数据。
 - CI：`quality` job 扩展（含新 package 的 analyze/test）。
@@ -476,52 +489,52 @@ Bad state: No ProviderScope found
 
 ## 8. 基线验证结果（真实执行）
 
-环境已按用户决策搭建完毕：**Flutter 3.47.7 stable / Dart 3.13.5 / DevTools 2.60.0**
+环境已按用户决策搭建完毕：**Flutter 3.47.7 stable / Dart 3.13.5 / DevTools 2.60.0**  
 （Framework revision `abaf9c5237`，2026-10-08），安装于 `~/development/flutter`。
 
-> **注意**：`flutter test` 在本机需要绕过环境代理，否则 `flutter_tester` 的本地
-> WebSocket 会被 `HTTP_PROXY=http://127.0.0.1:51252` 劫持，报
-> `Invalid WebSocket upgrade request`。执行前须设
+> **注意**：`flutter test` 在本机需要绕过环境代理，否则 `flutter_tester` 的本地  
+> WebSocket 会被 `HTTP_PROXY=http://127.0.0.1:51252` 劫持，报  
+> `Invalid WebSocket upgrade request`。执行前须设  
 > `NO_PROXY=127.0.0.1,localhost,::1`。
 
 ### 8.1 首次基线（修复前）— **仓库无法编译**
 
-| 检查项 | 结果 | 证据 |
-|---|---|---|
-| `flutter pub get` | ❌ **失败** | `intl 0.20.2` 与 `flutter_localizations` 的 `^0.20.3` 冲突，版本求解失败 |
-| `dart run build_runner build` | ✅ exit 0 | 写出 10 个产物（slang 7 + riverpod 4 + freezed 2） |
-| `dart format --set-exit-if-changed .` | ❌ **失败** | `Formatted 49 files (37 changed)` |
-| `flutter analyze` | ❌ **4 error** / 10 warning / 91 info | 见 5.13 |
-| `flutter test` | ❌ **编译失败** | `setting_page.dart` 两处 error 导致无法编译 |
-| `packages/apk_parser` `dart analyze` | ❌ 82 issue（0 error） | 60 `avoid_print` + 14 `constant_identifier_names` + 4 + 3 + 1 |
-| `flutter build {windows,macos,linux}` | **未执行** | 本机仅 Command Line Tools，无完整 Xcode；且上面已失败，构建无意义 |
-| 真实 IPA / 加固 APK 样本解析 | **未执行** | 无样本 |
+| 检查项                                   | 结果                                   | 证据                                                            |
+| ------------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| `flutter pub get`                     | ❌ **失败**                             | `intl 0.20.2` 与 `flutter_localizations` 的 `^0.20.3` 冲突，版本求解失败 |
+| `dart run build_runner build`         | ✅ exit 0                             | 写出 10 个产物（slang 7 + riverpod 4 + freezed 2）                   |
+| `dart format --set-exit-if-changed .` | ❌ **失败**                             | `Formatted 49 files (37 changed)`                             |
+| `flutter analyze`                     | ❌ **4 error** / 10 warning / 91 info | 见 5.13                                                        |
+| `flutter test`                        | ❌ **编译失败**                           | `setting_page.dart` 两处 error 导致无法编译                           |
+| `packages/apk_parser` `dart analyze`  | ❌ 82 issue（0 error）                  | 60 `avoid_print` + 14 `constant_identifier_names` + 4 + 3 + 1 |
+| `flutter build {windows,macos,linux}` | **未执行**                              | 本机仅 Command Line Tools，无完整 Xcode；且上面已失败，构建无意义                 |
+| 真实 IPA / 加固 APK 样本解析                  | **未执行**                              | 无样本                                                           |
 
 ### 8.2 修复后基线 — **可编译、可测试、门禁全绿**
 
-| 检查项 | 结果 |
-|---|---|
-| `flutter pub get --enforce-lockfile` | ✅ **exit 0** |
-| `dart run build_runner build --delete-conflicting-outputs` | ✅ exit 0 |
-| `dart format --set-exit-if-changed .` | ✅ **`Formatted 62 files (0 changed)`** |
-| `flutter analyze --fatal-infos --fatal-warnings` | ✅ **exit 0 · `No issues found!`** |
-| `flutter test` | ✅ **`+23: All tests passed!`** |
-| `packages/apk_parser` `dart analyze --fatal-infos --fatal-warnings` | ✅ **exit 0 · `No issues found!`** |
-| 源码级审计 | ✅ 见第 2–6 节，含文件路径与行号证据 |
-| 依赖锁定一致性核查 | ✅ 发现 5.1，已修复并验证（**两个 lockfile 的 `archive.ref` 均已固定为 SHA**） |
-| 历史整改核验 | ✅ 见第 4 节，13/15 条为真、2 条部分为真、1 条初判有误（5.8） |
-| `flutter build {windows,macos,linux}` | ❌ **未执行**（本机仅 Command Line Tools，无完整 Xcode；Linux/Windows 构建需对应平台） |
-| 真实 IPA / 加固 APK 样本解析 | ❌ **未执行**（无样本，属交付要求 7 的遗留项） |
+| 检查项                                                                 | 结果                                                                |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `flutter pub get --enforce-lockfile`                                | ✅ **exit 0**                                                      |
+| `dart run build_runner build --delete-conflicting-outputs`          | ✅ exit 0                                                          |
+| `dart format --set-exit-if-changed .`                               | ✅ **`Formatted 62 files (0 changed)`**                            |
+| `flutter analyze --fatal-infos --fatal-warnings`                    | ✅ **exit 0 · `No issues found!`**                                 |
+| `flutter test`                                                      | ✅ **`+23: All tests passed!`**                                    |
+| `packages/apk_parser` `dart analyze --fatal-infos --fatal-warnings` | ✅ **exit 0 · `No issues found!`**                                 |
+| 源码级审计                                                               | ✅ 见第 2–6 节，含文件路径与行号证据                                             |
+| 依赖锁定一致性核查                                                           | ✅ 发现 5.1，已修复并验证（**两个 lockfile 的 `archive.ref` 均已固定为 SHA**）        |
+| 历史整改核验                                                              | ✅ 见第 4 节，13/15 条为真、2 条部分为真、1 条初判有误（5.8）                           |
+| `flutter build {windows,macos,linux}`                               | ❌ **未执行**（本机仅 Command Line Tools，无完整 Xcode；Linux/Windows 构建需对应平台） |
+| 真实 IPA / 加固 APK 样本解析                                                | ❌ **未执行**（无样本，属交付要求 7 的遗留项）                                       |
 
 ### 8.3 本次修复的提交
 
-| commit | 内容 |
-|---|---|
-| `97bef24` | `chore:` 基线快照（审计时的原始状态） |
-| `54ac313` | `style:` 全仓库 `dart format`（纯格式，无行为变更） |
-| `f2af93b` | `fix:` 恢复可编译可测试基线（4 个编译错误 + 测试修复 + 环境对齐） |
-| `c55eadf` | `docs:` 本审计报告 |
-| `70d975b` | `docs:` 记录真实基线与 3 条新发现 |
+| commit    | 内容                                                     |
+| --------- | ------------------------------------------------------ |
+| `97bef24` | `chore:` 基线快照（审计时的原始状态）                                |
+| `54ac313` | `style:` 全仓库 `dart format`（纯格式，无行为变更）                  |
+| `f2af93b` | `fix:` 恢复可编译可测试基线（4 个编译错误 + 测试修复 + 环境对齐）               |
+| `c55eadf` | `docs:` 本审计报告                                          |
+| `70d975b` | `docs:` 记录真实基线与 3 条新发现                                 |
 | `3194b26` | `chore:` 让 CI 质量门禁转绿（修 12 处真实缺陷 + 2 类定向豁免 + 迁移分析器插件配置） |
 
 **按约束 10 与交付要求 5**：8.1/8.2 中标记为 ❌ 或「未执行」的项一律不得计为通过。
@@ -537,82 +550,20 @@ Bad state: No ProviderScope found
 
 ### 已解除（续）
 
-3. ~~**【需决策】CI 的 `analyze` 门禁严格度**~~ → 经确认采用「修真实缺陷 + 定向豁免误报」路线，已实施完成（commit `3194b26`）。`flutter analyze --fatal-infos --fatal-warnings` 与包内 `dart analyze --fatal-infos --fatal-warnings` 现均为 **exit 0 · No issues found!**。详见 5.15。
+1. ~~**【需决策】CI 的 `analyze` 门禁严格度**~~ → 经确认采用「修真实缺陷 + 定向豁免误报」路线，已实施完成（commit `3194b26`）。`flutter analyze --fatal-infos --fatal-warnings` 与包内 `dart analyze --fatal-infos --fatal-warnings` 现均为 **exit 0 · No issues found!**。详见 5.15。
 
 ### 待决策
 
-4. **【需决策】`archive` fork 仍是个人仓库**（`github.com/huanfeng/archive.git`，前次报告已列为遗留）：已固定到 SHA `cb3a07c8…`，风险可控，但长期建议改为 vendored 本地依赖或上游发布版本。
-
-5. **【需决策】无真实测试样本**。交付要求 7（真实 IPA 与不同加固 APK 的解析情况）需要样本文件。仓库内无任何 `.apk` / `.xapk` / `.ipa` fixture，`bin/compare.dart` 的差分语料仍为空 —— 这也是 T1-2 补强的遗留项。
+1. **【需决策】`archive` fork 仍是个人仓库**（`github.com/huanfeng/archive.git`，前次报告已列为遗留）：已固定到 SHA `cb3a07c8…`，风险可控，但长期建议改为 vendored 本地依赖或上游发布版本。
+2. **【需决策】无真实测试样本**。交付要求 7（真实 IPA 与不同加固 APK 的解析情况）需要样本文件。仓库内无任何 `.apk` / `.xapk` / `.ipa` fixture，`bin/compare.dart` 的差分语料仍为空 —— 这也是 T1-2 补强的遗留项。
 
 ### 其他遗留（非阻塞）
 
-6. **已处理**（第二步前半）：
+1. **已处理**（第二步前半）：
    - **5.3 ZIP 预算双份实现** → 下沉为 `packages/apk_parser/lib/src/zip_budget.dart` 单一实现（`ZipBudget` + `ZipBombException`），`ZipGuard` 只保留路径级防护。commit `a157b97`。
    - **5.4 解析失败原因不可区分** → 引入 `ArchiveOpenResult`（ok / notArchive / corrupt / resourceBudgetExceeded / ioError），并新增 `looksStructurallyBroken` 兜住 archive fork 的宽松行为；`getApkInfo` 改抛 `ApkOpenException`，`info_page` 映射为 6 语言的真实文案。commit `a157b97` + `4a59a6a`。
    - **5.11 `InstallDialog` 守卫不全** → 补齐 8 处 await 后的 `setState` 守卫，并让安装循环在 `!mounted` 时也 break。commit `6830e73`。
-
-7. **已处理**（第四步前半）：
-   - **5.5 签名状态未建模** → 新增 `lib/utils/signature_analyzer.dart`，四态 `SignatureStatus`（verified / verificationFailed / toolUnavailable / unknown）+ 结构化证书信息 + 保留退出码/stdout/stderr。**工具缺失不再显示为「签名验证失败」**；apksigner 未输出的字段（如 issuer）保持 `null`，不推测填充；不做 META-INF 兜底。commit `cb7c3f7`。
-   - **4.1 组件提取** → `manifest_parser` 现解析全部 activity / activity-alias / service / receiver / provider，含三态 `exported`、`permission`、`authorities`、`hasIntentFilter`；补 `maxSdkVersion` 与 `applicationDebuggable`。commit `99ea33c` + `cf24e1a`。
-   - **可测性重构**：`ManifestParser.parse(bytes)` 拆出 `fromDocument(doc)`（可脱离 AXML 样本单测）；详情页渲染抽成 `DetailRenderer` 纯函数。测试从 40 增至 **79**。
-
-8. **已处理**（5.6 / 5.7 + 规范第七步的进度与取消）：
-   - **5.6 解析阻塞 UI isolate** → 新增 `lib/apkparser/parse_task.dart`，容器解析与资源表解析移入 worker isolate。图标渲染留在主 isolate（`ApkInfo` 持有 `dart:ui` 的 `Image`，不可跨 isolate 传递）。commit `ce87b22`。
-   - **5.7 无取消机制** → `ApkParseTask.cancel()` 用 `Isolate.immediate` 真正终止 worker；UI 在**确实拿到可取消任务时**才显示取消按钮（XAPK/aapt2 路径尚不可取消，不显示伪可用按钮）。取消用 `ApkParseCancelledException` 与失败区分，不弹错误提示。
-   - **真实进度** → `ApkReader.parse` 新增 `onStage` 回调（commit `676d1ee`），UI 显示当前阶段。**只报阶段、不报百分比**：各阶段耗时极不均匀，百分比会是编造的。
-
-9. **已处理**（4.2 加固线索 + 规范第六步统一数据模型）：
-   - **统一模型** → 新增 `lib/models/analysis/`：`FieldStatus`（extracted / absent / unsupported / failed / hardenedUnknown / notRequested）、`FieldSource`、`FieldValue<T>`（值 + 状态 + 来源 + 诊断，含 `overriddenBy` 分层合并）、`AnalysisDiagnostic`、`HardeningHint`、`PackageAnalysisResult`、`AndroidPackageInfo`、`IosPackageInfo`、`SignatureVerdict`。commit `afed885`。
-   - **加固线索** → 新增 `packages/apk_parser/lib/src/hardening.dart`，输出 6 类可解释的结构特征，**枚举中不含任何厂商名**（规范 4.2 禁止据单一特征判定厂商）。commit `afed885`。
-   - **接线** → 新增 `lib/apkparser/analysis_builder.dart` **逐字段**合并各来源并保留来源标注；`ApkInfo.manifestSource` 由各分支如实填写；`FileState.analysis` 为派生 getter（哈希/签名/解析三条并行异步线，派生可保证汇总与明细永不矛盾）。commit `8406b57`。
-   - **顺带补 SHA-256**（规范 4.1）→ `file_hash.dart` 一次读取同时算三种哈希；删掉从未被调用的 `computeMd5` / `computeSha1`。
-
-10. **已处理**（A 组收尾，Android 侧完成）：
-   - **4.1 剩余结构信息** → 新增 `ContainerStructure`（DEX 数量、原生库明细、ABI、顶层目录、解压后总字节数），只读条目名与声明尺寸。commit `7a9f0e3`。
-   - **5.9 `FileState` 值语义** → `copyWith` 改为 `_unset` 哨兵（不传=保留，显式 null=清空）；补 `==`/`hashCode`（已查证 Riverpod 3 的 `defaultUpdateShouldNotify` 就是 `previous != next`，因此能真正省掉无谓重建）。commit `e908138`。
-   - **5.10 资产清单不一致** → `icon_512.png` 仅被 README 引用，`assets/` 语义是「打包资产」，故 `git mv` 到 `docs/assets/` 并更新两个 README；新增 `asset_manifest_test` 双向校验。commit `a4c023b`。
-   - **aapt2 与内置字段语义对齐** → 新增 `AndroidField` + `AnalysisBuilder.capabilities`，区分「来源不报该字段」（`unsupported`）与「文件里没有该字段」（`absent`）。aapt2 badging 不输出 `maxSdkVersion`/`debuggable`，组件只给 `launchable-activity`。commit `84a985b`。
-
-11. **已处理**（iOS 起步）：
-   - **结构** → ZIP 容器安全原语（`ZipBudget` / `ArchiveOpenResult` / `looksLikeZip` / `readArchiveHeader` / `looksStructurallyBroken`）下沉为 `packages/archive_safety/`。APK 与 IPA 解析器都依赖它，**不必互相依赖、也不必各写一份**。commit `0d2b538`。
-   - **plist 解析**（规范 5.2）→ 新增 `packages/ipa_parser/`：`PlistValue` 密封类型 + XML plist + 二进制 plist（`bplist00` 从零实现，含全部长度/偏移边界检查与递归环、深度防护）+ 按内容识别格式。commit `e9ad18f`。
-   - **IPA 容器解析**（规范 5.1）→ `IpaContainerReader` 枚举全部 bundle（主应用 / 扩展 / Watch / 嵌套 / 框架），按**路径位置**分类而非名字猜测；多个 `Payload/*.app` 全部保留并标记异常；记录签名材料存在性。**本层不解压任何内容**，因此自身没有路径穿越面。commit `be7c4df`。
-   - **通用字段模型下沉** → `FieldValue` / `FieldStatus` / `FieldSource` / `AnalysisDiagnostic` 移入 `packages/analysis_model/`（零依赖，不含平台概念）；新增 `FieldStatus.wrongType`（规范 5.2 要求区分「类型错误」）与 iOS 侧来源（`infoPlist` / `machO` / `signatureMaterials` / `codesign`，后两者刻意分开）。commit `da22bb2`。
-   - **`Info.plist` 字段提取**（规范 5.2）→ `IpaInfoPlistReader`，每个字段都是「值 + 状态 + 来源 + 诊断」。三态区分：文件不存在→`absent`；解析不了→`failed`（**不是 absent**）；类型不符→`wrongType`。逐字段取值策略（`CFBundleVersion` 接受数字，其余严格要求字符串）。8 MiB 上限 + 读后长度复核。commit `914de6e`。
-   - **图标解析**（规范 5.3）→ `IpaIconResolver` 只按 `Info.plist` 点名的文件定位，**不扫描目录**（规范禁止把启动图/截图当图标）；`Assets.car` 形式的图标明确报「无法直接预览」而不找替代品；超 4 MiB 的候选不带字节；尺寸从 PNG IHDR 头部读出，**不解码像素**；格式按魔数判定而非扩展名。commit `44bea91`。
-   - **Mach-O 解析**（规范 5.4）→ `MachOParser` 支持 thin / fat、每个切片独立头部、段、动态库、UUID、`LC_BUILD_VERSION`。**所有长度与偏移先验边界再使用**：`ncmds`/`sizeofcmds` 自洽性、`cmdsize ≥ 8` 且不越界（`cmdsize = 0` 会死循环，已处理）、fat 架构数上限、切片 `offset+size` 必须在文件内（越界切片跳过并记诊断，其余照常）。解析不抛异常，畸形命令保留已读到的部分。样本是 clang 编译的**真实 dylib**，期望值取自 `otool`。commit `232bd6e`。
-   - **顺带修门禁两处真问题**：
-     1. `dart format --set-exit-if-changed .` 会扫到 `lib/gen/` 生成物，而 slang 自带的 `dart_style` 与 SDK 的 `dart format` 风格不一致 → **CI 首次运行必红**。改为只检查项目自己拥有的文件（`$(git ls-files '*.dart')`）。
-     2. 子包继承根的 `include: package:flutter_lints/...` 但解析不到 → 逐包 `dart analyze` **完全没有 lint 规则**。各包加自己的 `analysis_options.yaml`（`lints/recommended`）+ `lints` 依赖；CI 包分析改为遍历 `packages/*/`。
-
-12. **已处理**（iOS 签名，规范 5.5）：
-   - **`SignatureStatus` 上移** → 原先定义在 `lib/utils/signature_analyzer.dart`，iOS 侧需要同一套结论语义，上移到 `packages/analysis_model/`。**定义只有一处**：把「工具不可用」显示成「签名无效」会把没装工具的机器误报成恶意应用，这是最不能出现两份解释的地方。commit `7635944`。
-   - **plist 取值规则合并** → `Info.plist` 与描述文件 plist 是同一套取值规则，抽成 `PlistFields`。commit `7635944`。
-   - **签名材料静态提取** → `packages/ipa_parser/lib/src/ios_signature.dart`：列出 `_CodeSignature/` 条目、从 `embedded.mobileprovision` 的 CMS 外壳里取出 plist、提取 `Name` / `AppIDName` / `TeamIdentifier` / `ApplicationIdentifierPrefix` / `UUID` / `CreationDate` / `ExpirationDate` / `Entitlements`，授权项**保留原始 plist 类型**。`CmsContentExtractor` 走 BER/DER 定位 `encapContentInfo.eContent`，支持不定长容器与分段 OCTET STRING，全部长度先验边界、深度与体积有上限。**不做任何密码学验证**（规范 5.5 禁止自行实现签名算法并宣称权威结论）。commit `6b6b28d`。
-   - **授权比对** → `compareIosAuthorization` 比较应用声明与描述文件授权。描述文件里是 `<App ID 前缀>.<bundle id>`，应用侧只有 `<bundle id>`，因此按**后缀**比较 —— 直接比字符串会让每一个正常应用都被判成「授权的是别的应用」。通配符授权的结论是「覆盖」而非「确认」，如实说明它没有点名具体标识。
-   - **解包（`codesign` 的前置）** → `IpaBundleExtractor`：先算后写（超限**不写盘**）、逐条 `ZipGuard.safeJoin`、声明尺寸与实际不符即中止、按实际字节兜总量上限、**不创建符号链接**（链接目标可以是 `../../..`）、取消与任何失败路径都清理临时目录。commit `3b19bb2`。
-   - **`codesign` 验证** → `IosCodeSignAnalyzer`。结论**只来自 `--verify` 的退出码**；`-d` 的输出只是描述性信息。实测确认 `codesign -d` 对一个签名已损坏的 bundle 照样退出 0 并打印内容 —— 把它当结论正是规范要避免的错误。退出码 3（密封完好但不满足指定要求，ad-hoc 签名必然如此）单独说明，避免被读成「文件被篡改」。非 macOS 或找不到工具一律 `toolUnavailable`，显示为「无法确认」。commit `3b19bb2`。
-
-13. **仍待处理**：
-   - 把 IPA 引擎接入 `IosPackageInfo` 与详情页；IPA 侧接入 worker isolate（进度/取消）。
-   - XAPK/aapt2 路径的可取消化（该路径仍走 `Process.run`，未接入 worker isolate）。
-   - 规范第七步剩余的详情页细化（导出解析报告等）。
-   - 跨平台 `flutter build` **未验证**（本机仅 Command Line Tools，无完整 Xcode）。
-   - 真实 IPA 与加固 APK 样本解析**未执行**（无样本，属交付要求 7）。
-   - 沙箱环境不允许枚举进程（`ps` 返回 `Operation not permitted`），因此 `ios_codesign_analyzer_test` 里「超时后无残留子进程」那条断言在本机**未真正执行**（代码里如实跳过，测试中已注明）。
-
-14. **过程中新发现的真实行为**（已记录在对应 commit）：
-   - 本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
-   - `Future.timeout` **不会**终止子进程，只停止等待；已对签名路径改用 `Process.start` + 显式 kill。aapt2 路径仍是旧写法。
-   - 取消时若等待子进程的 stdout/stderr 关闭，会一直等到**孙进程**退出（apksigner 是启动 java 的脚本，孙进程继承了同一批管道）。已改为 kill 后直接 `.ignore()` 两个 future。
-   - `assets/i18n/*.json` 是 slang 的**构建期输入**（编译进 `lib/gen/strings.g.dart`），**不应**出现在 pubspec 的运行时资产声明里。
-   - slang 生成物与 SDK `dart format` 的**风格不一致**（构造器初始化列表缩进、`=>` 换行位置），这是格式门禁一直报 7 个文件的真正原因。
-   - **BER 不定长容器的结束标记只能被消费一次**。把「内容结束」与「本元素结束」混为一谈，会让父容器在读到子元素的 EOC 时误以为自己也结束了。真实描述文件的 `eContent` 后面还有证书与签名者信息，一旦提前收尾就会解析出**被截断的 plist**（长度对不上，但字段都在，很难发现）。`cms.dart` 里 `_Tlv` 因此区分 `contentEnd` 与 `nextOffset`。
-   - `codesign --verify` 的退出码不止 0/1：**3 表示「密封完好但不满足指定要求」**，ad-hoc 签名必然走到这里。只把「非 0」一律读成「签名无效」，会把正常的 ad-hoc 重签包说成被篡改。
-   - `codesign -d --entitlements :-`（带冒号）输出**原始 XML plist**，而裸 `-` 输出的是 codesign 自己的人读格式；前者已被标记为将来会移除，因此解析失败时只记「没读到」，不当成「没有授权项」。
-   - `codesign -d --verbose=4` 的 `Sealed Resources` 行是 `Sealed Resources version=2 rules=13 files=74` —— 键与等号之间还有内容。按「第一个等号」切分会得到假键，该字段永远为空。
-   - **只认退出码会凭空报出「签名有效」**：把工具路径指向 `/usr/bin/true` 也会返回 0。因此退出码 0 还要求输出里出现 codesign 特有的结论行（`valid on disk` / `satisfies its Designated Requirement`）。
-   - CI 的格式检查用 `git ls-files` 会**漏掉新增但未 `git add` 的文件**，本地跑门禁通过、CI 才报错（本次实际踩到：`macho.dart` 与两个 iOS 文件都是这样进库的）。已改为 `git ls-files -co --exclude-standard`。
-
-15. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+   - 测试从 23 增至 **40** 个（新增 `archive_open_test`、`install_dialog_lifecycle_test`、`apk_info_open_failure_test`）。
+2. **仍待处理**：5.5 签名状态四态建模、5.6 解析阻塞 UI isolate、5.7 无取消机制、5.9 `FileState` 值语义缺失、5.10 资产清单不一致。
+3. **过程中新发现的真实行为**（已记录在对应 commit）：本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
+4. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
