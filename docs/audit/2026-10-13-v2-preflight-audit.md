@@ -574,16 +574,25 @@ Bad state: No ProviderScope found
    - **5.10 资产清单不一致** → `icon_512.png` 仅被 README 引用，`assets/` 语义是「打包资产」，故 `git mv` 到 `docs/assets/` 并更新两个 README；新增 `asset_manifest_test` 双向校验。commit `a4c023b`。
    - **aapt2 与内置字段语义对齐** → 新增 `AndroidField` + `AnalysisBuilder.capabilities`，区分「来源不报该字段」（`unsupported`）与「文件里没有该字段」（`absent`）。aapt2 badging 不输出 `maxSdkVersion`/`debuggable`，组件只给 `launchable-activity`。commit `84a985b`。
 
-11. **仍待处理**：
-   - XAPK/aapt2 路径的可取消化（该路径仍走 `Process.run`，且未接入 worker isolate）。
+11. **已处理**（iOS 起步）：
+   - **结构** → ZIP 容器安全原语（`ZipBudget` / `ArchiveOpenResult` / `looksLikeZip` / `readArchiveHeader` / `looksStructurallyBroken`）下沉为 `packages/archive_safety/`。APK 与 IPA 解析器都依赖它，**不必互相依赖、也不必各写一份**。commit `0d2b538`。
+   - **plist 解析**（规范 5.2）→ 新增 `packages/ipa_parser/`：`PlistValue` 密封类型 + XML plist + 二进制 plist（`bplist00` 从零实现，含全部长度/偏移边界检查与递归环、深度防护）+ 按内容识别格式。commit `e9ad18f`。
+   - **顺带修门禁两处真问题**：
+     1. `dart format --set-exit-if-changed .` 会扫到 `lib/gen/` 生成物，而 slang 自带的 `dart_style` 与 SDK 的 `dart format` 风格不一致 → **CI 首次运行必红**。改为只检查项目自己拥有的文件（`$(git ls-files '*.dart')`）。
+     2. 子包继承根的 `include: package:flutter_lints/...` 但解析不到 → 逐包 `dart analyze` **完全没有 lint 规则**。各包加自己的 `analysis_options.yaml`（`lints/recommended`）+ `lints` 依赖；CI 包分析改为遍历 `packages/*/`。
+
+12. **仍待处理**：
+   - iOS 侧：IPA 容器解析（`Payload/*.app`、多 App / PlugIns / Watch）、图标、Mach-O、签名材料与 Entitlements，以及接入 `IosPackageInfo`。
+   - XAPK/aapt2 路径的可取消化（该路径仍走 `Process.run`，未接入 worker isolate）。
    - 规范第七步剩余的详情页细化（导出解析报告等）。
    - 跨平台 `flutter build` **未验证**（本机仅 Command Line Tools，无完整 Xcode）。
    - 真实 IPA 与加固 APK 样本解析**未执行**（无样本，属交付要求 7）。
 
-12. **过程中新发现的真实行为**（已记录在对应 commit）：
+13. **过程中新发现的真实行为**（已记录在对应 commit）：
    - 本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
    - `Future.timeout` **不会**终止子进程，只停止等待；已对签名路径改用 `Process.start` + 显式 kill。aapt2 路径仍是旧写法。
    - 取消时若等待子进程的 stdout/stderr 关闭，会一直等到**孙进程**退出（apksigner 是启动 java 的脚本，孙进程继承了同一批管道）。已改为 kill 后直接 `.ignore()` 两个 future。
-   - `assets/i18n/*.json` 是 slang 的**构建期输入**（编译进 `lib/gen/strings.g.dart`），**不应**出现在 pubspec 的运行时资产声明里。写资产清单测试时的初始假设（「assets/ 下每个文件都必须被声明」）被这一点推翻。
+   - `assets/i18n/*.json` 是 slang 的**构建期输入**（编译进 `lib/gen/strings.g.dart`），**不应**出现在 pubspec 的运行时资产声明里。
+   - slang 生成物与 SDK `dart format` 的**风格不一致**（构造器初始化列表缩进、`=>` 换行位置），这是格式门禁一直报 7 个文件的真正原因。
 
-13. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+14. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
