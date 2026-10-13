@@ -33,6 +33,20 @@ enum HardeningSignal {
   /// `assets/` 是给应用读取的原始资源目录，正常构建不会往里放可执行代码。
   executableInAssets,
 
+  /// 归档里存在「父路径同时也是一个文件条目」的条目。
+  ///
+  /// ZIP 的名字空间里，同一个字符串既被当作文件、又被当作目录前缀 ——
+  /// 例如 `AndroidManifest.xml` 是文件，而 `AndroidManifest.xml/..xml`
+  /// 又把它当目录。实测的真实加固样本里有 **216** 条这样的条目，
+  /// 占全部 2242 条约 10%。
+  ///
+  /// 正常构建流程不会产出这种结构。它的唯一用处是让「按名字查找关键文件」的
+  /// 工具读到诱饵：不同解压器对「同名文件与目录」的取舍不同，于是同一个包
+  /// 在不同工具下会解析出不同结果。
+  ///
+  /// 只描述这个结构事实，不推断是哪家的加固器。
+  decoyArchiveEntries,
+
   /// `resources.arsc` 缺失或异常小，而 DEX 规模不小。
   ///
   /// 资源表是 Android 应用的必备件；在 DEX 有相当体量的前提下它却几乎不存在，
@@ -72,6 +86,9 @@ class HardeningScanner {
   /// 只有 DEX 有体量时，资源表缺失才值得怀疑 —— 一个只有几行代码的
   /// 玩具应用完全可以没有资源表。
   static const int dexSubstantialSize = 64 * 1024;
+
+  /// 检查「祖先路径是否为文件条目」时最多往前看几层。
+  static const int _maxAncestorDepth = 8;
 
   static final _dexNamePattern = RegExp(r'^classes(\d*)\.dex$');
   static final _nativeLibPattern = RegExp(r'^lib/([^/]+)/([^/]+)$');
@@ -145,6 +162,37 @@ class HardeningScanner {
           entry.name,
         ));
       }
+    }
+
+    // ---- 路径形状的诱饵条目 ----
+    //
+    // 判据是「某个祖先路径同时也是一个文件条目的名字」——一个自相矛盾的
+    // 结构。不按「名字里有没有 `..`」判：那样会漏掉
+    // `AndroidManifest.xml/ .xml` 这类不含点点的诱饵，也会误报
+    // `assets/a..b.png` 这种正常文件。
+    final fileNames =
+        fileEntries.map((f) => f.name.replaceAll('\\', '/')).toSet();
+    final decoyEntries = <String>[];
+    for (final name in fileNames) {
+      final parts = name.split('/');
+      // 只往前看有限层：路径深度在正常包里很小，而恶意包可以把路径做得很深，
+      // 没必要为此付出 O(深度) 的代价。
+      final limit =
+          parts.length <= _maxAncestorDepth ? parts.length : _maxAncestorDepth;
+      for (var k = 1; k < limit; k++) {
+        if (fileNames.contains(parts.sublist(0, k).join('/'))) {
+          decoyEntries.add(name);
+          break;
+        }
+      }
+    }
+    if (decoyEntries.isNotEmpty) {
+      final samples = decoyEntries.take(4).join(', ');
+      observations.add(HardeningObservation(
+        HardeningSignal.decoyArchiveEntries,
+        '${decoyEntries.length} entries use a file entry as a directory '
+        'prefix, e.g. $samples',
+      ));
     }
 
     // ---- 资源表 ----

@@ -185,7 +185,8 @@ void main() {
     test('不含任何厂商判定：线索种类是固定的结构事实集合', () {
       // 这条断言的意义在于防止后来者往枚举里加「com.xxx.packer」这类值 ——
       // 规范 4.2 明确禁止据单一特征判定厂商。
-      expect(HardeningSignal.values, hasLength(6));
+      // 数量变化时**必须**回来确认新增的仍是一个结构事实，而不是厂商名。
+      expect(HardeningSignal.values, hasLength(7));
       final names = HardeningSignal.values.map((s) => s.name).join(' ');
       for (final vendor in [
         'jiagu',
@@ -198,6 +199,90 @@ void main() {
       ]) {
         expect(names.toLowerCase(), isNot(contains(vendor)));
       }
+    });
+  });
+
+  group('HardeningScanner — 路径形状的诱饵条目', () {
+    test('正常 APK 不触发该线索', () {
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('AndroidManifest.xml', List.filled(64, 0)))
+        ..addFile(_file('resources.arsc', List.filled(4096, 0)));
+
+      expect(
+          _has(HardeningScanner.scan(archive),
+              HardeningSignal.decoyArchiveEntries),
+          isFalse);
+    });
+
+    test('文件被当作目录前缀时触发，并给出条数与示例', () {
+      // 真实样本里的形态：`AndroidManifest.xml` 是文件，却又被用作目录。
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('AndroidManifest.xml', List.filled(64, 0)))
+        ..addFile(_file('AndroidManifest.xml/..xml', List.filled(8, 0)))
+        ..addFile(_file('AndroidManifest.xml/ .xml', List.filled(8, 0)))
+        ..addFile(_file('classes.dex/xxx.xml', List.filled(8, 0)));
+
+      final decoy = _find(
+          HardeningScanner.scan(archive), HardeningSignal.decoyArchiveEntries);
+
+      // 证据里必须能看出「有多少条」以及「长什么样」——
+      // 只说「可能被加固」没有排查价值。
+      expect(decoy.evidence, contains('3 entries'));
+      expect(decoy.evidence, contains('AndroidManifest.xml/..xml'));
+      expect(decoy.evidence, contains('directory prefix'));
+    });
+
+    test('名字里没有点点、但同样是诱饵的条目也被识别', () {
+      // 按「名字含不含 `..`」判会漏掉这一类。
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('resources.arsc', List.filled(4096, 0)))
+        ..addFile(_file('resources.arsc/ .xml', List.filled(8, 0)));
+
+      expect(
+          _has(HardeningScanner.scan(archive),
+              HardeningSignal.decoyArchiveEntries),
+          isTrue);
+    });
+
+    test('反斜杠分隔的路径同样被识别', () {
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        // 反斜杠在 ZIP 里是合法的名字字符，但现实中有包把它当分隔符用。
+        ..addFile(_file('AndroidManifest.xml', List.filled(64, 0)))
+        ..addFile(_file(r'AndroidManifest.xml\..xml', List.filled(8, 0)));
+
+      expect(
+          _has(HardeningScanner.scan(archive),
+              HardeningSignal.decoyArchiveEntries),
+          isTrue);
+    });
+
+    test('名字里只是含两个点（不是目录前缀）不算', () {
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('res/values/..hidden.xml', List.filled(8, 0)))
+        ..addFile(_file('assets/a..b.png', List.filled(8, 0)));
+
+      expect(
+          _has(HardeningScanner.scan(archive),
+              HardeningSignal.decoyArchiveEntries),
+          isFalse);
+    });
+
+    test('目录条目与文件条目同名不算诱饵', () {
+      // 正常的 ZIP 会显式带目录条目：`res/` 是目录，`res/a.png` 是文件。
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(ArchiveFile('res/', 0, <int>[])..isFile = false)
+        ..addFile(_file('res/a.png', List.filled(8, 0)));
+
+      expect(
+          _has(HardeningScanner.scan(archive),
+              HardeningSignal.decoyArchiveEntries),
+          isFalse);
     });
   });
 }
