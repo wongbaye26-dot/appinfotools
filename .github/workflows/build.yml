@@ -316,6 +316,17 @@ jobs:
       contents: write
 
     steps:
+      # 必须先有仓库，`git log` 才有对象可读。这个 job 原先只下载制品，
+      # 于是那里没有任何 checkout —— 换成第三方 changelog action 时看不出来
+      # （它走 API），自己拼 changelog 后就会直接以
+      # "fatal: not a git repository" 失败，而且是在**产物已经建好之后**才炸。
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 必须拿**完整历史**：默认的 fetch-depth 1 是浅克隆，既看不到上一个
+          # tag，也看不到本次发布之前那些提交。
+          fetch-depth: 0
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
 
