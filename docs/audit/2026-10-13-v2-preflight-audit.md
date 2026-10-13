@@ -568,11 +568,22 @@ Bad state: No ProviderScope found
    - **接线** → 新增 `lib/apkparser/analysis_builder.dart` **逐字段**合并各来源并保留来源标注；`ApkInfo.manifestSource` 由各分支如实填写；`FileState.analysis` 为派生 getter（哈希/签名/解析三条并行异步线，派生可保证汇总与明细永不矛盾）。commit `8406b57`。
    - **顺带补 SHA-256**（规范 4.1）→ `file_hash.dart` 一次读取同时算三种哈希；删掉从未被调用的 `computeMd5` / `computeSha1`。
 
-10. **仍待处理**：5.9 `FileState` 值语义缺失、5.10 资产清单不一致；4.1 剩余（DEX 数量、SO 明细、资源目录树）；XAPK/aapt2 路径的可取消化；aapt2 字段与内置字段的语义对齐（对齐后才能合并来源，目前**刻意不合并**以免产出错位标注）。
+10. **已处理**（A 组收尾，Android 侧完成）：
+   - **4.1 剩余结构信息** → 新增 `ContainerStructure`（DEX 数量、原生库明细、ABI、顶层目录、解压后总字节数），只读条目名与声明尺寸。commit `7a9f0e3`。
+   - **5.9 `FileState` 值语义** → `copyWith` 改为 `_unset` 哨兵（不传=保留，显式 null=清空）；补 `==`/`hashCode`（已查证 Riverpod 3 的 `defaultUpdateShouldNotify` 就是 `previous != next`，因此能真正省掉无谓重建）。commit `e908138`。
+   - **5.10 资产清单不一致** → `icon_512.png` 仅被 README 引用，`assets/` 语义是「打包资产」，故 `git mv` 到 `docs/assets/` 并更新两个 README；新增 `asset_manifest_test` 双向校验。commit `a4c023b`。
+   - **aapt2 与内置字段语义对齐** → 新增 `AndroidField` + `AnalysisBuilder.capabilities`，区分「来源不报该字段」（`unsupported`）与「文件里没有该字段」（`absent`）。aapt2 badging 不输出 `maxSdkVersion`/`debuggable`，组件只给 `launchable-activity`。commit `84a985b`。
 
-11. **过程中新发现的真实行为**（已记录在对应 commit）：
+11. **仍待处理**：
+   - XAPK/aapt2 路径的可取消化（该路径仍走 `Process.run`，且未接入 worker isolate）。
+   - 规范第七步剩余的详情页细化（导出解析报告等）。
+   - 跨平台 `flutter build` **未验证**（本机仅 Command Line Tools，无完整 Xcode）。
+   - 真实 IPA 与加固 APK 样本解析**未执行**（无样本，属交付要求 7）。
+
+12. **过程中新发现的真实行为**（已记录在对应 commit）：
    - 本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
    - `Future.timeout` **不会**终止子进程，只停止等待；已对签名路径改用 `Process.start` + 显式 kill。aapt2 路径仍是旧写法。
    - 取消时若等待子进程的 stdout/stderr 关闭，会一直等到**孙进程**退出（apksigner 是启动 java 的脚本，孙进程继承了同一批管道）。已改为 kill 后直接 `.ignore()` 两个 future。
+   - `assets/i18n/*.json` 是 slang 的**构建期输入**（编译进 `lib/gen/strings.g.dart`），**不应**出现在 pubspec 的运行时资产声明里。写资产清单测试时的初始假设（「assets/ 下每个文件都必须被声明」）被这一点推翻。
 
-12. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+13. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
