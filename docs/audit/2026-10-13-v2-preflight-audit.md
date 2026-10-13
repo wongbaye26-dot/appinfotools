@@ -578,12 +578,14 @@ Bad state: No ProviderScope found
    - **结构** → ZIP 容器安全原语（`ZipBudget` / `ArchiveOpenResult` / `looksLikeZip` / `readArchiveHeader` / `looksStructurallyBroken`）下沉为 `packages/archive_safety/`。APK 与 IPA 解析器都依赖它，**不必互相依赖、也不必各写一份**。commit `0d2b538`。
    - **plist 解析**（规范 5.2）→ 新增 `packages/ipa_parser/`：`PlistValue` 密封类型 + XML plist + 二进制 plist（`bplist00` 从零实现，含全部长度/偏移边界检查与递归环、深度防护）+ 按内容识别格式。commit `e9ad18f`。
    - **IPA 容器解析**（规范 5.1）→ `IpaContainerReader` 枚举全部 bundle（主应用 / 扩展 / Watch / 嵌套 / 框架），按**路径位置**分类而非名字猜测；多个 `Payload/*.app` 全部保留并标记异常；记录签名材料存在性。**本层不解压任何内容**，因此自身没有路径穿越面。commit `be7c4df`。
+   - **通用字段模型下沉** → `FieldValue` / `FieldStatus` / `FieldSource` / `AnalysisDiagnostic` 移入 `packages/analysis_model/`（零依赖，不含平台概念）；新增 `FieldStatus.wrongType`（规范 5.2 要求区分「类型错误」）与 iOS 侧来源（`infoPlist` / `machO` / `signatureMaterials` / `codesign`，后两者刻意分开）。commit `da22bb2`。
+   - **`Info.plist` 字段提取**（规范 5.2）→ `IpaInfoPlistReader`，每个字段都是「值 + 状态 + 来源 + 诊断」。三态区分：文件不存在→`absent`；解析不了→`failed`（**不是 absent**）；类型不符→`wrongType`。逐字段取值策略（`CFBundleVersion` 接受数字，其余严格要求字符串）。8 MiB 上限 + 读后长度复核。commit `914de6e`。
    - **顺带修门禁两处真问题**：
      1. `dart format --set-exit-if-changed .` 会扫到 `lib/gen/` 生成物，而 slang 自带的 `dart_style` 与 SDK 的 `dart format` 风格不一致 → **CI 首次运行必红**。改为只检查项目自己拥有的文件（`$(git ls-files '*.dart')`）。
      2. 子包继承根的 `include: package:flutter_lints/...` 但解析不到 → 逐包 `dart analyze` **完全没有 lint 规则**。各包加自己的 `analysis_options.yaml`（`lints/recommended`）+ `lints` 依赖；CI 包分析改为遍历 `packages/*/`。
 
 12. **仍待处理**：
-   - iOS 侧：IPA 容器解析（`Payload/*.app`、多 App / PlugIns / Watch）、图标、Mach-O、签名材料与 Entitlements，以及接入 `IosPackageInfo`。
+   - iOS 侧：IPA 图标解析（规范 5.3）、Mach-O（5.4）、签名材料与 Entitlements（5.5），以及接入 `IosPackageInfo` 与详情页、IPA 侧接入 worker isolate（进度/取消）。
    - XAPK/aapt2 路径的可取消化（该路径仍走 `Process.run`，未接入 worker isolate）。
    - 规范第七步剩余的详情页细化（导出解析报告等）。
    - 跨平台 `flutter build` **未验证**（本机仅 Command Line Tools，无完整 Xcode）。
