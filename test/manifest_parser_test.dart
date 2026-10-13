@@ -1,9 +1,15 @@
 // AndroidManifest 组件与 SDK 字段提取的单元测试。
 //
-// 这些用例直接构造 `XmlDocument` 文档树，而不是手工拼二进制 AXML —— 后者
+// 绝大多数用例直接构造 `XmlDocument` 文档树，而不是手工拼二进制 AXML —— 后者
 // 极易写错，写错的样本测的是「损坏输入」而不是目标逻辑。为此
 // `ManifestParser` 被拆成 `parse(bytes)`（反编译 + 提取）与
-// `fromDocument(doc)`（纯提取），本文件测的是后者。
+// `fromDocument(doc)`（纯提取），那些用例测的是后者。
+//
+// 例外是最后一组「真实加固 APK 的清单」：那里必须走完整的 `parse(bytes)`，
+// 因为被测的正是**二进制层**的偏移处理。样本是从真实加固 APK 里提取的
+// 36240 字节 AXML（见 test/fixtures/apk/README.md）。
+
+import 'dart:io';
 
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -286,6 +292,65 @@ void main() {
       expect(meta.packageName, 'com.example.app');
       expect(meta.components, isEmpty);
       expect(meta.launchableActivities, isEmpty);
+    });
+  });
+
+  group('ManifestParser — 真实加固 APK 的清单', () {
+    // 样本是**真实**加固 APK 里的 AndroidManifest.xml，见
+    // test/fixtures/apk/README.md。期望值来自一份独立写的 Python 解码器
+    // （直接按 ResourceTypes.h 的布局读），不是从本项目的解析器拿的。
+    //
+    // 这份清单的关键特征是：`attributeStart` 被放大（`<manifest>` 是 181，
+    // 标准是 20），头与真正的属性之间塞了 161 字节诱饵。忽略 attributeStart
+    // 的解析器会读到诱饵 —— 表现恰好是「组件名读得对、基本信息全空」。
+    late final ApkMeta meta;
+
+    setUpAll(() {
+      final file = File('test/fixtures/apk/hardened-manifest.axml');
+      expect(file.existsSync(), isTrue,
+          reason: '缺少样本 —— 见 test/fixtures/apk/README.md');
+      meta = ManifestParser.parse(file.readAsBytesSync());
+    });
+
+    test('放大 attributeStart 之后仍能读出 <manifest> 的属性', () {
+      expect(meta.packageName, 'com.QOCrchtmmAzhekiE.HVkokqyMaKAafvaY');
+      expect(meta.versionCode, 1);
+      expect(meta.versionName, '8.5.5');
+      expect(meta.compileSdkVersion, 36);
+    });
+
+    test('放大 attributeStart 之后仍能读出 <uses-sdk>', () {
+      expect(meta.minSdkVersion, 24);
+      expect(meta.targetSdkVersion, 34);
+      // 该包没有声明 maxSdkVersion —— 这是「文件里没有」，不是「没读到」。
+      expect(meta.maxSdkVersion, isNull);
+    });
+
+    test('仍能读出 <application> 的属性', () {
+      expect(meta.label, '杏⟠⎗吧');
+      expect(meta.applicationIcon, '@res/0x7f0f0007');
+      expect(meta.applicationName,
+          'com.QOCrchtmmAzhekiE.HVkokqyMaKAafvaY.qupsCHDDcKMNzULd');
+    });
+
+    test('仍能读出全部 uses-permission', () {
+      expect(meta.permissions, hasLength(40));
+      expect(meta.permissions, contains('android.permission.INTERNET'));
+      expect(meta.permissions, contains('android.permission.CAMERA'));
+      expect(meta.permissions,
+          contains('android.permission.MANAGE_EXTERNAL_STORAGE'));
+    });
+
+    test('组件与权限是两件独立的事，不互相污染', () {
+      expect(meta.components, hasLength(22));
+      final names = meta.components.map((c) => c.name).whereType<String>();
+      expect(names,
+          contains('com.QOCrchtmmAzhekiE.HVkokqyMaKAafvaY.MainActivity'));
+      // 组件名不该混进权限列表，反之亦然。
+      expect(
+          meta.permissions,
+          isNot(
+              contains('com.QOCrchtmmAzhekiE.HVkokqyMaKAafvaY.MainActivity')));
     });
   });
 }

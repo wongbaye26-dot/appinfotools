@@ -86,7 +86,12 @@ class IosCodeSignStep {
 
       // 符号链接被当普通文件写出，会让 codesign 的密封校验失败。这不是
       // 「签名被篡改」，必须在结果里说清楚，否则用户会得到错误结论。
-      if (extraction.symlinkCount > 0 && !result.status.hasConclusiveResult) {
+      //
+      // 判据是「不是 verified」而不是「没有明确结论」：**验证失败**恰恰是
+      // 最需要这条说明的情况 —— 那正是「我们的解包方式可能造成了这个失败」
+      // 与「文件真的被改过」需要被区分开的地方。
+      if (extraction.symlinkCount > 0 &&
+          result.status != SignatureStatus.verified) {
         final base = result.error ?? 'signature verification was inconclusive';
         final note = '${extraction.symlinkCount} symbolic link '
             '${extraction.symlinkCount == 1 ? 'entry was' : 'entries were'} '

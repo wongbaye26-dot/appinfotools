@@ -289,11 +289,29 @@ class BinaryXmlDecompressor {
     // marker 包含 attrStart (低16位) 和 attrSize (高16位)
     // 标准值: attrStart=20, attrSize=20 → marker=0x00140014
     // 混淆 APK 可能修改 attrSize（如 24），需按实际大小跳过额外字节
+    final attrStart = marker & 0xFFFF;
     final attrSize = (marker >> 16) & 0xFFFF;
     final attrExtraBytes = (attrSize > 20) ? attrSize - 20 : 0;
 
     int numAttributes = reader.readUint16();
     reader.skipBytes(6);
+
+    // 属性的起点由 `attributeStart` 决定，**不是**紧跟在 attrExt 头之后。
+    //
+    // 这里曾经忽略 `attributeStart` 直接往后读。标准 AXML 里它恒为 20
+    // （attrExt 结构体自身的大小），所以一直没暴露；而加固器会在头与真正的
+    // 属性之间塞一段**诱饵字节**，并把 `attributeStart` 指到诱饵之后。
+    // 结果是：属性名与值全部读成诱饵内容，`package`、`versionName`、
+    // `uses-permission` 这些字段整体丢失 —— 而组件名却还能读对（那些元素的
+    // `attributeStart` 仍是 20），于是表现为「组件有、基本信息全空」这种
+    // 很难解释的现象。
+    //
+    // 实测样本（test/fixtures/apk/hardened-manifest.axml）里 `<manifest>` 的
+    // attributeStart 是 181，诱饵区长达 161 字节。
+    final attrGap = (attrStart > 20) ? attrStart - 20 : 0;
+    if (attrGap > 0) {
+      reader.skipBytes(attrGap);
+    }
 
     // 缓冲所有原始属性数据（标准 20 字节 + 可能的额外填充）
     final rawAttrs = <List<int>>[];
