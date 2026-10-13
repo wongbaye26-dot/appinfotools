@@ -1,176 +1,187 @@
-<p align="center">
-  <img src="docs/assets/icon_512.png" width="120" alt="APP详情工具">
+ <p align="center">
+  <img src="docs/assets/icon_512.png" width="120" alt="APP详情工具 Logo">
 </p>
 
 <h1 align="center">APP详情工具</h1>
 
 <p align="center">
-  <strong>轻量、强大的跨平台 Android 应用包解析和安装工具</strong><br>
-  拖拽即用，简单直观
+  <strong>跨平台移动应用包信息分析工具</strong><br>
+  从 Android APK 到 iOS IPA，让应用信息查看更简单。
 </p>
 
 <p align="center">
-  <a href="https://github.com/huanfeng/ApkInfoTool/releases/latest"><img src="https://img.shields.io/github/v/release/huanfeng/ApkInfoTool?style=flat-square&color=28a745" alt="Release"></a>
-  <a href="https://github.com/huanfeng/ApkInfoTool/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/huanfeng/ApkInfoTool/build.yml?style=flat-square" alt="Build"></a>
-  <a href="https://github.com/huanfeng/ApkInfoTool/blob/main/LICENSE"><img src="https://img.shields.io/github/license/huanfeng/ApkInfoTool?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platform">
-  <a href="https://github.com/huanfeng/ApkInfoTool/stargazers"><img src="https://img.shields.io/github/stars/huanfeng/ApkInfoTool?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/wongbaye26-dot/appinfotools">项目主页</a>
+  ·
+  <a href="https://github.com/wongbaye26-dot/appinfotools/issues">问题反馈</a>
+  ·
+  <a href="https://github.com/huanfeng/ApkInfoTool">原始开源项目</a>
 </p>
 
 <p align="center">
-  <a href="README.md">简体中文</a> · <a href="README_en.md">English</a>
+  <img src="https://img.shields.io/badge/Flutter-Dart-blue?style=flat-square" alt="Flutter">
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platforms">
+  <img src="https://img.shields.io/badge/Android-APK%20Analysis-3DDC84?style=flat-square" alt="Android">
+  <img src="https://img.shields.io/badge/iOS-IPA%20Roadmap-lightgrey?style=flat-square" alt="iOS IPA roadmap">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
+</p>
+
+<p align="center">
+  <strong>简体中文</strong> · <a href="README_en.md">English</a>
 </p>
 
 ---
 
-## 功能亮点
+## 📖 项目简介
 
-📦 **全格式支持** — APK / XAPK / APKM / APKS /IPA 一网打尽，自动识别分包结构与 OBB 文件
+**APP详情工具（AppInfoTool）** 是一个基于 Flutter 开发的跨平台移动应用包信息查看工具，致力于让 Android 应用包的解析、信息查看、图标预览和安装辅助操作更加简单直观。
 
-🔍 **深度解析** — 包名、版本、SDK 版本、权限清单、Activity、签名信息、文件哈希（MD5/SHA1）
+本项目基于开源项目 [ApkInfoTool](https://github.com/huanfeng/ApkInfoTool) 继续开发，在保留原有技术基础与功能方向的同时，持续进行产品品牌、用户界面、解析能力和跨平台体验方面的改进。
 
-📋 **分包信息展示** — XAPK/APKM/APKS 的 Split APK 列表与 OBB 文件列表一目了然
+项目的长期目标是逐步扩展至 Android APK 与 Apple iOS IPA 两类应用包，提供统一的应用信息查看体验。
 
-🎨 **图标预览与导出** — 完美渲染 PNG / WebP / XML 自适应图标（含渐变矢量图标），支持多候选图标切换，导出为 PNG / SVG / 原始文件，图标显示大小可配置（2行/3行）
+## ✨ 功能亮点
 
-📝 **文件重命名** — 支持对 APK / XAPK / APKM / APKS 文件按规则重命名
+### Android APK 分析
 
-🚀 **一键 ADB 安装** — 自动处理 Split APK 安装与 OBB 推送
+* 📦 **多格式应用包**：支持 APK、XAPK、APKM、APKS 等格式，具体能力以当前版本实现为准。
+* 🔍 **应用信息解析**：查看应用名称、包名、版本、SDK 信息、权限和组件等元数据。
+* 🧩 **内置解析引擎**：采用纯 Dart 实现的 APK 解析能力，减少对外部解析工具的依赖。
+* 🎨 **应用图标预览**：支持常见图标资源及自适应图标的解析、预览和导出。
+* 📋 **分包信息查看**：查看支持格式中的 Split APK 与 OBB 相关信息。
+* 🔐 **签名信息分析**：在相应工具可用的情况下，查看签名及证书相关信息。
+* 🚀 **ADB 安装辅助**：为支持的 Android 应用包提供设备安装辅助能力。
+* 📝 **文件管理**：为支持的格式提供文件信息查看及重命名等操作。
 
-⬇️ **一键依赖下载** — 在设置中直接下载 adb / aapt2 / apksigner，无需手动安装 Android SDK
+### 🍎 iOS IPA 分析
 
-🧩 **内置解析引擎** — 纯 Dart 实现的 APK 解析器，无需依赖 aapt2，解析更快，兼容混淆 APK
+iOS IPA 分析是本项目的后续开发方向，计划逐步加入：
 
-🌍 **多语言 & 主题** — 支持简体中文、繁體中文、English、日本語、한국어，主题颜色可自定义
+* 应用名称、Bundle ID、版本号及 Build 号。
+* 最低 iOS 系统版本及相关设备信息。
+* 应用图标和资源文件查看。
+* Mach-O 可执行文件与架构信息。
+* Framework、动态库和 App Extensions 清单。
+* 代码签名材料、证书、Provisioning Profile 和 Entitlements 信息。
 
-## 界面预览
+**说明：** 以上 IPA 功能为规划方向，不代表当前版本已经全部实现。具体支持情况以实际发布版本、测试结果和功能文档为准。
 
-<!-- 在此放置应用截图或 GIF 动图 -->
-<!-- <p align="center">
-  <img src="screenshots/main.png" width="800" alt="主界面">
-</p> -->
+## 🖥️ 支持平台
 
-> 截图即将更新，欢迎下载体验！
+项目采用 Flutter 开发，目标平台包括：
 
-## 安装
+| 平台      | 说明                |
+| ------- | ----------------- |
+| Windows | 桌面应用              |
+| macOS   | 桌面应用              |
+| Linux   | 桌面应用，具体兼容性以实际测试为准 |
 
-### 包管理器安装
+不同操作系统下，文件访问、外部工具调用和签名验证能力可能有所差异。
 
-**Windows — Scoop（推荐）**
+## 📸 界面预览
 
-```bash
-scoop bucket add huanfeng https://github.com/huanfeng/scoop-bucket
-scoop install apk_info_tool
-```
+项目界面截图将在后续版本中持续更新。
 
-**macOS — Homebrew**
+欢迎通过 [Issues](https://github.com/wongbaye26-dot/appinfotools/issues) 提交建议、问题和界面改进意见。
 
-```bash
-brew install --cask huanfeng/homebrew-tap/apk-info-tool
-```
+## 📥 获取与运行
 
-### 手动下载
+### 从源码运行
 
-从 [Releases](https://github.com/huanfeng/ApkInfoTool/releases/latest) 页面下载对应平台的安装包：
-
-| 平台 | 格式 | 说明 |
-|------|------|------|
-| Windows | `.exe` | 安装程序 |
-| Windows | `.zip` | 解压即用 |
-| macOS | `.dmg` | 磁盘映像 |
-| Linux | `.AppImage` | 可执行文件 |
-
-## 内置 APK 解析引擎
-
-v2.0 起默认启用**内置解析引擎**，纯 Dart 实现，无需安装任何外部工具即可解析 APK：
-
-- 二进制 XML 解压与 AndroidManifest.xml 结构化解析
-- resources.arsc 资源表完整解析（字符串池、资源值、类型配置等）
-- 支持 BCP-47 packed 语言码（如 `ast`、`sr-Latn`、`zh-Hans-CN`）
-- 混淆 APK 深度兼容（无效路径过滤、非标准属性容错）
-- aapt2 dump badging 风格的文本信息输出
-
-> 可在设置中切换 aapt2 与内置引擎。若需签名验证等高级功能，仍需配置 Android SDK 工具。
-
-> 内置解析引擎还在不断完善中，如遇到问题，请进行反馈
-
-## 对比
-
-| 能力 | APP详情工具 | 命令行 aapt | 其他 GUI 工具 |
-|------|:---:|:---:|:---:|
-| XAPK / APKM / APKS 支持 | ✅ | ❌ | ⚠️ 部分 |
-| 自适应图标完整渲染 | ✅ | ❌ | ❌ |
-| 内置解析（无需 aapt2） | ✅ | — | ❌ |
-| 拖拽即看 | ✅ | ❌ | ✅ |
-| 跨平台（Win/Mac/Linux） | ✅ | ✅ | ⚠️ 部分 |
-| ADB 一键安装 | ✅ | ❌ | ⚠️ 部分 |
-| 图标导出 PNG/SVG | ✅ | ❌ | ❌ |
-
-## 开发构建
-
-本项目使用 [Flutter](https://flutter.dev/) 开发。确保已安装 Flutter SDK，然后执行：
+确保本机已安装 Flutter SDK 和对应平台的开发环境。
 
 ```bash
-# 获取依赖
+git clone https://github.com/wongbaye26-dot/appinfotools.git
+cd appinfotools
+
 flutter pub get
-
-# 运行代码生成
 dart run build_runner build
-
-# 运行调试版本
 flutter run
-
-# 构建发布版本
-flutter build windows   # Windows
-flutter build macos     # macOS
-flutter build linux     # Linux
 ```
 
-## 国际化
+如果项目当前版本不需要重新生成代码，可以按照仓库现有构建流程执行。
 
-应用支持以下语言，语言文件位于 `assets/i18n` 目录：
+### 构建桌面版本
 
-| 语言 | 代码 |
-|------|------|
-| 简体中文 | `zh-CN` |
-| 繁體中文（香港） | `zh-HK` |
-| 繁體中文（台灣） | `zh-TW` |
-| English | `en` |
-| 日本語 | `ja` |
-| 한국어 | `ko` |
+```bash
+flutter build windows
+flutter build macos
+flutter build linux
+```
 
-## 使用须知
+请在对应操作系统环境下构建目标平台版本，并根据实际构建结果确认兼容性。
 
-**macOS 平台**
-- 因沙箱限制，重命名功能受限，且只能使用内置的 adb/aapt2
-- apksigner 依赖 Java Runtime，macOS 版本暂不集成该功能
-- 未签署开发者证书，首次运行需手动信任：`系统设置 → 隐私与安全性 → 仍要打开`
+### 下载发布版本
 
-**Linux 平台**
-- 未经完整测试，如遇问题欢迎 [提交 Issue](https://github.com/huanfeng/ApkInfoTool/issues)
+项目正式发布的安装包将通过本仓库的 [Releases](https://github.com/wongbaye26-dot/appinfotools/releases) 页面提供。
 
-**图标显示**
-- XML 格式的自适应图标渲染效果可能与实际设备上有轻微差异
+在本项目发布对应平台安装包之前，请优先使用源码构建方式，不要将原始项目的安装包误认为本项目的独立发行版本。
 
-## Android SDK 工具（可选）
+## 🛠️ 技术栈
 
-内置解析引擎已可满足大部分需求。如需 ADB 安装或签名验证功能，可在应用 **设置** 中一键下载所需工具（adb / aapt2 / apksigner），无需手动安装 Android SDK。
+* **Flutter / Dart**：跨平台桌面应用开发。
+* **内置 APK 解析器**：解析 Android 二进制 XML、资源表等信息。
+* **Android SDK 工具**：根据功能需要使用 ADB、aapt2、apksigner 等工具。
+* **跨平台 UI**：统一的应用信息查看和操作体验。
 
-## 贡献
+后续将根据 IPA 分析需求，评估适合的 Property List、Mach-O 和代码签名信息解析方案。
 
-欢迎参与贡献！
+## 🗺️ 后续规划
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交改动 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 提交 Pull Request
+* [ ] 持续完善 APK 解析器的兼容性和异常处理。
+* [ ] 提升加固 APK 的信息提取能力，并明确无法解析的字段。
+* [ ] 完善签名与证书信息展示。
+* [ ] 增强大文件处理、解析安全性和自动化测试。
+* [ ] 新增 IPA 容器与 Info.plist 解析。
+* [ ] 新增 IPA 图标、Mach-O、Framework 和扩展信息查看。
+* [ ] 增加 IPA 签名材料与 Entitlements 分析。
+* [ ] 完善 Windows、macOS、Linux 平台的构建与回归测试。
+* [ ] 持续优化应用界面和多语言体验。
 
-## 致谢
+以上为开发规划，完成情况以仓库实际代码和发布记录为准。
 
-- 应用图标使用 [AppIcon Forge](https://github.com/zhangyu1818/appicon-forge) 制作
-- 感谢huanfeng开源 apkinfotool https://github.com/huanfeng/ApkInfoTool 
+## 🤝 参与贡献
 
-## 开源协议
+欢迎提交问题反馈、功能建议和代码贡献。
 
-本项目基于 [MIT License](LICENSE) 开源。
+1. Fork 本仓库。
+2. 创建功能分支。
+3. 提交清晰、可审查的代码变更。
+4. 补充必要的测试与文档。
+5. 提交 Pull Request。
+
+对于解析器、文件格式和安全性相关的改动，建议同时提供可复现的测试样本与验证结果。
+
+## 🙏 原项目与致谢
+
+本项目特别感谢 **[huanfeng](https://github.com/huanfeng)** 开源的 [ApkInfoTool](https://github.com/huanfeng/ApkInfoTool)。
+
+原项目为 Android 应用包信息解析、图标渲染、分包处理和跨平台桌面应用开发提供了重要的技术基础。APP详情工具在此基础上继续探索产品体验、解析能力和跨平台应用信息分析方向。
+
+我们尊重原作者的技术成果与开源贡献，并感谢原作者及开源社区对相关技术的持续投入。
+
+* 原始项目：[huanfeng/ApkInfoTool](https://github.com/huanfeng/ApkInfoTool)
+* 本项目：[wongbaye26-dot/appinfotools](https://github.com/wongbaye26-dot/appinfotools)
+* 原项目许可证：请以原始仓库中的 [LICENSE](https://github.com/huanfeng/ApkInfoTool/blob/main/LICENSE) 为准。
+
+本项目保留原项目的来源说明，并根据实际代码来源、许可证要求及后续独立修改情况维护相关版权和致谢信息。
+
+## 📄 开源协议
+
+本仓库包含基于原始开源项目继续开发的内容。
+
+请同时查看：
+
+* [本仓库 LICENSE](https://github.com/wongbaye26-dot/appinfotools/blob/main/LICENSE)
+* [原始项目 LICENSE](https://github.com/huanfeng/ApkInfoTool/blob/main/LICENSE)
+
+分发或再利用代码时，请遵守相应许可证的版权声明、许可条件和其他适用要求。
+
+---
+
+<p align="center">
+  APP详情工具 · AppInfoTool
+</p>
+
+<p align="center">
+  让 Android 与 iOS 应用信息分析更简单。
+</p>
