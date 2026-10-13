@@ -9,13 +9,13 @@
 
 ## 0. 执行摘要
 
-1. **前一份审计报告声称的 T0/T1 整改，绝大部分是真实落地的**，有源码与文件系统证据（见第 4 节）。这一点必须肯定。其中 **2 条为「部分完成」**：`pubspec.lock` 的 `ref` 未同步（5.1）、`InstallDialog` 的 `mounted` 守卫只补了 1/8 处（5.11）。
-2. **但本机环境存在两个硬阻塞**，导致第一步要求的「基线验证结果」在当前条件下**无法产出**：
-   - **无 Flutter / Dart SDK**（已穷举搜索，见第 1 节）→ `flutter analyze` / `flutter test` / `dart format` / `flutter build` 全部不可执行。
-   - **本目录不是 Git 仓库**（无 `.git`）→ 无法建立基线、无法分阶段提交、无法满足「不得重置 Git 工作区」与「每阶段独立提交」的交付形态要求。
-3. **发现一处前次报告未披露的真实缺陷**：`pubspec.yaml` 已把 `archive` 固定到 SHA，但**两个 `pubspec.lock` 仍写着 `ref: HEAD`**，与 pubspec 声明不一致 —— 这会让 CI 里新加的 `flutter pub get --enforce-lockfile` 直接失败（见 5.1，风险等级：**高**）。
-4. **V2.0 的目标能力中，Android 加固 APK 分析约 40% 已有基础可复用；iOS IPA 分析为 0**（全仓库无任何 plist / Mach-O / mobileprovision / codesign 相关代码，见第 6 节）。
-5. **建议**：先解决 SDK 与 Git 两个前置条件，再进入第二步。在无 SDK 条件下继续写代码，等于把「不得将尚未执行的测试写成通过」这条硬约束变成空话。
+1. **前一份审计报告声称的 T0/T1 整改，绝大部分是真实落地的**，有源码与文件系统证据（见第 4 节）。这一点必须肯定。其中 **2 条为「部分完成」**：`pubspec.lock` 的 `ref` 未同步（5.1）、`InstallDialog` 的 `mounted` 守卫只补了 1/8 处（5.11）。另有 **1 条初判有误**（5.8，`freezed` 实际在使用），已更正。
+2. **【最重要】仓库交付时根本无法编译。** 实测 `flutter analyze` 报 4 个 `error`、`flutter test` 编译失败（5.13）。其中 3 个错误是前次「已完成」整改（T0-2、T1-9）的**连带破损** —— 因为当时没有任何 SDK，这些改动从未被编译过一次。**已修复**（commit `f2af93b`）。
+3. **【已修复】CI 的 `quality` 门禁此前从未成功跑通过**：`flutter pub get` 因 `intl` 死锁而版本求解失败（5.12），`dart format` 会重排 37/49 个文件。经确认采用「对齐当前 stable」路线修复。
+4. **当前基线（已实证）**：`flutter pub get --enforce-lockfile` ✅、`dart format --set-exit-if-changed .` ✅ 0 changed、`flutter test` ✅ **23 passed**、`flutter analyze` ⚠️ **0 error**（9 warning + 91 info，门禁仍红，见 5.15）。
+5. **环境与版本控制两个硬阻塞已解除**：Flutter 3.47.7 stable 已安装；`git init` 完成，基线快照 `97bef24`，修复按「格式 / 功能 / 文档」拆为 3 个可审查提交。
+6. **V2.0 的目标能力中，Android 加固 APK 分析约 40% 已有基础可复用；iOS IPA 分析为 0**（全仓库无任何 plist / Mach-O / mobileprovision / codesign 相关代码，见第 6 节）。
+7. **待决策**：CI `analyze` 门禁的严格度（全部修净 vs 定向豁免，见第 9 节第 3 条）；以及无真实 APK/IPA 样本（第 9 节第 5 条）。
 
 ---
 
@@ -308,6 +308,57 @@ Dart 3.7+ 引入新格式化器，本仓库代码仍是旧格式。**37/49 个�
 
 **处置**：经确认采用「对齐当前 stable」路线 —— `intl: 0.20.2 → ^0.20.3`，并落盘一次 `dart format`。作为**独立的「环境对齐」提交**，与 V2.0 改动严格分离。
 
+### 5.13 【最高·已实证·已修复】仓库交付时不编译 —— 4 个编译错误
+
+这是本次审计**最重要**的发现，且**前次审计不可能发现**（无 SDK，只做了静态阅读）。`flutter analyze` 报 4 个 `error`：
+
+| # | 位置 | 错误 | 根因 |
+|---|---|---|---|
+| 1 | `lib/pages/setting_page.dart:938` | `non_exhaustive_switch_statement` | **T0-2 的连带遗漏**：`tool_downloader.dart` 新增了 `ToolDownloadError.checksumMismatch`，但 `setting_page.dart` 的 `switch (e.code)` 未同步补 case |
+| 2 | `lib/pages/setting_page.dart:1118` | `undefined_method` | 调用了不存在的 `openDirectoryInExplorer`（`lib/utils/platform.dart` 里只有 `openFileInExplorer`） |
+| 3 | `packages/apk_parser/bin/compare.dart:223` | `undefined_identifier` `failCount` | **T1-9 的误粘贴**：`exit(1)` 块被复制到 `_parseAapt2Output` 的 `return result;` **之后**，成为引用未定义变量的死代码 |
+| 4 | `packages/apk_parser/bin/compare.dart:223` | `undefined_identifier` `skipCount` | 同上 |
+
+**要点**：错误 1、3、4 全部是**前次「已完成」整改的连带破损**。T0-2 与 T1-9 在报告中被标记为已完成，但两者都把仓库改成了无法编译的状态 —— 因为当时没有任何 SDK 能编译一次。`main()` 第 150-152 行本身已有**正确**的 `exit(1)`，`compare.dart` 里那份纯属重复粘贴。
+
+**修复**（commit `f2af93b`）：
+- 补 `case ToolDownloadError.checksumMismatch:`，并在 6 个语言文件新增 i18n key `settings.download_error_checksum`（校验和不匹配是安全相关的拒绝路径，必须让用户看到真实原因，不能退化为「未知错误」）。
+- 在 `lib/utils/platform.dart` 新增 `openDirectoryInExplorer`：语义是**打开目录本身**，与 `openFileInExplorer`（定位到条目、macOS 用 `open -R`）区分。路径以参数数组传入，不经 shell 拼接（符合约束 9）。
+- 删除 `compare.dart` 中的重复死代码块。
+
+### 5.14 【高·已实证·已修复】`test/widget_test.dart` 必然失败
+
+前次用于替换模板测试的冒烟测试直接 `pumpWidget(const MyApp())`，但 `MyApp` 是 `ConsumerWidget`，`build` 中 `ref.watch(themeManagerProvider)`，且调用 `TranslationProvider.of(context)`。缺少 `ProviderScope` 与 `TranslationProvider` 两个祖先 → 恒抛：
+
+```
+Bad state: No ProviderScope found
+```
+
+即 T1-2「替换无法通过的模板测试」实际是**换成了另一个必然失败的测试**。修复：按 `main()` 的装配方式包一层（commit `f2af93b`），测试随即通过。
+
+### 5.15 【中·已实证】CI 的 analyze 门禁仍然红：0 error，但 9 warning + 91 info
+
+修复编译错误后，`flutter analyze` 为 **0 error / 9 warning / 91 info**。CI 用的是
+`flutter analyze --fatal-infos --fatal-warnings`，因此**仍然 exit 1**。`packages/apk_parser` 同理（82 issue，0 error）。
+
+9 个 warning **全部是真实缺陷**（非噪声）：
+
+| 位置 | 问题 |
+|---|---|
+| `analysis_options.yaml:37` | `custom_lint` 旧式插件机制已废弃 |
+| `lib/apkparser/xapk_info.dart:2` | 未使用的 `import 'dart:io'` |
+| `lib/apkparser/xapk_info.dart:116` | `invalid_null_aware_operator`（短路后不可能为 null） |
+| `lib/main.dart:79` | `_appLifecycleListener` 只写不读 |
+| `lib/pages/install_page.dart:4` | 未使用的 import |
+| `lib/pages/setting_page.dart:757` | 未使用字段 `_isCustomDirSelected` |
+| `lib/utils/zip_helper.dart:11` | 未使用字段 `_filePath`（T0-1 重构残留） |
+| `lib/utils/zip_helper.dart:36` | 多余 cast |
+| `lib/utils/zip_helper.dart:55` | 未使用的 `_safeJoin` 包装（T0-1 重构残留） |
+
+91 个 info 的构成：`avoid_print` 60（全部在 `bin/` 下的 CLI 脚本）、`constant_identifier_names` 14（`resource_value.dart` 里对齐 Android `Res_value` 的规范常量名）、`deprecated_member_use` 6（`withOpacity`）、`prefer_conditional_assignment` 4，其余零散。
+
+**待决策**：是把这 100 项逐条修净（标准不降，但改动面较大），还是对 `bin/` 与 `resource_value.dart` 做**有据可依的规则定向豁免**（`avoid_print` 对 CLI 脚本是误报；Android 规范常量名不应改名）。**本次未擅自处理**，见第 9 节。
+
 ---
 
 ## 6. V2.0 需求 vs 现状 差距矩阵
@@ -394,29 +445,76 @@ Dart 3.7+ 引入新格式化器，本仓库代码仍是旧格式。**37/49 个�
 
 ---
 
-## 8. 基线验证结果
+## 8. 基线验证结果（真实执行）
 
-| 检查项 | 状态 | 说明 |
+环境已按用户决策搭建完毕：**Flutter 3.47.7 stable / Dart 3.13.5 / DevTools 2.60.0**
+（Framework revision `abaf9c5237`，2026-10-08），安装于 `~/development/flutter`。
+
+> **注意**：`flutter test` 在本机需要绕过环境代理，否则 `flutter_tester` 的本地
+> WebSocket 会被 `HTTP_PROXY=http://127.0.0.1:51252` 劫持，报
+> `Invalid WebSocket upgrade request`。执行前须设
+> `NO_PROXY=127.0.0.1,localhost,::1`。
+
+### 8.1 首次基线（修复前）— **仓库无法编译**
+
+| 检查项 | 结果 | 证据 |
 |---|---|---|
-| `flutter pub get` | **未执行** | 本机无 Flutter SDK |
-| `dart run build_runner build` | **未执行** | 同上 |
-| `dart format --set-exit-if-changed .` | **未执行** | 同上 |
-| `flutter analyze --fatal-infos --fatal-warnings` | **未执行** | 同上 |
-| `flutter test` | **未执行** | 同上 |
-| `packages/apk_parser` 的 `dart analyze` | **未执行** | 同上 |
-| `flutter build {windows,macos,linux}` | **未执行** | 同上（且本机无完整 Xcode） |
-| 真实 IPA / 加固 APK 样本解析 | **未执行** | 同上 |
-| 源码级审计 | **已执行** | 见第 2–6 节，含文件路径与行号证据 |
-| 依赖锁定一致性核查 | **已执行** | 发现 5.1 的 ref 不一致 |
-| 历史整改核验 | **已执行** | 见第 4 节，14/15 条为真、1 条部分为真 |
+| `flutter pub get` | ❌ **失败** | `intl 0.20.2` 与 `flutter_localizations` 的 `^0.20.3` 冲突，版本求解失败 |
+| `dart run build_runner build` | ✅ exit 0 | 写出 10 个产物（slang 7 + riverpod 4 + freezed 2） |
+| `dart format --set-exit-if-changed .` | ❌ **失败** | `Formatted 49 files (37 changed)` |
+| `flutter analyze` | ❌ **4 error** / 10 warning / 91 info | 见 5.13 |
+| `flutter test` | ❌ **编译失败** | `setting_page.dart` 两处 error 导致无法编译 |
+| `packages/apk_parser` `dart analyze` | ❌ 82 issue（0 error） | 60 `avoid_print` + 14 `constant_identifier_names` + 4 + 3 + 1 |
+| `flutter build {windows,macos,linux}` | **未执行** | 本机仅 Command Line Tools，无完整 Xcode；且上面已失败，构建无意义 |
+| 真实 IPA / 加固 APK 样本解析 | **未执行** | 无样本 |
 
-**按约束 10 与交付要求 5：以上「未执行」项一律不得计为通过。**
+### 8.2 修复后基线 — **可编译、可测试**
+
+| 检查项 | 结果 |
+|---|---|
+| `flutter pub get --enforce-lockfile` | ✅ **exit 0** |
+| `dart run build_runner build --delete-conflicting-outputs` | ✅ exit 0 |
+| `dart format --set-exit-if-changed .` | ✅ **`Formatted 62 files (0 changed)`** |
+| `flutter analyze` | ⚠️ **0 error**、9 warning、91 info（`--fatal-infos --fatal-warnings` 仍 **exit 1**，见 5.15） |
+| `flutter test` | ✅ **`+23: All tests passed!`**（exit 0） |
+| `packages/apk_parser` `dart analyze --fatal-infos --fatal-warnings` | ⚠️ 82 issue、0 error → 仍 exit 1（见 5.15） |
+| 源码级审计 | ✅ 见第 2–6 节，含文件路径与行号证据 |
+| 依赖锁定一致性核查 | ✅ 发现 5.1，已修复并验证 |
+| 历史整改核验 | ✅ 见第 4 节，13/15 条为真、2 条部分为真、1 条初判有误（5.8） |
+| 真实 IPA / 加固 APK 样本解析 | ❌ **未执行**（无样本，属交付要求 7 的遗留项） |
+
+### 8.3 本次修复的提交
+
+| commit | 内容 |
+|---|---|
+| `97bef24` | `chore:` 基线快照（审计时的原始状态） |
+| `54ac313` | `style:` 全仓库 `dart format`（纯格式，无行为变更） |
+| `f2af93b` | `fix:` 恢复可编译可测试基线（4 个编译错误 + 测试修复 + 环境对齐） |
+| `c55eadf` | `docs:` 本审计报告 |
+
+**按约束 10 与交付要求 5**：8.1/8.2 中标记为 ❌ 或「未执行」的项一律不得计为通过。
 
 ---
 
-## 9. 阻塞项与需决策事项
+## 9. 阻塞项与需决策事项（更新于基线验证之后）
 
-1. **【阻塞】无 Flutter/Dart SDK** → 第一步要求的基线验证无法产出；第二步起的所有改动都无法验证。需要用户决定是否安装 SDK。
-2. **【阻塞】非 Git 仓库** → 无法满足「每阶段独立提交」「不得重置工作区」的交付形态。需要 `git init` 或提供原 `.git`。
-3. **【需决策】`archive` fork 仍是个人仓库**（前次报告已列为遗留）：长期应改为 vendored 本地依赖或上游发布版本。
-4. **【需决策】无真实测试样本** → 加固 APK 与 IPA 的真实解析情况（交付要求 7）需要用户提供样本，否则只能标记「未执行」。
+### 已解除
+
+1. ~~**【阻塞】无 Flutter/Dart SDK**~~ → 已安装 Flutter 3.47.7 stable 于 `~/development/flutter`，基线已真实跑出（第 8 节）。
+2. ~~**【阻塞】非 Git 仓库**~~ → 已 `git init`，基线快照 `97bef24`，并按「格式 / 功能 / 文档」拆成 3 个可审查提交。
+
+### 待决策
+
+3. **【需决策】CI 的 `analyze` 门禁严格度**（5.15）。当前 `--fatal-infos --fatal-warnings` 下有 9 warning + 91 info。两条路：
+   - **A. 全部修净**：标准不降，但改动面覆盖 `bin/`、`resource_value.dart`、多个页面，属较大范围修改。
+   - **B. 定向豁免 + 修真实缺陷**：修 9 个 warning 与 `deprecated_member_use`/`prefer_conditional_assignment` 等真实问题；对 `bin/` 的 `avoid_print` 与 `resource_value.dart` 的 `constant_identifier_names` 做**带注释的规则豁免**（CLI 脚本的 stdout 就是接口；Android 规范常量名不应改名）。这两类属规则误报，豁免不等于降低标准。
+   - 我的建议是 **B**，但这属于「质量标准的松紧」判断，不由我单方面决定。
+
+4. **【需决策】`archive` fork 仍是个人仓库**（`github.com/huanfeng/archive.git`，前次报告已列为遗留）：已固定到 SHA `cb3a07c8…`，风险可控，但长期建议改为 vendored 本地依赖或上游发布版本。
+
+5. **【需决策】无真实测试样本**。交付要求 7（真实 IPA 与不同加固 APK 的解析情况）需要样本文件。仓库内无任何 `.apk` / `.xapk` / `.ipa` fixture，`bin/compare.dart` 的差分语料仍为空 —— 这也是 T1-2 补强的遗留项。
+
+### 其他遗留（非阻塞）
+
+6. 5.3 ZIP 预算双份实现、5.4 解析失败原因不可区分、5.5 签名状态未建模、5.6 解析阻塞 UI isolate、5.7 无取消机制、5.9 `FileState` 值语义缺失、5.11 `InstallDialog` 守卫不全 —— 均待第 1 阶段处理。
+7. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
