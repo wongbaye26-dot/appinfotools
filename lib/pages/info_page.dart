@@ -28,6 +28,7 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
+import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -487,6 +488,25 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         '${ios.container.payloadApps.map((b) => b.path).join(', ')}',
       ));
     }
+
+    // 图标：数据来自解析器按 Info.plist 点名的文件定位的结果，
+    // 找不到或解不开都会说明原因，而不是留一个空白框。
+    cards.add(Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              t.ios_info.icon_section,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+            ),
+            const SizedBox(height: 8),
+            IosIconPreview(resolution: ios.icon),
+          ],
+        ),
+      ),
+    ));
 
     cards.add(card(t.apk_info.app_name, field(ios.preferredName)));
     cards.add(card(t.ios_info.bundle_id, field(ios.bundleIdentifier),
