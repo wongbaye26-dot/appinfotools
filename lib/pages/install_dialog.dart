@@ -54,10 +54,18 @@ class InstallDialog extends StatefulWidget {
   final String apkPath;
   final bool isXapk;
 
+  /// 设备枚举实现。
+  ///
+  /// 默认走真实的 `adb devices -l`；提供此参数可注入替身，让测试能精确控制
+  /// 「加载未完成时对话框被销毁」这类时序 —— 真实 `Process.run` 在 widget
+  /// 测试的 fake-async 区里会留下未触发的 Timer，无法稳定复现。
+  final Future<List<AdbDevice>> Function()? deviceLoader;
+
   const InstallDialog({
     super.key,
     required this.apkPath,
     this.isXapk = false,
+    this.deviceLoader,
   });
 
   @override
@@ -91,54 +99,64 @@ class _InstallDialogState extends State<InstallDialog> {
     });
 
     try {
-      final exePath = CommandTools.getAdbPath();
-      final result = await Process.run(exePath, ['devices', '-l']);
-      final lines = result.stdout.toString().split('\n');
+      final newDevices = await (widget.deviceLoader ?? _queryAdbDevices).call();
 
-      List<AdbDevice> newDevices = [];
-      for (var line in lines.skip(1)) {
-        if (line.trim().isEmpty) continue;
-
-        // 解析设备信息
-        final parts = line.trim().split(RegExp(r'\s+'));
-        if (parts.length >= 2) {
-          final id = parts[0];
-          final status = parts[1];
-
-          // 解析额外信息
-          String? product, model, device;
-          if (parts.length > 2) {
-            for (var info in parts.skip(2)) {
-              if (info.startsWith('product:')) {
-                product = info.substring(8);
-              } else if (info.startsWith('model:')) {
-                model = info.substring(6);
-              } else if (info.startsWith('device:')) {
-                device = info.substring(7);
-              }
-            }
-          }
-
-          newDevices.add(AdbDevice(
-            id: id,
-            status: status,
-            product: product,
-            model: model,
-            device: device,
-          ));
-        }
+      if (mounted) {
+        setState(() {
+          devices = newDevices;
+          isLoading = false;
+        });
       }
-
-      setState(() {
-        devices = newDevices;
-        isLoading = false;
-      });
     } catch (e) {
       log.warning('_loadDevices: 获取设备列表失败: $e');
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
+  }
+
+  /// 执行 `adb devices -l` 并解析输出。
+  Future<List<AdbDevice>> _queryAdbDevices() async {
+    final exePath = CommandTools.getAdbPath();
+    final result = await Process.run(exePath, ['devices', '-l']);
+    final lines = result.stdout.toString().split('\n');
+
+    final newDevices = <AdbDevice>[];
+    for (var line in lines.skip(1)) {
+      if (line.trim().isEmpty) continue;
+
+      // 解析设备信息
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length >= 2) {
+        final id = parts[0];
+        final status = parts[1];
+
+        // 解析额外信息
+        String? product, model, device;
+        if (parts.length > 2) {
+          for (var info in parts.skip(2)) {
+            if (info.startsWith('product:')) {
+              product = info.substring(8);
+            } else if (info.startsWith('model:')) {
+              model = info.substring(6);
+            } else if (info.startsWith('device:')) {
+              device = info.substring(7);
+            }
+          }
+        }
+
+        newDevices.add(AdbDevice(
+          id: id,
+          status: status,
+          product: product,
+          model: model,
+          device: device,
+        ));
+      }
+    }
+    return newDevices;
   }
 
   // 新增：加载分包列表
@@ -146,7 +164,7 @@ class _InstallDialogState extends State<InstallDialog> {
     try {
       final installer = XapkInstaller();
       final splits = await installer.getSplitApks(widget.apkPath);
-      if (splits != null) {
+      if (splits != null && mounted) {
         setState(() {
           splitApks = splits;
           // 默认全选
@@ -180,8 +198,8 @@ class _InstallDialogState extends State<InstallDialog> {
 
       // 安装到每个选中的设备
       for (final device in selectedDevices) {
-        // 检查是否已取消
-        if (_isCancelled) {
+        // 已取消，或对话框已销毁 —— 两者都必须立即停止后续设备
+        if (_isCancelled || !mounted) {
           break;
         }
 
@@ -238,35 +256,43 @@ class _InstallDialogState extends State<InstallDialog> {
 
           // 检查是否被中断
           if (_isCancelled) {
-            setState(() {
-              device.installStatus = t.install.stopped;
-              device.errorMessage = null;
-            });
+            if (mounted) {
+              setState(() {
+                device.installStatus = t.install.stopped;
+                device.errorMessage = null;
+              });
+            }
             break;
           }
 
-          setState(() {
-            device.installStatus =
-                success ? t.install.success : t.install.failed;
-            device.errorMessage = errorMessage;
-            // 安装成功后自动取消选中，避免用户重复点击确定时重新安装
-            if (success) {
-              device.selected = false;
-            }
-          });
+          if (mounted) {
+            setState(() {
+              device.installStatus =
+                  success ? t.install.success : t.install.failed;
+              device.errorMessage = errorMessage;
+              // 安装成功后自动取消选中，避免用户重复点击确定时重新安装
+              if (success) {
+                device.selected = false;
+              }
+            });
+          }
         } catch (e) {
           // 如果是被中断导致的异常，显示已停止状态
           if (_isCancelled) {
-            setState(() {
-              device.installStatus = t.install.stopped;
-              device.errorMessage = null;
-            });
+            if (mounted) {
+              setState(() {
+                device.installStatus = t.install.stopped;
+                device.errorMessage = null;
+              });
+            }
             break;
           }
-          setState(() {
-            device.installStatus = t.install.failed;
-            device.errorMessage = e.toString();
-          });
+          if (mounted) {
+            setState(() {
+              device.installStatus = t.install.failed;
+              device.errorMessage = e.toString();
+            });
+          }
         }
       }
     } finally {
@@ -301,7 +327,7 @@ class _InstallDialogState extends State<InstallDialog> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
       setState(() {
         _isCancelled = true;
       });
