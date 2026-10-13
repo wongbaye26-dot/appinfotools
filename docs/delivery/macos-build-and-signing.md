@@ -75,34 +75,44 @@ brew install create-dmg
 
 `flutter doctor` 里 Xcode 那一项应当变成 `[✓]`。
 
-### 4.1 插件集成：Swift Package Manager 优先，CocoaPods 是退路
+### 4.1 插件集成：Swift Package Manager（已彻底移除 CocoaPods）
 
-本项目有 8 个 macOS 原生插件。**Flutter 3.47 默认用 Swift Package Manager（SPM）
-集成它们，因此通常不需要 CocoaPods。** `tool/build_macos.sh` 不再把缺少
-CocoaPods 当成错误，只在缺少时打印说明。
+本项目有 8 个 macOS 原生插件。**全部通过 Swift Package Manager（SPM）集成，
+工程里已不再有 CocoaPods 集成** —— Podfile、Podfile.lock、pbxproj 里的 `[CP]`
+构建阶段与 `Pods` 分组、两个 xcconfig 里的 Pods include 都已移除。
 
-什么时候才真的需要 CocoaPods：构建时看到
-`Adding Swift Package Manager integration` 之后失败。那时：
+Flutter 3.47 默认就走 SPM，因此**不需要安装 CocoaPods**。
 
-```sh
-sudo gem install cocoapods      # 权限受限时：brew install cocoapods
-```
+#### 迁移过程（如果以后要重做）
 
-**先别急着装 CocoaPods。** 报「plugins do not support Swift Package Manager」
-时，正确的第一步是**升级那个插件**：
+Flutter 的提示是「你的工程仍有 CocoaPods 集成，需要手工迁移到 SPM」，
+第一步是 `pod deintegrate` —— 而它本身需要 CocoaPods。鸡生蛋，所以手工做：
 
-```sh
-flutter pub upgrade <包名>
-flutter pub get --enforce-lockfile
-```
+1. pbxproj：删掉 3 个 `[CP]` 构建阶段、`Pods` 分组、`Pods_Runner(.Tests).framework`
+   引用、3 处 `baseConfigurationReference`；**同时要删掉 `buildPhases` 数组里
+   对它们的引用**，否则是悬空引用，pbxproj 会变成非法 plist。
+2. 去掉 `Flutter-Debug.xcconfig` / `Flutter-Release.xcconfig` 里的
+   `#include? "Pods/Target Support Files/..."`（保留 `ephemeral/Flutter-Generated.xcconfig`）。
+3. 删除 `macos/Podfile` 与 `macos/Podfile.lock`。
 
-本项目实测踩过一次：`screen_retriever_macos`（`window_manager` 的传递依赖）
-锁在 0.2.0 时不支持 SPM，而 pub.dev 的 changelog 写着 `0.2.1  Add Swift Package
-Manager support.` —— 升到 0.2.2 后所有插件都支持 SPM，**完全不需要 CocoaPods**。
+#### 两个容易踩的坑
 
-只有升级也解决不了时才装 CocoaPods。**它需要 Ruby >= 3.1，而 macOS 自带的是
-2.6**：在系统 Ruby 上装不上（`securerandom` 等依赖会拒绝安装；即使逐个钉住
-版本装到 1.16.2，运行时也会因 `activesupport` 报
+- **OpenStep plist 的非引号字符串不允许非 ASCII 字符。**
+  `path = apk_info_tool.app;` 合法，但 `path = APP详情工具.app;` 会让
+  `plutil -lint` 报 `Unexpected character` —— 必须写成
+  `path = "APP详情工具.app";`。所以改 `PRODUCT_NAME` 之后一定要
+  `plutil -lint macos/Runner.xcodeproj/project.pbxproj` 验一遍。
+- 删对象时**引用与定义要一起删**。只删定义，数组里的引用就成了悬空引用。
+
+#### 什么时候才需要 CocoaPods
+
+构建时报「The following plugins do not support Swift Package Manager」时，
+**先升级那个插件**（本项目实测：`screen_retriever_macos` 锁在 0.2.0 时不支持，
+升到 0.2.1+ 即可），而不是去装 CocoaPods。
+
+只有升级也解决不了时才需要它，而**它需要 Ruby >= 3.1，macOS 自带的是 2.6**：
+在系统 Ruby 上装不上（`securerandom` 等依赖会拒绝安装；即使逐个钉住版本装到
+1.16.2，运行时也会因 `activesupport` 报
 `uninitialized constant ActiveSupport::LoggerThreadSafeLevel::Logger` 而失败）。
 需要先有 Ruby 3（`brew install ruby` 或 rbenv）。
 
