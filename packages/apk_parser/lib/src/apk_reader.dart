@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
 import 'archive_open.dart';
+import 'hardening.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
 import 'models.dart';
@@ -147,6 +148,18 @@ class ApkReader {
   }
 
   ArscParser? get arscParser => _arscParser;
+
+  /// 扫描容器结构，收集可解释的加固线索。
+  ///
+  /// 需要在 [open] 之后调用；未打开时返回空列表。
+  ///
+  /// 只观察结构事实（DEX 分片与头部、原生库命名、assets 布局、资源表），
+  /// **不做厂商判定** —— 见 [HardeningSignal] 的说明。
+  List<HardeningObservation> scanHardeningSignals() {
+    final archive = _archive;
+    if (archive == null) return const [];
+    return HardeningScanner.scan(archive);
+  }
 
   Uint8List? readFile(String fileName) {
     final file = _archive?.findFile(fileName);

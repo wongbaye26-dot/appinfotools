@@ -54,7 +54,14 @@ class ParsedApkData {
   final ApkMeta meta;
   final Map<int, ResourceInfo> arscResources;
 
-  const ParsedApkData({required this.meta, required this.arscResources});
+  /// 容器结构上观察到的加固线索（只描述事实，不含厂商判定）。
+  final List<HardeningObservation> hardeningObservations;
+
+  const ParsedApkData({
+    required this.meta,
+    required this.arscResources,
+    this.hardeningObservations = const [],
+  });
 }
 
 /// 一次在独立 isolate 中执行的 APK 解析任务。
@@ -173,6 +180,7 @@ void _parseEntryPoint(_ParseRequest request) async {
     request.reply.send(ParseSucceeded(ParsedApkData(
       meta: meta,
       arscResources: reader.arscParser?.getAllResources() ?? const {},
+      hardeningObservations: reader.scanHardeningSignals(),
     )));
   } catch (e) {
     log.warning('ApkParseTask: worker failed: $e');
