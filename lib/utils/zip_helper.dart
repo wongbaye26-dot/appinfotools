@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
-import 'package:apk_parser/apk_parser.dart'
+import 'package:archive_safety/archive_safety.dart'
     show
         ArchiveOpenResult,
         ZipBudget,

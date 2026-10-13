@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:apk_parser/apk_parser.dart' show ZipBudget;
+import 'package:archive_safety/archive_safety.dart' show ZipBudget;
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as path;
 

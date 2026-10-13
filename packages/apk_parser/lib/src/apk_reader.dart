@@ -2,13 +2,13 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
-import 'archive_open.dart';
+import 'package:archive_safety/archive_safety.dart';
+
 import 'container_structure.dart';
 import 'hardening.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
 import 'models.dart';
-import 'zip_budget.dart';
 
 final _log = Logger('ApkReader');
 

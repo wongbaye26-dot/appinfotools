@@ -1,0 +1,17 @@
+name: archive_safety
+description: ZIP container safety primitives - decompression budget, open-result classification and structural sanity checks for untrusted archives.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  archive:
+    git:
+      url: https://github.com/huanfeng/archive.git
+      ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.24.0

@@ -36,11 +36,16 @@ jobs:
       - name: Unit tests
         run: flutter test
 
-      - name: Analyze apk_parser package
-        working-directory: packages/apk_parser
+      - name: Analyze Dart packages
+        # 遍历 packages/ 而不是逐个硬编码：新增包会被自动纳入门禁，
+        # 否则新包的分析结果永远不进 CI（这正是 apk_parser 当初的处境）。
         run: |
-          dart pub get
-          dart analyze --fatal-infos --fatal-warnings
+          set -euo pipefail
+          for pkg in packages/*/; do
+            echo "::group::dart analyze $pkg"
+            (cd "$pkg" && dart pub get && dart analyze --fatal-infos --fatal-warnings)
+            echo "::endgroup::"
+          done
 
   build-windows:
     needs: quality

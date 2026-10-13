@@ -26,6 +26,13 @@ packages:
       url: "https://github.com/huanfeng/archive.git"
     source: git
     version: "4.0.9"
+  archive_safety:
+    dependency: "direct main"
+    description:
+      path: "../archive_safety"
+      relative: true
+    source: path
+    version: "0.1.0"
   args:
     dependency: transitive
     description:
@@ -146,6 +153,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.5"
+  lints:
+    dependency: "direct dev"
+    description:
+      name: lints
+      sha256: c35bb79562d980e9a453fc715854e1ed39e24e7d0297a880ef54e17f9874a9d7
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.1.1"
   logging:
     dependency: "direct main"
     description:

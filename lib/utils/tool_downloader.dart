@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
-import 'package:apk_parser/apk_parser.dart' show ZipBudget;
+import 'package:archive_safety/archive_safety.dart' show ZipBudget;
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;

@@ -42,6 +42,8 @@ dependencies:
   path_drawing: ^1.0.1
   apk_parser:
     path: packages/apk_parser
+  archive_safety:
+    path: packages/archive_safety
 
 dev_dependencies:
   flutter_test:
