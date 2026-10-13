@@ -11,12 +11,19 @@
 // - `Info.plist` 字段提取（带状态与来源）
 // - 图标资源定位（只按配置点名的文件，不扫描目录）
 // - Mach-O 解析（thin / fat、架构、load commands、动态库，全部先验边界）
+// - 签名材料的**静态**提取（`_CodeSignature/` 条目、描述文件 plist）
+//
+// 明确**不**包含：签名验证。规范 5.5 禁止自行实现签名算法并宣称权威结论，
+// 因此本包只回答「文件里有什么」，验证由调用方交给 `codesign`。
 
+export 'src/cms.dart';
 export 'src/ipa_container.dart';
 export 'src/ipa_icon.dart';
 export 'src/ipa_info_plist.dart';
+export 'src/ios_signature.dart';
 export 'src/macho.dart';
 export 'src/plist/binary_plist_parser.dart';
+export 'src/plist/plist_fields.dart';
 export 'src/plist/plist_parser.dart';
 export 'src/plist/plist_value.dart';
 export 'src/plist/xml_plist_parser.dart';
