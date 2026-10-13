@@ -182,7 +182,10 @@ class AnalysisBuilder {
       switch (signal) {
         HardeningSignal.missingPrimaryDex ||
         HardeningSignal.dexHeaderNotStandard ||
-        HardeningSignal.executableInAssets =>
+        HardeningSignal.executableInAssets ||
+        // 正常构建流程不会产出「文件同时被当目录前缀」的结构 ——
+        // 与上面几条同属「单条即可说明异常」。
+        HardeningSignal.decoyArchiveEntries =>
           HintConfidence.strong,
         HardeningSignal.multipleDexFiles ||
         HardeningSignal.unusualNativeLibraryName ||
