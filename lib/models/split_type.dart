@@ -12,8 +12,7 @@ enum SplitType {
 
   /// 密度 split 必须以 `dpi` 结尾，例如 `hdpi`、`xxhdpi`、`480dpi`、
   /// `xxhdpi-v4`。
-  static final RegExp _densityPattern =
-      RegExp(r'^[a-z0-9]+dpi(?:-v[0-9]+)?$');
+  static final RegExp _densityPattern = RegExp(r'^[a-z0-9]+dpi(?:-v[0-9]+)?$');
 
   /// ABI split，例如 `arm64_v8a`、`armeabi_v7a`、`x86_64`。
   static final RegExp _abiPattern = RegExp(

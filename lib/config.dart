@@ -155,4 +155,3 @@ class Config {
     return allOk;
   }
 }
-

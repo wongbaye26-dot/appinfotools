@@ -82,8 +82,7 @@ class AdaptiveIconRenderer {
         }
       }
       for (final refId in info.references) {
-        final refHex =
-            '@res/0x${refId.toRadixString(16).padLeft(8, '0')}';
+        final refHex = '@res/0x${refId.toRadixString(16).padLeft(8, '0')}';
         if (!entry.references.contains(refHex)) {
           entry.references.add(refHex);
         }
@@ -190,7 +189,8 @@ class AdaptiveIconRenderer {
       _vectorPathFilled = 0;
       _vectorPathStroked = 0;
       _resolvedRefCount = 0;
-      _debug('render start: iconPath=$normalized, apkPath=$apkPath, canvasSize=$size');
+      _debug(
+          'render start: iconPath=$normalized, apkPath=$apkPath, canvasSize=$size');
       final recorder = PictureRecorder();
       final canvas = Canvas(recorder);
       final rect = Rect.fromLTWH(
@@ -258,14 +258,12 @@ class AdaptiveIconRenderer {
   Future<AdaptiveIconSvgData?> resolveAdaptiveIconForSvg(
       String iconPath) async {
     final normalized = _normalizeZipPath(iconPath);
-    if (normalized.isEmpty ||
-        !normalized.toLowerCase().endsWith('.xml')) {
+    if (normalized.isEmpty || !normalized.toLowerCase().endsWith('.xml')) {
       return null;
     }
 
     final root = await _loadXmlRoot(normalized);
-    if (root == null ||
-        root.name.local.toLowerCase() != 'adaptive-icon') {
+    if (root == null || root.name.local.toLowerCase() != 'adaptive-icon') {
       return null;
     }
 
@@ -314,8 +312,7 @@ class AdaptiveIconRenderer {
       backgroundColor: bgColor,
       backgroundVector: bgVector,
       foregroundVector: fgVector,
-      foregroundScale:
-          fgVector != null ? _kAdaptiveForegroundScaleVector : 1.0,
+      foregroundScale: fgVector != null ? _kAdaptiveForegroundScaleVector : 1.0,
     );
   }
 
@@ -331,8 +328,7 @@ class AdaptiveIconRenderer {
     final drawableRef = _attr(container, 'drawable');
     if (drawableRef != null && drawableRef.isNotEmpty) {
       final resolvedPath = await _resolveDrawableToPath(drawableRef, depth + 1);
-      if (resolvedPath != null &&
-          resolvedPath.toLowerCase().endsWith('.xml')) {
+      if (resolvedPath != null && resolvedPath.toLowerCase().endsWith('.xml')) {
         final resolvedRoot = await _loadXmlRoot(resolvedPath);
         if (resolvedRoot != null) {
           final resolvedTag = resolvedRoot.name.local.toLowerCase();
@@ -358,14 +354,12 @@ class AdaptiveIconRenderer {
     await _resolveElementColors(vector, 0);
   }
 
-  Future<void> _resolveElementColors(
-      xml.XmlElement element, int depth) async {
+  Future<void> _resolveElementColors(xml.XmlElement element, int depth) async {
     if (depth > _kMaxDepth) return;
     final tag = element.name.local.toLowerCase();
 
     if (tag == 'path') {
-      await _resolveColorAttrs(
-          element, ['fillColor', 'strokeColor'], depth);
+      await _resolveColorAttrs(element, ['fillColor', 'strokeColor'], depth);
     } else if (tag == 'vector' || tag == 'group') {
       for (final child in element.childElements) {
         await _resolveElementColors(child, depth + 1);
@@ -441,8 +435,7 @@ class AdaptiveIconRenderer {
     if (root.name.local.toLowerCase() != 'gradient') return;
 
     // 构建嵌入的渐变元素
-    final gradientElement =
-        await _buildSvgGradientElement(root, depth + 1);
+    final gradientElement = await _buildSvgGradientElement(root, depth + 1);
     if (gradientElement == null) return;
 
     // 将渐变元素嵌入 path，标记 fillColor 为 __gradient__
@@ -1354,8 +1347,7 @@ class AdaptiveIconRenderer {
       final withFallback = resolved ?? _resolveFrameworkReference(id);
       _resolvedRefCount++;
       if (_resolvedRefCount <= 20) {
-        _debug(
-            'resolveRef: $trimmed -> $withFallback (${entry?.name})');
+        _debug('resolveRef: $trimmed -> $withFallback (${entry?.name})');
       }
       return withFallback;
     }
@@ -1370,8 +1362,7 @@ class AdaptiveIconRenderer {
       final resolved = _resolveEntryValue(picked);
       _resolvedRefCount++;
       if (_resolvedRefCount <= 20) {
-        _debug(
-            'resolveRef: $trimmed -> $resolved (${picked.name})');
+        _debug('resolveRef: $trimmed -> $resolved (${picked.name})');
       }
       return resolved;
     }
@@ -1427,7 +1418,8 @@ class AdaptiveIconRenderer {
       if (lastSlash < 0) continue;
       final fileName = f.substring(lastSlash + 1).toLowerCase();
       final dotIndex = fileName.lastIndexOf('.');
-      final baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+      final baseName =
+          dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
       if (baseName != name) continue;
 
       // 检查目录是否与资源类型匹配

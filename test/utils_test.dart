@@ -55,12 +55,14 @@ void main() {
 
     test('joins a normal nested entry', () {
       final result = ZipGuard.safeJoin(root, 'Android/obb/pkg/main.7.com.obb');
-      expect(path.isWithin(path.normalize(path.absolute(root)), result), isTrue);
+      expect(
+          path.isWithin(path.normalize(path.absolute(root)), result), isTrue);
     });
 
     test('normalises backslash separators', () {
       final result = ZipGuard.safeJoin(root, r'lib\arm64-v8a\libfoo.so');
-      expect(path.isWithin(path.normalize(path.absolute(root)), result), isTrue);
+      expect(
+          path.isWithin(path.normalize(path.absolute(root)), result), isTrue);
     });
 
     test('rejects parent traversal', () {
@@ -112,7 +114,8 @@ void main() {
     test('allows traversal-looking but contained names', () {
       // "a..b" is a legitimate file name and must not be rejected.
       final result = ZipGuard.safeJoin(root, 'res/drawable/a..b.png');
-      expect(path.isWithin(path.normalize(path.absolute(root)), result), isTrue);
+      expect(
+          path.isWithin(path.normalize(path.absolute(root)), result), isTrue);
     });
   });
 }

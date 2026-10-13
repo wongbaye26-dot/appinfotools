@@ -111,14 +111,9 @@ class SplitApk {
   });
 
   factory SplitApk.fromJson(Map<String, dynamic> json) {
-    final file = (json['file'] ??
-            json['path'] ??
-            json['apk'] ??
-            json['name'])
+    final file = (json['file'] ?? json['path'] ?? json['apk'] ?? json['name'])
         ?.toString();
-    final id = (json['id'] ?? json['type'] ?? json['name'])
-        ?.toString()
-        ?.trim();
+    final id = (json['id'] ?? json['type'] ?? json['name'])?.toString()?.trim();
     return SplitApk(
       file: file ?? '',
       id: id?.isNotEmpty == true

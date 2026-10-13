@@ -12,7 +12,7 @@ class InstallOptions {
   bool allowDowngrade = false;
   bool forceInstall = false;
   bool allowTest = false;
-  Map<String, bool> selectedSplits = {};  // 新增：选中的分包
+  Map<String, bool> selectedSplits = {}; // 新增：选中的分包
 }
 
 class AdbDevice {
@@ -68,13 +68,13 @@ class _InstallDialogState extends State<InstallDialog> {
   List<AdbDevice> devices = [];
   bool isLoading = true;
   bool isInstalling = false;
-  bool _isCancelled = false;  // 是否已取消安装
-  Process? _currentProcess;  // 当前正在执行的进程
-  XapkInstaller? _currentInstaller;  // 当前正在执行的XAPK安装器
+  bool _isCancelled = false; // 是否已取消安装
+  Process? _currentProcess; // 当前正在执行的进程
+  XapkInstaller? _currentInstaller; // 当前正在执行的XAPK安装器
   bool showAdvancedOptions = false;
-  bool showSplitOptions = false;  // 新增：是否显示分包选择
+  bool showSplitOptions = false; // 新增：是否显示分包选择
   final InstallOptions options = InstallOptions();
-  List<String>? splitApks;  // 新增：分包列表
+  List<String>? splitApks; // 新增：分包列表
 
   @override
   void initState() {
@@ -216,10 +216,14 @@ class _InstallDialogState extends State<InstallDialog> {
             // 收集输出
             final stdoutBuffer = StringBuffer();
             final stderrBuffer = StringBuffer();
-            process.stdout.transform(const SystemEncoding().decoder).listen((data) {
+            process.stdout
+                .transform(const SystemEncoding().decoder)
+                .listen((data) {
               stdoutBuffer.write(data);
             });
-            process.stderr.transform(const SystemEncoding().decoder).listen((data) {
+            process.stderr
+                .transform(const SystemEncoding().decoder)
+                .listen((data) {
               stderrBuffer.write(data);
             });
 
@@ -242,7 +246,8 @@ class _InstallDialogState extends State<InstallDialog> {
           }
 
           setState(() {
-            device.installStatus = success ? t.install.success : t.install.failed;
+            device.installStatus =
+                success ? t.install.success : t.install.failed;
             device.errorMessage = errorMessage;
             // 安装成功后自动取消选中，避免用户重复点击确定时重新安装
             if (success) {
@@ -314,7 +319,6 @@ class _InstallDialogState extends State<InstallDialog> {
     super.dispose();
   }
 
-
   bool get canInstall {
     return !isInstalling &&
         devices.any((d) => d.selected) &&
@@ -340,7 +344,8 @@ class _InstallDialogState extends State<InstallDialog> {
         ListTile(
           title: Text(t.install.split_options),
           trailing: IconButton(
-            icon: Icon(showSplitOptions ? Icons.expand_less : Icons.expand_more),
+            icon:
+                Icon(showSplitOptions ? Icons.expand_less : Icons.expand_more),
             onPressed: () {
               setState(() {
                 showSplitOptions = !showSplitOptions;
@@ -401,15 +406,18 @@ class _InstallDialogState extends State<InstallDialog> {
                         children: splits.map((split) {
                           final name = path.basenameWithoutExtension(split);
                           // base包不允许取消选择
-                          final isBase = SplitType.fromId(name) == SplitType.base;
+                          final isBase =
+                              SplitType.fromId(name) == SplitType.base;
                           return FilterChip(
                             label: Text(name),
                             selected: options.selectedSplits[split] ?? false,
-                            onSelected: isBase ? null : (selected) {
-                              setState(() {
-                                options.selectedSplits[split] = selected;
-                              });
-                            },
+                            onSelected: isBase
+                                ? null
+                                : (selected) {
+                                    setState(() {
+                                      options.selectedSplits[split] = selected;
+                                    });
+                                  },
                           );
                         }).toList(),
                       ),
@@ -430,230 +438,233 @@ class _InstallDialogState extends State<InstallDialog> {
     return PopScope(
       canPop: !isInstalling,
       child: AlertDialog(
-      title: Text(t.install.title),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(t.install.select_device),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 200,
-                child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        itemCount: devices.length,
-                        itemBuilder: (context, index) {
-                          final device = devices[index];
-                          return ListTile(
-                            leading: Checkbox(
-                              value: device.selected,
-                              onChanged: isInstalling || device.isOffline
-                                  ? null
-                                  : (value) {
-                                      setState(() {
-                                        device.selected = value ?? false;
-                                      });
-                                    },
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    device.isWireless
-                                        ? device.id
-                                        : device.displayName,
-                                    style: device.isOffline
-                                        ? const TextStyle(color: Colors.grey)
-                                        : null,
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: device.isOffline
-                                        ? Colors.grey[300]
-                                        : Colors.green[100],
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    device.status,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: device.isOffline
-                                          ? Colors.grey[700]
-                                          : Colors.green[700],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            subtitle: device.installStatus != null
-                                ? Text(
-                                    device.errorMessage ?? device.installStatus!,
-                                    style: TextStyle(
-                                      color: device.errorMessage != null
-                                          ? Colors.red
-                                          : Colors.green,
-                                    ),
-                                  )
-                                : (device.isWireless
+        title: Text(t.install.title),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t.install.select_device),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 200,
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.builder(
+                          itemCount: devices.length,
+                          itemBuilder: (context, index) {
+                            final device = devices[index];
+                            return ListTile(
+                              leading: Checkbox(
+                                value: device.selected,
+                                onChanged: isInstalling || device.isOffline
                                     ? null
-                                    : Text(device.id,
-                                        style: const TextStyle(fontSize: 12))),
-                          );
-                        },
+                                    : (value) {
+                                        setState(() {
+                                          device.selected = value ?? false;
+                                        });
+                                      },
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      device.isWireless
+                                          ? device.id
+                                          : device.displayName,
+                                      style: device.isOffline
+                                          ? const TextStyle(color: Colors.grey)
+                                          : null,
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: device.isOffline
+                                          ? Colors.grey[300]
+                                          : Colors.green[100],
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      device.status,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: device.isOffline
+                                            ? Colors.grey[700]
+                                            : Colors.green[700],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: device.installStatus != null
+                                  ? Text(
+                                      device.errorMessage ??
+                                          device.installStatus!,
+                                      style: TextStyle(
+                                        color: device.errorMessage != null
+                                            ? Colors.red
+                                            : Colors.green,
+                                      ),
+                                    )
+                                  : (device.isWireless
+                                      ? null
+                                      : Text(device.id,
+                                          style:
+                                              const TextStyle(fontSize: 12))),
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      showAdvancedOptions = !showAdvancedOptions;
+                    });
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        showAdvancedOptions
+                            ? Icons.arrow_drop_down
+                            : Icons.arrow_right,
+                        size: 20,
                       ),
-              ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          showAdvancedOptions = !showAdvancedOptions;
-                        });
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            showAdvancedOptions
-                                ? Icons.arrow_drop_down
-                                : Icons.arrow_right,
-                            size: 20,
-                          ),
-                          Text(
-                            t.install.advanced_options,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
+                      Text(
+                        t.install.advanced_options,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                    ),
-                    if (showAdvancedOptions) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16),
-                        child: Column(
+                    ],
+                  ),
+                ),
+                if (showAdvancedOptions) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16),
+                    child: Column(
+                      children: [
+                        Row(
                           children: [
-                            Row(
-                              children: [
-                                SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: Checkbox(
-                                    value: options.allowTest,
-                                    onChanged: isInstalling
-                                        ? null
-                                        : (value) {
-                                            setState(() {
-                                              options.allowTest = value ?? false;
-                                            });
-                                          },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  t.install.allow_test,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
+                            SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: Checkbox(
+                                value: options.allowTest,
+                                onChanged: isInstalling
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          options.allowTest = value ?? false;
+                                        });
+                                      },
+                              ),
                             ),
-                            Row(
-                              children: [
-                                SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: Checkbox(
-                                    value: options.allowDowngrade,
-                                    onChanged: isInstalling
-                                        ? null
-                                        : (value) {
-                                            setState(() {
-                                              options.allowDowngrade = value ?? false;
-                                            });
-                                          },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  t.install.allow_downgrade,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: Checkbox(
-                                    value: options.forceInstall,
-                                    onChanged: isInstalling
-                                        ? null
-                                        : (value) {
-                                            setState(() {
-                                              options.forceInstall = value ?? false;
-                                            });
-                                          },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  t.install.force_install,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
+                            const SizedBox(width: 8),
+                            Text(
+                              t.install.allow_test,
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
                         ),
-                      ),
-                    ],
-              if (widget.isXapk) ...[
-                const SizedBox(height: 16),
-                _buildSplitApksSection(),
+                        Row(
+                          children: [
+                            SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: Checkbox(
+                                value: options.allowDowngrade,
+                                onChanged: isInstalling
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          options.allowDowngrade =
+                                              value ?? false;
+                                        });
+                                      },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              t.install.allow_downgrade,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: Checkbox(
+                                value: options.forceInstall,
+                                onChanged: isInstalling
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          options.forceInstall = value ?? false;
+                                        });
+                                      },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              t.install.force_install,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (widget.isXapk) ...[
+                  const SizedBox(height: 16),
+                  _buildSplitApksSection(),
+                ],
               ],
-            ],
+            ),
           ),
         ),
-      ),
-      actionsAlignment: MainAxisAlignment.spaceBetween,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: isInstalling || isLoading ? null : _loadDevices,
-          tooltip: t.install.refresh_devices,
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isInstalling)
-              TextButton(
-                onPressed: _showStopConfirmDialog,
-                child: Text(t.install.stop),
-              )
-            else
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(t.base.close),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: isInstalling || isLoading ? null : _loadDevices,
+            tooltip: t.install.refresh_devices,
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isInstalling)
+                TextButton(
+                  onPressed: _showStopConfirmDialog,
+                  child: Text(t.install.stop),
+                )
+              else
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(t.base.close),
+                ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: canInstall ? _installApk : null,
+                child: isInstalling
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(t.install.apk),
               ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: canInstall ? _installApk : null,
-              child: isInstalling
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(t.install.apk),
-            ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
       ),
     );
   }

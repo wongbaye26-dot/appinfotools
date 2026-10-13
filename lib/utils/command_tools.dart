@@ -14,8 +14,7 @@ class CommandTools {
           adb,
           Config.adbSource.value,
           Config.adbPath.value,
-          ToolPaths.getDownloadedAdbPath(
-              baseDir: _downloadDirOrDefault()),
+          ToolPaths.getDownloadedAdbPath(baseDir: _downloadDirOrDefault()),
           ToolPaths.getBundledToolPath(Platform.isWindows ? 'adb.exe' : 'adb'),
         ) ??
         adb;
@@ -36,8 +35,7 @@ class CommandTools {
           aapt2,
           Config.aapt2Source.value,
           Config.aapt2Path.value,
-          ToolPaths.getDownloadedAapt2Path(
-              baseDir: _downloadDirOrDefault()),
+          ToolPaths.getDownloadedAapt2Path(baseDir: _downloadDirOrDefault()),
           ToolPaths.getBundledToolPath(
               Platform.isWindows ? 'aapt2.exe' : 'aapt2'),
         ) ??
@@ -50,8 +48,7 @@ class CommandTools {
       Config.aapt2Source.value,
       Config.aapt2Path.value,
       ToolPaths.getDownloadedAapt2Path(baseDir: _downloadDirOrDefault()),
-      ToolPaths.getBundledToolPath(
-          Platform.isWindows ? 'aapt2.exe' : 'aapt2'),
+      ToolPaths.getBundledToolPath(Platform.isWindows ? 'aapt2.exe' : 'aapt2'),
     );
   }
 
@@ -73,8 +70,7 @@ class CommandTools {
       apksigner,
       Config.apksignerSource.value,
       Config.apksignerPath.value,
-      ToolPaths.getDownloadedApksignerPath(
-          baseDir: _downloadDirOrDefault()),
+      ToolPaths.getDownloadedApksignerPath(baseDir: _downloadDirOrDefault()),
       ToolPaths.getBundledToolPath(
           Platform.isWindows ? 'apksigner.bat' : 'apksigner'),
     );
@@ -95,12 +91,16 @@ class CommandTools {
     final builtinPath = downloadedPath ?? bundledPath;
     switch (source) {
       case Config.kToolSourceBuiltin:
-        return builtinPath ?? envPath ?? (manualPath.isNotEmpty ? manualPath : null);
+        return builtinPath ??
+            envPath ??
+            (manualPath.isNotEmpty ? manualPath : null);
       case Config.kToolSourceCustom:
         return manualPath.isNotEmpty ? manualPath : envPath ?? builtinPath;
       case Config.kToolSourceSystem:
       default:
-        return envPath ?? builtinPath ?? (manualPath.isNotEmpty ? manualPath : null);
+        return envPath ??
+            builtinPath ??
+            (manualPath.isNotEmpty ? manualPath : null);
     }
   }
 }

@@ -72,29 +72,27 @@ class VectorToSvg {
       }
     }
     if (data.backgroundVector != null) {
-      final bgVpW =
-          _parseDim(_attr(data.backgroundVector!, 'viewportWidth')) ??
-              viewportW;
+      final bgVpW = _parseDim(_attr(data.backgroundVector!, 'viewportWidth')) ??
+          viewportW;
       final bgVpH =
           _parseDim(_attr(data.backgroundVector!, 'viewportHeight')) ??
               viewportH;
       if (bgVpW != viewportW || bgVpH != viewportH) {
         contentBuf.writeln(
             '$indent<g transform="scale(${viewportW / bgVpW}, ${viewportH / bgVpH})">');
-        _convertChildren(contentBuf,
-            data.backgroundVector!.childElements, '$indent  ', gradientDefs);
+        _convertChildren(contentBuf, data.backgroundVector!.childElements,
+            '$indent  ', gradientDefs);
         contentBuf.writeln('$indent</g>');
       } else {
-        _convertChildren(contentBuf,
-            data.backgroundVector!.childElements, indent, gradientDefs);
+        _convertChildren(contentBuf, data.backgroundVector!.childElements,
+            indent, gradientDefs);
       }
     }
 
     // Foreground 层 — 应用自适应图标前景缩放（与 AdaptiveIconRenderer 渲染一致）
     if (data.foregroundVector != null) {
-      final fgVpW =
-          _parseDim(_attr(data.foregroundVector!, 'viewportWidth')) ??
-              viewportW;
+      final fgVpW = _parseDim(_attr(data.foregroundVector!, 'viewportWidth')) ??
+          viewportW;
       final fgVpH =
           _parseDim(_attr(data.foregroundVector!, 'viewportHeight')) ??
               viewportH;
@@ -114,12 +112,12 @@ class VectorToSvg {
       if (needsVpScale) {
         contentBuf.writeln(
             '$innerIndent<g transform="scale(${viewportW / fgVpW}, ${viewportH / fgVpH})">');
-        _convertChildren(contentBuf,
-            data.foregroundVector!.childElements, '$innerIndent  ', gradientDefs);
+        _convertChildren(contentBuf, data.foregroundVector!.childElements,
+            '$innerIndent  ', gradientDefs);
         contentBuf.writeln('$innerIndent</g>');
       } else {
-        _convertChildren(contentBuf,
-            data.foregroundVector!.childElements, innerIndent, gradientDefs);
+        _convertChildren(contentBuf, data.foregroundVector!.childElements,
+            innerIndent, gradientDefs);
       }
       if (needsFgScale) {
         contentBuf.writeln('$indent</g>');
@@ -135,8 +133,7 @@ class VectorToSvg {
 
     // <defs>: 圆角裁剪 + 渐变定义
     buf.writeln('  <defs>');
-    buf.writeln(
-        '    <clipPath id="adaptive_clip">');
+    buf.writeln('    <clipPath id="adaptive_clip">');
     buf.writeln(
         '      <rect width="$viewportW" height="$viewportH" rx="$cornerRadius" ry="$cornerRadius"/>');
     buf.writeln('    </clipPath>');
@@ -354,12 +351,15 @@ class VectorToSvg {
       if (fillAlpha != null && fillAlpha < 1.0) {
         buf.write(' fill-opacity="$fillAlpha"');
       }
-    } else if (fillColor != null && fillColor.isNotEmpty && _isColor(fillColor)) {
+    } else if (fillColor != null &&
+        fillColor.isNotEmpty &&
+        _isColor(fillColor)) {
       final svgColor = _androidColorToSvg(fillColor);
       if (svgColor != null) {
         buf.write(' fill="${svgColor.color}"');
         if (svgColor.opacity != null) {
-          final combinedOpacity = (svgColor.opacity ?? 1.0) * (fillAlpha ?? 1.0);
+          final combinedOpacity =
+              (svgColor.opacity ?? 1.0) * (fillAlpha ?? 1.0);
           if (combinedOpacity < 1.0) {
             buf.write(' fill-opacity="$combinedOpacity"');
           }
@@ -389,8 +389,10 @@ class VectorToSvg {
       if (svgColor != null && (strokeWidth ?? 0) > 0) {
         buf.write(' stroke="${svgColor.color}"');
         buf.write(' stroke-width="$strokeWidth"');
-        if (svgColor.opacity != null || (strokeAlpha != null && strokeAlpha < 1.0)) {
-          final combinedOpacity = (svgColor.opacity ?? 1.0) * (strokeAlpha ?? 1.0);
+        if (svgColor.opacity != null ||
+            (strokeAlpha != null && strokeAlpha < 1.0)) {
+          final combinedOpacity =
+              (svgColor.opacity ?? 1.0) * (strokeAlpha ?? 1.0);
           if (combinedOpacity < 1.0) {
             buf.write(' stroke-opacity="$combinedOpacity"');
           }
@@ -527,7 +529,8 @@ class VectorToSvg {
       case 4: // #ARGB
         final a = int.tryParse(hex[0] + hex[0], radix: 16);
         final rgb = hex.substring(1);
-        final expandedRgb = '${rgb[0]}${rgb[0]}${rgb[1]}${rgb[1]}${rgb[2]}${rgb[2]}';
+        final expandedRgb =
+            '${rgb[0]}${rgb[0]}${rgb[1]}${rgb[1]}${rgb[2]}${rgb[2]}';
         return _SvgColor('#$expandedRgb', a != null ? a / 255.0 : null);
       case 6: // #RRGGBB
         return _SvgColor('#$hex', null);

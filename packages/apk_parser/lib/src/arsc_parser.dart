@@ -187,8 +187,7 @@ class ArscParser {
           for (final entryKV in config.entries.entries) {
             final entryIndex = entryKV.key;
             final entry = entryKV.value;
-            final resourceId =
-                (package.id << 24) | (typeId << 16) | entryIndex;
+            final resourceId = (package.id << 24) | (typeId << 16) | entryIndex;
             final keyName =
                 package.keyStringPool.get(entry.keyIndex) ?? 'key$entryIndex';
 
@@ -364,8 +363,7 @@ class ArscParser {
             _parseTypeSpec(reader, chunkHeaderSize, package);
             break;
           case 0x0201: // RES_TABLE_TYPE_TYPE
-            _parseType(
-                reader, chunkStart, chunkHeaderSize, chunkSize, package);
+            _parseType(reader, chunkStart, chunkHeaderSize, chunkSize, package);
             break;
           default:
             // Skip unknown chunk
@@ -383,8 +381,7 @@ class ArscParser {
     return package;
   }
 
-  void _parseTypeSpec(
-      ByteDataReader reader, int headerSize, _Package package) {
+  void _parseTypeSpec(ByteDataReader reader, int headerSize, _Package package) {
     final typeId = reader.readUint8();
     reader.readUint8(); // res0
     reader.readUint16(); // res1
@@ -394,7 +391,8 @@ class ArscParser {
     if (entryCount > reader.remain ~/ 4) {
       return;
     }
-    final entryFlags = List<int>.generate(entryCount, (_) => reader.readUint32());
+    final entryFlags =
+        List<int>.generate(entryCount, (_) => reader.readUint32());
 
     // Get type name
     final typeName = package.typeStringPool.get(typeId - 1) ?? 'type$typeId';
@@ -494,8 +492,7 @@ class ArscParser {
 
     // Ensure TypeSpec exists
     if (!package.typeSpecs.containsKey(typeId)) {
-      final typeName =
-          package.typeStringPool.get(typeId - 1) ?? 'type$typeId';
+      final typeName = package.typeStringPool.get(typeId - 1) ?? 'type$typeId';
       package.typeSpecs[typeId] = TypeSpec(
         id: typeId,
         name: typeName,

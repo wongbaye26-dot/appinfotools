@@ -407,8 +407,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 ),
                 child: Text('default',
                     style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onPrimaryContainer)),
+                        fontSize: 11, color: colorScheme.onPrimaryContainer)),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -439,15 +438,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 const SizedBox(width: 8),
                 Container(
                   width: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(entry.key,
                       style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.onSurfaceVariant)),
+                          fontSize: 11, color: colorScheme.onSurfaceVariant)),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -462,8 +461,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         return items;
       },
       onSelected: (locale) {
-        ref.read(selectedLabelLocaleProvider.notifier).select(
-            locale == _kDefaultLocale ? null : locale);
+        ref
+            .read(selectedLabelLocaleProvider.notifier)
+            .select(locale == _kDefaultLocale ? null : locale);
       },
     );
   }
@@ -480,8 +480,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final isParsing = ref.watch(isParsingProvider);
     final enableSignature = ref
         .watch(settingStateProvider.select((value) => value.enableSignature));
-    final enableHash = ref
-        .watch(settingStateProvider.select((value) => value.enableHash));
+    final enableHash =
+        ref.watch(settingStateProvider.select((value) => value.enableHash));
     final textMaxLines =
         ref.watch(uiConfigStateProvider.select((value) => value.textMaxLines));
     final iconRowSpan =
@@ -520,173 +520,168 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     children: [
-                          Card(
-                              child: TitleValueLayout(
-                                  title: t.file_info.file,
-                                  value: fileState.filePath ?? "",
-                                  end: _buildFileActionMenu())),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.file_info.size,
-                            value: fileState.fileSize != null
-                                ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
-                                : "",
-                          )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.app_name,
-                            value: _getDisplayLabel(apkInfo),
-                            end: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildLabelLocaleMenu(apkInfo),
-                                _buildCopyButton(
-                                    _getDisplayLabel(apkInfo),
-                                    apkInfo?.label != null),
-                              ],
-                            ),
-                          )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.package_name,
-                            value: apkInfo?.packageName ?? "",
-                            end: _buildCopyButton(apkInfo?.packageName,
-                                apkInfo?.packageName != null),
-                          )),
-                          Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.center,
+                      Card(
+                          child: TitleValueLayout(
+                              title: t.file_info.file,
+                              value: fileState.filePath ?? "",
+                              end: _buildFileActionMenu())),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.file_info.size,
+                        value: fileState.fileSize != null
+                            ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
+                            : "",
+                      )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.app_name,
+                        value: _getDisplayLabel(apkInfo),
+                        end: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildLabelLocaleMenu(apkInfo),
+                            _buildCopyButton(_getDisplayLabel(apkInfo),
+                                apkInfo?.label != null),
+                          ],
+                        ),
+                      )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.package_name,
+                        value: apkInfo?.packageName ?? "",
+                        end: _buildCopyButton(
+                            apkInfo?.packageName, apkInfo?.packageName != null),
+                      )),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                              child: Column(
                             children: [
-                              Expanded(
-                                  child: Column(
-                                children: [
-                                  Card(
-                                      child: TitleValueLayout(
-                                    title: t.apk_info.version_code,
-                                    value:
-                                        "${apkInfo?.versionCode ?? ""}",
-                                  )),
-                                  Card(
-                                      child: TitleValueLayout(
-                                    title: t.apk_info.version_name,
-                                    value: apkInfo?.versionName ?? "",
-                                  )),
-                                  if (iconRowSpan >= 3)
-                                    Card(
-                                      child: TitleValueLayout(
-                                        title: t.apk_info.min_sdk,
-                                        value: getSdkVersionText(
-                                            apkInfo?.sdkVersion),
-                                      ),
-                                    ),
-                                  if (apkInfo?.isXapk ?? false)
-                                    Card(
-                                        child: TitleValueLayout(
-                                      title: t.apk_info.archive_type,
-                                      value:
-                                          apkInfo?.archiveType ?? "",
-                                    )),
-                                ],
+                              Card(
+                                  child: TitleValueLayout(
+                                title: t.apk_info.version_code,
+                                value: "${apkInfo?.versionCode ?? ""}",
                               )),
-                              _buildIconWidget(apkInfo, iconRowSpan),
+                              Card(
+                                  child: TitleValueLayout(
+                                title: t.apk_info.version_name,
+                                value: apkInfo?.versionName ?? "",
+                              )),
+                              if (iconRowSpan >= 3)
+                                Card(
+                                  child: TitleValueLayout(
+                                    title: t.apk_info.min_sdk,
+                                    value:
+                                        getSdkVersionText(apkInfo?.sdkVersion),
+                                  ),
+                                ),
+                              if (apkInfo?.isXapk ?? false)
+                                Card(
+                                    child: TitleValueLayout(
+                                  title: t.apk_info.archive_type,
+                                  value: apkInfo?.archiveType ?? "",
+                                )),
                             ],
+                          )),
+                          _buildIconWidget(apkInfo, iconRowSpan),
+                        ],
+                      ),
+                      if (iconRowSpan < 3)
+                        Card(
+                          child: TitleValueLayout(
+                            title: t.apk_info.min_sdk,
+                            value: getSdkVersionText(apkInfo?.sdkVersion),
                           ),
-                          if (iconRowSpan < 3)
-                            Card(
-                              child: TitleValueLayout(
-                                title: t.apk_info.min_sdk,
-                                value: getSdkVersionText(
-                                    apkInfo?.sdkVersion),
-                              ),
-                            ),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.target_sdk,
-                            value: getSdkVersionText(apkInfo?.targetSdkVersion),
-                          )),
-                          if (apkInfo?.isXapk ?? false)
-                            Card(
-                                child: TitleValueLayout(
-                              title: t.apk_info.split_apks,
-                              value: apkInfo?.splitApks.join("\n") ?? "",
-                              minLines: 1,
-                              maxLines: textMaxLines,
-                              selectable: true,
-                            )),
-                          if ((apkInfo?.obbFiles.isNotEmpty ?? false))
-                            Card(
-                                child: TitleValueLayout(
-                              title: t.apk_info.obb_files,
-                              value: apkInfo?.obbFiles.join("\n") ?? "",
-                              minLines: 1,
-                              maxLines: textMaxLines,
-                              selectable: true,
-                            )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.screen_size,
-                            value: apkInfo?.supportsScreens.join(" ") ?? "",
-                          )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.screen_density,
-                            value: apkInfo?.densities.join(" ") ?? "",
-                          )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.abi,
-                            value: apkInfo?.nativeCodes.join(" ") ?? "",
-                          )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.languages,
-                            value: apkInfo?.locales.join(" ") ?? "",
-                          )),
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.permissions,
-                            value: apkInfo?.usesPermissions.join("\n") ?? "",
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: true,
-                          )),
-                          // MD5 哈希值
-                          if (enableHash)
-                            Card(
-                                child: TitleValueLayout(
-                              title: t.file_info.md5,
-                              value: fileState.isComputingHash
-                                  ? t.file_info.computing_hash
-                                  : (fileState.md5Hash ?? ""),
-                              end: _buildCopyButton(
-                                  fileState.md5Hash,
-                                  fileState.md5Hash != null &&
-                                      !fileState.isComputingHash),
-                            )),
-                          // SHA1 哈希值
-                          if (enableHash)
-                            Card(
-                                child: TitleValueLayout(
-                              title: t.file_info.sha1,
-                              value: fileState.isComputingHash
-                                  ? t.file_info.computing_hash
-                                  : (fileState.sha1Hash ?? ""),
-                              end: _buildCopyButton(
-                                  fileState.sha1Hash,
-                                  fileState.sha1Hash != null &&
-                                      !fileState.isComputingHash),
-                            )),
-                          if (enableSignature && !(apkInfo?.isXapk ?? false))
-                            Card(
-                                child: TitleValueLayout(
-                              title: t.apk_info.signature_info,
-                              value: fileState.isComputingSignature
-                                  ? t.file_info.computing_hash
-                                  : (fileState.signatureInfo ?? ""),
-                              minLines: 1,
-                              maxLines: textMaxLines,
-                              selectable: !fileState.isComputingSignature,
-                            )),
+                        ),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.target_sdk,
+                        value: getSdkVersionText(apkInfo?.targetSdkVersion),
+                      )),
+                      if (apkInfo?.isXapk ?? false)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.split_apks,
+                          value: apkInfo?.splitApks.join("\n") ?? "",
+                          minLines: 1,
+                          maxLines: textMaxLines,
+                          selectable: true,
+                        )),
+                      if ((apkInfo?.obbFiles.isNotEmpty ?? false))
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.obb_files,
+                          value: apkInfo?.obbFiles.join("\n") ?? "",
+                          minLines: 1,
+                          maxLines: textMaxLines,
+                          selectable: true,
+                        )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.screen_size,
+                        value: apkInfo?.supportsScreens.join(" ") ?? "",
+                      )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.screen_density,
+                        value: apkInfo?.densities.join(" ") ?? "",
+                      )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.abi,
+                        value: apkInfo?.nativeCodes.join(" ") ?? "",
+                      )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.languages,
+                        value: apkInfo?.locales.join(" ") ?? "",
+                      )),
+                      Card(
+                          child: TitleValueLayout(
+                        title: t.apk_info.permissions,
+                        value: apkInfo?.usesPermissions.join("\n") ?? "",
+                        minLines: 1,
+                        maxLines: textMaxLines,
+                        selectable: true,
+                      )),
+                      // MD5 哈希值
+                      if (enableHash)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.file_info.md5,
+                          value: fileState.isComputingHash
+                              ? t.file_info.computing_hash
+                              : (fileState.md5Hash ?? ""),
+                          end: _buildCopyButton(
+                              fileState.md5Hash,
+                              fileState.md5Hash != null &&
+                                  !fileState.isComputingHash),
+                        )),
+                      // SHA1 哈希值
+                      if (enableHash)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.file_info.sha1,
+                          value: fileState.isComputingHash
+                              ? t.file_info.computing_hash
+                              : (fileState.sha1Hash ?? ""),
+                          end: _buildCopyButton(
+                              fileState.sha1Hash,
+                              fileState.sha1Hash != null &&
+                                  !fileState.isComputingHash),
+                        )),
+                      if (enableSignature && !(apkInfo?.isXapk ?? false))
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.signature_info,
+                          value: fileState.isComputingSignature
+                              ? t.file_info.computing_hash
+                              : (fileState.signatureInfo ?? ""),
+                          minLines: 1,
+                          maxLines: textMaxLines,
+                          selectable: !fileState.isComputingSignature,
+                        )),
                     ],
                   ),
                 ),
@@ -728,8 +723,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   PopupMenuButton<String> _buildMoreMenuButton(BuildContext context) {
     final apkInfo = ref.watch(currentApkInfoProvider);
     final state = ref.watch(currentFileStateProvider);
-    log.fine(
-        "_buildMoreMenuButton: state.filePath=${state.filePath}");
+    log.fine("_buildMoreMenuButton: state.filePath=${state.filePath}");
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_horiz),
       tooltip: t.home.more_actions,
@@ -942,16 +936,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     // 导出分组
-    items.add(_buildMenuItem(
-        'export_png', Icons.image, t.icon.export_as_png,
+    items.add(_buildMenuItem('export_png', Icons.image, t.icon.export_as_png,
         enabled: apkInfo.mainIconImage != null));
 
     // SVG 导出（仅 XML 矢量图候选可用）
     final isXmlVector = selectedIndex >= 0 &&
         selectedIndex < candidates.length &&
         candidates[selectedIndex].type == IconCandidateType.xmlVector;
-    items.add(_buildMenuItem(
-        'export_svg', Icons.code, t.icon.export_as_svg,
+    items.add(_buildMenuItem('export_svg', Icons.code, t.icon.export_as_svg,
         enabled: apkInfo.mainIconImage != null && isXmlVector));
 
     items.add(_buildMenuItem(
@@ -1013,8 +1005,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 使用高清渲染导出（XML 矢量图 1024x1024 + 透明背景）
       ui.Image? exportImage;
       bool needDisposeExport = false;
-      if (selectedIndex >= 0 &&
-          selectedIndex < apkInfo.iconCandidates.length) {
+      if (selectedIndex >= 0 && selectedIndex < apkInfo.iconCandidates.length) {
         exportImage = await apkInfo.renderIconForExport(selectedIndex);
         if (exportImage != null) {
           needDisposeExport = true;
@@ -1106,8 +1097,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       String ext = '.png';
 
       // 尝试从 APK 中读取原始文件字节
-      if (selectedIndex >= 0 &&
-          selectedIndex < apkInfo.iconCandidates.length) {
+      if (selectedIndex >= 0 && selectedIndex < apkInfo.iconCandidates.length) {
         final candidate = apkInfo.iconCandidates[selectedIndex];
         if (candidate.rawBytes == null) {
           final zip = ZipHelper();
@@ -1128,8 +1118,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       if (bytes == null) {
         final image = apkInfo.mainIconImage;
         if (image == null) return;
-        final byteData =
-            await image.toByteData(format: ui.ImageByteFormat.png);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) return;
         bytes = byteData.buffer.asUint8List();
         ext = '.png';

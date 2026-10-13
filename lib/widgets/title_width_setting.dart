@@ -48,9 +48,7 @@ class _TitleWidthSettingState extends ConsumerState<TitleWidthSetting> {
                 divisions: 24,
                 label: currentWidth.round().toString(),
                 onChanged: (value) {
-                  ref
-                      .read(currentTitleWidthProvider.notifier)
-                      .setWidth(value);
+                  ref.read(currentTitleWidthProvider.notifier).setWidth(value);
                 },
                 onChangeEnd: (value) {
                   ref

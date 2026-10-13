@@ -59,8 +59,7 @@ class ResourceInfo {
 
   String get name => '$typeName/$keyName';
 
-  String get idHex =>
-      '0x${resourceId.toRadixString(16).padLeft(8, '0')}';
+  String get idHex => '0x${resourceId.toRadixString(16).padLeft(8, '0')}';
 }
 
 class ActivityInfo {

@@ -39,9 +39,8 @@ class ToolDownloader {
       indexUrls,
       options.onProgress,
     );
-    final platformArchive = options.downloadPlatformTools
-        ? _selectPlatformTools(xmlContent)
-        : null;
+    final platformArchive =
+        options.downloadPlatformTools ? _selectPlatformTools(xmlContent) : null;
     final buildTools =
         options.downloadBuildTools ? _selectBuildTools(xmlContent) : null;
 
@@ -232,7 +231,8 @@ class ToolDownloader {
           detail: uri.toFilePath(),
         );
       }
-      final dir = await Directory.systemTemp.createTemp('apk_info_tool_$prefix');
+      final dir =
+          await Directory.systemTemp.createTemp('apk_info_tool_$prefix');
       final target = File(path.join(dir.path, path.basename(uri.path)));
       await source.copy(target.path);
       return target;
@@ -251,7 +251,8 @@ class ToolDownloader {
         throw Exception('HTTP ${response.statusCode}');
       }
       final bytes = await _readResponseBytes(response, onProgress);
-      final dir = await Directory.systemTemp.createTemp('apk_info_tool_$prefix');
+      final dir =
+          await Directory.systemTemp.createTemp('apk_info_tool_$prefix');
       final file = File(path.join(dir.path, path.basename(uri.path)));
       await file.writeAsBytes(bytes, flush: true);
       return file;
@@ -456,17 +457,14 @@ class ToolDownloader {
     if (pathValue.contains(';')) {
       return pathValue.split(';').last;
     }
-    final versionMatch =
-        RegExp(r'<revision>\s*<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>')
-            .firstMatch(body);
+    final versionMatch = RegExp(
+            r'<revision>\s*<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>')
+        .firstMatch(body);
     if (versionMatch == null) {
       return null;
     }
-    return [
-      versionMatch.group(1),
-      versionMatch.group(2),
-      versionMatch.group(3)
-    ].join('.');
+    return [versionMatch.group(1), versionMatch.group(2), versionMatch.group(3)]
+        .join('.');
   }
 
   /// 从 `<complete>` 片段中解析出全部 `<checksum type="...">value</checksum>`。
@@ -499,8 +497,7 @@ class ToolDownloader {
         continue;
       }
       final completeBody = completeMatch.group(1) ?? '';
-      final urlMatch =
-          RegExp(r'<url>([^<]+)</url>').firstMatch(completeBody);
+      final urlMatch = RegExp(r'<url>([^<]+)</url>').firstMatch(completeBody);
       if (urlMatch == null) {
         continue;
       }
@@ -525,8 +522,7 @@ class ToolDownloader {
         continue;
       }
       final completeBody = completeMatch.group(1) ?? '';
-      final urlMatch =
-          RegExp(r'<url>([^<]+)</url>').firstMatch(completeBody);
+      final urlMatch = RegExp(r'<url>([^<]+)</url>').firstMatch(completeBody);
       if (urlMatch == null) {
         continue;
       }
@@ -562,7 +558,8 @@ class ToolDownloader {
   ///
   /// 索引未提供任何校验和时**拒绝安装**，而不是放行——这些归档最终会成为
   /// 被本进程直接执行的 adb/aapt2/apksigner。
-  static Future<void> _verifyArchiveChecksum(File file, ArchiveInfo info) async {
+  static Future<void> _verifyArchiveChecksum(
+      File file, ArchiveInfo info) async {
     final expected = info.preferredDigest;
     if (expected == null || expected.isEmpty) {
       throw ToolDownloadException(
@@ -623,6 +620,7 @@ enum ToolDownloadError {
   buildToolsMissing,
   archiveDownload,
   fileNotFound,
+
   /// 下载产物与仓库索引声明的校验和不匹配，或索引未提供校验和。
   checksumMismatch,
   unknown,

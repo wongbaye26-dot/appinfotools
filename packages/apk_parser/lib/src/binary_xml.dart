@@ -186,8 +186,8 @@ class BinaryXmlDecompressor {
         case END_NAMESPACE_TAG:
           break;
         case RES_XML_RESOURCE_MAP_TYPE:
-          resourceIdMap = _parseResourceIdMap(
-              reader, chunkStart, headerSize, chunkSize);
+          resourceIdMap =
+              _parseResourceIdMap(reader, chunkStart, headerSize, chunkSize);
           break;
         case START_ELEMENT_TAG:
           parseStartTag(result, reader, packedStrings, resourceIdMap, ident);
@@ -243,12 +243,12 @@ class BinaryXmlDecompressor {
         case END_NAMESPACE_TAG:
           break;
         case RES_XML_RESOURCE_MAP_TYPE:
-          resourceIdMap = _parseResourceIdMap(
-              reader, chunkStart, headerSize, chunkSize);
+          resourceIdMap =
+              _parseResourceIdMap(reader, chunkStart, headerSize, chunkSize);
           break;
         case START_ELEMENT_TAG:
-          final element =
-              _parseStartElement(reader, packedStrings, resourceIdMap, chunkEnd);
+          final element = _parseStartElement(
+              reader, packedStrings, resourceIdMap, chunkEnd);
           stack.last.children.add(element);
           stack.add(element);
           break;
@@ -272,9 +272,8 @@ class BinaryXmlDecompressor {
 
   /// Parse a START_ELEMENT_TAG into an [XmlElement] with name and attributes.
   /// [chunkEnd] 是当前 chunk 的结束位置，用于读取移位属性的溢出数据。
-  XmlElement _parseStartElement(
-      ByteDataReader reader, List<String> packedStrings,
-      List<int> resourceIdMap, int chunkEnd) {
+  XmlElement _parseStartElement(ByteDataReader reader,
+      List<String> packedStrings, List<int> resourceIdMap, int chunkEnd) {
     final element = XmlElement();
 
     // Skip line number and comment
@@ -362,14 +361,13 @@ class BinaryXmlDecompressor {
       }
 
       // 普通属性处理
-      String attributeName = _resolveStringOrResourceId(
-          packedStrings, resourceIdMap, attrName);
+      String attributeName =
+          _resolveStringOrResourceId(packedStrings, resourceIdMap, attrName);
       if (attributeName.isEmpty) attributeName = "attr_$attrName";
 
-      String attributeValue =
-          _resolveAttributeValue(attrType, attrData,
-              attrRawValue, packedStrings,
-              resIdMapLength: resourceIdMap.length);
+      String attributeValue = _resolveAttributeValue(
+          attrType, attrData, attrRawValue, packedStrings,
+          resIdMapLength: resourceIdMap.length);
 
       // 不用空值覆盖已有的有效值（混淆 APK 可能有重复属性名）
       final existing = element.attributes[attributeName];
@@ -512,9 +510,8 @@ class BinaryXmlDecompressor {
     sb.write('>\n');
   }
 
-  void parseStartTag(
-      StringBuffer sb, ByteDataReader reader, List<String> strings,
-      List<int> resourceIdMap, int ident) {
+  void parseStartTag(StringBuffer sb, ByteDataReader reader,
+      List<String> strings, List<int> resourceIdMap, int ident) {
     sb.write(' ' * (ident * IDENT_SIZE));
     sb.write('<');
     //Skipping 3 integers:
@@ -529,16 +526,15 @@ class BinaryXmlDecompressor {
     }
 
     int nameStringIndex = reader.readInt32();
-    final tagName = _resolveStringOrResourceId(
-        strings, resourceIdMap, nameStringIndex);
+    final tagName =
+        _resolveStringOrResourceId(strings, resourceIdMap, nameStringIndex);
     sb.write(tagName.isNotEmpty ? tagName : 'unknown');
     parseAttributes(sb, reader, strings, resourceIdMap, ident);
     sb.write('>\n');
   }
 
-  void parseAttributes(
-      StringBuffer sb, ByteDataReader reader, List<String> strings,
-      List<int> resourceIdMap, int ident) {
+  void parseAttributes(StringBuffer sb, ByteDataReader reader,
+      List<String> strings, List<int> resourceIdMap, int ident) {
     int marker = reader.readInt32();
     if (marker != ATTRS_MARKER) {
       // Non-fatal marker mismatch
@@ -703,7 +699,9 @@ class BinaryXmlDecompressor {
 
     // Guard against hostile numStrings causing unbounded allocation.
     // Each string needs at least a 4-byte offset entry in the buffer.
-    if (numStrings < 0 || numStrings > (dataSize ~/ 4) || numStrings > (1 << 20)) {
+    if (numStrings < 0 ||
+        numStrings > (dataSize ~/ 4) ||
+        numStrings > (1 << 20)) {
       return [];
     }
     List<String> packedStrings = List<String>.filled(numStrings, '');

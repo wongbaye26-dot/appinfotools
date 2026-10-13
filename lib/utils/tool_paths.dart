@@ -211,7 +211,8 @@ class ToolPaths {
   static int _compareVersion(String a, String b) {
     final aParts = _parseVersion(a);
     final bParts = _parseVersion(b);
-    final maxLength = aParts.length > bParts.length ? aParts.length : bParts.length;
+    final maxLength =
+        aParts.length > bParts.length ? aParts.length : bParts.length;
     for (var i = 0; i < maxLength; i++) {
       final aValue = i < aParts.length ? aParts[i] : 0;
       final bValue = i < bParts.length ? bParts[i] : 0;
@@ -223,10 +224,6 @@ class ToolPaths {
   }
 
   static List<int> _parseVersion(String value) {
-    return value
-        .split('.')
-        .map((part) => int.tryParse(part) ?? 0)
-        .toList();
+    return value.split('.').map((part) => int.tryParse(part) ?? 0).toList();
   }
-
 }

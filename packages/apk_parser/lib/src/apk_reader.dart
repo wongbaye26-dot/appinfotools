@@ -130,8 +130,8 @@ class ApkReader {
     return files
         .where((f) => f.isFile)
         .map((f) => f.name)
-        .where((name) =>
-            lowerExt == null || name.toLowerCase().endsWith(lowerExt))
+        .where(
+            (name) => lowerExt == null || name.toLowerCase().endsWith(lowerExt))
         .toList();
   }
 

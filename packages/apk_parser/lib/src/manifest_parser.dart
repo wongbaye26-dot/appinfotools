@@ -38,8 +38,7 @@ class ManifestParser {
     final usesSdk = _findElement(manifest, 'uses-sdk');
     if (usesSdk != null) {
       meta.minSdkVersion = _parseInt(usesSdk.attributes['minSdkVersion']);
-      meta.targetSdkVersion =
-          _parseInt(usesSdk.attributes['targetSdkVersion']);
+      meta.targetSdkVersion = _parseInt(usesSdk.attributes['targetSdkVersion']);
     }
 
     // <uses-permission>
@@ -105,8 +104,7 @@ class ManifestParser {
       }
 
       for (final activity in application.children) {
-        if (activity.name != 'activity' &&
-            activity.name != 'activity-alias') {
+        if (activity.name != 'activity' && activity.name != 'activity-alias') {
           continue;
         }
         if (_isLaunchableActivity(activity)) {
@@ -134,8 +132,7 @@ class ManifestParser {
       bool hasLauncher = false;
       for (final filterChild in child.children) {
         if (filterChild.name == 'action' &&
-            filterChild.attributes['name'] ==
-                'android.intent.action.MAIN') {
+            filterChild.attributes['name'] == 'android.intent.action.MAIN') {
           hasMain = true;
         }
         if (filterChild.name == 'category' &&
@@ -191,7 +188,8 @@ class ManifestParser {
   }
 
   /// 启发式版本名查找：在属性值和 extraStrings 中寻找版本号模式
-  static final _versionPattern = RegExp(r'^\d+\.\d+(\.\d+)*([.\-_a-zA-Z0-9]*)$');
+  static final _versionPattern =
+      RegExp(r'^\d+\.\d+(\.\d+)*([.\-_a-zA-Z0-9]*)$');
 
   static String? _guessVersionName(XmlElement manifest) {
     // 先搜索属性值

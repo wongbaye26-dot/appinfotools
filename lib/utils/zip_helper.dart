@@ -52,8 +52,7 @@ class ZipHelper {
         .toList();
   }
 
-  String _safeJoin(String root, String entry) =>
-      ZipGuard.safeJoin(root, entry);
+  String _safeJoin(String root, String entry) => ZipGuard.safeJoin(root, entry);
 
   // ZIP bomb protection
   bool _isZipBomb(Archive archive) => ZipGuard.isBomb(archive);

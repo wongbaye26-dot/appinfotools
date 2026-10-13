@@ -27,19 +27,15 @@ class XapkInstaller {
   }
 
   List<String> _splitApksFromManifest(Map<String, dynamic> manifest) {
-    final rawSplits = manifest['split_apks'] ??
-        manifest['apks'] ??
-        manifest['splits'];
+    final rawSplits =
+        manifest['split_apks'] ?? manifest['apks'] ?? manifest['splits'];
     if (rawSplits is List) {
       return rawSplits
           .map((e) {
             if (e is String) return e;
             if (e is Map) {
               final map = Map<String, dynamic>.from(e);
-              return (map['file'] ??
-                      map['path'] ??
-                      map['apk'] ??
-                      map['name'])
+              return (map['file'] ?? map['path'] ?? map['apk'] ?? map['name'])
                   ?.toString();
             }
             return null;
@@ -55,7 +51,8 @@ class XapkInstaller {
     return (manifest['package_name'] ?? manifest['packageName'])?.toString();
   }
 
-  Map<String, String> _expansionPathsFromManifest(Map<String, dynamic> manifest) {
+  Map<String, String> _expansionPathsFromManifest(
+      Map<String, dynamic> manifest) {
     final expansions = manifest['expansions'] ?? manifest['obb_files'];
     if (expansions is! List) return {};
     final map = <String, String>{};
@@ -165,7 +162,6 @@ class XapkInstaller {
   String _safeExtractJoin(String root, String entry) =>
       ZipGuard.safeJoin(root, entry);
 
-
   Future<bool> install(
     String xapkPath,
     String deviceId,
@@ -273,8 +269,9 @@ class XapkInstaller {
         packageName ??= baseApkPath == null
             ? null
             : await _extractPackageNameFromApk(baseApkPath);
-        final expansionPaths =
-            manifest == null ? <String, String>{} : _expansionPathsFromManifest(
+        final expansionPaths = manifest == null
+            ? <String, String>{}
+            : _expansionPathsFromManifest(
                 manifest,
               );
 
@@ -301,8 +298,7 @@ class XapkInstaller {
             final marker = 'Android/obb/';
             final markerIndex = normalized.indexOf(marker);
             if (markerIndex != -1) {
-              devicePath =
-                  '/sdcard/${normalized.substring(markerIndex)}';
+              devicePath = '/sdcard/${normalized.substring(markerIndex)}';
             } else if (packageName != null && packageName.isNotEmpty) {
               devicePath = '/sdcard/Android/obb/$packageName/$obbName';
             }

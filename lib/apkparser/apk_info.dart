@@ -44,7 +44,8 @@ class IconCandidate {
     int? dpiValue;
 
     // 从路径目录名中提取 DPI（如 mipmap-xxxhdpi-v4/）
-    final dpiMatch = RegExp(r'[/-](nodpi|anydpi(?:-v\d+)?|[a-z]*dpi)(?:[/-])').firstMatch(lower);
+    final dpiMatch = RegExp(r'[/-](nodpi|anydpi(?:-v\d+)?|[a-z]*dpi)(?:[/-])')
+        .firstMatch(lower);
     if (dpiMatch != null) {
       dpiLabel = dpiMatch.group(1);
       dpiValue = _dpiLabelToValue(dpiLabel);
@@ -313,8 +314,8 @@ Future<ApkInfo?> getApkInfo(String apk) async {
 
       // 优先加载打包文件自带的图标（xapk/apkm 自身携带的 icon）
       final iconSw = Stopwatch()..start();
-      final xapkIcon = await loadXapkIcon(apk,
-          iconPath: manifest?.icon, sharedZip: zip);
+      final xapkIcon =
+          await loadXapkIcon(apk, iconPath: manifest?.icon, sharedZip: zip);
       if (xapkIcon != null) {
         apkInfo.mainIconImage = xapkIcon;
       }
@@ -354,7 +355,9 @@ Future<ApkInfo?> getApkInfo(String apk) async {
               parseMs = parseSw.elapsedMilliseconds;
               // 仅在打包文件不包含图标时，才从 base APK 加载图标
               if (apkInfo.mainIconImage == null) {
-                iconSw..reset()..start();
+                iconSw
+                  ..reset()
+                  ..start();
                 final iconImage = await apkInfo.loadIcon();
                 if (iconImage != null) {
                   apkInfo.mainIconImage = iconImage;
@@ -427,7 +430,8 @@ Future<ApkInfo?> getApkInfo(String apk) async {
     }
 
     totalSw.stop();
-    log.info("[PERF] getApkInfo(archive): total=${totalSw.elapsedMilliseconds}ms"
+    log.info(
+        "[PERF] getApkInfo(archive): total=${totalSw.elapsedMilliseconds}ms"
         " | zip_open=${zipOpenMs}ms"
         " | xapk_manifest=${manifestMs}ms"
         " | zip_extract=${extractMs}ms"
@@ -504,7 +508,9 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
 
   final reader = apk_parser.ApkReader();
   try {
-    phaseSw..reset()..start();
+    phaseSw
+      ..reset()
+      ..start();
     if (!await reader.open(apk)) {
       log.warning("_getApkInfoBuiltin: failed to open APK");
       return null;
@@ -514,7 +520,9 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
     // 先 yield 让 UI 渲染 loading 指示器，再执行 CPU 密集型解析
     await Future<void>.delayed(Duration.zero);
 
-    phaseSw..reset()..start();
+    phaseSw
+      ..reset()
+      ..start();
     final meta = await reader.parse();
     final parseMs = phaseSw.elapsedMilliseconds;
 
@@ -532,7 +540,9 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
     }
 
     // 图标加载（复用现有逻辑）
-    phaseSw..reset()..start();
+    phaseSw
+      ..reset()
+      ..start();
     final iconImage = await apkInfo.loadIcon();
     if (iconImage != null) {
       apkInfo.mainIconImage ??= iconImage;
@@ -541,7 +551,8 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
     final iconMs = phaseSw.elapsedMilliseconds;
 
     totalSw.stop();
-    log.info("[PERF] getApkInfo(builtin): total=${totalSw.elapsedMilliseconds}ms"
+    log.info(
+        "[PERF] getApkInfo(builtin): total=${totalSw.elapsedMilliseconds}ms"
         " | open=${openMs}ms | parse=${parseMs}ms"
         " | icon=${iconMs}ms");
 
@@ -675,8 +686,7 @@ String _generateTextInfo(apk_parser.ApkMeta meta) {
 
   // native code
   if (meta.nativeCodes.isNotEmpty) {
-    sb.writeln(
-        "native-code: ${meta.nativeCodes.map((n) => "'$n'").join(' ')}");
+    sb.writeln("native-code: ${meta.nativeCodes.map((n) => "'$n'").join(' ')}");
   }
 
   return sb.toString();
@@ -879,8 +889,7 @@ class ApkInfo {
       default:
         {
           if (key.startsWith("application-label-")) {
-            labels[key.substring("application-label-".length)] =
-                value.trimSQ();
+            labels[key.substring("application-label-".length)] = value.trimSQ();
           } else if (key.startsWith("application-icon-")) {
             icons[key.substring("application-icon-".length)] = value.trimSQ();
           } else {
@@ -1004,7 +1013,8 @@ class ApkInfo {
     return score;
   }
 
-  List<String> _findUnknownCandidatePaths(List<String> allFiles, String candidate) {
+  List<String> _findUnknownCandidatePaths(
+      List<String> allFiles, String candidate) {
     final raw = candidate.trim();
     if (raw.isEmpty) return const [];
     final normalized = raw.replaceAll('\\', '/');
@@ -1130,7 +1140,8 @@ class ApkInfo {
             })
             .toSet()
             .toList()
-          ..sort((a, b) => _unknownPathScore(b).compareTo(_unknownPathScore(a)));
+          ..sort(
+              (a, b) => _unknownPathScore(b).compareTo(_unknownPathScore(a)));
         for (final candidate in fallbackCandidates) {
           if (prioritizedSeen.add(candidate)) {
             validPaths.add(candidate);
@@ -1152,7 +1163,8 @@ class ApkInfo {
         }
       }
 
-      log.fine('collectIconCandidates: found ${iconCandidates.length} candidates: ${iconCandidates.map((c) => c.path).join(", ")}');
+      log.fine(
+          'collectIconCandidates: found ${iconCandidates.length} candidates: ${iconCandidates.map((c) => c.path).join(", ")}');
     } catch (e) {
       log.warning('collectIconCandidates: 收集图标候选失败: $e');
     } finally {
@@ -1163,7 +1175,8 @@ class ApkInfo {
   }
 
   /// 渲染指定索引的候选图标，结果缓存到 IconCandidate.renderedImage
-  Future<Image?> renderIcon(int index, {
+  Future<Image?> renderIcon(
+    int index, {
     ZipHelper? sharedZip,
     AdaptiveIconRenderer? sharedRenderer,
   }) async {
@@ -1267,7 +1280,8 @@ class ApkInfo {
 
       // 按顺序尝试渲染，直到成功
       for (var i = 0; i < iconCandidates.length; i++) {
-        final image = await renderIcon(i,
+        final image = await renderIcon(
+          i,
           sharedZip: zip,
           sharedRenderer: sharedRenderer,
         );
@@ -1359,14 +1373,12 @@ class ApkInfo {
           await renderer.resolveAdaptiveIconForSvg(candidate.path);
       if (adaptiveData != null) {
         if (adaptiveData.backgroundVector != null) {
-          await renderer
-              .resolveVectorColorRefs(adaptiveData.backgroundVector!);
+          await renderer.resolveVectorColorRefs(adaptiveData.backgroundVector!);
           await renderer
               .resolveVectorGradientRefs(adaptiveData.backgroundVector!);
         }
         if (adaptiveData.foregroundVector != null) {
-          await renderer
-              .resolveVectorColorRefs(adaptiveData.foregroundVector!);
+          await renderer.resolveVectorColorRefs(adaptiveData.foregroundVector!);
           await renderer
               .resolveVectorGradientRefs(adaptiveData.foregroundVector!);
         }
