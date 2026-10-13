@@ -65,6 +65,31 @@ flutter test
 - **畸形/对抗性样本**才手工构造（没有工具能生成自引用 plist、越界偏移等），
   而它们断言的是「必须被拒绝」。
 - 写测试后**做反向验证**：把修复去掉，确认测试真的会红。这一步抓到过多个空断言。
+- **UI 测试要把 `APKInfoPage` 放进 `Scaffold`**（真实树是 `HomePage` 的 Scaffold）：
+  直接当 `MaterialApp.home` 时，环境 `DefaultTextStyle` 是 `WidgetsApp` 的
+  `_errorTextStyle`（monospace + 下划线 + w900），页面会以错误的字体渲染。
+- **能渲染就渲染出来看**：把详情页用 `RepaintBoundary.toImage` 落成 PNG
+  （加载系统字体 `/System/Library/Fonts/Supplemental/Arial Unicode.ttf` 与
+  `Monaco.ttf`）比逐行读代码有效得多 —— 「容器」卡片上的 `Closure: ...` 和
+  分组标题的色块都是这样发现的，读代码和断言都看不出来。
+
+## UI 约定
+
+- **`SelectableText` 的 `maxLines` 是高度预留，也是裁剪**，两件事都要当心：
+  - 只给 `maxLines` 不给 `minLines` 时，一行内容也按 `maxLines` 行高排版
+    （实测 `maxLines: 6` 的单行卡片 136px，补 `minLines: 1` 后 39px）。
+    `TitleValueLayout` 因此把 `minLines` 默认成 1，并夹紧到 `maxLines` 以内
+    （设置页允许把上限调到 0，写死的 1 会触发 `assert(minLines <= maxLines)`）。
+  - 超过 `maxLines` 的行**根本不会被绘制**，不是溢出滚动。安全相关的长文本
+    （签名、容器清单、诊断）一律不设上限。
+- **不靠环境 `DefaultTextStyle` 继承字体**：没有 `Material`/`Card` 祖先的组件
+  继承到的是 `WidgetsApp` 的报错样式。样式一律以 `theme.textTheme.*` 为基底
+  `copyWith`。
+- 平台视觉区分**不能只靠颜色**：主题色可被用户改，色觉障碍也存在。
+  APK 与 IPA 两页的差异以结构为主（IPA 分组 + Hero 卡片 + 等宽标识符），
+  颜色只是强化。
+- 分组标题与卡片标题**不得同名**（四种语言里都得检查），否则界面上是两行
+  一模一样的字。
 
 ## 解析安全约定
 
@@ -86,8 +111,12 @@ flutter test
 - **`absent` 与其余状态在 UI 上必须渲染不同**：`absent` 是「文件里没有」，
   渲染成「-」；`failed` / `wrongType` 是「我们没读到」，必须带上状态名与原因。
   把后者渲染成空串等于把「读不到」说成「没有」。
-- 新增 i18n 键后**必须重跑 `dart run build_runner build`**，否则生成代码里没有该 getter。
-  ja / ko 走 `fallback_strategy: base_locale` 回退，只改 en + zh-* 即可。
+- 新增 i18n 键后**必须重新生成**：`dart run slang`（或 `dart run build_runner build`），
+  否则生成代码里没有该 getter。ja / ko 走 `fallback_strategy: base_locale` 回退，
+  只改 en + zh-CN / zh-HK / zh-TW 即可。
+- **带 `{占位符}` 的键是方法，不是 getter**。漏传实参不会编译报错，但会把函数
+  对象插进字符串（界面上出现 `Closure: ...`）。`test/i18n_placeholder_usage_test.dart`
+  扫源码兜住这一类，分析器看不见。
 
 ## 已知局限（写进代码，不粉饰）
 
@@ -97,7 +126,11 @@ flutter test
   但 kill 只及直接子进程（apksigner 是启动 java 的脚本，孙进程可能短暂存活）。
 - aapt2 / XAPK 路径仍走 `Process.run`，未接入 worker isolate，**不可取消**。
 - 跨平台 `flutter build` 未验证（本机无完整 Xcode）。
-- 无真实 APK/IPA 样本，交付要求 7 未能产出。
+- 真实样本（加固 APK + 签名 IPA）的解析与界面端到端**已跑通**，但样本不进版本库，
+  需设 `APPINFOTOOL_SAMPLES=/tmp/samples`；未设置时整体显式跳过。
+  尚未执行的是**交互**部分：拖放、取消解析、导出报告。
+- Android 侧没有任何 `AnalysisDiagnostic` 产出者，「解析诊断」卡片恒为空。
+- `Assets.car` 里的图标不提取（需要 LZFSE 解码器），只如实说明取不到。
 - 沙箱不允许枚举进程（`ps` 报 `Operation not permitted`），
   「超时后无残留子进程」的断言在本机未真正执行。
 - ZIP 里的符号链接被当作普通文件写出（不建链接，避免逃逸），
