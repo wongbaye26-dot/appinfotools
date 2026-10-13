@@ -23,7 +23,13 @@ enum FieldStatus {
   ///
   /// 与 [failed] 的区别：这里容器本身是好的、解析过程也没有报错，只是内容
   /// 看起来被改写或加密了 —— 结论是「读不到」，不是「读坏了」。
-  hardenedUnknown;
+  hardenedUnknown,
+
+  /// 本次**没有去算**该字段（用户在设置里关掉了对应功能）。
+  ///
+  /// 与 [absent] 的区别很关键：这不是「文件里没有」，而是「我们没看」。
+  /// 把它当成 absent 会让用户以为文件缺少该信息。
+  notRequested;
 
   /// 是否拿到了可用值。
   bool get hasValue => this == FieldStatus.extracted;
@@ -34,7 +40,8 @@ enum FieldStatus {
   bool get isInconclusive =>
       this == FieldStatus.unsupported ||
       this == FieldStatus.failed ||
-      this == FieldStatus.hardenedUnknown;
+      this == FieldStatus.hardenedUnknown ||
+      this == FieldStatus.notRequested;
 }
 
 /// 字段值的来源。
@@ -118,6 +125,13 @@ class FieldValue<T> {
     this.source = FieldSource.unknown,
   })  : value = null,
         status = FieldStatus.hardenedUnknown;
+
+  /// 本次未计算（对应功能被关闭）。
+  const FieldValue.notRequested({
+    this.diagnostic,
+    this.source = FieldSource.unknown,
+  })  : value = null,
+        status = FieldStatus.notRequested;
 
   /// 是否有可用值。
   bool get hasValue => status.hasValue && value != null;

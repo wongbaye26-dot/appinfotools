@@ -128,6 +128,7 @@
     "size": "크기",
     "md5": "MD5",
     "sha1": "SHA1",
+    "sha256": "SHA-256",
     "computing_hash": "계산 중..."
   },
   "apk_info": {
@@ -155,6 +156,10 @@
     "exported_by_default": "기본으로 내보내짐",
     "component_permission": "권한",
     "component_unnamed": "(이름을 가져올 수 없음)",
+    "diagnostics": "분석 진단",
+    "hardening_summary": "패킹 가능성: 원본 내용을 확인할 수 없습니다",
+    "confidence_strong": "강한 단서",
+    "confidence_weak": "약한 단서",
     "text_info": "텍스트 정보"
   },
   "icon": {

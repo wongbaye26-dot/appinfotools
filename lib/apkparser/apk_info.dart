@@ -10,9 +10,12 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
+import 'package:apk_info_tool/models/analysis/field_value.dart'
+    show FieldSource;
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
-import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
+import 'package:apk_parser/apk_parser.dart'
+    show ApkParseStage, HardeningObservation;
 import 'package:path/path.dart' as path;
 import 'parse_task.dart';
 import 'xapk_info.dart';
@@ -594,6 +597,8 @@ Future<ApkInfo?> _getApkInfoBuiltin(
   }
 
   _applyMetaToApkInfo(data.meta, apkInfo);
+  apkInfo.manifestSource = FieldSource.builtinParser;
+  apkInfo.hardeningObservations = data.hardeningObservations;
   apkInfo.originalText = _generateTextInfo(data.meta);
 
   // 导出 arsc 资源表数据供图标渲染器使用（替代 aapt2 dump resources）。
@@ -747,6 +752,9 @@ String _generateTextInfo(apk_parser.ApkMeta meta) {
 }
 
 void parseApkInfoFromOutput(String output, ApkInfo apkInfo) {
+  // 两条 aapt2 路径（XAPK 的 base APK、以及纯 aapt2 分支）都经过这里，
+  // 因此来源标注放在这一处即可，且位置准确 —— 这里解析的正是 aapt2 的输出。
+  apkInfo.manifestSource = FieldSource.aapt2;
   apkInfo.originalText = output;
   final lines = output.split("\n");
   for (final (index, item) in lines.indexed) {
@@ -797,6 +805,16 @@ class ApkInfo {
   /// manifest 中声明的全部组件（activity / service / receiver / provider
   /// 等），含 `exported` 与 `permission` 声明。
   List<apk_parser.AndroidComponent> components = [];
+
+  /// manifest 字段的来源。
+  ///
+  /// 由各解析分支**如实填写**：内置引擎写 [FieldSource.builtinParser]，
+  /// XAPK / aapt2 分支写 [FieldSource.aapt2]。猜错会让排查找错方向，
+  /// 因此宁可留 [FieldSource.unknown] 也不臆测。
+  FieldSource manifestSource = FieldSource.unknown;
+
+  /// 容器结构上观察到的加固线索（只描述事实，不含厂商判定）。
+  List<HardeningObservation> hardeningObservations = [];
   String? label;
   String? mainIconPath; // 主图标路径
   Image? mainIconImage;
@@ -1468,6 +1486,8 @@ class ApkInfo {
     maxSdkVersion = null;
     applicationDebuggable = null;
     components.clear();
+    manifestSource = FieldSource.unknown;
+    hardeningObservations = [];
     label = null;
     mainIconPath = null;
     for (final candidate in iconCandidates) {

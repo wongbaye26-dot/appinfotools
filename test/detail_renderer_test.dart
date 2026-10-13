@@ -1,5 +1,8 @@
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/models/analysis/diagnostic.dart';
+import 'package:apk_info_tool/models/analysis/hardening.dart';
+import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart';
@@ -16,6 +19,85 @@ ApkInfo _apkInfo({
 }
 
 void main() {
+  group('DetailRenderer.analysisNotes', () {
+    test('null 分析结果渲染为空串（调用方据此隐藏整张卡片）', () {
+      expect(DetailRenderer.analysisNotes(null, t), '');
+    });
+
+    test('既无加固线索也无诊断时为空串', () {
+      const result = PackageAnalysisResult(android: AndroidPackageInfo());
+      expect(DetailRenderer.analysisNotes(result, t), '');
+    });
+
+    test('加固线索带置信度与证据 —— 「可能被加固」必须能解释原因', () {
+      const result = PackageAnalysisResult(
+        android: AndroidPackageInfo(hardeningHints: [
+          HardeningHint(
+            signal: HardeningSignal.dexHeaderNotStandard,
+            evidence: 'classes.dex: header is 0x9d 0x01',
+            confidence: HintConfidence.strong,
+          ),
+        ]),
+      );
+
+      final text = DetailRenderer.analysisNotes(result, t);
+
+      expect(text, contains(t.apk_info.hardening_summary));
+      expect(text, contains('dexHeaderNotStandard'));
+      expect(text, contains(t.apk_info.confidence_strong));
+      expect(text, contains('classes.dex: header is 0x9d 0x01'));
+    });
+
+    test('弱线索用弱置信度措辞，与强线索区分开', () {
+      const result = PackageAnalysisResult(
+        android: AndroidPackageInfo(hardeningHints: [
+          HardeningHint(
+            signal: HardeningSignal.multipleDexFiles,
+            evidence: '3 DEX entries',
+            confidence: HintConfidence.weak,
+          ),
+        ]),
+      );
+
+      final text = DetailRenderer.analysisNotes(result, t);
+
+      expect(text, contains(t.apk_info.confidence_weak));
+      expect(text, isNot(contains(t.apk_info.confidence_strong)));
+    });
+
+    test('诊断记录带严重度与稳定 code', () {
+      const result = PackageAnalysisResult(diagnostics: [
+        AnalysisDiagnostic.warning('arsc.partial', 'resource table truncated'),
+      ]);
+
+      final text = DetailRenderer.analysisNotes(result, t);
+
+      expect(text, contains('warning'));
+      expect(text, contains('arsc.partial'));
+      expect(text, contains('resource table truncated'));
+    });
+
+    test('两者都有时都呈现', () {
+      const result = PackageAnalysisResult(
+        android: AndroidPackageInfo(hardeningHints: [
+          HardeningHint(
+            signal: HardeningSignal.missingPrimaryDex,
+            evidence: 'no classes.dex entry',
+            confidence: HintConfidence.strong,
+          ),
+        ]),
+        diagnostics: [
+          AnalysisDiagnostic.info('parse.ok', 'parsed with builtin engine'),
+        ],
+      );
+
+      final text = DetailRenderer.analysisNotes(result, t);
+
+      expect(text, contains('missingPrimaryDex'));
+      expect(text, contains('parse.ok'));
+    });
+  });
+
   group('DetailRenderer.parseStageLabel', () {
     test('每个阶段都有文案，且四个真实阶段互不相同', () {
       final labels = {

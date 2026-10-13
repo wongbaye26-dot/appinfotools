@@ -1,4 +1,7 @@
+import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -72,6 +75,10 @@ class FileState {
   final ApkInfo? apkInfo;
   final String? md5Hash;
   final String? sha1Hash;
+
+  /// 文件 SHA-256。规范 4.1 要求提供。
+  final String? sha256Hash;
+
   final bool isComputingHash;
 
   /// 签名分析结果。`null` 表示尚未完成，或本次未启用签名检查。
@@ -87,10 +94,44 @@ class FileState {
     this.apkInfo,
     this.md5Hash,
     this.sha1Hash,
+    this.sha256Hash,
     this.isComputingHash = false,
     this.signature,
     this.isComputingSignature = false,
   });
+
+  /// 由当前已到位的各来源结果**派生**的统一分析结果。
+  ///
+  /// 刻意做成派生而不是单独维护一份状态：哈希、签名、解析是三条并行的异步
+  /// 线，任何一条先到都只更新自己那一项，分析结果随之自动反映最新情况 ——
+  /// 不需要额外同步，也不会出现「汇总结果与明细不一致」。
+  PackageAnalysisResult? get analysis {
+    final info = apkInfo;
+    if (info == null) return null;
+
+    final sha256 = sha256Hash;
+    return AnalysisBuilder.buildAndroid(
+      filePath: filePath ?? '',
+      fileSize: fileSize ?? 0,
+      manifestSource: info.manifestSource,
+      hashes: sha256 == null
+          ? null
+          : FileHashes(
+              md5: md5Hash ?? '', sha1: sha1Hash ?? '', sha256: sha256),
+      appName: info.label,
+      packageId: info.packageName,
+      version: info.versionName,
+      buildNumber: info.versionCode?.toString(),
+      minSdkVersion: info.sdkVersion,
+      targetSdkVersion: info.targetSdkVersion,
+      maxSdkVersion: info.maxSdkVersion,
+      debuggable: info.applicationDebuggable,
+      permissions: info.usesPermissions,
+      components: info.components,
+      hardeningObservations: info.hardeningObservations,
+      signature: signature,
+    );
+  }
 
   FileState copyWith({
     String? filePath,
@@ -98,6 +139,7 @@ class FileState {
     ApkInfo? apkInfo,
     String? md5Hash,
     String? sha1Hash,
+    String? sha256Hash,
     bool? isComputingHash,
     SignatureAnalysis? signature,
     bool? isComputingSignature,
@@ -108,6 +150,7 @@ class FileState {
       apkInfo: apkInfo ?? this.apkInfo,
       md5Hash: md5Hash ?? this.md5Hash,
       sha1Hash: sha1Hash ?? this.sha1Hash,
+      sha256Hash: sha256Hash ?? this.sha256Hash,
       isComputingHash: isComputingHash ?? this.isComputingHash,
       signature: signature ?? this.signature,
       isComputingSignature: isComputingSignature ?? this.isComputingSignature,

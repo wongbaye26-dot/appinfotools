@@ -128,6 +128,7 @@
     "size": "大小",
     "md5": "MD5",
     "sha1": "SHA1",
+    "sha256": "SHA-256",
     "computing_hash": "正在计算..."
   },
   "apk_info": {
@@ -155,6 +156,10 @@
     "exported_by_default": "默认导出",
     "component_permission": "权限",
     "component_unnamed": "（无法获取名称）",
+    "diagnostics": "解析诊断",
+    "hardening_summary": "可能经过加固：无法确认原始内容",
+    "confidence_strong": "强线索",
+    "confidence_weak": "弱线索",
     "text_info": "文本信息"
   },
   "icon": {

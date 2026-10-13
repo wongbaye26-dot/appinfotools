@@ -124,8 +124,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           final currentState = ref.read(currentFileStateProvider);
           if (_loadGeneration == gen) {
             fileState.update(currentState.copyWith(
-              md5Hash: hashes.$1,
-              sha1Hash: hashes.$2,
+              md5Hash: hashes.md5,
+              sha1Hash: hashes.sha1,
+              sha256Hash: hashes.sha256,
               isComputingHash: false,
             ));
           }
@@ -519,6 +520,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final parseStageLabel = parseStage == null
         ? t.parse.parsing
         : DetailRenderer.parseStageLabel(parseStage, t);
+    final analysisNotes = DetailRenderer.analysisNotes(fileState.analysis, t);
     final enableSignature = ref
         .watch(settingStateProvider.select((value) => value.enableSignature));
     final enableHash =
@@ -726,6 +728,29 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                               fileState.sha1Hash,
                               fileState.sha1Hash != null &&
                                   !fileState.isComputingHash),
+                        )),
+                      // SHA-256 哈希值（规范 4.1 要求）
+                      if (enableHash)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.file_info.sha256,
+                          value: fileState.isComputingHash
+                              ? t.file_info.computing_hash
+                              : (fileState.sha256Hash ?? ""),
+                          end: _buildCopyButton(
+                              fileState.sha256Hash,
+                              fileState.sha256Hash != null &&
+                                  !fileState.isComputingHash),
+                        )),
+                      // 解析诊断：加固线索 + 诊断记录
+                      if (analysisNotes.isNotEmpty)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.diagnostics,
+                          value: analysisNotes,
+                          minLines: 1,
+                          maxLines: textMaxLines,
+                          selectable: true,
                         )),
                       if (enableSignature && !(apkInfo?.isXapk ?? false))
                         Card(

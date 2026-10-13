@@ -128,6 +128,7 @@
     "size": "Size",
     "md5": "MD5",
     "sha1": "SHA1",
+    "sha256": "SHA-256",
     "computing_hash": "Computing..."
   },
   "apk_info": {
@@ -155,6 +156,10 @@
     "exported_by_default": "exported by default",
     "component_permission": "permission",
     "component_unnamed": "(name unavailable)",
+    "diagnostics": "Diagnostics",
+    "hardening_summary": "Possible hardening: the original content could not be confirmed",
+    "confidence_strong": "strong signal",
+    "confidence_weak": "weak signal",
     "text_info": "Text Info"
   },
   "icon": {

@@ -4,10 +4,12 @@
 // 「没读到」不等于「不存在」，「工具不可用」不等于「签名无效」，
 // 「空候选值」不该抹掉已有的好结果。
 
+import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/models/analysis/diagnostic.dart';
 import 'package:apk_info_tool/models/analysis/field_value.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -143,6 +145,120 @@ void main() {
       expect(result.hasDiagnosticAtLeast(DiagnosticSeverity.info), isTrue);
       expect(result.hasDiagnosticAtLeast(DiagnosticSeverity.warning), isTrue);
       expect(result.hasDiagnosticAtLeast(DiagnosticSeverity.error), isFalse);
+    });
+  });
+
+  group('AnalysisBuilder.buildAndroid', () {
+    test('文件名 / 大小 / 哈希来自文件系统，且如实标注来源', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/app.apk',
+        fileSize: 12345,
+        manifestSource: FieldSource.builtinParser,
+        hashes: const FileHashes(md5: 'm', sha1: 's1', sha256: 's256'),
+      );
+
+      expect(result.platform, PackagePlatform.android);
+      expect(result.fileName.value, 'app.apk');
+      expect(result.fileName.source, FieldSource.fileSystem);
+      expect(result.fileSize.value, 12345);
+      expect(result.sha256.value, 's256');
+      expect(result.sha256.source, FieldSource.fileSystem);
+    });
+
+    test('未计算哈希时记为 notRequested，而不是 absent', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/app.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.builtinParser,
+      );
+
+      expect(result.sha256.status, FieldStatus.notRequested);
+      expect(result.sha256.status, isNot(FieldStatus.absent));
+      expect(result.sha256.status.isInconclusive, isTrue);
+    });
+
+    test('manifest 字段的来源跟随调用方给的 manifestSource', () {
+      final builtin = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.builtinParser,
+        packageId: 'com.example',
+      );
+      expect(builtin.packageId.source, FieldSource.builtinParser);
+
+      final viaAapt2 = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.aapt2,
+        packageId: 'com.example',
+      );
+      expect(viaAapt2.packageId.source, FieldSource.aapt2);
+    });
+
+    test('缺失的 manifest 字段记为 absent —— 这是明确结论，不是「读不到」', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.builtinParser,
+      );
+
+      expect(result.packageId.status, FieldStatus.absent);
+      expect(result.packageId.status.isInconclusive, isFalse);
+      expect(result.android!.maxSdkVersion.status, FieldStatus.absent);
+      expect(result.android!.debuggable.status, FieldStatus.absent);
+    });
+
+    test('加固线索按强弱分级，证据原样保留', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.builtinParser,
+        hardeningObservations: const [
+          HardeningObservation(
+              HardeningSignal.multipleDexFiles, '3 DEX entries'),
+          HardeningObservation(
+              HardeningSignal.dexHeaderNotStandard, 'classes.dex: header 0x9d'),
+        ],
+      );
+
+      final hints = result.android!.hardeningHints;
+      expect(hints, hasLength(2));
+      expect(hints[0].confidence, HintConfidence.weak);
+      expect(hints[1].confidence, HintConfidence.strong);
+      expect(hints[1].evidence, contains('0x9d'));
+      expect(result.android!.hasStrongHardeningSignal, isTrue);
+      expect(result.android!.mayBeHardened, isTrue);
+    });
+
+    test('无线索时 mayBeHardened 为 false', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.builtinParser,
+      );
+
+      expect(result.android!.mayBeHardened, isFalse);
+      expect(result.android!.hasStrongHardeningSignal, isFalse);
+    });
+
+    test('签名结论随分析结果折算，工具不可用不会变成 rejected', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.builtinParser,
+        signature: SignatureAnalysis.toolUnavailable('apksigner not found'),
+      );
+
+      expect(result.signatureVerdict, SignatureVerdict.inconclusive);
+      // 明细仍然保留，用户能看到为什么没结论
+      expect(result.android!.signature!.error, isNotNull);
+    });
+
+    test('每个加固信号都有置信度分级', () {
+      for (final signal in HardeningSignal.values) {
+        expect(() => AnalysisBuilder.confidenceOf(signal), returnsNormally,
+            reason: '${signal.name} 未分级');
+      }
     });
   });
 

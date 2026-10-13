@@ -1,5 +1,8 @@
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/models/analysis/diagnostic.dart';
+import 'package:apk_info_tool/models/analysis/hardening.dart';
+import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
     show AndroidComponent, ApkParseStage, ArchiveOpenResult, ComponentType;
@@ -109,6 +112,50 @@ class DetailRenderer {
     }
 
     return sb.toString().trimRight();
+  }
+
+  /// 解析诊断区的完整内容：加固线索 + 诊断记录。
+  ///
+  /// 两者合成一个区块，因为它们回答的是同一个问题 ——「这次解析有没有
+  /// 值得注意的地方」。没有内容时返回空串，调用方据此隐藏整张卡片。
+  static String analysisNotes(PackageAnalysisResult? analysis, Translations t) {
+    if (analysis == null) return '';
+
+    final sections = <String>[
+      hardening(analysis.android?.hardeningHints ?? const [], t),
+      diagnostics(analysis.diagnostics, t),
+    ].where((s) => s.isNotEmpty).toList();
+
+    return sections.join('\n\n');
+  }
+
+  /// 渲染加固线索。
+  ///
+  /// 线索名直接用枚举名（`dexHeaderNotStandard` 等）：它们是技术标识符，
+  /// 强行翻成自然语言反而更难与代码、日志对照。置信度与证据都保留 ——
+  /// 「可能被加固」这句话必须能解释清楚是**因为看到了什么**。
+  static String hardening(List<HardeningHint> hints, Translations t) {
+    if (hints.isEmpty) return '';
+
+    final sb = StringBuffer()..writeln(t.apk_info.hardening_summary);
+    for (final hint in hints) {
+      final label = hint.confidence == HintConfidence.strong
+          ? t.apk_info.confidence_strong
+          : t.apk_info.confidence_weak;
+      sb.writeln('  ${hint.signal.name} [$label]  ${hint.evidence}');
+    }
+    return sb.toString().trimRight();
+  }
+
+  /// 渲染诊断记录。
+  ///
+  /// 保留 `code`：它是稳定的机器可读标识，便于把用户反馈直接对上代码位置。
+  static String diagnostics(
+      List<AnalysisDiagnostic> diagnostics, Translations t) {
+    if (diagnostics.isEmpty) return '';
+    return diagnostics
+        .map((d) => '[${d.severity.name}] ${d.code}: ${d.message}')
+        .join('\n');
   }
 
   /// 把组件列表按类型分组渲染为多行文本。

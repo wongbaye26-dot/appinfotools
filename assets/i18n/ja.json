@@ -128,6 +128,7 @@
     "size": "サイズ",
     "md5": "MD5",
     "sha1": "SHA1",
+    "sha256": "SHA-256",
     "computing_hash": "計算中..."
   },
   "apk_info": {
@@ -155,6 +156,10 @@
     "exported_by_default": "既定でエクスポート",
     "component_permission": "権限",
     "component_unnamed": "（名前を取得できません）",
+    "diagnostics": "解析診断",
+    "hardening_summary": "パッキングの可能性：元の内容を確認できません",
+    "confidence_strong": "強い手がかり",
+    "confidence_weak": "弱い手がかり",
     "text_info": "テキスト情報"
   },
   "icon": {
