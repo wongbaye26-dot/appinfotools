@@ -29,5 +29,10 @@ linter:
 # https://dart.dev/guides/language/analysis-options
 
 analyzer:
+  exclude:
+    - build/**
+    - windows/**
+    - macos/**
+    - linux/**
   plugins:
     - custom_lint

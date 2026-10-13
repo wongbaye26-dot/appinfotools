@@ -139,8 +139,7 @@ void main(List<String> args) async {
   print('  Pass: $passCount  Fail: $failCount  Skip: $skipCount');
   if (totalDartMs > 0 && totalAapt2Ms > 0) {
     print('  Total time: Dart=${totalDartMs}ms  aapt2=${totalAapt2Ms}ms');
-    print(
-        '  Avg speedup: ${(totalAapt2Ms / totalDartMs).toStringAsFixed(1)}x');
+    print('  Avg speedup: ${(totalAapt2Ms / totalDartMs).toStringAsFixed(1)}x');
   }
   if (failures.isNotEmpty) {
     print('  Failures:');
@@ -152,7 +151,6 @@ void main(List<String> args) async {
     exit(1);
   }
 }
-
 
 class _CompareField {
   final String name;
@@ -221,11 +219,8 @@ Map<String, String> _parseAapt2Output(String output) {
   result['permissionCount'] = '$permCount items';
   result['nativeCodes'] = nativeCodes.join(',');
   return result;
-
-  if (failCount > 0 || skipCount > 0) {
-    exit(1);
-  }
-}String _truncate(String s, int max) {
-  return s.length <= max ? s : '${s.substring(0, max - 2)}..';
 }
 
+String _truncate(String s, int max) {
+  return s.length <= max ? s : '${s.substring(0, max - 2)}..';
+}

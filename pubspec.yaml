@@ -20,7 +20,9 @@ dependencies:
   package_info_plus: ^9.0.0
   slang: ^4.3.0
   slang_flutter: ^4.3.0
-  intl: 0.20.2
+  # 精确锁定 0.20.2 会与 Flutter stable 的 flutter_localizations（要求 ^0.20.3）
+  # 冲突，导致 `flutter pub get` 无法解析。放宽到 ^0.20.3 以对齐当前 stable。
+  intl: ^0.20.3
   file_picker: ^10.3.8
   window_manager: ^0.5.1
   shared_preferences: ^2.3.3

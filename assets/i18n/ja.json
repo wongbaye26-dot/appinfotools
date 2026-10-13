@@ -46,6 +46,7 @@
     "download_error_build_tools": "利用可能なbuild-toolsが見つかりません",
     "download_error_archive": "コンポーネントのダウンロードに失敗",
     "download_error_file_missing": "ダウンロードソースファイルが存在しません",
+    "download_error_checksum": "ダウンロードしたファイルの整合性検証に失敗しました",
     "download_error_generic": "不明なエラー",
     "download_directory": "ダウンロードディレクトリ:",
     "open_download_directory": "ディレクトリを開く",

@@ -39,6 +39,7 @@
     "download_error_build_tools": "No available build-tools found",
     "download_error_archive": "Failed to download components",
     "download_error_file_missing": "Source file does not exist",
+    "download_error_checksum": "Downloaded file failed integrity verification",
     "download_error_generic": "Unknown error",
     "download_directory": "Download Dir:",
     "open_download_directory": "Open Directory",

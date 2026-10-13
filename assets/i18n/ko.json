@@ -46,6 +46,7 @@
     "download_error_build_tools": "사용 가능한 build-tools를 찾을 수 없습니다",
     "download_error_archive": "컴포넌트 다운로드 실패",
     "download_error_file_missing": "다운로드 소스 파일이 존재하지 않습니다",
+    "download_error_checksum": "다운로드한 파일의 무결성 검증에 실패했습니다",
     "download_error_generic": "알 수 없는 오류",
     "download_directory": "다운로드 디렉토리:",
     "open_download_directory": "디렉토리 열기",

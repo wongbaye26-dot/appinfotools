@@ -46,6 +46,7 @@
     "download_error_build_tools": "未找到可用的 build-tools",
     "download_error_archive": "下載組件失敗",
     "download_error_file_missing": "下載源文件不存在",
+    "download_error_checksum": "下載檔案完整性校驗未通過",
     "download_error_generic": "未知錯誤",
     "download_directory": "下載目錄:",
     "open_download_directory": "開啟目錄",

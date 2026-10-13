@@ -85,9 +85,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                   ToolPaths.getBundledToolPath(
                       Platform.isWindows ? 'apksigner.bat' : 'apksigner'),
           customPath: Config.apksignerPath.value,
-          onSource: ref
-              .read(settingStateProvider.notifier)
-              .setApksignerSource,
+          onSource: ref.read(settingStateProvider.notifier).setApksignerSource,
         );
         break;
     }
@@ -163,16 +161,19 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     String? resolved;
     switch (source) {
       case Config.kToolSourceBuiltin:
-        resolved =
-            builtinPath ?? systemPath ?? (customPath.isNotEmpty ? customPath : null);
+        resolved = builtinPath ??
+            systemPath ??
+            (customPath.isNotEmpty ? customPath : null);
         break;
       case Config.kToolSourceCustom:
-        resolved = customPath.isNotEmpty ? customPath : systemPath ?? builtinPath;
+        resolved =
+            customPath.isNotEmpty ? customPath : systemPath ?? builtinPath;
         break;
       case Config.kToolSourceSystem:
       default:
-        resolved =
-            systemPath ?? builtinPath ?? (customPath.isNotEmpty ? customPath : null);
+        resolved = systemPath ??
+            builtinPath ??
+            (customPath.isNotEmpty ? customPath : null);
         break;
     }
     if (resolved == null || resolved.isEmpty) {
@@ -338,12 +339,12 @@ class _SettingPageState extends ConsumerState<SettingPage> {
 
     final aapt2Builtin =
         ToolPaths.getDownloadedAapt2Path(baseDir: resolvedDownloadDir) ??
-        ToolPaths.getBundledToolPath(
-            Platform.isWindows ? 'aapt2.exe' : 'aapt2');
+            ToolPaths.getBundledToolPath(
+                Platform.isWindows ? 'aapt2.exe' : 'aapt2');
     final apksignerBuiltin =
         ToolPaths.getDownloadedApksignerPath(baseDir: resolvedDownloadDir) ??
-        ToolPaths.getBundledToolPath(
-            Platform.isWindows ? 'apksigner.bat' : 'apksigner');
+            ToolPaths.getBundledToolPath(
+                Platform.isWindows ? 'apksigner.bat' : 'apksigner');
     final adbBuiltin = ToolPaths.getDownloadedAdbPath(
             baseDir: resolvedDownloadDir) ??
         ToolPaths.getBundledToolPath(Platform.isWindows ? 'adb.exe' : 'adb');
@@ -437,10 +438,10 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   Widget _buildFeaturesSection() {
     final enableSignature = ref
         .watch(settingStateProvider.select((value) => value.enableSignature));
-    final enableHash = ref
-        .watch(settingStateProvider.select((value) => value.enableHash));
-    final parserEngine = ref
-        .watch(settingStateProvider.select((value) => value.parserEngine));
+    final enableHash =
+        ref.watch(settingStateProvider.select((value) => value.enableHash));
+    final parserEngine =
+        ref.watch(settingStateProvider.select((value) => value.parserEngine));
     return _buildSettingCard(
       title: t.settings.features,
       icon: Icons.featured_play_list,
@@ -851,10 +852,8 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
   List<String> _getExistingDownloadItems() {
     final existing = <String>[];
     if (_downloadPlatformTools) {
-      final adbPath =
-          ToolPaths.getDownloadedAdbPath(baseDir: _installDir);
-      final platformDir =
-          Directory(path.join(_installDir, 'platform-tools'));
+      final adbPath = ToolPaths.getDownloadedAdbPath(baseDir: _installDir);
+      final platformDir = Directory(path.join(_installDir, 'platform-tools'));
       if (adbPath != null || platformDir.existsSync()) {
         existing.add(t.settings.download_platform_tools);
       }
@@ -862,10 +861,7 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
     if (_downloadBuildTools) {
       final buildRoot = Directory(path.join(_installDir, 'build-tools'));
       if (buildRoot.existsSync() &&
-          buildRoot
-              .listSync()
-              .whereType<Directory>()
-              .isNotEmpty) {
+          buildRoot.listSync().whereType<Directory>().isNotEmpty) {
         existing.add(t.settings.download_build_tools);
       }
     }
@@ -931,8 +927,8 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-              t.settings.download_dependencies_success(path: _installDir)),
+          content:
+              Text(t.settings.download_dependencies_success(path: _installDir)),
         ),
       );
     } catch (e) {
@@ -954,6 +950,11 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
             break;
           case ToolDownloadError.fileNotFound:
             reason = t.settings.download_error_file_missing;
+            break;
+          case ToolDownloadError.checksumMismatch:
+            // 下载产物与仓库索引声明的校验和不符（或索引未提供校验和）。
+            // 这是安全相关的拒绝路径，必须让用户看到真实原因。
+            reason = t.settings.download_error_checksum;
             break;
           case ToolDownloadError.unknown:
             reason = t.settings.download_error_generic;
