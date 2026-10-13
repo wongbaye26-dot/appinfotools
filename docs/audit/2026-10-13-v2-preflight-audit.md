@@ -12,10 +12,10 @@
 1. **前一份审计报告声称的 T0/T1 整改，绝大部分是真实落地的**，有源码与文件系统证据（见第 4 节）。这一点必须肯定。其中 **2 条为「部分完成」**：`pubspec.lock` 的 `ref` 未同步（5.1）、`InstallDialog` 的 `mounted` 守卫只补了 1/8 处（5.11）。另有 **1 条初判有误**（5.8，`freezed` 实际在使用），已更正。
 2. **【最重要】仓库交付时根本无法编译。** 实测 `flutter analyze` 报 4 个 `error`、`flutter test` 编译失败（5.13）。其中 3 个错误是前次「已完成」整改（T0-2、T1-9）的**连带破损** —— 因为当时没有任何 SDK，这些改动从未被编译过一次。**已修复**（commit `f2af93b`）。
 3. **【已修复】CI 的 `quality` 门禁此前从未成功跑通过**：`flutter pub get` 因 `intl` 死锁而版本求解失败（5.12），`dart format` 会重排 37/49 个文件。经确认采用「对齐当前 stable」路线修复。
-4. **当前基线（已实证）**：`flutter pub get --enforce-lockfile` ✅、`dart format --set-exit-if-changed .` ✅ 0 changed、`flutter test` ✅ **23 passed**、`flutter analyze` ⚠️ **0 error**（9 warning + 91 info，门禁仍红，见 5.15）。
-5. **环境与版本控制两个硬阻塞已解除**：Flutter 3.47.7 stable 已安装；`git init` 完成，基线快照 `97bef24`，修复按「格式 / 功能 / 文档」拆为 3 个可审查提交。
+4. **当前基线（已实证，门禁全绿）**：`flutter pub get --enforce-lockfile` ✅、`dart format --set-exit-if-changed .` ✅ 0 changed、`flutter analyze --fatal-infos --fatal-warnings` ✅ **No issues found!**、`flutter test` ✅ **23 passed**、包内 `dart analyze` ✅ **No issues found!**。
+5. **环境与版本控制两个硬阻塞已解除**：Flutter 3.47.7 stable 已安装；`git init` 完成，基线快照 `97bef24`，修复拆为 5 个可审查提交。
 6. **V2.0 的目标能力中，Android 加固 APK 分析约 40% 已有基础可复用；iOS IPA 分析为 0**（全仓库无任何 plist / Mach-O / mobileprovision / codesign 相关代码，见第 6 节）。
-7. **待决策**：CI `analyze` 门禁的严格度（全部修净 vs 定向豁免，见第 9 节第 3 条）；以及无真实 APK/IPA 样本（第 9 节第 5 条）。
+7. **尚未完成**：跨平台 `flutter build`（本机无完整 Xcode）、真实 IPA 与加固 APK 样本解析（无样本）。**第一步（审计 + 基线）至此收口，可进入第二步。**
 
 ---
 
@@ -336,7 +336,7 @@ Bad state: No ProviderScope found
 
 即 T1-2「替换无法通过的模板测试」实际是**换成了另一个必然失败的测试**。修复：按 `main()` 的装配方式包一层（commit `f2af93b`），测试随即通过。
 
-### 5.15 【中·已实证】CI 的 analyze 门禁仍然红：0 error，但 9 warning + 91 info
+### 5.15 【中·已实证·已修复】CI 的 analyze 门禁曾是红的：0 error，但 9 warning + 91 info
 
 修复编译错误后，`flutter analyze` 为 **0 error / 9 warning / 91 info**。CI 用的是
 `flutter analyze --fatal-infos --fatal-warnings`，因此**仍然 exit 1**。`packages/apk_parser` 同理（82 issue，0 error）。
@@ -357,7 +357,36 @@ Bad state: No ProviderScope found
 
 91 个 info 的构成：`avoid_print` 60（全部在 `bin/` 下的 CLI 脚本）、`constant_identifier_names` 14（`resource_value.dart` 里对齐 Android `Res_value` 的规范常量名）、`deprecated_member_use` 6（`withOpacity`）、`prefer_conditional_assignment` 4，其余零散。
 
-**待决策**：是把这 100 项逐条修净（标准不降，但改动面较大），还是对 `bin/` 与 `resource_value.dart` 做**有据可依的规则定向豁免**（`avoid_print` 对 CLI 脚本是误报；Android 规范常量名不应改名）。**本次未擅自处理**，见第 9 节。
+**处置**：经确认采用「修真实缺陷 + 定向豁免误报」路线，**已全部完成**（commit `3194b26`）。
+
+**修掉的真实缺陷（12 处）**：
+
+| 位置 | 问题 | 修法 |
+|---|---|---|
+| `lib/main.dart` | `_appLifecycleListener` 只写不读 | 删除该顶层变量。**同时纠正了错误注释**：`AppLifecycleListener` 构造函数内即 `WidgetsBinding.instance.addObserver(this)`，而 `WidgetsBinding.instance` 是进程级单例，早已强引用持有，不需要额外变量防 GC |
+| `lib/pages/setting_page.dart` | `_isCustomDirSelected` 只写不读（6 处赋值、0 处读取） | 删除字段与全部 6 处赋值 |
+| `lib/utils/zip_helper.dart` | `_filePath` 未使用字段 | 删除字段及其读写 |
+| `lib/utils/zip_helper.dart` | `_safeJoin` 未使用包装（T0-1 重构残留） | 删除 |
+| `lib/utils/zip_helper.dart` | 多余 cast | `file?.content as Uint8List?` → `file?.content`（archive fork 的 `content` 本就是非空 `Uint8List`） |
+| `lib/apkparser/xapk_info.dart` | 未使用 `dart:io` | 删除 import |
+| `lib/apkparser/xapk_info.dart` | `invalid_null_aware_operator` | `.toString()?.trim()` → `.toString().trim()` |
+| `lib/pages/install_page.dart` | 未使用 import | 删除 |
+| `lib/utils/logger.dart` | 顶层函数缺返回类型 | `initLogger()` → `Future<void> initLogger()` |
+| `lib/config.dart`、`lib/theme/theme_manager.dart` | `Color.value` 已废弃 | 改用 `toARGB32()`（等值 int，**不影响已持久化的主题色**） |
+| `lib/pages/setting_page.dart` | `withOpacity` 已废弃 | 改用 `withValues(alpha: 0.2)` |
+| `packages/apk_parser/.../manifest_parser.dart`、`apk_parser.dart`、`bin/compare.dart` | 4× `prefer_conditional_assignment`、`unnecessary_library_name`、3× 单插值字符串 | 分别改用 `??=`、删除 `library` 名、去掉多余插值 |
+
+**定向豁免（规则误报，非降标准，均带注释说明理由）**：
+
+| 范围 | 规则 | 理由 |
+|---|---|---|
+| `packages/apk_parser/bin/{compare,parse}.dart` | `avoid_print` | 开发者命令行工具，stdout 就是它的接口 |
+| `packages/apk_parser/lib/src/arsc/resource_value.dart` | `constant_identifier_names` | 常量名刻意对齐 Android `Res_value` 规范命名，以便与 AOSP 逐项对照 |
+
+**顺带查实的一处死配置**：`analysis_options.yaml` 里的 `analyzer.plugins: [custom_lint]` ——
+`custom_lint` **根本不在依赖图里**（`riverpod_lint` 3.1.0 已迁移到 `analysis_server_plugin`）。
+该配置既不生效、又持续产生 `analysis_options_deprecated_plugins` 告警。已改用新体系的顶层
+`plugins: riverpod_lint: ^3.1.0`；新体系下插件 lint 规则**默认关闭**，故不引入新诊断。
 
 ---
 
@@ -468,19 +497,20 @@ Bad state: No ProviderScope found
 | `flutter build {windows,macos,linux}` | **未执行** | 本机仅 Command Line Tools，无完整 Xcode；且上面已失败，构建无意义 |
 | 真实 IPA / 加固 APK 样本解析 | **未执行** | 无样本 |
 
-### 8.2 修复后基线 — **可编译、可测试**
+### 8.2 修复后基线 — **可编译、可测试、门禁全绿**
 
 | 检查项 | 结果 |
 |---|---|
 | `flutter pub get --enforce-lockfile` | ✅ **exit 0** |
 | `dart run build_runner build --delete-conflicting-outputs` | ✅ exit 0 |
 | `dart format --set-exit-if-changed .` | ✅ **`Formatted 62 files (0 changed)`** |
-| `flutter analyze` | ⚠️ **0 error**、9 warning、91 info（`--fatal-infos --fatal-warnings` 仍 **exit 1**，见 5.15） |
-| `flutter test` | ✅ **`+23: All tests passed!`**（exit 0） |
-| `packages/apk_parser` `dart analyze --fatal-infos --fatal-warnings` | ⚠️ 82 issue、0 error → 仍 exit 1（见 5.15） |
+| `flutter analyze --fatal-infos --fatal-warnings` | ✅ **exit 0 · `No issues found!`** |
+| `flutter test` | ✅ **`+23: All tests passed!`** |
+| `packages/apk_parser` `dart analyze --fatal-infos --fatal-warnings` | ✅ **exit 0 · `No issues found!`** |
 | 源码级审计 | ✅ 见第 2–6 节，含文件路径与行号证据 |
-| 依赖锁定一致性核查 | ✅ 发现 5.1，已修复并验证 |
+| 依赖锁定一致性核查 | ✅ 发现 5.1，已修复并验证（**两个 lockfile 的 `archive.ref` 均已固定为 SHA**） |
 | 历史整改核验 | ✅ 见第 4 节，13/15 条为真、2 条部分为真、1 条初判有误（5.8） |
+| `flutter build {windows,macos,linux}` | ❌ **未执行**（本机仅 Command Line Tools，无完整 Xcode；Linux/Windows 构建需对应平台） |
 | 真实 IPA / 加固 APK 样本解析 | ❌ **未执行**（无样本，属交付要求 7 的遗留项） |
 
 ### 8.3 本次修复的提交
@@ -491,6 +521,8 @@ Bad state: No ProviderScope found
 | `54ac313` | `style:` 全仓库 `dart format`（纯格式，无行为变更） |
 | `f2af93b` | `fix:` 恢复可编译可测试基线（4 个编译错误 + 测试修复 + 环境对齐） |
 | `c55eadf` | `docs:` 本审计报告 |
+| `70d975b` | `docs:` 记录真实基线与 3 条新发现 |
+| `3194b26` | `chore:` 让 CI 质量门禁转绿（修 12 处真实缺陷 + 2 类定向豁免 + 迁移分析器插件配置） |
 
 **按约束 10 与交付要求 5**：8.1/8.2 中标记为 ❌ 或「未执行」的项一律不得计为通过。
 
@@ -503,12 +535,11 @@ Bad state: No ProviderScope found
 1. ~~**【阻塞】无 Flutter/Dart SDK**~~ → 已安装 Flutter 3.47.7 stable 于 `~/development/flutter`，基线已真实跑出（第 8 节）。
 2. ~~**【阻塞】非 Git 仓库**~~ → 已 `git init`，基线快照 `97bef24`，并按「格式 / 功能 / 文档」拆成 3 个可审查提交。
 
-### 待决策
+### 已解除（续）
 
-3. **【需决策】CI 的 `analyze` 门禁严格度**（5.15）。当前 `--fatal-infos --fatal-warnings` 下有 9 warning + 91 info。两条路：
-   - **A. 全部修净**：标准不降，但改动面覆盖 `bin/`、`resource_value.dart`、多个页面，属较大范围修改。
-   - **B. 定向豁免 + 修真实缺陷**：修 9 个 warning 与 `deprecated_member_use`/`prefer_conditional_assignment` 等真实问题；对 `bin/` 的 `avoid_print` 与 `resource_value.dart` 的 `constant_identifier_names` 做**带注释的规则豁免**（CLI 脚本的 stdout 就是接口；Android 规范常量名不应改名）。这两类属规则误报，豁免不等于降低标准。
-   - 我的建议是 **B**，但这属于「质量标准的松紧」判断，不由我单方面决定。
+3. ~~**【需决策】CI 的 `analyze` 门禁严格度**~~ → 经确认采用「修真实缺陷 + 定向豁免误报」路线，已实施完成（commit `3194b26`）。`flutter analyze --fatal-infos --fatal-warnings` 与包内 `dart analyze --fatal-infos --fatal-warnings` 现均为 **exit 0 · No issues found!**。详见 5.15。
+
+### 待决策
 
 4. **【需决策】`archive` fork 仍是个人仓库**（`github.com/huanfeng/archive.git`，前次报告已列为遗留）：已固定到 SHA `cb3a07c8…`，风险可控，但长期建议改为 vendored 本地依赖或上游发布版本。
 
