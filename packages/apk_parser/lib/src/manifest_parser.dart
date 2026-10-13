@@ -3,9 +3,17 @@ import 'binary_xml.dart';
 import 'models.dart';
 
 class ManifestParser {
+  /// 从二进制 AndroidManifest.xml 解析。
   static ApkMeta parse(Uint8List manifestBytes) {
     final decompressor = BinaryXmlDecompressor();
-    final doc = decompressor.decompressToDocument(manifestBytes);
+    return fromDocument(decompressor.decompressToDocument(manifestBytes));
+  }
+
+  /// 从已反编译的文档树解析。
+  ///
+  /// 与 [parse] 拆开是为了让字段/组件提取逻辑可以脱离 AXML 二进制样本做
+  /// 单元测试 —— 构造一个 [XmlDocument] 比手工拼二进制 manifest 可靠得多。
+  static ApkMeta fromDocument(XmlDocument doc) {
     final meta = ApkMeta();
 
     final manifest = _findElement(doc, 'manifest');
@@ -35,6 +43,7 @@ class ManifestParser {
     if (usesSdk != null) {
       meta.minSdkVersion = _parseInt(usesSdk.attributes['minSdkVersion']);
       meta.targetSdkVersion = _parseInt(usesSdk.attributes['targetSdkVersion']);
+      meta.maxSdkVersion = _parseInt(usesSdk.attributes['maxSdkVersion']);
     }
 
     // <uses-permission>
@@ -93,22 +102,43 @@ class ManifestParser {
       meta.applicationName = application.attributes['name'];
       meta.label = application.attributes['label'];
       meta.applicationIcon = application.attributes['icon'];
+      meta.applicationDebuggable =
+          _parseBool(application.attributes['debuggable']);
 
       // 混淆 APK: name/label 可能无法通过标准属性名找到
       meta.applicationName ??= _guessClassName(application);
 
-      for (final activity in application.children) {
-        if (activity.name != 'activity' && activity.name != 'activity-alias') {
-          continue;
+      for (final child in application.children) {
+        final type = ComponentType.fromElementName(child.name);
+        if (type == null) continue;
+
+        final isActivity = type == ComponentType.activity ||
+            type == ComponentType.activityAlias;
+
+        String? name = child.attributes['name'];
+        // 混淆 APK: activity name 可能在非标准属性中。
+        //
+        // 只对 activity 做这个启发式：它会扫描属性值里「像包名」的字符串，
+        // 对 service/receiver 而言很容易误取到 android:permission 之类的值，
+        // 那等于凭空编造组件名。取不到就保持 null。
+        if (name == null && isActivity) {
+          name = _guessClassName(child);
         }
-        if (_isLaunchableActivity(activity)) {
-          String? activityName = activity.attributes['name'];
-          // 混淆 APK: activity name 可能在非标准属性中
-          activityName ??= _guessClassName(activity);
+
+        meta.components.add(AndroidComponent(
+          type: type,
+          name: name,
+          exported: _parseBool(child.attributes['exported']),
+          permission: child.attributes['permission'],
+          hasIntentFilter: child.children.any((c) => c.name == 'intent-filter'),
+          authorities: child.attributes['authorities'],
+        ));
+
+        if (isActivity && _isLaunchableActivity(child)) {
           meta.launchableActivities.add(ActivityInfo(
-            name: activityName,
-            label: activity.attributes['label'],
-            icon: activity.attributes['icon'],
+            name: name,
+            label: child.attributes['label'],
+            icon: child.attributes['icon'],
           ));
         }
       }
@@ -151,6 +181,20 @@ class ManifestParser {
       return int.tryParse(value.substring(2), radix: 16);
     }
     return int.tryParse(value);
+  }
+
+  /// 解析 AXML 中的布尔属性。
+  ///
+  /// 反编译器可能给出 `true`/`false`，也可能保留 `0xffffffff`/`0x0` 形式，
+  /// 两种都接受；其余情况返回 `null` 表示**未声明或无法判定**，
+  /// 不默认成 `false`。
+  static bool? _parseBool(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return switch (value.toLowerCase()) {
+      'true' || '0xffffffff' || '0x1' => true,
+      'false' || '0x0' => false,
+      _ => null,
+    };
   }
 
   // ========== 混淆 APK 启发式查找方法 ==========

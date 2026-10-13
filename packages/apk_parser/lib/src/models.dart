@@ -5,6 +5,10 @@ class ApkMeta {
   String? versionName;
   int? minSdkVersion;
   int? targetSdkVersion;
+
+  /// `<uses-sdk android:maxSdkVersion>`。绝大多数应用不声明，此时为 `null`
+  /// —— 不要把它当成「无上限」以外的任何含义。
+  int? maxSdkVersion;
   int? compileSdkVersion;
   String? compileSdkVersionCodename;
   String? platformBuildVersionName;
@@ -17,6 +21,9 @@ class ApkMeta {
   String? applicationIcon;
   Map<int, String> iconPaths = {};
 
+  /// `<application android:debuggable>`。未声明时为 `null`。
+  bool? applicationDebuggable;
+
   List<String> permissions = [];
   List<String> features = [];
   List<String> featuresNotRequired = [];
@@ -27,14 +34,97 @@ class ApkMeta {
 
   List<ActivityInfo> launchableActivities = [];
 
+  /// manifest 中声明的全部组件（activity / activity-alias / service /
+  /// receiver / provider），含 `exported` 与 `permission` 声明。
+  List<AndroidComponent> components = [];
+
   @override
   String toString() {
     return 'ApkMeta{packageName: $packageName, versionCode: $versionCode, '
         'versionName: $versionName, label: $label, '
         'minSdk: $minSdkVersion, targetSdk: $targetSdkVersion, '
+        'maxSdk: $maxSdkVersion, '
         'permissions: ${permissions.length}, features: ${features.length}, '
+        'components: ${components.length}, '
         'nativeCodes: $nativeCodes, locales: ${locales.length}}';
   }
+}
+
+/// Android 组件类型。
+enum ComponentType {
+  activity,
+  activityAlias,
+  service,
+  receiver,
+  provider;
+
+  /// AndroidManifest 中的元素名。
+  String get elementName => switch (this) {
+        ComponentType.activity => 'activity',
+        ComponentType.activityAlias => 'activity-alias',
+        ComponentType.service => 'service',
+        ComponentType.receiver => 'receiver',
+        ComponentType.provider => 'provider',
+      };
+
+  /// 从元素名解析类型；非组件元素返回 `null`。
+  static ComponentType? fromElementName(String name) => switch (name) {
+        'activity' => ComponentType.activity,
+        'activity-alias' => ComponentType.activityAlias,
+        'service' => ComponentType.service,
+        'receiver' => ComponentType.receiver,
+        'provider' => ComponentType.provider,
+        _ => null,
+      };
+}
+
+/// manifest 中声明的一个组件。
+///
+/// [exported] 是**三态**，刻意不用 `bool`：
+/// - `true` / `false` 对应 manifest 里的显式声明；
+/// - `null` 表示**未声明**。
+///
+/// 把「未声明」当成「未导出」是常见误判 —— Android 12 之前大量应用省略该
+/// 属性，其真实语义由是否有 intent-filter 决定（见 [effectivelyExported]）。
+class AndroidComponent {
+  final ComponentType type;
+
+  /// 组件类名。混淆的 manifest 可能取不到，此时为 `null`（不做猜测）。
+  final String? name;
+
+  /// manifest 中显式声明的 `android:exported`；未声明为 `null`。
+  final bool? exported;
+
+  /// `android:permission` —— 访问该组件所需的权限。
+  final String? permission;
+
+  final bool hasIntentFilter;
+
+  /// 仅 provider 有：`android:authorities`。
+  final String? authorities;
+
+  const AndroidComponent({
+    required this.type,
+    this.name,
+    this.exported,
+    this.permission,
+    this.hasIntentFilter = false,
+    this.authorities,
+  });
+
+  /// 按平台默认规则推导的「是否对外可见」。
+  ///
+  /// Android 的规则：`android:exported` 未声明时，若组件声明了至少一个
+  /// intent-filter 则默认为 `true`，否则为 `false`。
+  ///
+  /// 注意这是**平台默认规则**，不是我们编造的值 —— [exported] 始终保留原始
+  /// 声明，UI 应优先展示原始值。
+  bool get effectivelyExported => exported ?? hasIntentFilter;
+
+  @override
+  String toString() => 'AndroidComponent{${type.elementName}, name: $name, '
+      'exported: $exported, permission: $permission, '
+      'hasIntentFilter: $hasIntentFilter}';
 }
 
 /// 资源表条目信息（用于将 ArscParser 数据导出给图标渲染器等外部使用）
