@@ -303,9 +303,17 @@ jobs:
           path: '*.AppImage'
 
   create-release:
+    # 只要 **Windows 与 macOS** 成功就出 Release：用户要的是这两个平台的发行版，
+    # 而 Linux 的 AppImage 依赖 linuxdeploy 这类外部下载，把它设成硬依赖会让
+    # 一次无关的下载失败把整个发行版卡掉。Linux 成功就一并附上，失败只少一个文件。
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.build-windows.result == 'success' && needs.build-macos.result == 'success' }}
+    # 显式声明：新建仓库的默认 `GITHUB_TOKEN` 权限是**只读**，不声明的话
+    # `action-gh-release` 会以 403 失败。只给这一个 job，不放工作流顶层 ——
+    # 工作流也跑 `pull_request`，顶层给写权限等于让同仓 PR 能推代码。
+    permissions:
+      contents: write
 
     steps:
       - name: Download Artifacts
@@ -339,7 +347,45 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ github.ref_name }}
-          body: ${{ steps.build_changelog.outputs.changelog }}
+          # 变更日志后面固定附一段安装说明。macOS 的临时签名（ad-hoc）必须在这里
+          # 说清楚：应用是能用的，只是 Gatekeeper 会拦，用户不知道绕过方法就会
+          # 以为包坏了 —— 而本项目没有 Apple 开发者证书，短期内改变不了这一点。
+          body: |
+            ${{ steps.build_changelog.outputs.changelog }}
+
+            ---
+
+            ## 安装说明
+
+            ### macOS（`.dmg`）
+
+            应用是**临时签名（ad-hoc）**的 —— 本项目没有 Apple 开发者证书，因此
+            **没有做公证**。首次打开会被 Gatekeeper 拦下，提示「无法验证开发者」
+            或「已损坏，应将它移到废纸篓」。包本身是完整的，二选一即可打开：
+
+            - 在「访达」里**右键点应用 → 打开**，在弹窗里再点一次「打开」；
+            - 或在终端执行：
+
+              ```sh
+              xattr -dr com.apple.quarantine "/Applications/APP详情工具.app"
+              ```
+
+            系统要求：macOS 11 或更高。
+
+            ### Windows（`.exe` / `.zip`）
+
+            `.exe` 是安装包，`.zip` 解压后直接运行 `apk_info_tool.exe`。
+            两者内容相同，按习惯选一个即可。
+
+            > 未签名的 Windows 程序首次运行可能出现 SmartScreen 提示，选择
+            > 「更多信息 → 仍要运行」。
+
+            ### Linux（`.AppImage`）
+
+            ```sh
+            chmod +x APKInfoTool-*-x86_64.AppImage
+            ./APKInfoTool-*-x86_64.AppImage
+            ```
           files: |
             windows-release/*.exe
             windows-release/*.zip
@@ -349,7 +395,10 @@ jobs:
   publish-scoop:
     needs: [create-release]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # 只在上游仓库跑：这两个任务把产物推到原作者的 scoop-bucket /
+    # homebrew-tap，依赖只有上游才有的 secret。在 fork 里跑必然失败，
+    # 而且真跑通了反而是错的 —— 会把本仓库的版本推进别人的 bucket。
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'huanfeng/ApkInfoTool'
 
     steps:
       - name: Prepare Scoop Metadata
@@ -404,7 +453,10 @@ jobs:
   publish-homebrew:
     needs: [create-release]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # 只在上游仓库跑：这两个任务把产物推到原作者的 scoop-bucket /
+    # homebrew-tap，依赖只有上游才有的 secret。在 fork 里跑必然失败，
+    # 而且真跑通了反而是错的 —— 会把本仓库的版本推进别人的 bucket。
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'huanfeng/ApkInfoTool'
 
     steps:
       - name: Download macOS Artifact
@@ -467,7 +519,10 @@ jobs:
   publish-homebrew-formula:
     needs: [create-release]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # 只在上游仓库跑：这两个任务把产物推到原作者的 scoop-bucket /
+    # homebrew-tap，依赖只有上游才有的 secret。在 fork 里跑必然失败，
+    # 而且真跑通了反而是错的 —— 会把本仓库的版本推进别人的 bucket。
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'huanfeng/ApkInfoTool'
 
     steps:
       - name: Download macOS Artifact
