@@ -586,18 +586,33 @@ Bad state: No ProviderScope found
      1. `dart format --set-exit-if-changed .` 会扫到 `lib/gen/` 生成物，而 slang 自带的 `dart_style` 与 SDK 的 `dart format` 风格不一致 → **CI 首次运行必红**。改为只检查项目自己拥有的文件（`$(git ls-files '*.dart')`）。
      2. 子包继承根的 `include: package:flutter_lints/...` 但解析不到 → 逐包 `dart analyze` **完全没有 lint 规则**。各包加自己的 `analysis_options.yaml`（`lints/recommended`）+ `lints` 依赖；CI 包分析改为遍历 `packages/*/`。
 
-12. **仍待处理**：
-   - iOS 侧：签名材料与 Entitlements（规范 5.5），以及接入 `IosPackageInfo` 与详情页、IPA 侧接入 worker isolate（进度/取消）。
+12. **已处理**（iOS 签名，规范 5.5）：
+   - **`SignatureStatus` 上移** → 原先定义在 `lib/utils/signature_analyzer.dart`，iOS 侧需要同一套结论语义，上移到 `packages/analysis_model/`。**定义只有一处**：把「工具不可用」显示成「签名无效」会把没装工具的机器误报成恶意应用，这是最不能出现两份解释的地方。commit `7635944`。
+   - **plist 取值规则合并** → `Info.plist` 与描述文件 plist 是同一套取值规则，抽成 `PlistFields`。commit `7635944`。
+   - **签名材料静态提取** → `packages/ipa_parser/lib/src/ios_signature.dart`：列出 `_CodeSignature/` 条目、从 `embedded.mobileprovision` 的 CMS 外壳里取出 plist、提取 `Name` / `AppIDName` / `TeamIdentifier` / `ApplicationIdentifierPrefix` / `UUID` / `CreationDate` / `ExpirationDate` / `Entitlements`，授权项**保留原始 plist 类型**。`CmsContentExtractor` 走 BER/DER 定位 `encapContentInfo.eContent`，支持不定长容器与分段 OCTET STRING，全部长度先验边界、深度与体积有上限。**不做任何密码学验证**（规范 5.5 禁止自行实现签名算法并宣称权威结论）。commit `6b6b28d`。
+   - **授权比对** → `compareIosAuthorization` 比较应用声明与描述文件授权。描述文件里是 `<App ID 前缀>.<bundle id>`，应用侧只有 `<bundle id>`，因此按**后缀**比较 —— 直接比字符串会让每一个正常应用都被判成「授权的是别的应用」。通配符授权的结论是「覆盖」而非「确认」，如实说明它没有点名具体标识。
+   - **解包（`codesign` 的前置）** → `IpaBundleExtractor`：先算后写（超限**不写盘**）、逐条 `ZipGuard.safeJoin`、声明尺寸与实际不符即中止、按实际字节兜总量上限、**不创建符号链接**（链接目标可以是 `../../..`）、取消与任何失败路径都清理临时目录。commit `3b19bb2`。
+   - **`codesign` 验证** → `IosCodeSignAnalyzer`。结论**只来自 `--verify` 的退出码**；`-d` 的输出只是描述性信息。实测确认 `codesign -d` 对一个签名已损坏的 bundle 照样退出 0 并打印内容 —— 把它当结论正是规范要避免的错误。退出码 3（密封完好但不满足指定要求，ad-hoc 签名必然如此）单独说明，避免被读成「文件被篡改」。非 macOS 或找不到工具一律 `toolUnavailable`，显示为「无法确认」。commit `3b19bb2`。
+
+13. **仍待处理**：
+   - 把 IPA 引擎接入 `IosPackageInfo` 与详情页；IPA 侧接入 worker isolate（进度/取消）。
    - XAPK/aapt2 路径的可取消化（该路径仍走 `Process.run`，未接入 worker isolate）。
    - 规范第七步剩余的详情页细化（导出解析报告等）。
    - 跨平台 `flutter build` **未验证**（本机仅 Command Line Tools，无完整 Xcode）。
    - 真实 IPA 与加固 APK 样本解析**未执行**（无样本，属交付要求 7）。
+   - 沙箱环境不允许枚举进程（`ps` 返回 `Operation not permitted`），因此 `ios_codesign_analyzer_test` 里「超时后无残留子进程」那条断言在本机**未真正执行**（代码里如实跳过，测试中已注明）。
 
-13. **过程中新发现的真实行为**（已记录在对应 commit）：
+14. **过程中新发现的真实行为**（已记录在对应 commit）：
    - 本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
    - `Future.timeout` **不会**终止子进程，只停止等待；已对签名路径改用 `Process.start` + 显式 kill。aapt2 路径仍是旧写法。
    - 取消时若等待子进程的 stdout/stderr 关闭，会一直等到**孙进程**退出（apksigner 是启动 java 的脚本，孙进程继承了同一批管道）。已改为 kill 后直接 `.ignore()` 两个 future。
    - `assets/i18n/*.json` 是 slang 的**构建期输入**（编译进 `lib/gen/strings.g.dart`），**不应**出现在 pubspec 的运行时资产声明里。
    - slang 生成物与 SDK `dart format` 的**风格不一致**（构造器初始化列表缩进、`=>` 换行位置），这是格式门禁一直报 7 个文件的真正原因。
+   - **BER 不定长容器的结束标记只能被消费一次**。把「内容结束」与「本元素结束」混为一谈，会让父容器在读到子元素的 EOC 时误以为自己也结束了。真实描述文件的 `eContent` 后面还有证书与签名者信息，一旦提前收尾就会解析出**被截断的 plist**（长度对不上，但字段都在，很难发现）。`cms.dart` 里 `_Tlv` 因此区分 `contentEnd` 与 `nextOffset`。
+   - `codesign --verify` 的退出码不止 0/1：**3 表示「密封完好但不满足指定要求」**，ad-hoc 签名必然走到这里。只把「非 0」一律读成「签名无效」，会把正常的 ad-hoc 重签包说成被篡改。
+   - `codesign -d --entitlements :-`（带冒号）输出**原始 XML plist**，而裸 `-` 输出的是 codesign 自己的人读格式；前者已被标记为将来会移除，因此解析失败时只记「没读到」，不当成「没有授权项」。
+   - `codesign -d --verbose=4` 的 `Sealed Resources` 行是 `Sealed Resources version=2 rules=13 files=74` —— 键与等号之间还有内容。按「第一个等号」切分会得到假键，该字段永远为空。
+   - **只认退出码会凭空报出「签名有效」**：把工具路径指向 `/usr/bin/true` 也会返回 0。因此退出码 0 还要求输出里出现 codesign 特有的结论行（`valid on disk` / `satisfies its Designated Requirement`）。
+   - CI 的格式检查用 `git ls-files` 会**漏掉新增但未 `git add` 的文件**，本地跑门禁通过、CI 才报错（本次实际踩到：`macho.dart` 与两个 iOS 文件都是这样进库的）。已改为 `git ls-files -co --exclude-standard`。
 
-14. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+15. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。

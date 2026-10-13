@@ -11,7 +11,7 @@
 | `packages/archive_safety` | 不可信 ZIP 的通用安全原语：`ZipBudget`、`ArchiveOpenResult`、`looksLikeZip`、`readArchiveHeader`、`looksStructurallyBroken` | archive |
 | `packages/analysis_model` | 平台中立的「值 + 状态 + 来源 + 诊断」：`FieldValue<T>` / `FieldStatus` / `FieldSource` / `AnalysisDiagnostic` | **零依赖** |
 | `packages/apk_parser` | 纯 Dart Android 解析：AXML、`resources.arsc`、组件、加固线索、容器结构 | archive, archive_safety |
-| `packages/ipa_parser` | 纯 Dart iOS 解析：plist（XML + bplist00）、IPA 容器、Info.plist 字段、图标、Mach-O | archive, archive_safety, analysis_model, xml |
+| `packages/ipa_parser` | 纯 Dart iOS 解析：plist（XML + bplist00）、IPA 容器、Info.plist 字段、图标、Mach-O、签名材料**静态**提取（`_CodeSignature` / `embedded.mobileprovision` 的 CMS 载荷） | archive, archive_safety, analysis_model, xml |
 
 **Android 与 iOS 解析器互不依赖**，只共享 `archive_safety` 与 `analysis_model`。
 不要把某一侧的格式模型放进共享包，也不要让一侧依赖另一侧。
@@ -30,14 +30,17 @@
 ```
 flutter pub get --enforce-lockfile
 dart run build_runner build --delete-conflicting-outputs
-dart format --output=none --set-exit-if-changed $(git ls-files '*.dart')
+dart format --output=none --set-exit-if-changed $(git ls-files -co --exclude-standard '*.dart')
 flutter analyze --fatal-infos --fatal-warnings
 flutter test
 # 逐包：for pkg in packages/*/; do (cd $pkg && dart analyze --fatal-infos --fatal-warnings); done
 ```
 
-- 格式检查**必须用 `$(git ls-files '*.dart')`**，不能是 `.`：生成物的格式化风格
-  与 SDK 的 `dart format` 不一致（构造器初始化列表缩进、`=>` 换行），扫全树会永远失败。
+- 格式检查**必须用 `$(git ls-files -co --exclude-standard '*.dart')`**，不能是 `.`：
+  生成物的格式化风格与 SDK 的 `dart format` 不一致（构造器初始化列表缩进、`=>` 换行），
+  扫全树会永远失败。
+- 用 `-co` 而不是只有 `-c`：**新增但还没 `git add` 的文件同样要被检查**。
+  只用 `-c` 会漏掉它们，本地跑门禁通过、CI 才报错（实际踩到过三次）。
 - 各 package 有**自己的** `analysis_options.yaml`（`include: package:lints/recommended.yaml`）
   + `lints` 依赖。不能靠继承根配置 —— 根配置的 `flutter_lints` 在子包上下文里解析不到，
   会导致逐包 analyze 完全没有 lint 规则。
@@ -66,6 +69,13 @@ flutter test
   `notRequested`（本次没算）。
 - **不得用虚构数据补空**；取不到就如实记录状态与原因。
 - 外部命令一律用参数数组，绝不经 shell 拼接。
+- **签名验证只交给受信任工具**（Android 用 `apksigner`，iOS 用 `codesign`），
+  且只以工具的明确结论为准；`codesign -d` 这类「显示」子命令的输出**只是描述性
+  信息**，不能当结论（实测它对签名已损坏的 bundle 照样退出 0）。
+- 退出码 0 **还要求输出具备该工具特有的形态**，否则任何返回 0 的程序都会被读成
+  「验证通过」。宁可报「无法确认」，也绝不凭空报「签名有效」。
+- 「工具不可用」永远不等于「签名无效」：前者显示「无法确认」。
+- **静态提取与验证必须分开**：本项目不自行实现签名算法。
 
 ## 已知局限（写进代码，不粉饰）
 
@@ -76,3 +86,7 @@ flutter test
 - aapt2 / XAPK 路径仍走 `Process.run`，未接入 worker isolate，**不可取消**。
 - 跨平台 `flutter build` 未验证（本机无完整 Xcode）。
 - 无真实 APK/IPA 样本，交付要求 7 未能产出。
+- 沙箱不允许枚举进程（`ps` 报 `Operation not permitted`），
+  「超时后无残留子进程」的断言在本机未真正执行。
+- ZIP 里的符号链接被当作普通文件写出（不建链接，避免逃逸），
+  因此依赖符号链接的 bundle 用 `codesign` 验证可能失败 —— 结果里会给出计数。
