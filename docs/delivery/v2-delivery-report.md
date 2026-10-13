@@ -2,7 +2,7 @@
 
 > 生成时间：2026-10-13  
 > 基线快照：`97bef24`（V2.0 开工前的仓库状态）  
-> 本次交付：61 个提交，相对基线新增 84 个文件、修改 52 个文件
+> 本次交付：64 个提交，相对基线新增 87 个文件、修改 52 个文件
 
 本报告只写**实测到的**结果。凡未执行的项目一律标注「未执行」，不用推测或静态  
 分析的结果冒充已验证结论。
@@ -21,15 +21,35 @@
 | 格式检查                                             | **0 处待改**（`dart format --output=none --set-exit-if-changed`） |
 | `flutter analyze --fatal-infos --fatal-warnings` | **No issues found!**                                         |
 | 逐包 `dart analyze`（4 个子包）                         | **全部 No issues found!**                                      |
-| `flutter test`                                   | **469 通过 / 3 明确跳过 / 0 失败**                                   |
-| 测试文件数                                            | 30                                                           |
-| 跨平台 `flutter build`                              | **未执行**（本机无完整 Xcode）                                         |
+| `flutter test`                                   | **479 通过 / 10 明确跳过 / 0 失败**                                  |
+| 测试文件数                                            | 32                                                           |
+| `flutter build bundle`（编译整个程序，无需平台工具链）          | **通过** —— 产出 `kernel_blob.bin`（77 MB）与 `AssetManifest.bin`      |
+| 跨平台 `flutter build macos` / `windows` / `linux`    | **未执行**（本机无完整 Xcode，实测报错见 1.1）                              |
 
-3 条跳过项都写明了原因，不是「悄悄没跑」：
+10 条跳过项都写明了原因，不是「悄悄没跑」：
 
 1. `ios_codesign_step_test`：`codesign 不可用时不解包` —— 只能在非 macOS 上构造。
 2. `real_samples_test` 的 APK 组与 IPA 组：未设置 `APPINFOTOOL_SAMPLES` 时跳过；  
    本次交付**已设置并执行**（见第 7 节）。
+3. `real_samples_ui_test` 的 7 条界面用例：同上，**已设置并执行**。
+
+### 1.1 构建验证到哪一步为止
+
+```
+$ flutter build macos --debug
+Xcode not installed; this is necessary for iOS and macOS development.
+```
+
+**这是实测输出，不是推测。** 本机 `xcode-select -p` 指向
+`/Library/Developer/CommandLineTools`，`xcodebuild` 因此不可用。
+
+能做到的替代验证是 `flutter build bundle`：它从 `main.dart` 出发编译**整个程序**
+并解析资产清单，不需要 Xcode / Android SDK。它补上了一个真实缺口 ——
+`flutter test` 只编译测试引用到的代码，一个从未被测试实例化的页面组件在测试里
+完全不会被编译，而 `build bundle` 会。
+
+它**不等于**跨平台构建验证：产出可执行文件仍需要对应平台的工具链。这一步已加入
+CI，见 `.github/workflows/build.yml` 的 `Compile the whole app` 步骤。
 
 ---
 
@@ -353,7 +373,8 @@ In architecture: arm64
 | 跨平台 `flutter build`（macOS / Windows / Linux） | **未执行** —— 本机只有 Command Line Tools，无完整 Xcode             |
 | 「超时后无残留子进程」的进程枚举断言                           | **未执行** —— 沙箱不允许 `ps`（`Operation not permitted`），测试里如实跳过 |
 | `codesign 不可用时不解包` 用例                        | **未执行** —— 只能在非 macOS 上构造，本机 skip                        |
-| 真实样本的 UI 端到端（点击、拖放）                          | **未执行** —— 需要图形环境与真实样本交互                                 |
+| 真实样本的 UI 端到端（状态 → 渲染）                        | **已执行** —— 8 条用例通过（见 6.2）                                  |
+| 真实样本的**交互**（拖放、点击取消、导出报告）                   | **未执行** —— 需要图形环境做真实手势；widget 测试覆盖不到原生拖放              |
 
 ### 8.2 不支持 / 做不到
 
@@ -365,6 +386,7 @@ In architecture: arm64
 | 自行验证 CMS / 代码签名                | **刻意不做**。规范禁止自行实现签名算法并宣称权威结论               |
 | HEIC 图标解码                      | Flutter 不支持                                |
 | ZIP 符号链接的保真解包                  | 出于安全**刻意不创建**符号链接                          |
+| `Assets.car` 里的图标（详见 8.4）          | **刻意不做**。载荷是 LZFSE 压缩的，需要先实现 LZFSE 解码器          |
 
 ### 8.3 已知局限（写在代码注释里，不粉饰）
 
@@ -381,6 +403,25 @@ In architecture: arm64
 
 ---
 
+
+### 8.4 为什么不做 `Assets.car` 图标解析
+
+真实样本的 `Assets.car`（2,970,920 字节）实测情况：
+
+| 检查项 | 实测 |
+| --- | --- |
+| 文件头 | `BOMStore`（Apple 的 BOM 归档格式） |
+| PNG / JPEG 魔数 | **0 / 0** —— 图标不是以独立图片文件存放的 |
+| `RAWR` / `PACK` / `BYTE` 载荷标记 | **0 / 0 / 0** |
+| **LZFSE 压缩魔数**（`bvx2` / `bvxn` / `bvx$`） | **124 / 16 / 100** |
+
+也就是说，要取出图标需要：解析 BOMStore → BOMTree → CUI rendition 键（多层
+二进制格式），再**实现一个 LZFSE 解码器**（Apple 自有算法，Dart 无内置支持）。
+
+规范 5.3 的要求是「按 `Info.plist` 配置解析图标、**明确说明无法直接预览的资源**、
+不得把启动图或截图当作图标」—— 这三条当前都已满足（未解析项会连同原因显示）。
+而一个半成品提取器一旦取错了 rendition，就会把**启动图或别的图**显示成图标，
+恰好违反规范里那条硬约束。**因此刻意不做**，而不是做一半。
 ## 9. 发布前检查清单
 
 - [x] `flutter pub get --enforce-lockfile` 通过
@@ -388,7 +429,8 @@ In architecture: arm64
 - [x] 格式检查 0 处待改
 - [x] `flutter analyze --fatal-infos --fatal-warnings` 无问题
 - [x] 4 个子包 `dart analyze` 无问题
-- [x] `flutter test` 全绿（469 通过 / 3 明确跳过）
+- [x] `flutter test` 全绿（479 通过 / 10 明确跳过）
+- [x] `flutter build bundle` 通过（编译整个程序 + 资产清单）
 - [x] 每个「跳过」都写明原因，没有把「没跑」写成「通过」
 - [x] 安全测试：ZIP 穿越、ZIP 炸弹、恶意长度、工具校验和、参数注入、  
   取消清理、切文件不串数据
@@ -396,15 +438,20 @@ In architecture: arm64
 - [x] `codesign` 的「验证不通过」结论做过独立核对（系统 `unzip` + `codesign`）
 - [ ] **跨平台 `flutter build`** —— 未执行，需要在装有完整 Xcode / Windows SDK  
   / Linux 桌面依赖的机器上补做
-- [ ] 真实样本的 UI 端到端 —— 未执行
+- [x] 真实样本的界面端到端（状态 → 渲染）—— 已执行，8 条通过
+- [ ] 真实样本的**交互**（拖放、取消、导出报告）—— 未执行，需要图形环境
 - [ ] 「取消后无残留进程」的进程枚举 —— 未执行（沙箱限制）
 
 ---
 
 ## 10. 下一步建议（按价值排序）
 
-1. **补做跨平台构建验证** —— 这是唯一会阻塞发布的未执行项。
-2. ~~把 AXML 层的加固特征变成线索~~ —— **已完成**（`manifestLayoutAnomaly`，
-   见 3.3.1）。
-3. **`Assets.car` 图标解析** —— 当前是 iOS 图标预览的唯一缺口。
-4. **补做真实样本的 UI 端到端**（含拖放、取消、导出报告）。
+1. **补做跨平台构建验证** —— 这是唯一会阻塞发布的未执行项（`flutter build bundle`
+   已作为替代验证通过，但产出可执行文件仍需平台工具链）。
+2. ~~把 AXML 层的加固特征变成线索~~ —— **已完成**（`manifestLayoutAnomaly`）。
+3. ~~真实样本的界面端到端~~ —— **已完成**（8 条用例）。剩下的**交互**部分
+   （拖放、点击取消、导出报告）需要图形环境。
+4. **`Assets.car` 图标解析** —— 需要先实现 LZFSE 解码器，且取错 rendition 会
+   违反「不得把启动图当图标」。要做就要做对，不能做一半（见 8.4）。
+5. **给 Android 侧补 `AnalysisDiagnostic`** —— 目前只有 iOS 侧产出诊断，
+   因此 Android 的「解析诊断」卡片始终为空。这是事实而非缺陷，但对排查不利。
