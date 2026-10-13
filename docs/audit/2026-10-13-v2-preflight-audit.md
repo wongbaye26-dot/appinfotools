@@ -562,10 +562,17 @@ Bad state: No ProviderScope found
    - **5.7 无取消机制** → `ApkParseTask.cancel()` 用 `Isolate.immediate` 真正终止 worker；UI 在**确实拿到可取消任务时**才显示取消按钮（XAPK/aapt2 路径尚不可取消，不显示伪可用按钮）。取消用 `ApkParseCancelledException` 与失败区分，不弹错误提示。
    - **真实进度** → `ApkReader.parse` 新增 `onStage` 回调（commit `676d1ee`），UI 显示当前阶段。**只报阶段、不报百分比**：各阶段耗时极不均匀，百分比会是编造的。
 
-9. **仍待处理**：5.9 `FileState` 值语义缺失、5.10 资产清单不一致；4.1 剩余（SHA-256、DEX 数量、SO 明细、资源目录树）；4.2 加固线索与字段来源/状态模型；XAPK/aapt2 路径的可取消化。
+9. **已处理**（4.2 加固线索 + 规范第六步统一数据模型）：
+   - **统一模型** → 新增 `lib/models/analysis/`：`FieldStatus`（extracted / absent / unsupported / failed / hardenedUnknown / notRequested）、`FieldSource`、`FieldValue<T>`（值 + 状态 + 来源 + 诊断，含 `overriddenBy` 分层合并）、`AnalysisDiagnostic`、`HardeningHint`、`PackageAnalysisResult`、`AndroidPackageInfo`、`IosPackageInfo`、`SignatureVerdict`。commit `afed885`。
+   - **加固线索** → 新增 `packages/apk_parser/lib/src/hardening.dart`，输出 6 类可解释的结构特征，**枚举中不含任何厂商名**（规范 4.2 禁止据单一特征判定厂商）。commit `afed885`。
+   - **接线** → 新增 `lib/apkparser/analysis_builder.dart` **逐字段**合并各来源并保留来源标注；`ApkInfo.manifestSource` 由各分支如实填写；`FileState.analysis` 为派生 getter（哈希/签名/解析三条并行异步线，派生可保证汇总与明细永不矛盾）。commit `8406b57`。
+   - **顺带补 SHA-256**（规范 4.1）→ `file_hash.dart` 一次读取同时算三种哈希；删掉从未被调用的 `computeMd5` / `computeSha1`。
 
-10. **过程中新发现的真实行为**（已记录在对应 commit）：
+10. **仍待处理**：5.9 `FileState` 值语义缺失、5.10 资产清单不一致；4.1 剩余（DEX 数量、SO 明细、资源目录树）；XAPK/aapt2 路径的可取消化；aapt2 字段与内置字段的语义对齐（对齐后才能合并来源，目前**刻意不合并**以免产出错位标注）。
+
+11. **过程中新发现的真实行为**（已记录在对应 commit）：
    - 本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
    - `Future.timeout` **不会**终止子进程，只停止等待；已对签名路径改用 `Process.start` + 显式 kill。aapt2 路径仍是旧写法。
+   - 取消时若等待子进程的 stdout/stderr 关闭，会一直等到**孙进程**退出（apksigner 是启动 java 的脚本，孙进程继承了同一批管道）。已改为 kill 后直接 `.ignore()` 两个 future。
 
-11. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+12. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
