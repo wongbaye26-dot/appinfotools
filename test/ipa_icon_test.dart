@@ -27,8 +27,12 @@ Uint8List _realPng() {
   return file.readAsBytesSync();
 }
 
-List<int> _be32(int value) =>
-    [(value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF];
+List<int> _be32(int value) => [
+      (value >> 24) & 0xFF,
+      (value >> 16) & 0xFF,
+      (value >> 8) & 0xFF,
+      value & 0xFF
+    ];
 
 /// 只含 PNG 签名与 IHDR 的最小头部，用于构造指定尺寸的候选。
 ///
@@ -112,10 +116,9 @@ void main() {
       final resolution = _resolve(archive);
 
       expect(resolution.candidates, hasLength(2));
-      expect(resolution.best!.pixelWidth, 180,
-          reason: '展示时优先用最高分辨率的那个');
-      expect(resolution.candidates.map((c) => c.pixelWidth).toList(),
-          [180, 120]);
+      expect(resolution.best!.pixelWidth, 180, reason: '展示时优先用最高分辨率的那个');
+      expect(
+          resolution.candidates.map((c) => c.pixelWidth).toList(), [180, 120]);
     });
 
     test('声明里已带扩展名时按原样匹配，不会拼成 .png.png', () {
@@ -227,8 +230,8 @@ void main() {
 
       expect(resolution.candidates, isEmpty);
       expect(resolution.assetCatalogOnly, isTrue);
-      expect(resolution.unresolved.single.source,
-          IosIconSource.assetCatalogName);
+      expect(
+          resolution.unresolved.single.source, IosIconSource.assetCatalogName);
       expect(resolution.unresolved.single.reason, contains('Assets.car'));
       expect(resolution.unresolved.single.reason,
           contains('cannot be previewed directly'));
@@ -246,8 +249,8 @@ void main() {
 
       final resolution = _resolve(archive);
 
-      expect(resolution.unresolved.single.reason,
-          contains('no Assets.car entry'));
+      expect(
+          resolution.unresolved.single.reason, contains('no Assets.car entry'));
       expect(resolution.unresolved.single.archivePath, isNull);
     });
   });
@@ -268,8 +271,7 @@ void main() {
       final resolution = _resolve(archive);
 
       expect(resolution.candidates, hasLength(1));
-      expect(resolution.best!.bytes, isNull,
-          reason: '超过上限就不带字节，避免后续解码耗尽内存');
+      expect(resolution.best!.bytes, isNull, reason: '超过上限就不带字节，避免后续解码耗尽内存');
       expect(resolution.best!.pixelWidth, 6000,
           reason: '尺寸仍从头部读出 —— 这正是「解码前就知道有多大」的意义');
       expect(
@@ -308,8 +310,7 @@ void main() {
 
   group('图片格式识别（按魔数，不信扩展名）', () {
     test('PNG', () {
-      expect(IpaIconResolver.detectImageFormat(_realPng()),
-          IosImageFormat.png);
+      expect(IpaIconResolver.detectImageFormat(_realPng()), IosImageFormat.png);
     });
 
     test('JPEG / GIF / WebP / HEIC', () {
@@ -339,8 +340,7 @@ void main() {
     });
 
     test('认不出时返回 unknown，而不是猜一个', () {
-      expect(IpaIconResolver.detectImageFormat([]),
-          IosImageFormat.unknown);
+      expect(IpaIconResolver.detectImageFormat([]), IosImageFormat.unknown);
       expect(IpaIconResolver.detectImageFormat([1, 2, 3, 4, 5, 6, 7, 8]),
           IosImageFormat.unknown);
     });
@@ -357,16 +357,15 @@ void main() {
 
       expect(resolution.best!.format, IosImageFormat.jpeg);
       expect(resolution.best!.isPng, isFalse);
-      expect(resolution.best!.pixelWidth, isNull,
-          reason: '非 PNG 不读尺寸，而不是瞎猜');
+      expect(resolution.best!.pixelWidth, isNull, reason: '非 PNG 不读尺寸，而不是瞎猜');
     });
   });
 
   group('PNG 尺寸读取', () {
     test('从 IHDR 读出宽高', () {
       expect(IpaIconResolver.readPngDimensions(_realPng()), (256, 256));
-      expect(IpaIconResolver.readPngDimensions(_pngHeader(180, 120)),
-          (180, 120));
+      expect(
+          IpaIconResolver.readPngDimensions(_pngHeader(180, 120)), (180, 120));
     });
 
     test('头部不足或不是 IHDR 时返回 null', () {

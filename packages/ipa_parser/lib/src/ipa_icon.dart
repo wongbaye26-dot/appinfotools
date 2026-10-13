@@ -84,10 +84,9 @@ class IosIconCandidate {
   });
 
   /// 像素面积，用于排序；未知尺寸时为 -1。
-  int get pixelArea =>
-      (pixelWidth == null || pixelHeight == null)
-          ? -1
-          : pixelWidth! * pixelHeight!;
+  int get pixelArea => (pixelWidth == null || pixelHeight == null)
+      ? -1
+      : pixelWidth! * pixelHeight!;
 
   /// 是否是「常见 PNG 图标」。
   bool get isPng => format == IosImageFormat.png;
@@ -209,9 +208,8 @@ class IpaIconResolver {
     if (primary != null) {
       collect(IosIconSource.primaryIconFiles, primary.iconFiles);
       if (primary.iconName != null) {
-        _noteAssetCatalog(
-            info, primary.iconName!, IosIconSource.assetCatalogName, archive,
-            unresolved, diagnostics);
+        _noteAssetCatalog(info, primary.iconName!,
+            IosIconSource.assetCatalogName, archive, unresolved, diagnostics);
       }
     }
 
@@ -223,8 +221,8 @@ class IpaIconResolver {
     if (ipad != null) {
       collect(IosIconSource.primaryIconFilesIpad, ipad.iconFiles);
       if (ipad.iconName != null) {
-        _noteAssetCatalog(info, ipad.iconName!,
-            IosIconSource.assetCatalogName, archive, unresolved, diagnostics);
+        _noteAssetCatalog(info, ipad.iconName!, IosIconSource.assetCatalogName,
+            archive, unresolved, diagnostics);
       }
     }
 
@@ -254,9 +252,8 @@ class IpaIconResolver {
   static List<String> _resolveName(
       Archive archive, String bundleRoot, String name) {
     // 已经带扩展名时先按原样试，避免拼出 `Icon.png.png`。
-    final hasExtension = name.contains('.') &&
-        !name.endsWith('@2x') &&
-        !name.endsWith('@3x');
+    final hasExtension =
+        name.contains('.') && !name.endsWith('@2x') && !name.endsWith('@3x');
 
     final matched = <String>[];
     for (final suffix in _suffixes) {
@@ -294,7 +291,7 @@ class IpaIconResolver {
       diagnostics.add(AnalysisDiagnostic.warning(
         'ios.icons.too_large',
         '$archivePath is ${content.length} bytes, above the $maxIconBytes byte '
-        'limit; not carrying its bytes so it is never decoded',
+            'limit; not carrying its bytes so it is never decoded',
         source: FieldSource.infoPlist,
       ));
     }
