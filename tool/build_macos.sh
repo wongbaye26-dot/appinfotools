@@ -95,7 +95,7 @@ dart run build_runner build --delete-conflicting-outputs
 step "flutter build macos --release"
 flutter build macos --release
 
-APP_PATH="build/macos/Build/Products/Release/apk_info_tool.app"
+APP_PATH="build/macos/Build/Products/Release/APP详情工具.app"
 [ -d "$APP_PATH" ] || fail "构建产物不存在：$APP_PATH" "构建报告成功但没有产物，请检查上面的输出"
 ok "$APP_PATH"
 
@@ -154,12 +154,12 @@ rm -f "$DMG_PATH"
 if command -v create-dmg >/dev/null 2>&1; then
   step "打包 DMG（create-dmg，与 CI 一致）"
   create-dmg \
-    --volname "APK Info Tool ${VERSION}" \
+    --volname "APP详情工具 ${VERSION}" \
     --window-pos 200 120 \
     --window-size 800 400 \
     --icon-size 100 \
-    --icon "apk_info_tool.app" 200 190 \
-    --hide-extension "apk_info_tool.app" \
+    --icon "APP详情工具.app" 200 190 \
+    --hide-extension "APP详情工具.app" \
     --app-drop-link 600 185 \
     "$DMG_PATH" \
     "$APP_PATH"

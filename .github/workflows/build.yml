@@ -171,15 +171,15 @@ jobs:
       - name: Create DMG
         run: |
           create-dmg \
-            --volname "APK Info Tool ${{ steps.version.outputs.version }}" \
+            --volname "APP详情工具 ${{ steps.version.outputs.version }}" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
-            --icon "apk_info_tool.app" 200 190 \
-            --hide-extension "apk_info_tool.app" \
+            --icon "APP详情工具.app" 200 190 \
+            --hide-extension "APP详情工具.app" \
             --app-drop-link 600 185 \
             "build/macos/APKInfoTool-${{ steps.version.outputs.version }}.dmg" \
-            "build/macos/Build/Products/Release/apk_info_tool.app"
+            "build/macos/Build/Products/Release/APP详情工具.app"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -259,7 +259,7 @@ jobs:
           # 创建 desktop 文件
           cat > AppDir/usr/share/applications/apk-info-tool.desktop << EOF
           [Desktop Entry]
-          Name=APK Info Tool
+          Name=APP详情工具
           Exec=AppRun
           Icon=apk_info_tool
           Type=Application

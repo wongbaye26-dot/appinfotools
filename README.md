@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/icon_512.png" width="120" alt="APK Info Tool">
+  <img src="docs/assets/icon_512.png" width="120" alt="APP详情工具">
 </p>
 
-<h1 align="center">APK Info Tool</h1>
+<h1 align="center">APP详情工具</h1>
 
 <p align="center">
   <strong>轻量、强大的跨平台 Android 应用包解析和安装工具</strong><br>
@@ -96,7 +96,7 @@ v2.0 起默认启用**内置解析引擎**，纯 Dart 实现，无需安装任�
 
 ## 对比
 
-| 能力 | APK Info Tool | 命令行 aapt | 其他 GUI 工具 |
+| 能力 | APP详情工具 | 命令行 aapt | 其他 GUI 工具 |
 |------|:---:|:---:|:---:|
 | XAPK / APKM / APKS 支持 | ✅ | ❌ | ⚠️ 部分 |
 | 自适应图标完整渲染 | ✅ | ❌ | ❌ |

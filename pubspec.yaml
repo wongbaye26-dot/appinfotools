@@ -1,5 +1,5 @@
 name: apk_info_tool
-description: An apk info tool.
+description: APP详情工具 — 应用包详情查看工具。
 homepage: https://feng.to
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 

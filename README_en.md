@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/icon_512.png" width="120" alt="APK Info Tool">
+  <img src="docs/assets/icon_512.png" width="120" alt="APP详情工具">
 </p>
 
-<h1 align="center">APK Info Tool</h1>
+<h1 align="center">APP详情工具</h1>
 
 <p align="center">
   <strong>Lightweight yet powerful cross-platform Android package analyzer and installer</strong><br>
@@ -96,7 +96,7 @@ Starting from v2.0, the **built-in parser engine** is enabled by default — a p
 
 ## Comparison
 
-| Capability | APK Info Tool | CLI aapt | Other GUI Tools |
+| Capability | APP详情工具 | CLI aapt | Other GUI Tools |
 |------------|:---:|:---:|:---:|
 | XAPK / APKM / APKS support | ✅ | ❌ | ⚠️ Partial |
 | Full adaptive icon rendering | ✅ | ❌ | ❌ |
