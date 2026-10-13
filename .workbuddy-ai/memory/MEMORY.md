@@ -75,6 +75,12 @@ flutter test
 
 ## UI 约定
 
+- **两页（APK / IPA）用同一套版式**：`Card` + `TitleValueLayout`、同一套卡片顺序、
+  同样的复制按钮与设置开关。区分靠**最前面那一行平台标识**（`Platform =
+  Android / iOS` + `Icons.android` / `Icons.apple`），而不是把两页做成两种样子 ——
+  两页字段名大量重叠（「版本名」在 Android 是 `versionName`、在 iOS 是
+  `CFBundleShortVersionString`）。测试断言「每张卡片都是 Card + TitleValueLayout」，
+  出现自定义壳就说明又分叉了。
 - **`SelectableText` 的 `maxLines` 是高度预留，也是裁剪**，两件事都要当心：
   - 只给 `maxLines` 不给 `minLines` 时，一行内容也按 `maxLines` 行高排版
     （实测 `maxLines: 6` 的单行卡片 136px，补 `minLines: 1` 后 39px）。
@@ -86,10 +92,40 @@ flutter test
   继承到的是 `WidgetsApp` 的报错样式。样式一律以 `theme.textTheme.*` 为基底
   `copyWith`。
 - 平台视觉区分**不能只靠颜色**：主题色可被用户改，色觉障碍也存在。
-  APK 与 IPA 两页的差异以结构为主（IPA 分组 + Hero 卡片 + 等宽标识符），
-  颜色只是强化。
+  颜色只是强化，结构差异才是主力。
 - 分组标题与卡片标题**不得同名**（四种语言里都得检查），否则界面上是两行
   一模一样的字。
+- **能渲染就渲染出来看**：把页面用 `RepaintBoundary.toImage` 落成 PNG
+  （加载系统字体 `/System/Library/Fonts/Supplemental/Arial Unicode.ttf`）比逐行
+  读代码有效得多 —— 「容器」卡片上的 `Closure: ...`、分组标题的色块、图标有没有
+  真的画出来，都是这样发现的。
+
+## iOS 图标：Apple 的 CgBI（"PNG crush"）
+
+Xcode 打包时会把 bundle 里的**彩色** PNG 换成 CgBI 变体，Flutter 的解码器读不了。
+判定与变换**不要照抄博客，用 Apple 自己的工具当基准**：
+
+```sh
+PNGCRUSH=/Applications/Xcode.app/Contents/Developer/usr/bin/pngcrush   # Xcode 自带
+$PNGCRUSH -iphone -q plain.png cgbi.png
+$PNGCRUSH -revert-iphone-optimizations -q cgbi.png revert.png          # 基准
+sips -s format png cgbi.png --out ref.png                              # 另一个基准
+```
+
+- 形态：签名后紧跟 `CgBI` 块、`IDAT` 是**裸 deflate**（无 zlib 头、无 adler32）、
+  像素是 **BGRA 且 RGB 已按 alpha 预乘**；
+- 布局是 `ch0=B, ch1=G, ch2=R, ch3=A`；反预乘用**整数截断** `v * 255 ~/ a`
+  （16 个半透明样本 16/16 一致；四舍五入只有 12/16）；
+- `pngcrush -iphone` 对灰度（0）与灰度+alpha（4）**不做**变换 → CgBI 只以
+  **8 位 RGBA、非隔行**出现，其余形态应如实拒绝而不是猜着解；
+- **预乘是有损的**：`A=0` 的颜色回不来。应用图标基本不透明，所以结果是精确的；
+  别把半透明的情况说成「精确还原」；
+- `archive` 的 `Inflate` 不读 zlib 头也不校验 adler32（正好是裸 deflate），
+  `Deflate` 输出裸流，`ZLibEncoder` 才加头；
+- **造 CgBI 夹具必须把直通 RGBA 编成 BGRA+预乘再写盘**，否则造出来的东西
+  根本不是 CgBI；
+- 读 PNG 尺寸**不能写死 `IHDR` 在偏移 12**，要走块链（CgBI 的 IHDR 前面还有
+  一个块）；块必须四个部分齐全（长度 + 类型 + 数据 + CRC）。
 
 ## 解析安全约定
 
@@ -130,7 +166,10 @@ flutter test
   需设 `APPINFOTOOL_SAMPLES=/tmp/samples`；未设置时整体显式跳过。
   尚未执行的是**交互**部分：拖放、取消解析、导出报告。
 - Android 侧没有任何 `AnalysisDiagnostic` 产出者，「解析诊断」卡片恒为空。
-- `Assets.car` 里的图标不提取（需要 LZFSE 解码器），只如实说明取不到。
+- `Assets.car` 里的图标不提取：那是 CoreUI 的 BOMStore，图像载荷是 **LZFSE**
+  压缩（`bvx2` 块），需要 LZFSE 解码器。bundle 里直接存在的 `AppIcon*.png`
+  已经能解（含 CgBI），`Assets.car` 的情况继续如实说明「取不到」。
+- 未执行的**交互**路径：拖放、取消解析、导出报告。
 - 沙箱不允许枚举进程（`ps` 报 `Operation not permitted`），
   「超时后无残留子进程」的断言在本机未真正执行。
 - ZIP 里的符号链接被当作普通文件写出（不建链接，避免逃逸），
