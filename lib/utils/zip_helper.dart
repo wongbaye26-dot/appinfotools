@@ -1,28 +1,52 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
+import 'package:apk_parser/apk_parser.dart'
+    show
+        ArchiveOpenResult,
+        ZipBudget,
+        looksLikeZip,
+        looksStructurallyBroken,
+        readArchiveHeader;
+import 'package:archive/archive.dart';
 import 'package:path/path.dart' as path;
 
 class ZipHelper {
   Archive? _archive;
 
-  /// 打开 ZIP 文件，使用 InputFileStream 流式读取避免将整个文件加载到内存
-  Future<bool> open(String filePath) async {
+  /// 打开 ZIP 文件，使用 InputFileStream 流式读取避免将整个文件加载到内存。
+  ///
+  /// 返回具体的失败原因而非 `bool`，调用方据此区分「不是归档」「归档损坏」
+  /// 「命中解压预算」「IO 失败」—— 这四种情况对用户的含义完全不同。
+  Future<ArchiveOpenResult> open(String filePath) async {
     InputFileStream? inputStream;
     try {
-      inputStream = InputFileStream(filePath);
-      _archive = ZipDecoder().decodeStream(inputStream);
-      if (_isZipBomb(_archive!)) {
-        _archive = null;
-        throw Exception('ZIP bomb detected');
+      if (!looksLikeZip(await readArchiveHeader(filePath))) {
+        return ArchiveOpenResult.notArchive;
       }
-      return true;
+      final length = await File(filePath).length();
+      inputStream = InputFileStream(filePath);
+      final archive = ZipDecoder().decodeStream(inputStream);
+      if (looksStructurallyBroken(archive, length)) {
+        log.severe('Refusing to open $filePath: structurally broken archive');
+        _archive = null;
+        return ArchiveOpenResult.corrupt;
+      }
+      if (ZipBudget.isExceeded(archive)) {
+        _archive = null;
+        log.severe('Refusing to open $filePath: decompression bomb detected');
+        return ArchiveOpenResult.resourceBudgetExceeded;
+      }
+      _archive = archive;
+      return ArchiveOpenResult.ok;
+    } on FileSystemException catch (e) {
+      log.severe('Failed to open zip file (io): $e');
+      return ArchiveOpenResult.ioError;
     } catch (e) {
       log.severe('Failed to open zip file: $e');
-      return false;
+      return ArchiveOpenResult.corrupt;
     } finally {
       inputStream?.closeSync();
     }
@@ -49,9 +73,6 @@ class ZipHelper {
             name.toLowerCase().endsWith(lowerExtension))
         .toList();
   }
-
-  // ZIP bomb protection
-  bool _isZipBomb(Archive archive) => ZipGuard.isBomb(archive);
 
   /// 将归档中的单个条目解出到 [outputPath]。
   ///

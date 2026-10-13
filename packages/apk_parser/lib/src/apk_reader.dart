@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
+import 'archive_open.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
 import 'models.dart';
+import 'zip_budget.dart';
 
 final _log = Logger('ApkReader');
 
@@ -11,67 +14,63 @@ final _log = Logger('ApkReader');
 class ApkReader {
   Archive? _archive;
   ArscParser? _arscParser;
-  static const int _maxTotalUncompressed = 1024 * 1024 * 1024;
-  static const int _maxEntryCount = 100000;
-  static const int _maxCompressionRatio = 100;
-  static const int _ratioCheckMinSize = 16 * 1024 * 1024;
 
-  bool _isZipBomb(Archive archive) {
-    var totalUncompressed = 0;
-    var count = 0;
-    for (final file in archive.files) {
-      count++;
-      if (count > _maxEntryCount) return true;
-      if (!file.isFile) continue;
-      // ArchiveFile.size is the *uncompressed* size (set from ZipFile's
-      // uncompressedSize when decoding).
-      final uncompressed = file.size;
-      totalUncompressed += uncompressed;
-      if (totalUncompressed > _maxTotalUncompressed) return true;
-      final raw = file.rawContent;
-      if (raw is ZipFile) {
-        final compressed = raw.compressedSize;
-        if (uncompressed > _ratioCheckMinSize &&
-            compressed > 0 &&
-            uncompressed > compressed * _maxCompressionRatio) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  /// 打开 APK 文件（ZIP 格式）
-  Future<bool> open(String filePath) async {
+  /// 打开 APK 文件（ZIP 格式）。
+  ///
+  /// 返回具体的失败原因而非笼统的 `false`：调用方需要区分
+  /// 「不是归档」「归档损坏」「命中解压预算」「IO 失败」。
+  Future<ArchiveOpenResult> open(String filePath) async {
     InputFileStream? inputStream;
     try {
-      inputStream = InputFileStream(filePath);
-      _archive = ZipDecoder().decodeStream(inputStream);
-      if (_isZipBomb(_archive!)) {
-        _archive = null;
-        return false;
+      if (!looksLikeZip(await readArchiveHeader(filePath))) {
+        return ArchiveOpenResult.notArchive;
       }
-      return true;
+      final length = await File(filePath).length();
+      inputStream = InputFileStream(filePath);
+      final archive = ZipDecoder().decodeStream(inputStream);
+      if (looksStructurallyBroken(archive, length)) {
+        _log.warning('open failed: $filePath looks structurally broken');
+        _archive = null;
+        return ArchiveOpenResult.corrupt;
+      }
+      if (ZipBudget.isExceeded(archive)) {
+        _log.warning(
+            'open refused: $filePath exceeds the decompression budget');
+        _archive = null;
+        return ArchiveOpenResult.resourceBudgetExceeded;
+      }
+      _archive = archive;
+      return ArchiveOpenResult.ok;
+    } on FileSystemException catch (e) {
+      _log.warning('open failed (io): $e');
+      return ArchiveOpenResult.ioError;
     } catch (e, stackTrace) {
       _log.warning('open failed: $e\n$stackTrace');
-      return false;
+      return ArchiveOpenResult.corrupt;
     } finally {
       inputStream?.closeSync();
     }
   }
 
   /// 从内存数据打开（用于嵌套 ZIP 场景）
-  bool openBytes(Uint8List data) {
+  ArchiveOpenResult openBytes(Uint8List data) {
     try {
-      _archive = ZipDecoder().decodeBytes(data);
-      if (_isZipBomb(_archive!)) {
-        _archive = null;
-        return false;
+      if (!looksLikeZip(data)) {
+        return ArchiveOpenResult.notArchive;
       }
-      return true;
+      final archive = ZipDecoder().decodeBytes(data);
+      if (looksStructurallyBroken(archive, data.length)) {
+        return ArchiveOpenResult.corrupt;
+      }
+      if (ZipBudget.isExceeded(archive)) {
+        _archive = null;
+        return ArchiveOpenResult.resourceBudgetExceeded;
+      }
+      _archive = archive;
+      return ArchiveOpenResult.ok;
     } catch (e, stackTrace) {
       _log.warning('openBytes failed: $e\n$stackTrace');
-      return false;
+      return ArchiveOpenResult.corrupt;
     }
   }
 

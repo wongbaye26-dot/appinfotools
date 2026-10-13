@@ -21,8 +21,9 @@ void main(List<String> args) async {
   final sw = Stopwatch()..start();
   final reader = ApkReader();
 
-  if (!await reader.open(filePath)) {
-    print('Error: Failed to open APK file');
+  final openResult = await reader.open(filePath);
+  if (!openResult.isOk) {
+    print('Error: Failed to open APK file (${openResult.description})');
     exit(1);
   }
 

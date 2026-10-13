@@ -103,7 +103,7 @@ class XapkInstaller {
   Future<List<String>?> getSplitApks(String xapkPath) async {
     final zip = ZipHelper();
     try {
-      if (!await zip.open(xapkPath)) return null;
+      if (!(await zip.open(xapkPath)).isOk) return null;
       final manifest = await _loadManifestData(zip);
       var splitApks =
           manifest == null ? <String>[] : _splitApksFromManifest(manifest);
@@ -180,7 +180,7 @@ class XapkInstaller {
       }
 
       // 解压XAPK
-      if (!await zip.open(xapkPath)) {
+      if (!(await zip.open(xapkPath)).isOk) {
         log.severe('Failed to open XAPK file');
         return false;
       }

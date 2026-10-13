@@ -131,7 +131,7 @@ enum _ZipContentType { renamedApk, containsApks, notApk }
 Future<_ZipContentType> _detectZipContentType(String zipPath) async {
   final zip = ZipHelper();
   try {
-    if (!await zip.open(zipPath)) return _ZipContentType.notApk;
+    if (!(await zip.open(zipPath)).isOk) return _ZipContentType.notApk;
     final files = zip.listFiles();
 
     // 检查 ZIP 根目录是否有 AndroidManifest.xml → 说明这是重命名的 APK（优先级最高）
@@ -298,8 +298,10 @@ Future<ApkInfo?> getApkInfo(String apk) async {
     XapkManifest? manifest;
     try {
       final zipOpenSw = Stopwatch()..start();
-      if (!await zip.open(apk)) {
-        log.warning("getApkInfo: failed to open XAPK file");
+      final openResult = await zip.open(apk);
+      if (!openResult.isOk) {
+        log.warning(
+            "getApkInfo: failed to open XAPK file: ${openResult.description}");
         return null;
       }
       zipOpenMs = zipOpenSw.elapsedMilliseconds;
@@ -511,8 +513,10 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
     phaseSw
       ..reset()
       ..start();
-    if (!await reader.open(apk)) {
-      log.warning("_getApkInfoBuiltin: failed to open APK");
+    final openResult = await reader.open(apk);
+    if (!openResult.isOk) {
+      log.warning(
+          "_getApkInfoBuiltin: failed to open APK: ${openResult.description}");
       return null;
     }
     final openMs = phaseSw.elapsedMilliseconds;

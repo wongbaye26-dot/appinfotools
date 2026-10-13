@@ -129,7 +129,7 @@ Future<XapkManifest?> parseXapkManifest(String xapkPath,
   final zip = sharedZip ?? ZipHelper();
   final shouldClose = sharedZip == null;
   try {
-    if (shouldClose && !await zip.open(xapkPath)) return null;
+    if (shouldClose && !(await zip.open(xapkPath)).isOk) return null;
     final manifestData = await zip.readFileContent('manifest.json') ??
         await zip.readFileContent('info.json');
     if (manifestData == null) return null;
@@ -152,7 +152,7 @@ Future<Image?> loadXapkIcon(String xapkPath,
   final zip = sharedZip ?? ZipHelper();
   final shouldClose = sharedZip == null;
   try {
-    if (shouldClose && !await zip.open(xapkPath)) return null;
+    if (shouldClose && !(await zip.open(xapkPath)).isOk) return null;
     final candidates = <String>[
       if (iconPath != null && iconPath.isNotEmpty) iconPath,
       'icon.png',

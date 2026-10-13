@@ -63,7 +63,7 @@ void main(List<String> args) async {
     final reader = ApkReader();
     ApkMeta? dartResult;
     try {
-      if (await reader.open(file.path)) {
+      if ((await reader.open(file.path)).isOk) {
         dartResult = await reader.parse();
       }
     } catch (e) {
