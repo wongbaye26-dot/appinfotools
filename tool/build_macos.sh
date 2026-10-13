@@ -47,7 +47,7 @@ ok "flutter $(flutter --version 2>/dev/null | head -1 | awk '{print $2}')"
 
 DEV_DIR="$(xcode-select -p 2>/dev/null || true)"
 case "$DEV_DIR" in
-  */Xcode.app/Contents/Developer) ok "Xcode（$DEV_DIR）" ;;
+  */Xcode.app/Contents/Developer) ok "Xcode（${DEV_DIR}）" ;;
   "")
     fail "没有安装 Xcode" \
          "从 App Store 或 https://developer.apple.com/xcode/ 安装完整 Xcode（约 15 GB）" \
@@ -60,13 +60,22 @@ case "$DEV_DIR" in
          "            sudo xcodebuild -runFirstLaunch" ;;
 esac
 
-if ! command -v pod >/dev/null 2>&1; then
-  fail "没有安装 CocoaPods" \
-       "本项目有 8 个 macOS 原生插件（desktop_drop / file_picker / window_manager 等），必须经 CocoaPods 集成" \
-       "安装：sudo gem install cocoapods" \
-       "（若 gem 权限受限，可用 brew install cocoapods）"
+if command -v pod >/dev/null 2>&1 && pod --version >/dev/null 2>&1; then
+  ok "CocoaPods $(pod --version 2>/dev/null)"
+else
+  # **不在这里失败。** Flutter 3.47 默认用 Swift Package Manager 集成插件，
+  # 只有把 SPM 关掉时才需要 CocoaPods。硬性要求 CocoaPods 会把一条本来能走通的
+  # 路堵死 —— 这个脚本的第一版就是这么写的，实测差点拦住一次正常构建。
+  cat <<'EOF'
+
+    [i] 没有可用的 CocoaPods。
+        Flutter 3.47 默认用 Swift Package Manager 集成插件，因此**通常不需要**它。
+        若构建时报 "Adding Swift Package Manager integration" 之后失败，
+        说明 SPM 这条路走不通，那时才需要装 CocoaPods：
+            sudo gem install cocoapods      # 权限受限时：brew install cocoapods
+        注意 CocoaPods 需要 Ruby >= 3.1；macOS 自带的 Ruby 2.6 装不上。
+EOF
 fi
-ok "CocoaPods $(pod --version 2>/dev/null)"
 
 if ! xcodebuild -version >/dev/null 2>&1; then
   fail "xcodebuild 不可用" "先完成上面 Xcode 的安装与 xcode-select 切换"

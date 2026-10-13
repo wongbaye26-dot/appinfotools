@@ -8,6 +8,13 @@ class AppDelegate: FlutterAppDelegate {
         return true
     }
 
+    // Flutter 在 macOS 14+ 上要求实现这个（否则 Xcode 构建时会给出迁移提示，
+    // 且窗口状态恢复的行为不确定）。返回 true 表示应用自己保证恢复状态的
+    // 安全性 —— 本应用不保存任何敏感状态。
+    override func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool {
+        return true
+    }
+
     override func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = mainFlutterWindow?.contentViewController as! FlutterViewController
         let registrar = controller.engine.registrar(forPlugin: "FileAssociationPlugin")
