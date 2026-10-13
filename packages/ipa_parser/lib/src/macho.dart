@@ -285,7 +285,8 @@ class MachOParser {
 
   static MachOFile parse(Uint8List data) {
     if (data.length < 4) {
-      return _failure('file is too short (${data.length} bytes) to be a Mach-O');
+      return _failure(
+          'file is too short (${data.length} bytes) to be a Mach-O');
     }
 
     final magic = _be32(data, 0);
@@ -303,8 +304,10 @@ class MachOParser {
           entriesAre64Bit: magic == _fatCigam64);
     }
 
-    if (magic == _magic64 || magic == _magic32 ||
-        magic == _cigam64 || magic == _cigam32) {
+    if (magic == _magic64 ||
+        magic == _magic32 ||
+        magic == _cigam64 ||
+        magic == _cigam32) {
       final is64 = magic == _magic64 || magic == _cigam64;
       // 按大端读魔数：读到 MH_CIGAM 系列说明文件本身是**小端**
       // （小端文件把 MH_MAGIC 存成 CF FA ED FE，大端读出来就是 CIGAM）。
@@ -458,8 +461,10 @@ class MachOParser {
 
     var resolvedIs64 = is64Bit;
     var resolvedOrder = order;
-    if (magic == _magic64 || magic == _magic32 ||
-        magic == _cigam64 || magic == _cigam32) {
+    if (magic == _magic64 ||
+        magic == _magic32 ||
+        magic == _cigam64 ||
+        magic == _cigam32) {
       resolvedIs64 = magic == _magic64 || magic == _cigam64;
       resolvedOrder = (magic == _magic64 || magic == _magic32)
           ? MachOByteOrder.big
@@ -480,7 +485,7 @@ class MachOParser {
       diagnostics.add(AnalysisDiagnostic.error(
         'ios.macho.image_truncated',
         '$label declares a ${is64 ? 64 : 32}-bit header but only $available '
-        'bytes are available',
+            'bytes are available',
       ));
       return null;
     }
@@ -509,7 +514,7 @@ class MachOParser {
       diagnostics.add(AnalysisDiagnostic.error(
         'ios.macho.load_commands_out_of_bounds',
         '$label declares $sizeofcmds bytes of load commands, beyond the '
-        '$available byte slice',
+            '$available byte slice',
       ));
       return null;
     }
@@ -552,7 +557,7 @@ class MachOParser {
         diagnostics.add(AnalysisDiagnostic.error(
           'ios.macho.command_size_invalid',
           '$label command $i declares size $cmdsize, which is invalid or '
-          'exceeds the load-command region',
+              'exceeds the load-command region',
         ));
         break;
       }
@@ -561,7 +566,9 @@ class MachOParser {
         case _lcSegment:
         case _lcSegment64:
           final segment = _readSegment(data, cursor, byteOrder,
-              is64: cmd == _lcSegment64, label: label, diagnostics: diagnostics);
+              is64: cmd == _lcSegment64,
+              label: label,
+              diagnostics: diagnostics);
           if (segment != null) segments.add(segment);
         case _lcUuid:
           if (cmdsize >= 24) {

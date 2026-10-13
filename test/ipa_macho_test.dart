@@ -19,11 +19,19 @@ Uint8List _fixture(String name) {
   return file.readAsBytesSync();
 }
 
-List<int> _le32(int value) =>
-    [value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF, (value >> 24) & 0xFF];
+List<int> _le32(int value) => [
+      value & 0xFF,
+      (value >> 8) & 0xFF,
+      (value >> 16) & 0xFF,
+      (value >> 24) & 0xFF
+    ];
 
-List<int> _be32(int value) =>
-    [(value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF];
+List<int> _be32(int value) => [
+      (value >> 24) & 0xFF,
+      (value >> 16) & 0xFF,
+      (value >> 8) & 0xFF,
+      value & 0xFF
+    ];
 
 /// 构造一个最小的 64 位小端 Mach-O（`MH_MAGIC_64`）。
 Uint8List _thinHeader({
@@ -114,8 +122,8 @@ void main() {
   group('MachOParser — fat（clang 真实产物）', () {
     late MachOFile parsed;
 
-    setUpAll(() =>
-        parsed = MachOParser.parse(_fixture('fat-x86_64-arm64.dylib')));
+    setUpAll(
+        () => parsed = MachOParser.parse(_fixture('fat-x86_64-arm64.dylib')));
 
     test('识别为 fat，两个架构', () {
       expect(parsed.isFat, isTrue);
@@ -171,16 +179,14 @@ void main() {
 
     test('头部被截断', () {
       final full = _thinHeader();
-      final result = MachOParser.parse(
-          Uint8List.sublistView(full, 0, 16));
+      final result = MachOParser.parse(Uint8List.sublistView(full, 0, 16));
 
       expect(result.isMachO, isFalse);
       expect(_hasDiagnostic(result, 'ios.macho.image_truncated'), isTrue);
     });
 
     test('sizeofcmds 超出文件长度 → 拒绝，不读越界', () {
-      final result = MachOParser.parse(
-          _thinHeader(ncmds: 1, sizeofcmds: 4096));
+      final result = MachOParser.parse(_thinHeader(ncmds: 1, sizeofcmds: 4096));
 
       expect(result.isMachO, isFalse);
       expect(_hasDiagnostic(result, 'ios.macho.load_commands_out_of_bounds'),
@@ -189,8 +195,8 @@ void main() {
 
     test('ncmds 与 sizeofcmds 不自洽 → 拒绝', () {
       // 100 条命令至少要 800 字节，却只声明 64
-      final result = MachOParser.parse(
-          _thinHeader(ncmds: 100, sizeofcmds: 64, loadCommands: List.filled(64, 0)));
+      final result = MachOParser.parse(_thinHeader(
+          ncmds: 100, sizeofcmds: 64, loadCommands: List.filled(64, 0)));
 
       expect(result.isMachO, isFalse);
       expect(_hasDiagnostic(result, 'ios.macho.implausible_command_count'),
@@ -263,9 +269,11 @@ void main() {
         ..._be32(0xCAFEBABE),
         ..._be32(2),
         // 切片 0：越界
-        ..._be32(0x01000007), ..._be32(3), ..._be32(999999), ..._be32(100), ..._be32(0),
+        ..._be32(0x01000007), ..._be32(3), ..._be32(999999), ..._be32(100),
+        ..._be32(0),
         // 切片 1：指向文件末尾的 thin 镜像
-        ..._be32(0x0100000C), ..._be32(0), ..._be32(4096), ..._be32(thin.length), ..._be32(0),
+        ..._be32(0x0100000C), ..._be32(0), ..._be32(4096),
+        ..._be32(thin.length), ..._be32(0),
       ];
       out.addAll(List.filled(4096 - out.length, 0));
       out.addAll(thin);
@@ -275,7 +283,8 @@ void main() {
       expect(result.isFat, isTrue);
       expect(result.images, hasLength(1), reason: '越界的切片被跳过');
       expect(result.images.single.cpuTypeName, 'arm64');
-      expect(_hasDiagnostic(result, 'ios.macho.fat_entry_out_of_bounds'), isTrue);
+      expect(
+          _hasDiagnostic(result, 'ios.macho.fat_entry_out_of_bounds'), isTrue);
     });
   });
 
