@@ -69,6 +69,15 @@ class ParseStage extends _$ParseStage {
   void update(ApkParseStage? stage) => state = stage;
 }
 
+/// [FileState.copyWith] 的哨兵值。
+///
+/// 用来区分「调用方没传这个参数」与「调用方显式传了 null」—— 这是 Dart 里
+/// 实现「可置空 copyWith」的标准做法（freezed 生成的代码用的是同一个套路）。
+///
+/// 代价是参数类型退化成 `Object?`，传错类型会在运行时抛错而不是编译期。
+/// 换来的是 `copyWith(filePath: null)` 能真正清空字段，而不是被 `??` 静默忽略。
+const Object _unset = Object();
+
 class FileState {
   final String? filePath;
   final int? fileSize;
@@ -88,7 +97,7 @@ class FileState {
   final SignatureAnalysis? signature;
   final bool isComputingSignature;
 
-  FileState({
+  const FileState({
     this.filePath,
     this.fileSize,
     this.apkInfo,
@@ -136,29 +145,78 @@ class FileState {
     );
   }
 
+  /// 生成副本。
+  ///
+  /// 所有参数默认 [_unset]：**不传**表示保留原值，**显式传 `null`** 表示清空。
+  /// 旧的 `??` 写法无法表达「清空」，切文件时可能留下上一个文件的残留值。
   FileState copyWith({
-    String? filePath,
-    int? fileSize,
-    ApkInfo? apkInfo,
-    String? md5Hash,
-    String? sha1Hash,
-    String? sha256Hash,
-    bool? isComputingHash,
-    SignatureAnalysis? signature,
-    bool? isComputingSignature,
+    Object? filePath = _unset,
+    Object? fileSize = _unset,
+    Object? apkInfo = _unset,
+    Object? md5Hash = _unset,
+    Object? sha1Hash = _unset,
+    Object? sha256Hash = _unset,
+    Object? isComputingHash = _unset,
+    Object? signature = _unset,
+    Object? isComputingSignature = _unset,
   }) {
     return FileState(
-      filePath: filePath ?? this.filePath,
-      fileSize: fileSize ?? this.fileSize,
-      apkInfo: apkInfo ?? this.apkInfo,
-      md5Hash: md5Hash ?? this.md5Hash,
-      sha1Hash: sha1Hash ?? this.sha1Hash,
-      sha256Hash: sha256Hash ?? this.sha256Hash,
-      isComputingHash: isComputingHash ?? this.isComputingHash,
-      signature: signature ?? this.signature,
-      isComputingSignature: isComputingSignature ?? this.isComputingSignature,
+      filePath:
+          identical(filePath, _unset) ? this.filePath : filePath as String?,
+      fileSize: identical(fileSize, _unset) ? this.fileSize : fileSize as int?,
+      apkInfo: identical(apkInfo, _unset) ? this.apkInfo : apkInfo as ApkInfo?,
+      md5Hash: identical(md5Hash, _unset) ? this.md5Hash : md5Hash as String?,
+      sha1Hash:
+          identical(sha1Hash, _unset) ? this.sha1Hash : sha1Hash as String?,
+      sha256Hash: identical(sha256Hash, _unset)
+          ? this.sha256Hash
+          : sha256Hash as String?,
+      isComputingHash: identical(isComputingHash, _unset)
+          ? this.isComputingHash
+          : isComputingHash as bool,
+      signature: identical(signature, _unset)
+          ? this.signature
+          : signature as SignatureAnalysis?,
+      isComputingSignature: identical(isComputingSignature, _unset)
+          ? this.isComputingSignature
+          : isComputingSignature as bool,
     );
   }
+
+  /// 值语义比较。
+  ///
+  /// Riverpod 的 `updateShouldNotify` 默认就是 `previous != next`，因此实现
+  /// `==` 能直接省掉「内容没变却通知监听者」的多余重建。
+  ///
+  /// [apkInfo] 与 [signature] 用 `identical` 比较：它们是体积不小、且**没有**
+  /// 值语义的可变对象，两个内容相同但实例不同的 `ApkInfo` 仍然是两次不同的
+  /// 解析结果，按引用比较才是诚实的。
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FileState &&
+          other.filePath == filePath &&
+          other.fileSize == fileSize &&
+          identical(other.apkInfo, apkInfo) &&
+          other.md5Hash == md5Hash &&
+          other.sha1Hash == sha1Hash &&
+          other.sha256Hash == sha256Hash &&
+          other.isComputingHash == isComputingHash &&
+          identical(other.signature, signature) &&
+          other.isComputingSignature == isComputingSignature;
+
+  @override
+  int get hashCode => Object.hash(
+        filePath,
+        fileSize,
+        identityHashCode(apkInfo),
+        md5Hash,
+        sha1Hash,
+        sha256Hash,
+        isComputingHash,
+        identityHashCode(signature),
+        isComputingSignature,
+      );
 }
 
 @Riverpod(keepAlive: true)
