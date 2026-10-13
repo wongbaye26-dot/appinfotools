@@ -1,0 +1,522 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # 代码质量闸门：格式化、静态分析、单元测试。
+  # 放在最前面并被所有打包任务依赖，避免把坏代码打成 Release。
+  quality:
+    name: Quality (format / analyze / test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+      - name: Unit tests
+        run: flutter test
+
+      - name: Analyze apk_parser package
+        working-directory: packages/apk_parser
+        run: |
+          dart pub get
+          dart analyze --fatal-infos --fatal-warnings
+
+  build-windows:
+    needs: quality
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Sync pubspec version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VERSION="${GITHUB_REF_NAME#v}"
+          python - << 'PY'
+          import os
+          import re
+
+          version = os.environ["VERSION"]
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(r"^version:\s*.*$", f"version: {version}", content, flags=re.M)
+          with open("pubspec.yaml", "w", encoding="utf-8") as f:
+              f.write(content)
+          PY
+
+      - name: Get version from pubspec
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep 'version:' pubspec.yaml | cut -d' ' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run build_runner build
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Create Installer
+        run: dart run inno_bundle:build --release
+
+      - name: Create ZIP Package
+        run: |
+          cd build/windows/x64/runner/Release
+          7z a ../../installer/Release/ApkInfoTool-Windows-x86_64-${{ steps.version.outputs.version }}.zip *
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            build/windows/x64/installer/Release/*.exe
+            build/windows/x64/installer/Release/*.zip
+
+  build-macos:
+    needs: quality
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Sync pubspec version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VERSION="${GITHUB_REF_NAME#v}"
+          python - << 'PY'
+          import os
+          import re
+
+          version = os.environ["VERSION"]
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(r"^version:\s*.*$", f"version: {version}", content, flags=re.M)
+          with open("pubspec.yaml", "w", encoding="utf-8") as f:
+              f.write(content)
+          PY
+
+      - name: Get version from pubspec
+        id: version
+        run: |
+          VERSION=$(grep 'version:' pubspec.yaml | cut -d' ' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Build macOS
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run build_runner build
+          flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "APK Info Tool ${{ steps.version.outputs.version }}" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "apk_info_tool.app" 200 190 \
+            --hide-extension "apk_info_tool.app" \
+            --app-drop-link 600 185 \
+            "build/macos/APKInfoTool-${{ steps.version.outputs.version }}.dmg" \
+            "build/macos/Build/Products/Release/apk_info_tool.app"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/macos/*.dmg
+
+  build-linux:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Sync pubspec version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VERSION="${GITHUB_REF_NAME#v}"
+          python - << 'PY'
+          import os
+          import re
+
+          version = os.environ["VERSION"]
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(r"^version:\s*.*$", f"version: {version}", content, flags=re.M)
+          with open("pubspec.yaml", "w", encoding="utf-8") as f:
+              f.write(content)
+          PY
+
+      - name: Get version from pubspec
+        id: version
+        run: |
+          VERSION=$(grep 'version:' pubspec.yaml | cut -d' ' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          # sudo apt-get install -y cmake clang
+          sudo apt-get install -y ninja-build libgtk-3-dev
+
+          flutter pub get --enforce-lockfile
+          dart run build_runner build
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Create AppImage
+        run: |
+          # 下载 linuxdeploy
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
+          chmod +x linuxdeploy
+          export APPIMAGE_EXTRACT_AND_RUN=1
+
+          # 创建基本 AppDir 结构
+          mkdir -p AppDir
+
+          echo "DUMP bundle:["
+          find build/linux/x64/release/bundle/
+          echo "]END"
+
+          # 首先复制主程序和库文件
+          cp -r build/linux/x64/release/bundle AppDir/app
+
+          # 设置正确的权限
+          chmod +x AppDir/app/apk_info_tool
+          chmod +x AppDir/app/lib/*.so*
+
+          # 创建必要的目录
+          mkdir -p AppDir/usr/share/{applications,icons/hicolor/256x256/apps}
+
+          # 创建 desktop 文件
+          cat > AppDir/usr/share/applications/apk-info-tool.desktop << EOF
+          [Desktop Entry]
+          Name=APK Info Tool
+          Exec=AppRun
+          Icon=apk_info_tool
+          Type=Application
+          Categories=Development;
+          Terminal=false
+          Version=1.0
+          EOF
+
+          # 复制图标
+          cp assets/image/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/apk_info_tool.png
+
+          # 创建 AppRun 文件
+          cat > AppDir/AppRun << EOF
+          #!/bin/bash
+          HERE=\$(dirname \$(readlink -f "\${0}"))
+          export LD_LIBRARY_PATH=\${HERE}/usr/lib:\$LD_LIBRARY_PATH
+          cd \${HERE}/app
+          exec ./apk_info_tool "\$@"
+          EOF
+
+          chmod +x AppDir/AppRun
+
+          echo "DUMP AppDir:["
+          find AppDir/
+          echo "]END"
+
+          # 运行 linuxdeploy 并启用调试输出
+          ARCH=x86_64 ./linuxdeploy \
+            --appdir AppDir \
+            --desktop-file=AppDir/usr/share/applications/apk-info-tool.desktop \
+            --output appimage \
+            -v0
+
+          # 重命名 AppImage
+          mv *.AppImage APKInfoTool-${{ steps.version.outputs.version }}-x86_64.AppImage
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: '*.AppImage'
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          mode: "COMMIT"
+          configurationJson: |
+            {
+              "template": "#{{CHANGELOG}}",
+              "categories": [
+                { "title": "## Feature", "labels": ["feat", "feature"] },
+                { "title": "## Fix", "labels": ["fix", "bug"] },
+                { "title": "## Other", "labels": [] }
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\\([\\w\\-\\.]+\\))?(!)?:\\s.+$",
+                  "on_property": "title",
+                  "target": "$1"
+                }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.build_changelog.outputs.changelog }}
+          files: |
+            windows-release/*.exe
+            windows-release/*.zip
+            macos-dmg/*.dmg
+            linux-appimage/*.AppImage
+
+  publish-scoop:
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Prepare Scoop Metadata
+        id: scoop
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Scoop Bucket Update
+        shell: bash
+        env:
+          BUCKET_REPO: huanfeng/scoop-bucket
+          GH_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
+          VERSION: ${{ steps.scoop.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "SCOOP_BUCKET_GITHUB_TOKEN is not set."
+            exit 1
+          fi
+          curl -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${BUCKET_REPO}/dispatches" \
+            -d "$(jq -n \
+              --arg app "apk_info_tool" \
+              --arg repo "$REPO" \
+              --arg ver "$VERSION" \
+              --arg asset "ApkInfoTool-Windows-x86_64-${VERSION}.zip" \
+              --arg bin "apk_info_tool.exe" \
+              --arg desc "A simple tool for viewing APK/XAPK/APKM file information and installation." \
+              --arg homepage "https://github.com/huanfeng/ApkInfoTool" \
+              --arg license "MIT" \
+              '{
+                event_type: "update-scoop-manifest",
+                client_payload: {
+                  app: $app,
+                  repo: $repo,
+                  version: $ver,
+                  asset_name: $asset,
+                  bin: $bin,
+                  description: $desc,
+                  homepage: $homepage,
+                  license: $license
+                }
+              }')"
+
+  publish-homebrew:
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: macos-dmg
+
+      - name: Prepare Homebrew Metadata
+        id: brew
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG_PATH=$(ls macos-dmg/*.dmg | head -n 1)
+          DMG_NAME=$(basename "$DMG_PATH")
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA256=$(sha256sum "$DMG_PATH" | awk '{print $1}')
+          echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Tap Update (Cask)
+        shell: bash
+        env:
+          TAP_REPO: huanfeng/homebrew-tap
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.brew.outputs.version }}
+          SHA256: ${{ steps.brew.outputs.sha256 }}
+          DMG_NAME: ${{ steps.brew.outputs.dmg_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_DISPATCH_TOKEN is not set."
+            exit 1
+          fi
+          curl -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${TAP_REPO}/dispatches" \
+            -d "$(jq -n \
+              --arg repo "$REPO" \
+              --arg tag "$RELEASE_TAG" \
+              --arg ver "$VERSION" \
+              --arg dmg "$DMG_NAME" \
+              --arg sha "$SHA256" \
+              '{
+                event_type: "update-cask",
+                client_payload: {
+                  repo: $repo,
+                  release_tag: $tag,
+                  version: $ver,
+                  dmg_name: $dmg,
+                  sha256: $sha
+                }
+              }')"
+
+  publish-homebrew-formula:
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: macos-dmg
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage
+          path: linux-appimage
+
+      - name: Prepare Homebrew Formula Metadata
+        id: formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG_PATH=$(ls macos-dmg/*.dmg | head -n 1)
+          DMG_NAME=$(basename "$DMG_PATH")
+          DMG_SHA256=$(sha256sum "$DMG_PATH" | awk '{print $1}')
+
+          APPIMAGE_PATH=$(ls linux-appimage/*.AppImage | head -n 1)
+          APPIMAGE_NAME=$(basename "$APPIMAGE_PATH")
+          APPIMAGE_SHA256=$(sha256sum "$APPIMAGE_PATH" | awk '{print $1}')
+
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$DMG_SHA256" >> "$GITHUB_OUTPUT"
+          echo "appimage_name=$APPIMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "appimage_sha256=$APPIMAGE_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Tap Update (Formula)
+        shell: bash
+        env:
+          TAP_REPO: huanfeng/homebrew-tap
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.formula.outputs.version }}
+          DMG_NAME: ${{ steps.formula.outputs.dmg_name }}
+          DMG_SHA256: ${{ steps.formula.outputs.dmg_sha256 }}
+          APPIMAGE_NAME: ${{ steps.formula.outputs.appimage_name }}
+          APPIMAGE_SHA256: ${{ steps.formula.outputs.appimage_sha256 }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_DISPATCH_TOKEN is not set."
+            exit 1
+          fi
+          curl -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${TAP_REPO}/dispatches" \
+            -d "$(jq -n \
+              --arg repo "$REPO" \
+              --arg tag "$RELEASE_TAG" \
+              --arg ver "$VERSION" \
+              --arg dmg "$DMG_NAME" \
+              --arg dmg_sha "$DMG_SHA256" \
+              --arg appimage "$APPIMAGE_NAME" \
+              --arg appimage_sha "$APPIMAGE_SHA256" \
+              '{
+                event_type: "update-formula",
+                client_payload: {
+                  repo: $repo,
+                  release_tag: $tag,
+                  version: $ver,
+                  dmg_name: $dmg,
+                  dmg_sha256: $dmg_sha,
+                  appimage_name: $appimage,
+                  appimage_sha256: $appimage_sha
+                }
+              }')"

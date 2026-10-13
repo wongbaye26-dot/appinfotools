@@ -1,0 +1,66 @@
+name: apk_info_tool
+description: An apk info tool.
+homepage: https://feng.to
+publish_to: "none" # Remove this line if you wish to publish to pub.dev
+
+# Git release 时会自动从tag同步
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.6 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  path: ^1.9.0
+  path_provider: ^2.1.2
+  url_launcher: ^6.2.1
+  package_info_plus: ^9.0.0
+  slang: ^4.3.0
+  slang_flutter: ^4.3.0
+  intl: 0.20.2
+  file_picker: ^10.3.8
+  window_manager: ^0.5.1
+  shared_preferences: ^2.3.3
+  flutter_colorpicker: ^1.0.3
+  desktop_drop: ^0.7.0
+  archive:
+    git:
+      url: https://github.com/huanfeng/archive.git
+      ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
+  logging: ^1.3.0
+  crypto: ^3.0.6
+  riverpod: ^3.0.3
+  flutter_riverpod: ^3.0.3
+  riverpod_annotation: ^4.0.0
+  freezed_annotation: ^3.1.0
+  xml: ^6.5.0
+  path_drawing: ^1.0.1
+  apk_parser:
+    path: packages/apk_parser
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  inno_bundle: ^0.11.2
+  slang_build_runner: ^4.3.0
+  riverpod_lint: ^3.0.3
+  riverpod_generator: ^4.0.0+1
+  build_runner: ^2.4.13
+  freezed: ^3.2.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/image/icon.png
+
+inno_bundle:
+  id: 8cdac933-dde4-5d06-985d-4c99f7247903
+  publisher: Feng
+  name: ApkInfoTool
+  languages:
+    - english
+#    - chinesesimplified

@@ -1,0 +1,140 @@
+import 'package:apk_info_tool/config.dart';
+import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/pages/home_page.dart';
+import 'package:apk_info_tool/pages/setting_page.dart';
+import 'package:apk_info_tool/theme/theme_manager.dart';
+import 'package:apk_info_tool/utils/logger.dart';
+import 'package:apk_info_tool/utils/tool_paths.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:window_manager/window_manager.dart';
+
+late PackageInfo packageInfo;
+
+String apkByArgs = "";
+
+bool get isDesktop {
+  if (kIsWeb) return false;
+  return [
+    TargetPlatform.windows,
+    TargetPlatform.linux,
+    TargetPlatform.macOS,
+  ].contains(defaultTargetPlatform);
+}
+
+void main(List<String> arguments) async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await ToolPaths.init();
+  await Config.init();
+  await Config.loadConfig();
+
+  packageInfo = await PackageInfo.fromPlatform();
+
+  await LoggerInit.instance.init();
+
+  log.info("main: arguments=$arguments");
+  if (arguments.isNotEmpty) {
+    apkByArgs = arguments.first;
+  }
+
+  if (isDesktop) {
+    await windowManager.ensureInitialized();
+    windowManager.waitUntilReadyToShow().then((_) async {
+      await windowManager.setMinimumSize(const Size(400, 400));
+      await windowManager.setSize(const Size(500, 600));
+      await windowManager.setTitle('${t.title} v${packageInfo.version}');
+      await windowManager.show();
+      // await windowManager.setPreventClose(true);
+    });
+  }
+
+  // 配置写入有 100ms 防抖，应用失焦/退出时若不主动 flush，
+  // 最后一次修改会随进程一起丢失。
+  final lifecycleListener = AppLifecycleListener(
+    onInactive: () => Config.flushAll(),
+    onPause: () => Config.flushAll(),
+    onHide: () => Config.flushAll(),
+    onDetach: () => Config.flushAll(),
+  );
+  _appLifecycleListener = lifecycleListener;
+
+  final lang = Config.language.value;
+  if (lang.isEmpty || lang == Config.kLanguageAuto) {
+    LocaleSettings.useDeviceLocale();
+  } else {
+    LocaleSettings.setLocaleRaw(lang);
+  }
+  runApp(ProviderScope(child: TranslationProvider(child: const MyApp())));
+}
+
+final _navigatorKey = GlobalKey<NavigatorState>();
+
+/// 应用生命周期监听器，用于在退出前落盘配置。
+/// 持有引用避免被 GC 回收导致监听失效。
+AppLifecycleListener? _appLifecycleListener;
+
+class MyApp extends ConsumerWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeManager = ref.watch(themeManagerProvider);
+    return MaterialApp(
+      navigatorKey: _navigatorKey,
+      locale: TranslationProvider.of(context).flutterLocale,
+      supportedLocales: AppLocaleUtils.supportedLocales,
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      title: t.title,
+      initialRoute: "/",
+      theme: themeManager.themeData,
+      routes: {
+        "/": (context) => const HomePage(),
+        "setting": (context) => const SettingPage(),
+      },
+      builder: (context, child) {
+        return _GlobalShortcuts(child: child!);
+      },
+    );
+  }
+}
+
+class _GlobalShortcuts extends StatelessWidget {
+  final Widget child;
+
+  const _GlobalShortcuts({required this.child});
+
+  Future<void> _handleBackOrClose() async {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    final didPop = await navigator.maybePop();
+    if (!didPop && isDesktop) {
+      windowManager.close();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+        final isCtrlW = HardwareKeyboard.instance.isControlPressed &&
+            event.logicalKey == LogicalKeyboardKey.keyW;
+        final isEsc = event.logicalKey == LogicalKeyboardKey.escape;
+
+        if (isCtrlW || isEsc) {
+          _handleBackOrClose();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: child,
+    );
+  }
+}

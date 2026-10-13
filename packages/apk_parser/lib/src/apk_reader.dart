@@ -1,0 +1,197 @@
+import 'dart:typed_data';
+import 'package:archive/archive.dart';
+import 'package:logging/logging.dart';
+import 'manifest_parser.dart';
+import 'arsc_parser.dart';
+import 'models.dart';
+
+final _log = Logger('ApkReader');
+
+/// APK 文件读取和解析的统一入口
+class ApkReader {
+  Archive? _archive;
+  ArscParser? _arscParser;
+  static const int _maxTotalUncompressed = 1024 * 1024 * 1024;
+  static const int _maxEntryCount = 100000;
+  static const int _maxCompressionRatio = 100;
+  static const int _ratioCheckMinSize = 16 * 1024 * 1024;
+
+  bool _isZipBomb(Archive archive) {
+    var totalUncompressed = 0;
+    var count = 0;
+    for (final file in archive.files) {
+      count++;
+      if (count > _maxEntryCount) return true;
+      if (!file.isFile) continue;
+      // ArchiveFile.size is the *uncompressed* size (set from ZipFile's
+      // uncompressedSize when decoding).
+      final uncompressed = file.size;
+      totalUncompressed += uncompressed;
+      if (totalUncompressed > _maxTotalUncompressed) return true;
+      final raw = file.rawContent;
+      if (raw is ZipFile) {
+        final compressed = raw.compressedSize;
+        if (uncompressed > _ratioCheckMinSize &&
+            compressed > 0 &&
+            uncompressed > compressed * _maxCompressionRatio) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// 打开 APK 文件（ZIP 格式）
+  Future<bool> open(String filePath) async {
+    InputFileStream? inputStream;
+    try {
+      inputStream = InputFileStream(filePath);
+      _archive = ZipDecoder().decodeStream(inputStream);
+      if (_isZipBomb(_archive!)) {
+        _archive = null;
+        return false;
+      }
+      return true;
+    } catch (e, stackTrace) {
+      _log.warning('open failed: $e\n$stackTrace');
+      return false;
+    } finally {
+      inputStream?.closeSync();
+    }
+  }
+
+  /// 从内存数据打开（用于嵌套 ZIP 场景）
+  bool openBytes(Uint8List data) {
+    try {
+      _archive = ZipDecoder().decodeBytes(data);
+      if (_isZipBomb(_archive!)) {
+        _archive = null;
+        return false;
+      }
+      return true;
+    } catch (e, stackTrace) {
+      _log.warning('openBytes failed: $e\n$stackTrace');
+      return false;
+    }
+  }
+
+  /// 解析 APK 基础信息
+  Future<ApkMeta?> parse() async {
+    final archive = _archive;
+    if (archive == null) return null;
+
+    // 1. 读取并解析 AndroidManifest.xml
+    final manifestFile = archive.findFile('AndroidManifest.xml');
+    if (manifestFile == null) return null;
+    final rawManifestBytes = manifestFile.content;
+    final manifestBytes =
+        rawManifestBytes.buffer.lengthInBytes == rawManifestBytes.length
+            ? rawManifestBytes
+            : Uint8List.fromList(rawManifestBytes);
+    final meta = ManifestParser.parse(manifestBytes);
+
+    // 2. 读取并解析 resources.arsc
+    final arscFile = archive.findFile('resources.arsc');
+    if (arscFile != null) {
+      // 确保 arscBytes 是独立的 Uint8List（而非底层 ZIP 缓冲区的 view），
+      // 避免 ByteDataReader 操作时因 buffer offset 不一致导致 RangeError。
+      final rawArscBytes = arscFile.content;
+      final arscBytes = rawArscBytes.buffer.lengthInBytes == rawArscBytes.length
+          ? rawArscBytes
+          : Uint8List.fromList(rawArscBytes);
+      try {
+        _arscParser = ArscParser(arscBytes);
+        _resolveLabel(meta);
+        _resolveIconPaths(meta);
+        meta.locales = _arscParser!.getLocales().toList();
+        meta.densities = _arscParser!.getDensities().toList();
+      } catch (e, stackTrace) {
+        // arsc 解析失败不影响基本信息，但记录详细错误便于排查
+        _log.warning('arsc parse failed: $e\n$stackTrace');
+      }
+    }
+
+    // 3. 扫描 lib/ 目录获取 native codes
+    meta.nativeCodes = _scanNativeCodes();
+
+    return meta;
+  }
+
+  ArscParser? get arscParser => _arscParser;
+
+  Uint8List? readFile(String fileName) {
+    final file = _archive?.findFile(fileName);
+    return file?.content;
+  }
+
+  List<String> listFiles({String? extension}) {
+    final files = _archive?.files ?? [];
+    final lowerExt = extension?.toLowerCase();
+    return files
+        .where((f) => f.isFile)
+        .map((f) => f.name)
+        .where((name) =>
+            lowerExt == null || name.toLowerCase().endsWith(lowerExt))
+        .toList();
+  }
+
+  void _resolveLabel(ApkMeta meta) {
+    final parser = _arscParser;
+    if (parser == null) return;
+
+    if (meta.label != null && meta.label!.startsWith('@res/0x')) {
+      final resId = int.tryParse(meta.label!.substring(7), radix: 16);
+      if (resId != null) {
+        final resolved = parser.getStringValue(resId);
+        if (resolved != null) meta.label = resolved;
+
+        for (final locale in parser.getLocales()) {
+          final localizedLabel = parser.getStringValue(resId, locale: locale);
+          if (localizedLabel != null) {
+            meta.labels[locale] = localizedLabel;
+          }
+        }
+      }
+    }
+  }
+
+  void _resolveIconPaths(ApkMeta meta) {
+    final parser = _arscParser;
+    if (parser == null) return;
+
+    final iconRef = meta.applicationIcon;
+    if (iconRef == null || !iconRef.startsWith('@res/0x')) return;
+
+    final resId = int.tryParse(iconRef.substring(7), radix: 16);
+    if (resId == null) return;
+
+    final paths = parser.getAllFilePaths(resId);
+    for (final entry in paths) {
+      meta.iconPaths[entry.key] = entry.value;
+    }
+  }
+
+  List<String> _scanNativeCodes() {
+    final archive = _archive;
+    if (archive == null) return [];
+
+    final abis = <String>{};
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      final name = file.name;
+      if (name.startsWith('lib/')) {
+        final parts = name.split('/');
+        if (parts.length >= 3) {
+          abis.add(parts[1]);
+        }
+      }
+    }
+    return abis.toList()..sort();
+  }
+
+  void close() {
+    _archive?.clearSync();
+    _archive = null;
+    _arscParser = null;
+  }
+}

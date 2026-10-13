@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- 下载 platform-tools / build-tools 需要出站网络。
+	     此前该文件误授 network.server（本应用不监听任何端口），
+	     却缺少真正需要的 network.client，导致 Debug 版无法下载依赖。 -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>
