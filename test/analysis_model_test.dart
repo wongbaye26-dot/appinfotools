@@ -10,6 +10,7 @@ import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
+import 'package:ipa_parser/ipa_parser.dart' show IpaContainer;
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -414,9 +415,28 @@ void main() {
       expect(withStrong.hasStrongHardeningSignal, isTrue);
     });
 
-    test('iOS 类型明确说明能力不可用，而不是留一个无法解释的空壳', () {
-      const ios = IosPackageInfo();
+    test('iOS 类型在无分析结果时给出可解释的空壳，而不是崩溃或伪造数据', () {
+      // 容器缺失时用空容器，字段全部是「不存在」——UI 据 unavailableReason
+      // 说明「为什么这里是空的」，而不是把空字段渲染成「没有这些信息」。
+      const ios = IosPackageInfo(
+        container: IpaContainer(),
+        unavailableReason: 'the IPA container could not be opened',
+      );
+
       expect(ios.unavailableReason, isNotEmpty);
+      expect(ios.mainApp, isNull);
+      expect(ios.bundleIdentifier.hasValue, isFalse);
+      expect(ios.bundleIdentifier.status, FieldStatus.absent);
+      expect(ios.architectures, isEmpty);
+      expect(ios.hasSignatureMaterials, isFalse);
+      expect(ios.hasConclusiveSignature, isFalse);
+    });
+
+    test('iOS 有签名材料但没有 codesign 结论时，结论仍是「无法确认」', () {
+      // 规范 5.5 的核心约束：材料存在不等于验证通过。
+      const ios = IosPackageInfo(container: IpaContainer());
+      expect(PackageAnalysisResult.verdictFromIos(ios.codeSign),
+          SignatureVerdict.inconclusive);
     });
   });
 }

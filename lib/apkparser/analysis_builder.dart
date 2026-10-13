@@ -1,7 +1,9 @@
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
     show
@@ -9,6 +11,7 @@ import 'package:apk_parser/apk_parser.dart'
         ContainerStructure,
         HardeningObservation,
         HardeningSignal;
+import 'package:ipa_parser/ipa_parser.dart' show IpaContainer;
 import 'package:path/path.dart' as path;
 
 /// 可被多个来源提供的 Android 字段。
@@ -210,4 +213,87 @@ class AnalysisBuilder {
       diagnostic: '${source.name} does not report ${field.name}',
     );
   }
+
+  /// 把 iOS 的解析结果组装成统一的 [PackageAnalysisResult]。
+  ///
+  /// 与 Android 侧不同的是这里**没有多来源合并**：`Info.plist` 是唯一来源，
+  /// 不存在「分层、可回退」的问题。因此每个字段直接取
+  /// [IpaInfoPlist] 里的 [FieldValue] —— 它已经带着「值 + 状态 + 来源 + 诊断」，
+  /// 再包一层只会丢失信息。
+  ///
+  /// [analysis] 为 `null` 表示静态解析本身没做成（例如容器打开失败），
+  /// 此时 [unavailableReason] 必须给出原因。
+  static PackageAnalysisResult buildIos({
+    required String filePath,
+    required int fileSize,
+    FileHashes? hashes,
+    IpaAnalysis? analysis,
+    IosCodeSignResult? codeSign,
+    String? unavailableReason,
+    List<AnalysisDiagnostic> diagnostics = const [],
+  }) {
+    final info = analysis?.infoPlist;
+
+    final ios = IosPackageInfo(
+      // 容器缺失时给一个空容器，而不是让 UI 面对 null 分支 ——
+      // 「没有 bundle」本身就是容器层的合法结果。
+      container: analysis?.container ?? const IpaContainer(),
+      bundleIdentifier: _ios(info?.bundleIdentifier),
+      displayName: _ios(info?.displayName),
+      bundleName: _ios(info?.bundleName),
+      shortVersion: _ios(info?.shortVersionString),
+      buildNumber: _ios(info?.bundleVersion),
+      minimumOSVersion: _ios(info?.minimumOSVersion),
+      deviceFamily: _ios(info?.deviceFamily),
+      queriesSchemes: _ios(info?.queriesSchemes),
+      requiredDeviceCapabilities: _ios(info?.requiredDeviceCapabilities),
+      icons: _ios(info?.icons),
+      executableName: _ios(info?.executable),
+      executable: analysis?.executable,
+      executablePath: analysis?.executablePath,
+      nestedBinaries: analysis?.nestedBinaries ?? const [],
+      icon: analysis?.icon,
+      signatureMaterials: analysis?.signature,
+      authorization: analysis?.authorization,
+      codeSign: codeSign,
+      diagnostics: analysis?.allDiagnostics ?? const [],
+      unavailableReason: unavailableReason,
+    );
+
+    return PackageAnalysisResult(
+      platform: PackagePlatform.ios,
+      fileName: FieldValue<String>.extracted(
+        path.basename(filePath),
+        source: FieldSource.fileSystem,
+      ),
+      fileSize: FieldValue<int>.extracted(
+        fileSize,
+        source: FieldSource.fileSystem,
+      ),
+      sha256: hashes == null
+          ? const FieldValue<String>.notRequested(
+              diagnostic: 'hashing is disabled in settings',
+              source: FieldSource.fileSystem,
+            )
+          : FieldValue<String>.extracted(
+              hashes.sha256,
+              source: FieldSource.fileSystem,
+            ),
+      appName: ios.preferredName,
+      packageId: ios.bundleIdentifier,
+      version: ios.shortVersion,
+      buildNumber: ios.buildNumber,
+      // **有材料不等于验证过**：结论只来自 codesign。没跑就是「无法确认」。
+      signatureVerdict: PackageAnalysisResult.verdictFromIos(codeSign),
+      diagnostics: diagnostics,
+      ios: ios,
+    );
+  }
+
+  /// 取 iOS 子解析器给出的字段；缺失时返回「不存在」而不是抛错。
+  ///
+  /// 这里保留 `source`：它来自 `infoPlist` / `machO` 等真实来源，
+  /// 不该被这里改写成别的值。
+  static FieldValue<T> _ios<T>(FieldValue<T>? value) =>
+      value ?? FieldValue<T>.absent(source: FieldSource.infoPlist);
 }

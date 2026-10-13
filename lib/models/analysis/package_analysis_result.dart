@@ -1,7 +1,18 @@
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
     show AndroidComponent, ContainerStructure;
+import 'package:ipa_parser/ipa_parser.dart'
+    show
+        IosAuthorizationComparison,
+        IosBundle,
+        IosIconConfiguration,
+        IosIconResolution,
+        IosSignatureMaterials,
+        IpaContainer,
+        MachOFile;
 import 'hardening.dart';
 
 /// 应用包所属平台。
@@ -99,18 +110,123 @@ class AndroidPackageInfo {
 
 /// iOS 专属信息。
 ///
-/// 目前是空壳 —— IPA 解析引擎尚未实现（规范第五步）。
-///
 /// **刻意保留为独立类型**而不是把字段塞进 [PackageAnalysisResult] 的通用部分：
 /// Android 权限与 iOS Entitlements 语义不同（前者是「申请什么」，
 /// 后者是「被授权什么」），合并成一个列表会让两边都失真。
+///
+/// 字段分两类：
+/// - 来自 `Info.plist` 的**声明**（bundle id、版本、最低系统版本…），
+///   每个都是 [FieldValue]，因此「文件里没有」与「读不出来」始终分开；
+/// - 来自容器与二进制的**观察**（bundle 清单、Mach-O、签名材料），
+///   它们是复合结构，内部不存在「值 + 状态」的多种组合。
 class IosPackageInfo {
-  /// 说明该平台分析能力的可用状态，供 UI 明确告知用户「为什么这里是空的」。
-  final String unavailableReason;
+  // --- Info.plist 声明 ---
+
+  final FieldValue<String> bundleIdentifier;
+  final FieldValue<String> displayName;
+  final FieldValue<String> bundleName;
+  final FieldValue<String> shortVersion;
+  final FieldValue<String> buildNumber;
+  final FieldValue<String> minimumOSVersion;
+  final FieldValue<List<int>> deviceFamily;
+  final FieldValue<List<String>> queriesSchemes;
+  final FieldValue<List<String>> requiredDeviceCapabilities;
+  final FieldValue<IosIconConfiguration> icons;
+
+  /// `CFBundleExecutable` —— 主可执行文件名。
+  final FieldValue<String> executableName;
+
+  // --- 容器与二进制观察 ---
+
+  /// 容器结构（全部 bundle、体积、条目数）。
+  final IpaContainer container;
+
+  /// 主可执行文件的 Mach-O 解析结果；取不到时为 `null`。
+  final MachOFile? executable;
+
+  /// 主可执行文件在归档中的条目名。
+  final String? executablePath;
+
+  /// 嵌套 bundle 的二进制清单（扩展 / Watch / 框架）。
+  final List<IosNestedBinary> nestedBinaries;
+
+  /// 图标定位结果。
+  final IosIconResolution? icon;
+
+  // --- 签名与授权 ---
+
+  /// 签名材料的**静态**内容（`_CodeSignature/` 条目、描述文件字段）。
+  ///
+  /// 注意这与 [codeSign] 的区别：这里只是「材料长什么样」。
+  final IosSignatureMaterials? signatureMaterials;
+
+  /// 应用声明与描述文件授权的比对；无法比较时为 `null`。
+  final IosAuthorizationComparison? authorization;
+
+  /// macOS `codesign` 的验证结果。
+  ///
+  /// 为 `null` 表示**没有做**这项检查（非 macOS、用户关闭了该功能、
+  /// 或解包失败）—— 与 `toolUnavailable` 的含义不同，前者是「我们没查」，
+  /// 后者是「查不了」。UI 必须把这两件事分开显示。
+  final IosCodeSignResult? codeSign;
+
+  final List<AnalysisDiagnostic> diagnostics;
+
+  /// 说明该平台分析为何不可用；可用时为 `null`。
+  ///
+  /// 非空时其余字段都是空状态 —— UI 据此显示「为什么这里是空的」，
+  /// 而不是把空字段渲染成「没有这些信息」。
+  final String? unavailableReason;
 
   const IosPackageInfo({
-    this.unavailableReason = 'iOS (IPA) analysis is not implemented yet',
+    required this.container,
+    this.bundleIdentifier = const FieldValue.absent(),
+    this.displayName = const FieldValue.absent(),
+    this.bundleName = const FieldValue.absent(),
+    this.shortVersion = const FieldValue.absent(),
+    this.buildNumber = const FieldValue.absent(),
+    this.minimumOSVersion = const FieldValue.absent(),
+    this.deviceFamily = const FieldValue<List<int>>.absent(),
+    this.queriesSchemes = const FieldValue<List<String>>.absent(),
+    this.requiredDeviceCapabilities = const FieldValue<List<String>>.absent(),
+    this.icons = const FieldValue<IosIconConfiguration>.absent(),
+    this.executableName = const FieldValue.absent(),
+    this.executable,
+    this.executablePath,
+    this.nestedBinaries = const [],
+    this.icon,
+    this.signatureMaterials,
+    this.authorization,
+    this.codeSign,
+    this.diagnostics = const [],
+    this.unavailableReason,
   });
+
+  /// 名称：优先显示名，退回 `CFBundleName`（与 `IpaInfoPlist.preferredName`
+  /// 同一条规则，这里再走一遍是因为两个模型之间刻意不共享 getter）。
+  FieldValue<String> get preferredName {
+    if (displayName.hasValue) return displayName;
+    if (bundleName.hasValue) return bundleName;
+    if (displayName.status != FieldStatus.absent) return displayName;
+    return bundleName;
+  }
+
+  /// 主应用的 bundle。
+  IosBundle? get mainApp => container.mainApp;
+
+  /// 主可执行文件的全部架构名。
+  List<String> get architectures =>
+      executable?.architectureNames ?? const <String>[];
+
+  /// 是否观察到多个 `Payload/*.app`。
+  bool get hasMultipleMainApps => container.hasMultipleMainApps;
+
+  /// 签名材料是否存在（**不代表签名有效**）。
+  bool get hasSignatureMaterials => signatureMaterials?.hasAnyMaterial ?? false;
+
+  /// 是否拿到了明确的签名结论。
+  bool get hasConclusiveSignature =>
+      codeSign?.status.hasConclusiveResult ?? false;
 }
 
 /// 跨平台的应用包分析结果。
@@ -174,6 +290,23 @@ class PackageAnalysisResult {
   static SignatureVerdict verdictFrom(SignatureAnalysis? analysis) {
     if (analysis == null) return SignatureVerdict.notChecked;
     return switch (analysis.status) {
+      SignatureStatus.verified => SignatureVerdict.verified,
+      SignatureStatus.verificationFailed => SignatureVerdict.rejected,
+      SignatureStatus.toolUnavailable ||
+      SignatureStatus.unknown =>
+        SignatureVerdict.inconclusive,
+    };
+  }
+
+  /// 把 iOS 的签名状态折算成平台中立结论。
+  ///
+  /// 与 Android 侧的关键差别：iOS 上**有签名材料**不代表验证过。因此：
+  /// - 跑过 `codesign` → 用它的结论；
+  /// - 没跑（非 macOS / 用户关闭 / 解包失败）→ 一律 [SignatureVerdict.inconclusive]，
+  ///   即便材料看起来齐全。这正是规范 5.5 禁止的「把材料存在当作验证通过」。
+  static SignatureVerdict verdictFromIos(IosCodeSignResult? codeSign) {
+    if (codeSign == null) return SignatureVerdict.inconclusive;
+    return switch (codeSign.status) {
       SignatureStatus.verified => SignatureVerdict.verified,
       SignatureStatus.verificationFailed => SignatureVerdict.rejected,
       SignatureStatus.toolUnavailable ||
