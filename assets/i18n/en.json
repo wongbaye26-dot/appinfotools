@@ -117,19 +117,22 @@
     "cancel_parse": "Cancel"
   },
   "open": {
-    "open_apk": "Open APK/XAPK/APKM/APKS",
+    "open_apk": "Open APK/XAPK/APKM/APKS/IPA",
     "open_file_directory": "Open file location",
-    "select_apk_file": "Please select APK/XAPK/APKM/APKS file",
+    "select_apk_file": "Please select APK/XAPK/APKM/APKS/IPA file",
     "close_file": "Close file",
-    "invalid_file_type": "Invalid file type, please select APK/XAPK/APKM/APKS file"
+    "invalid_file_type": "Invalid file type, please select APK/XAPK/APKM/APKS/IPA file"
   },
   "file_info": {
+    "computing_hash": "Computing...",
     "file": "File",
-    "size": "Size",
     "md5": "MD5",
+    "platform": "Platform",
+    "platform_android": "Android",
+    "platform_ios": "iOS",
     "sha1": "SHA1",
     "sha256": "SHA-256",
-    "computing_hash": "Computing..."
+    "size": "Size"
   },
   "apk_info": {
     "archive_type": "Archive Type",
@@ -328,5 +331,14 @@
     "platform": "Platform",
     "size": "Size",
     "title": "Package analysis report"
+  },
+  "about": {
+    "features": {
+      "android": "Parse Android packages: APK / XAPK / APKM / APKS",
+      "ios": "Parse iOS packages: IPA",
+      "details": "Inspect the icon, basic fields, permissions and components",
+      "hash_signature": "Compute file hashes (MD5 / SHA-1 / SHA-256) and verify signatures",
+      "hardening_report": "Surface hardening hints and export an analysis report"
+    }
   }
 }

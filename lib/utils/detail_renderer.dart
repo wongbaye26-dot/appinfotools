@@ -15,7 +15,14 @@ import 'package:apk_parser/apk_parser.dart'
         ComponentType,
         ContainerStructure;
 import 'package:ipa_parser/ipa_parser.dart'
-    show IosAuthorizationVerdict, IosBundleKind, IpaContainer, MachOFile;
+    show
+        IosAuthorizationVerdict,
+        IosBundleKind,
+        IosIconCandidate,
+        IosIconResolution,
+        IosIconSource,
+        IpaContainer,
+        MachOFile;
 
 /// 详情页的纯文本渲染。
 ///
@@ -500,6 +507,54 @@ class DetailRenderer {
 
     return sb.toString().trimRight();
   }
+
+  /// 图标候选与「为什么取不到」的清单。
+  ///
+  /// 与 Android 侧的区别：Android 的图标候选放在右键菜单里，iOS 没有对应入口，
+  /// 因此这里把同样的信息直接渲染成文本卡片。**信息量必须一致** ——
+  /// 「图标是哪个文件、多大、来自哪条声明、哪些取不到、为什么」缺一不可。
+  static String iosIcon(IosIconResolution? resolution, Translations t) {
+    if (resolution == null) return t.ios_info.icon_unavailable;
+
+    final sb = StringBuffer();
+    for (final candidate in resolution.candidates) {
+      sb.writeln('${candidate.relativePath}  '
+          '${_iconSize(candidate)}  '
+          '[${_iconSourceLabel(candidate.source, t)}]');
+      // 归档路径要给出：排查时要拿它去比对 ZIP 条目名，而相对路径不够。
+      sb.writeln('  ${candidate.archivePath}');
+    }
+
+    for (final item in resolution.unresolved) {
+      sb.writeln('${t.ios_info.icon_declared_unresolved}: ${item.declared}'
+          '  [${_iconSourceLabel(item.source, t)}] — ${item.reason}');
+    }
+
+    if (sb.isEmpty) return t.ios_info.icon_unavailable;
+    return sb.toString().trimRight();
+  }
+
+  /// 「152x152  31686 B」；尺寸读不出来时只给字节数。
+  ///
+  /// 尺寸读不出来本身是值得注意的（说明 IHDR 没被正确解析），因此不留空，
+  /// 而是明确写出 `?`。
+  static String _iconSize(IosIconCandidate candidate) {
+    final width = candidate.pixelWidth;
+    final height = candidate.pixelHeight;
+    if (width == null || height == null) return '?x?  ${candidate.size} B';
+    return '${width}x$height  ${candidate.size} B';
+  }
+
+  static String _iconSourceLabel(IosIconSource source, Translations t) =>
+      switch (source) {
+        IosIconSource.primaryIconFiles => t.ios_info.icon_source_primary,
+        IosIconSource.alternateIconFiles => t.ios_info.icon_source_alternate,
+        IosIconSource.primaryIconFilesIpad => t.ios_info.icon_source_ipad,
+        IosIconSource.legacyIconFiles ||
+        IosIconSource.legacyIconFile =>
+          t.ios_info.icon_source_legacy,
+        IosIconSource.assetCatalogName => t.ios_info.icon_source_asset_catalog,
+      };
 
   /// 授权比对结论的本地化标签。
   static String authorizationVerdictLabel(

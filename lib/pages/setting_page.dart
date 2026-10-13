@@ -18,10 +18,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as path;
-
-const githubUrl = 'https://github.com/huanfeng/ApkInfoTool';
 
 class SettingPage extends ConsumerStatefulWidget {
   const SettingPage({super.key});
@@ -674,42 +671,71 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         child: ListTile(
           leading: const Icon(Icons.info),
           title: Text(t.settings.about),
-          onTap: () {
-            showAboutDialog(
-              context: context,
-              applicationName: t.title,
-              applicationVersion: packageInfo.version,
-              applicationIcon: Image.asset(
-                'assets/image/icon.png',
-                width: 64,
-                height: 64,
+          onTap: _showAboutDialog,
+        ),
+      ),
+    );
+  }
+
+  /// 关于对话框：**只显示版本号与功能详情**。
+  ///
+  /// 不用 `showAboutDialog`：它固定带一个「查看开源许可」按钮和一段版权声明
+  /// 的位置，而这两样都不属于「版本号 + 功能详情」。这里用普通 `AlertDialog`
+  /// 把内容限定成两件事 —— 应用名只是为了说清这是谁，版本号与功能列表才是
+  /// 用户点开「关于」想看的东西。
+  ///
+  /// 原先还放了版权声明与仓库链接。那两项对「这是什么、能做什么」没有帮助，
+  /// 反而把真正要看的东西挤到下面；仓库地址在项目主页上更合适。
+  void _showAboutDialog() {
+    final theme = Theme.of(context);
+    final features = [
+      t.about.features.android,
+      t.about.features.ios,
+      t.about.features.details,
+      t.about.features.hash_signature,
+      t.about.features.hardening_report,
+    ];
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t.title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 版本号。
+              SelectableText(
+                'v${packageInfo.version}',
+                style: theme.textTheme.bodyMedium,
               ),
-              applicationLegalese: '2025 huanfeng',
-              children: [
-                const SizedBox(height: 16),
-                InkWell(
-                  onTap: () {
-                    launchUrl(Uri.parse(githubUrl));
-                  },
+              const SizedBox(height: 16),
+              // 功能详情。
+              Text(t.settings.features, style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              for (final feature in features)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.link, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        githubUrl,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          decoration: TextDecoration.underline,
-                        ),
+                      Text('·  ', style: theme.textTheme.bodyMedium),
+                      Expanded(
+                        child: Text(feature, style: theme.textTheme.bodyMedium),
                       ),
                     ],
                   ),
                 ),
-              ],
-            );
-          },
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(t.base.close),
+          ),
+        ],
       ),
     );
   }

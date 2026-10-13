@@ -4,14 +4,13 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:flutter/material.dart';
 import 'package:ipa_parser/ipa_parser.dart'
-    show IosIconCandidate, IosIconResolution, IosIconSource;
+    show IosIconCandidate, IosIconResolution;
 
 /// iOS 图标预览。
 ///
 /// 与 Android 侧的图标区不同，这里**不做候选切换**：iOS 的图标配置通常只
 /// 点名一个文件名（`Icon`），`@2x` / `@3x` 是同一张图的不同分辨率，
-/// 切换它们对用户没有意义。因此只显示分辨率最高的那一张，其余候选只列出
-/// 文件名与尺寸。
+/// 切换它们对用户没有意义。因此只显示分辨率最高的那一张。
 ///
 /// 三件事必须如实呈现，而不是藏起来：
 /// - 声明了但取不到的条目（典型是 `CFBundleIconName` 指向 `Assets.car`）；
@@ -21,36 +20,9 @@ import 'package:ipa_parser/ipa_parser.dart'
 /// 规范 5.3 禁止把启动画面、截图或随便一张图当成应用图标 —— 因此这里
 /// **只渲染解析器按 `Info.plist` 点名的文件找到的候选**，找不到就说明原因。
 ///
-/// 本组件是 [IosIconThumbnail] 与 [IosIconDetails] 的简单叠加，供需要
-/// 「图 + 说明」整体展示的场景使用。详情页的 Hero 卡片要把图放进左侧窄栏、
-/// 把说明放到卡片底部通栏（挤在窄栏里的话，`Assets.car` 那种长原因会被
-/// 压成竖排），因此直接用那两个组件。
-class IosIconPreview extends StatelessWidget {
-  final IosIconResolution? resolution;
-
-  /// 预览框的边长。
-  final double size;
-
-  const IosIconPreview({
-    super.key,
-    required this.resolution,
-    this.size = 96,
-  });
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IosIconThumbnail(resolution: resolution, size: size),
-          IosIconDetails(resolution: resolution),
-        ],
-      );
-}
-
-/// 只渲染图标图片本身。
-///
-/// 没有候选时返回「未找到可直接预览的图标资源」的说明，而**不是**空白框 ——
-/// 空白框会被读成「这个包没有图标」。
+/// 本文件只负责**画图**：候选清单、来源、「为什么取不到」这些文字由
+/// `DetailRenderer.iosIcon` 渲染成普通卡片 —— 与 Android 侧的字段走同一套
+/// 版式，两侧才对得齐。
 class IosIconThumbnail extends StatelessWidget {
   final IosIconResolution? resolution;
   final double size;
@@ -67,9 +39,14 @@ class IosIconThumbnail extends StatelessWidget {
     final candidates = resolution?.candidates ?? const <IosIconCandidate>[];
 
     if (candidates.isEmpty) {
-      return Text(
-        t.ios_info.icon_unavailable,
-        style: Theme.of(context).textTheme.bodyMedium,
+      // 没有图时**说明原因**，而不是留一个空白框 ——
+      // 空白框会被读成「这个包没有图标」。
+      return Center(
+        child: Text(
+          t.ios_info.icon_unavailable,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
       );
     }
 
@@ -80,85 +57,6 @@ class IosIconThumbnail extends StatelessWidget {
     );
   }
 }
-
-/// 图标的诊断文字：候选清单、未解析条目、归档路径。
-///
-/// 这些是「为什么显示的是这张图 / 为什么没有图」的依据。没有内容时返回
-/// 零尺寸，调用方不必再判一次空。
-class IosIconDetails extends StatelessWidget {
-  final IosIconResolution? resolution;
-
-  const IosIconDetails({super.key, required this.resolution});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = TranslationProvider.of(context).translations;
-    final candidates = resolution?.candidates ?? const <IosIconCandidate>[];
-    final unresolved = resolution?.unresolved ?? const [];
-    if (candidates.isEmpty && unresolved.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final primary = candidates.isEmpty ? null : candidates.first;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (primary != null) ...[
-            _line(context, primary.relativePath),
-            _line(
-              context,
-              '${primary.format.displayName}  ${_sizeLabel(primary)}'
-              '  [${_sourceLabel(primary.source, t)}]',
-            ),
-            _line(context, primary.archivePath),
-          ],
-          for (final item in unresolved)
-            _line(
-              context,
-              '${t.ios_info.icon_declared_unresolved}: ${item.declared}'
-              '  [${_sourceLabel(item.source, t)}] — ${item.reason}',
-            ),
-          if (candidates.length > 1) ...[
-            _line(context, '${t.ios_info.icon_more_candidates}:'),
-            for (final candidate in candidates.skip(1))
-              _line(
-                context,
-                '  ${candidate.relativePath}  ${_sizeLabel(candidate)}'
-                '  [${_sourceLabel(candidate.source, t)}]',
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  static Widget _line(BuildContext context, String value) => SelectableText(
-        value,
-        style: Theme.of(context).textTheme.bodySmall,
-      );
-}
-
-String _sizeLabel(IosIconCandidate candidate) {
-  final width = candidate.pixelWidth;
-  final height = candidate.pixelHeight;
-  if (width == null || height == null) {
-    return '${candidate.size} B';
-  }
-  return '${width}x$height  ${candidate.size} B';
-}
-
-String _sourceLabel(IosIconSource source, Translations t) => switch (source) {
-      IosIconSource.primaryIconFiles => t.ios_info.icon_source_primary,
-      IosIconSource.alternateIconFiles => t.ios_info.icon_source_alternate,
-      IosIconSource.primaryIconFilesIpad => t.ios_info.icon_source_ipad,
-      IosIconSource.legacyIconFiles ||
-      IosIconSource.legacyIconFile =>
-        t.ios_info.icon_source_legacy,
-      IosIconSource.assetCatalogName => t.ios_info.icon_source_asset_catalog,
-    };
 
 /// 单独一个组件承载解码状态。
 ///

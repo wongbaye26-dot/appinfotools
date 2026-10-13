@@ -76,12 +76,15 @@ IosIconCandidate _candidate({
 
 Future<void> _pumpPreview(
   WidgetTester tester,
-  IosIconResolution resolution,
-) async {
+  IosIconResolution resolution, {
+  double size = 96,
+}) async {
   await tester.pumpWidget(
     TranslationProvider(
       child: MaterialApp(
-        home: Scaffold(body: IosIconPreview(resolution: resolution)),
+        home: Scaffold(
+          body: IosIconThumbnail(resolution: resolution, size: size),
+        ),
       ),
     ),
   );
@@ -195,49 +198,50 @@ void main() {
     });
   });
 
-  group('IosIconPreview — 渲染', () {
+  group('IosIconThumbnail — 只画图', () {
+    // 候选清单、尺寸、来源、「为什么取不到」这些**文字**由
+    // `DetailRenderer.iosIcon` 渲染成普通卡片（见 detail_renderer_test.dart），
+    // 这里只钉住「画不画得出图」以及「画不出时说没说原因」。
+
     testWidgets('完全没有图标信息时说明「未找到」，而不是留空', (tester) async {
       await _pumpPreview(tester, const IosIconResolution());
 
       expect(
           find.textContaining('no previewable icon resource'), findsOneWidget);
+      expect(find.byType(RawImage), findsNothing);
     });
 
-    testWidgets('有候选时显示文件名、尺寸与归档路径', (tester) async {
+    testWidgets('有候选时把图画出来', (tester) async {
       await _pumpPreview(
         tester,
         IosIconResolution(candidates: [
-          _candidate(
-            bytes: _realPng(),
-            width: 512,
-            height: 512,
-          ),
+          _candidate(bytes: _realPng(), width: 512, height: 512),
         ]),
       );
 
-      expect(find.textContaining('Icon@2x.png'), findsWidgets);
-      expect(find.textContaining('512x512'), findsOneWidget);
-      // 归档路径也要给出来 —— 排查时需要它。
-      expect(
-          find.textContaining('Payload/Example.app/Icon@2x.png'), findsWidgets);
+      expect(find.byType(RawImage), findsOneWidget);
+      final image = tester.widget<RawImage>(find.byType(RawImage));
+      expect(image.image, isNotNull);
     });
 
-    testWidgets('声明了但取不到的条目会连同原因一起显示', (tester) async {
+    testWidgets('多个候选时只画最大的那一个', (tester) async {
+      // 解析器已按面积排序，因此「第一个」就是最大的。
       await _pumpPreview(
         tester,
-        const IosIconResolution(unresolved: [
-          IosUnresolvedIcon(
-            source: IosIconSource.assetCatalogName,
-            declared: 'AppIcon',
-            reason: 'the icon lives in Assets.car and cannot be previewed',
+        IosIconResolution(candidates: [
+          _candidate(bytes: _realPng(), width: 512, height: 512),
+          _candidate(
+            bytes: _realPng(),
+            width: 256,
+            height: 256,
+            path: 'Payload/Example.app/Icon@3x.png',
           ),
         ]),
       );
 
-      expect(
-          find.textContaining('declared but not resolvable'), findsOneWidget);
-      expect(find.textContaining('AppIcon'), findsOneWidget);
-      expect(find.textContaining('Assets.car'), findsOneWidget);
+      expect(find.byType(RawImage), findsOneWidget);
+      expect(find.textContaining('Icon@3x.png'), findsNothing,
+          reason: '候选清单属于 DetailRenderer.iosIcon，不该出现在缩略图里');
     });
 
     testWidgets('解码失败时在图片位置显示原因', (tester) async {
@@ -253,29 +257,25 @@ void main() {
       );
 
       expect(find.textContaining('could not be decoded'), findsWidgets);
+      expect(find.byType(RawImage), findsNothing);
     });
 
-    testWidgets('多个候选时只预览最大的，其余列出文件名', (tester) async {
+    testWidgets('声明了但取不到、又没有候选时，说明「未找到」而不是空白框', (tester) async {
       await _pumpPreview(
         tester,
-        IosIconResolution(candidates: [
-          _candidate(
-            bytes: _realPng(),
-            width: 512,
-            height: 512,
-          ),
-          _candidate(
-            bytes: _realPng(),
-            width: 256,
-            height: 256,
-            path: 'Payload/Example.app/Icon@3x.png',
+        const IosIconResolution(unresolved: [
+          IosUnresolvedIcon(
+            source: IosIconSource.assetCatalogName,
+            declared: 'AppIcon',
+            reason: 'the icon lives in Assets.car and cannot be previewed',
           ),
         ]),
       );
 
-      expect(find.textContaining('other candidates'), findsOneWidget);
-      expect(find.textContaining('Icon@3x.png'), findsOneWidget);
-      expect(find.textContaining('256x256'), findsOneWidget);
+      // 具体原因由 DetailRenderer.iosIcon 负责，缩略图这里只说「没有可预览的图」。
+      expect(
+          find.textContaining('no previewable icon resource'), findsOneWidget);
+      expect(find.byType(RawImage), findsNothing);
     });
   });
 }

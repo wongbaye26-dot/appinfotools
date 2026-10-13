@@ -18,11 +18,11 @@
     "page_in_development": "页面开发中"
   },
   "open": {
-    "open_apk": "打开 APK/XAPK/APKM/APKS",
+    "open_apk": "打开 APK/XAPK/APKM/APKS/IPA",
     "open_file_directory": "打开文件位置",
-    "select_apk_file": "请选择 APK/XAPK/APKM/APKS 文件",
+    "select_apk_file": "请选择 APK/XAPK/APKM/APKS/IPA 文件",
     "close_file": "关闭文件",
-    "invalid_file_type": "请选择 APK/XAPK/APKM/APKS 文件"
+    "invalid_file_type": "请选择 APK/XAPK/APKM/APKS/IPA 文件"
   },
   "settings": {
     "title": "设置",
@@ -124,12 +124,15 @@
     "cancel_parse": "取消"
   },
   "file_info": {
+    "computing_hash": "正在计算...",
     "file": "文件",
-    "size": "大小",
     "md5": "MD5",
+    "platform": "平台",
+    "platform_android": "Android",
+    "platform_ios": "iOS",
     "sha1": "SHA1",
     "sha256": "SHA-256",
-    "computing_hash": "正在计算..."
+    "size": "大小"
   },
   "apk_info": {
     "archive_type": "文件类型",
@@ -327,5 +330,14 @@
     "platform": "平台",
     "size": "大小",
     "title": "应用包解析报告"
+  },
+  "about": {
+    "features": {
+      "android": "解析 Android 安装包：APK / XAPK / APKM / APKS",
+      "ios": "解析 iOS 安装包：IPA",
+      "details": "查看图标、基本信息、权限与组件",
+      "hash_signature": "计算文件哈希（MD5 / SHA-1 / SHA-256）并验证签名",
+      "hardening_report": "识别加固线索并导出分析报告"
+    }
   }
 }

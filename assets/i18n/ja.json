@@ -18,11 +18,11 @@
     "page_in_development": "開発中のページ"
   },
   "open": {
-    "open_apk": "APK/XAPK/APKM/APKSを開く",
+    "open_apk": "APK/XAPK/APKM/APKS/IPAを開く",
     "open_file_directory": "ファイルの場所を開く",
-    "select_apk_file": "APK/XAPK/APKM/APKSファイルを選択してください",
+    "select_apk_file": "APK/XAPK/APKM/APKS/IPAファイルを選択してください",
     "close_file": "ファイルを閉じる",
-    "invalid_file_type": "APK/XAPK/APKM/APKSファイルを選択してください"
+    "invalid_file_type": "APK/XAPK/APKM/APKS/IPAファイルを選択してください"
   },
   "settings": {
     "title": "設定",
@@ -124,12 +124,15 @@
     "cancel_parse": "キャンセル"
   },
   "file_info": {
+    "computing_hash": "計算中...",
     "file": "ファイル",
-    "size": "サイズ",
     "md5": "MD5",
+    "platform": "プラットフォーム",
+    "platform_android": "Android",
+    "platform_ios": "iOS",
     "sha1": "SHA1",
     "sha256": "SHA-256",
-    "computing_hash": "計算中..."
+    "size": "サイズ"
   },
   "apk_info": {
     "archive_type": "ファイルタイプ",
@@ -218,6 +221,15 @@
       "abi": "CPUアーキテクチャ",
       "density": "画面密度",
       "unknown": "その他"
+    }
+  },
+  "about": {
+    "features": {
+      "android": "Android パッケージを解析：APK / XAPK / APKM / APKS",
+      "ios": "iOS パッケージを解析：IPA",
+      "details": "アイコン・基本情報・権限・コンポーネントを表示",
+      "hash_signature": "ファイルハッシュ（MD5 / SHA-1 / SHA-256）の計算と署名検証",
+      "hardening_report": "加固の手がかりを検出し、解析レポートを書き出す"
     }
   }
 }

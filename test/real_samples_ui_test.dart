@@ -26,6 +26,7 @@ import 'package:apk_info_tool/pages/info_page.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
+import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -205,7 +206,8 @@ void main() {
       final text = _visibleText(tester);
 
       // 平台标识：用户第一眼要能确认这是个 iOS 包。
-      expect(text, contains(t.ios_info.platform_badge));
+      // 两页的版式一致，这一行是唯一的分辨依据。
+      expect(text, contains(t.file_info.platform_ios));
       expect(text, contains(ios.bundleIdentifier.value!));
       expect(text, contains(ios.shortVersion.value!));
       expect(text, contains(ios.minimumOSVersion.value!));
@@ -237,6 +239,30 @@ void main() {
       if (firstLine.isNotEmpty) {
         expect(text, contains(firstLine));
       }
+    });
+
+    testWidgets('真实 IPA 的图标能真的解码出来（Apple 的 CgBI 变体）', (tester) async {
+      final icon = state.analysis!.ios!.icon;
+      expect(icon, isNotNull);
+      expect(icon!.candidates, isNotEmpty,
+          reason: '这份样本的 AppIcon*.png 就在 bundle 顶层，必须能定位到');
+
+      final best = icon.best!;
+      // CgBI 的 IHDR 前面还有 CgBI 块，写死偏移 12 会把尺寸读成 null。
+      expect(best.pixelWidth, isNotNull, reason: '尺寸读不出来就说明 IHDR 的定位又写死偏移了');
+      expect(best.pixelHeight, isNotNull);
+
+      // 解码走的是引擎的真实异步，必须在 runAsync 里给它真实时间。
+      late IosIconDecodeResult decoded;
+      await tester.runAsync(() async {
+        decoded = await IosIconDecoder.decode(best);
+      });
+
+      expect(decoded.hasImage, isTrue,
+          reason: '图标是 CgBI，不做规范化就解不出来：${decoded.failure}');
+      expect(decoded.image!.width, best.pixelWidth);
+      expect(decoded.image!.height, best.pixelHeight);
+      decoded.image!.dispose();
     });
 
     testWidgets('未解析的图标说明原因，而不是留空白', (tester) async {

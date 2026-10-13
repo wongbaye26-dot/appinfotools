@@ -4,18 +4,19 @@
 // `real_samples_ui_test.dart` 覆盖的是「真实样本能不能渲染出来」，这里覆盖的
 // 是「渲染出来的版式是否符合设计」，两者不重叠。
 //
-// 钉住三件事：
-// 1. IPA 页面按语义分组（Android 侧是一列平铺的卡片）；
-// 2. Hero 卡片一次给出平台、应用名、Bundle ID 与版本；
-// 3. **Android 的字段不出现在 IPA 页面上** —— 那些字段读的是 `apkInfo?.x`，
-//    在 iOS 上会渲染成一排空值，看起来像「这个包什么都没有」。
+// 钉住的核心是**两页对齐**：
+// 1. 同样的 `Card` + `TitleValueLayout`，没有 iOS 专属的卡片壳；
+// 2. 同样的卡片顺序（用相对次序断言，不写死完整列表）；
+// 3. 同样的复制入口；
+// 4. 区分靠最上面那一行**平台标识**，而不是把两页做成两种样子。
 
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/pages/info_page.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
-import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
+import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,31 +31,21 @@ import 'package:ipa_parser/ipa_parser.dart'
         IpaContainer,
         IpaInfoPlist;
 
-const _bundlePath = 'Payload/Example.app';
+const _appPath = 'Payload/Example.app';
 
-const _bundle = IosBundle(
+const _mainApp = IosBundle(
   kind: IosBundleKind.mainApp,
-  path: _bundlePath,
+  path: _appPath,
   name: 'Example.app',
-  infoPlistPath: '$_bundlePath/Info.plist',
-  fileCount: 42,
-  uncompressedBytes: 1024 * 1024,
+  infoPlistPath: '$_appPath/Info.plist',
+  fileCount: 640,
+  uncompressedBytes: 88 * 1024 * 1024,
   hasCodeSignatureDirectory: true,
+  hasEmbeddedProvision: true,
 );
 
-const _framework = IosBundle(
-  kind: IosBundleKind.framework,
-  path: '$_bundlePath/Frameworks/libExample.dylib.framework',
-  name: 'libExample.dylib.framework',
-  fileCount: 3,
-);
-
-/// 一份合成的主应用 `Info.plist`。
-///
-/// 每个字段都走 `FieldValue.extracted`，与真实解析出来的形状一致 ——
-/// 用 `absent` 会走到「为什么没有值」的分支，那是另一组断言的事。
 final _infoPlist = IpaInfoPlist(
-  bundle: _bundle,
+  bundle: _mainApp,
   bundleIdentifier: const FieldValue.extracted(
     'com.example.demo',
     source: FieldSource.infoPlist,
@@ -64,11 +55,11 @@ final _infoPlist = IpaInfoPlist(
     source: FieldSource.infoPlist,
   ),
   shortVersionString: const FieldValue.extracted(
-    '1.2.3',
+    '3.1.0',
     source: FieldSource.infoPlist,
   ),
   bundleVersion: const FieldValue.extracted(
-    '42',
+    '310',
     source: FieldSource.infoPlist,
   ),
   executable: const FieldValue.extracted(
@@ -76,47 +67,65 @@ final _infoPlist = IpaInfoPlist(
     source: FieldSource.infoPlist,
   ),
   minimumOSVersion: const FieldValue.extracted(
-    '14.0',
+    '13.0',
     source: FieldSource.infoPlist,
   ),
   deviceFamily:
       const FieldValue.extracted([1, 2], source: FieldSource.infoPlist),
+  queriesSchemes:
+      const FieldValue.extracted(['demo'], source: FieldSource.infoPlist),
 );
 
-/// 一份合成的解析结果：图标只在 `Assets.car` 里，另有一条诊断。
-IpaAnalysis _analysis() => IpaAnalysis(
+IpaAnalysis _ipa() => IpaAnalysis(
       container: const IpaContainer(
-        bundles: [_bundle, _framework],
-        payloadApps: [_bundle],
+        bundles: [_mainApp],
+        payloadApps: [_mainApp],
         hasPayloadDirectory: true,
-        fileEntryCount: 45,
-        totalUncompressedBytes: 1024 * 1024,
+        fileEntryCount: 641,
+        totalUncompressedBytes: 88 * 1024 * 1024,
       ),
-      mainApp: _bundle,
+      mainApp: _mainApp,
       infoPlist: _infoPlist,
-      executablePath: '$_bundlePath/Example',
+      executablePath: '$_appPath/Example',
       icon: const IosIconResolution(
         unresolved: [
           IosUnresolvedIcon(
             source: IosIconSource.assetCatalogName,
-            declared: 'AppIcon',
+            declared: 'CFBundleIconName=AppIcon',
             reason: 'the icon lives in Assets.car and cannot be previewed',
           ),
         ],
       ),
       diagnostics: [
         const AnalysisDiagnostic.info(
-          'ios.demo.synthetic',
-          'synthetic diagnostic for the layout test',
+          'ios.nested.truncated',
+          'only the first 24 of 27 nested bundles were parsed',
           source: FieldSource.zipDirectory,
         ),
       ],
     );
 
-FileState _state({IpaAnalysis? analysis}) => FileState(
+FileState _ipaState({IpaAnalysis? analysis}) => FileState(
       filePath: '/tmp/Example.ipa',
-      fileSize: 2048,
+      fileSize: 42465437,
       ipaAnalysis: analysis,
+      md5Hash: 'd41d8cd98f00b204e9800998ecf8427e',
+      sha1Hash: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
+      sha256Hash:
+          'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    );
+
+FileState _apkState() => FileState(
+      filePath: '/tmp/Example.apk',
+      fileSize: 60608714,
+      apkInfo: ApkInfo()
+        ..packageName = 'com.example.demo'
+        ..label = '示例应用'
+        ..versionName = '3.1.0'
+        ..versionCode = 310
+        ..sdkVersion = 21
+        ..targetSdkVersion = 34
+        ..usesPermissions = ['android.permission.INTERNET'],
       md5Hash: 'd41d8cd98f00b204e9800998ecf8427e',
       sha1Hash: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
       sha256Hash:
@@ -125,7 +134,7 @@ FileState _state({IpaAnalysis? analysis}) => FileState(
 
 Future<void> _pumpPage(WidgetTester tester, FileState state) async {
   // 详情页是一个 ListView：默认 800×600 的视口只会构建可见的那几张卡，
-  // 断言后面的分组就等于断言一个从没被构建过的东西。
+  // 断言后面的卡片就等于断言一个从没被构建过的东西。
   tester.view.physicalSize = const Size(1200, 6000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -133,12 +142,18 @@ Future<void> _pumpPage(WidgetTester tester, FileState state) async {
   final container = ProviderContainer();
   addTearDown(container.dispose);
   container.read(currentFileStateProvider.notifier).update(state);
+  // Android 卡片读的是 `currentApkInfoProvider`，测试必须照做。
+  if (state.apkInfo != null) {
+    container.read(currentApkInfoProvider.notifier).update(state.apkInfo);
+  }
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
       child: TranslationProvider(
-        child: const MaterialApp(home: APKInfoPage()),
+        // 与真实树一致：`APKInfoPage` 在 `HomePage` 的 Scaffold 里。
+        // 直接当 `home` 时环境字体是 WidgetsApp 的报错样式。
+        child: const MaterialApp(home: Scaffold(body: APKInfoPage())),
       ),
     ),
   );
@@ -146,7 +161,7 @@ Future<void> _pumpPage(WidgetTester tester, FileState state) async {
 }
 
 /// 界面上所有可见文本。`TitleValueLayout` 用 `Text` 渲染标题、用
-/// `SelectableText` 渲染值；Hero 卡片两处都用 `SelectableText`。
+/// `SelectableText` 渲染值，两者都要收。
 String _visibleText(WidgetTester tester) {
   final buffer = StringBuffer();
   for (final widget in tester.widgetList<Text>(find.byType(Text))) {
@@ -159,152 +174,76 @@ String _visibleText(WidgetTester tester) {
   return buffer.toString();
 }
 
-List<IosInfoCard> _cards(WidgetTester tester) =>
-    tester.widgetList<IosInfoCard>(find.byType(IosInfoCard)).toList();
+List<TitleValueLayout> _layouts(WidgetTester tester) =>
+    tester.widgetList<TitleValueLayout>(find.byType(TitleValueLayout)).toList();
 
-IosInfoCard? _cardWithTitle(WidgetTester tester, String title) {
-  for (final card in _cards(tester)) {
-    if (card.title == title) return card;
-  }
-  return null;
-}
+/// 页面上所有卡片的标题，**按渲染顺序**。
+List<String> _cardTitles(WidgetTester tester) =>
+    _layouts(tester).map((layout) => layout.title).toList();
+
+TitleValueLayout _layoutTitled(WidgetTester tester, String title) =>
+    _layouts(tester).firstWhere((layout) => layout.title == title);
 
 void main() {
-  group('IPA 详情页 — 分组结构', () {
-    testWidgets('五个语义分组都渲染出来', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
+  group('IPA 详情页 — 与 APK 页同一套版式', () {
+    testWidgets('每张卡片都是 Card + TitleValueLayout，没有 iOS 专属卡片壳', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
       expect(tester.takeException(), isNull);
 
-      final titles = tester
-          .widgetList<IosSectionHeader>(find.byType(IosSectionHeader))
-          .map((h) => h.title)
-          .toList();
+      final layouts = find.byType(TitleValueLayout);
+      expect(layouts, findsWidgets);
 
+      // 每个 TitleValueLayout 的直接祖先都必须是一张 Card。
+      // 出现别的壳（自定义内边距、Hero 卡片、分组标题…）就说明两页又分叉了。
+      final wrapped = find.ancestor(of: layouts, matching: find.byType(Card));
       expect(
-        titles,
-        [
-          t.ios_info.group_file,
-          t.ios_info.group_app,
-          t.ios_info.group_container,
-          t.ios_info.group_signature,
-          t.ios_info.group_integrity,
-        ],
-        reason: '顺序固定：先确认打开的是哪个文件，再逐层深入',
+        tester.widgetList<Card>(wrapped).length,
+        tester.widgetList<TitleValueLayout>(layouts).length,
       );
     });
 
-    testWidgets('分组标题只出现一次，不出现「解析诊断 解析诊断」这类叠字', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
+    testWidgets('卡片顺序与 APK 页一致：文件 → 平台 → 标识 → 版本 …', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+      final titles = _cardTitles(tester);
 
-      final titles = tester
-          .widgetList<IosSectionHeader>(find.byType(IosSectionHeader))
-          .map((h) => h.title)
-          .toList();
-      expect(titles.toSet(), hasLength(titles.length));
+      void before(String a, String b) {
+        final ia = titles.indexOf(a);
+        final ib = titles.indexOf(b);
+        expect(ia, isNonNegative, reason: '页面上没有「$a」');
+        expect(ib, isNonNegative, reason: '页面上没有「$b」');
+        expect(ia, lessThan(ib), reason: '「$a」应当排在「$b」前面');
+      }
 
-      // 分组标题与卡片标题不得同名 —— 同名就是视觉上的重复。
-      final cardTitles = _cards(tester).map((c) => c.title).toSet();
-      for (final title in titles) {
-        expect(cardTitles, isNot(contains(title)),
-            reason: '「$title」既是分组标题又是卡片标题');
+      // 平台标识刻意排在最前 —— 它是两页唯一的分辨依据，应该第一眼看到。
+      before(t.file_info.platform, t.file_info.file);
+      before(t.file_info.file, t.apk_info.app_name);
+      before(t.apk_info.app_name, t.ios_info.bundle_id);
+      before(t.ios_info.bundle_id, t.apk_info.version_name);
+      before(t.apk_info.version_name, t.ios_info.minimum_os);
+      before(t.ios_info.minimum_os, t.file_info.md5);
+      before(t.file_info.md5, t.file_info.sha256);
+      before(t.file_info.sha256, t.apk_info.diagnostics);
+      before(t.apk_info.diagnostics, t.ios_info.container_section);
+      before(t.ios_info.container_section, t.apk_info.signature_info);
+    });
+
+    testWidgets('复制入口与 APK 页一样留在值旁边', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      // Bundle ID 与三个哈希都要能一键复制。
+      for (final title in [
+        t.ios_info.bundle_id,
+        t.file_info.md5,
+        t.file_info.sha1,
+        t.file_info.sha256,
+      ]) {
+        expect(_layoutTitled(tester, title).end, isNotNull,
+            reason: '「$title」缺少复制入口');
       }
     });
 
-    testWidgets('签名与 codesign 是两张卡片，而不是一块拼接的长文本', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
-      final signature = _cardWithTitle(tester, t.ios_info.signature_verdict);
-      final codeSign = _cardWithTitle(tester, t.ios_info.codesign_section);
-
-      expect(signature, isNotNull);
-      expect(codeSign, isNotNull);
-
-      // codesign 的表头已经在卡片标题里，正文再来一遍就成了叠字。
-      expect(codeSign!.value, isNot(contains(t.ios_info.codesign_section)));
-      expect(signature!.value, isNot(contains(t.ios_info.codesign_section)));
-    });
-  });
-
-  group('IPA 详情页 — Hero 卡片', () {
-    testWidgets('平台徽标、应用名、Bundle ID、版本一次给全', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
-      expect(find.byType(IosHeroCard), findsOneWidget);
-
-      final hero = tester.widget<IosHeroCard>(find.byType(IosHeroCard));
-      expect(hero.badge, t.ios_info.platform_badge);
-      expect(hero.name, '示例应用');
-      expect(hero.bundleId, 'com.example.demo');
-      expect(hero.version, '1.2.3 (42)');
-
-      final text = _visibleText(tester);
-      expect(text, contains(t.ios_info.platform_badge));
-      expect(text, contains('com.example.demo'));
-      expect(text, contains('1.2.3 (42)'));
-    });
-
-    testWidgets('Bundle ID 的复制入口留在它旁边', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
-      final hero = tester.widget<IosHeroCard>(find.byType(IosHeroCard));
-      expect(hero.bundleIdEnd, isNotNull,
-          reason: 'Bundle ID 是要复制去别处用的值，不能把复制按钮弄丢');
-    });
-
-    testWidgets('图标的未解析原因挂在 Hero 卡片底部，而不是被裁掉', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
-      final text = _visibleText(tester);
-      expect(text, contains(t.ios_info.icon_declared_unresolved));
-      expect(text, contains('Assets.car'));
-    });
-
-    testWidgets('容器里没有主应用时说明原因，而不是留一页短横线', (tester) async {
-      // 没有 `Payload/*.app` 时 Hero 卡片与后面每一组都会是一排「-」，
-      // 而「-」的含义是「文件里没有这一项」—— 与「我们没找到应用」是两件事。
-      await _pumpPage(
-        tester,
-        _state(analysis: IpaAnalysis(container: const IpaContainer())),
-      );
-
-      final text = _visibleText(tester);
-      expect(text, contains(t.ios_info.unavailable));
-      expect(text, contains(t.ios_info.no_main_app));
-      expect(text, contains(t.ios_info.platform_badge),
-          reason: '即便读不出应用信息，也要能确认这是个 iOS 包');
-    });
-  });
-
-  group('IPA 详情页 — 与 Android 的差异', () {
-    testWidgets('标识符用等宽字体，不是比例字体', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
-      final bundleId = tester
-          .widgetList<SelectableText>(find.byType(SelectableText))
-          .firstWhere((w) => w.data == 'com.example.demo');
-      expect(bundleId.style?.fontFamily, iosMonoFontFamily);
-
-      // 可执行文件名与哈希也走等宽 —— 它们同样要逐字比对。
-      expect(_cardWithTitle(tester, t.ios_info.executable)?.monospace, isTrue);
-      expect(_cardWithTitle(tester, t.file_info.sha256)?.monospace, isTrue);
-      expect(_cardWithTitle(tester, t.ios_info.minimum_os)?.monospace, isFalse);
-    });
-
-    testWidgets('全部键值卡片都走 iOS 卡片样式，没有一张是裸 Card', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
-
-      // 页面上的每一张键值卡片都是 IosInfoCard；出现裸 Card + TitleValueLayout
-      // 就说明某个分支漏掉了 iOS 样式。
-      expect(_cards(tester), isNotEmpty);
-      expect(
-        find.byType(TitleValueLayout),
-        findsNWidgets(_cards(tester).length),
-      );
-    });
-
     testWidgets('Android 专属字段不出现在 IPA 页面上', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
       final text = _visibleText(tester);
       for (final androidOnly in [
@@ -319,15 +258,78 @@ void main() {
             reason: '「$androidOnly」是 Android 字段，不该出现在 IPA 页面');
       }
     });
+  });
 
-    testWidgets('长文本不设 maxLines，避免把签名与诊断裁掉', (tester) async {
-      await _pumpPage(tester, _state(analysis: _analysis()));
+  group('平台标识 — 两页的分辨依据', () {
+    testWidgets('IPA 页第一张卡片就是「平台 = iOS」', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
-      // maxLines 是裁剪而不是溢出滚动，设了就等于隐藏超出的行。
-      for (final card in _cards(tester)) {
-        expect(card.maxLines, isNull,
-            reason: '「${card.title}」设了 maxLines，超出部分会被裁掉');
-      }
+      expect(_cardTitles(tester).first, t.file_info.platform);
+
+      final platform = _layoutTitled(tester, t.file_info.platform);
+      expect(platform.value, t.file_info.platform_ios);
+      expect((platform.end! as Icon).icon, Icons.apple);
+    });
+
+    testWidgets('APK 页也有同一行，值不同', (tester) async {
+      await _pumpPage(tester, _apkState());
+
+      final platform = _layoutTitled(tester, t.file_info.platform);
+      expect(platform.value, t.file_info.platform_android);
+      expect((platform.end! as Icon).icon, Icons.android);
+    });
+
+    testWidgets('两页的卡片版式一致', (tester) async {
+      // 同样的断言在 APK 页再跑一遍：两页都满足才算「对齐」。
+      await _pumpPage(tester, _apkState());
+
+      final layouts = find.byType(TitleValueLayout);
+      final wrapped = find.ancestor(of: layouts, matching: find.byType(Card));
+      expect(
+        tester.widgetList<Card>(wrapped).length,
+        tester.widgetList<TitleValueLayout>(layouts).length,
+      );
+    });
+  });
+
+  group('IPA 详情页 — 图标', () {
+    testWidgets('图标缩略图与版本卡片同处一栏，和 APK 页一样在右侧', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      expect(find.byType(IosIconThumbnail), findsOneWidget);
+
+      final row = find.ancestor(
+        of: find.byType(IosIconThumbnail),
+        matching: find.byType(Row),
+      );
+      expect(row, findsWidgets);
+      // 同一个 Row 里必须有版本名卡片 —— 那正是 APK 页放图标的位置。
+      expect(
+        find.descendant(
+            of: row.first, matching: find.text(t.apk_info.version_name)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('图标清单连同「为什么取不到」一起列出', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      final icon = _layoutTitled(tester, t.ios_info.icon_section);
+      expect(icon.value, contains(t.ios_info.icon_declared_unresolved));
+      expect(icon.value, contains('Assets.car'));
+    });
+
+    testWidgets('容器里没有主应用时说明原因，而不是留一页短横线', (tester) async {
+      await _pumpPage(
+        tester,
+        _ipaState(analysis: IpaAnalysis(container: const IpaContainer())),
+      );
+
+      final text = _visibleText(tester);
+      expect(text, contains(t.ios_info.unavailable));
+      expect(text, contains(t.ios_info.no_main_app));
+      // 即便读不出应用信息，也要能确认这是个 iOS 包。
+      expect(text, contains(t.file_info.platform_ios));
     });
   });
 }

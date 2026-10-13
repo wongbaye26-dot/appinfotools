@@ -16,9 +16,13 @@ import 'package:ipa_parser/ipa_parser.dart'
         IosBundle,
         IosBundleKind,
         IosEntitlement,
+        IosIconCandidate,
         IosIconResolution,
+        IosIconSource,
+        IosImageFormat,
         IosProvisioningProfile,
         IosSignatureMaterials,
+        IosUnresolvedIcon,
         IpaContainer,
         MachOFile,
         PlistString;
@@ -492,6 +496,102 @@ void main() {
       final text = DetailRenderer.iosNestedBinaries([binary], t);
       expect(text, contains('Lib.framework'));
       expect(text, contains('entry missing or too large'));
+    });
+  });
+
+  group('DetailRenderer — iOS 图标清单', () {
+    // 这些信息原先由 `IosIconPreview` 这个组件渲染。改成文本是为了让 iOS 页
+    // 与 Android 页走同一套卡片版式 —— 组件只负责画图，文字归 DetailRenderer。
+
+    test('候选要给出文件名、尺寸与归档路径', () {
+      const candidate = IosIconCandidate(
+        source: IosIconSource.primaryIconFiles,
+        relativePath: 'AppIcon60x60@2x.png',
+        archivePath: 'Payload/Example.app/AppIcon60x60@2x.png',
+        size: 19881,
+        format: IosImageFormat.png,
+        pixelWidth: 120,
+        pixelHeight: 120,
+      );
+
+      final text = DetailRenderer.iosIcon(
+        const IosIconResolution(candidates: [candidate]),
+        t,
+      );
+      expect(text, contains('AppIcon60x60@2x.png'));
+      expect(text, contains('120x120'));
+      expect(text, contains('19881 B'));
+      // 归档路径也要给出来 —— 排查时要拿它比对 ZIP 条目名。
+      expect(text, contains('Payload/Example.app/AppIcon60x60@2x.png'));
+      expect(text, contains(t.ios_info.icon_source_primary));
+    });
+
+    test('尺寸读不出来时写出 ?，而不是留空', () {
+      const candidate = IosIconCandidate(
+        source: IosIconSource.primaryIconFiles,
+        relativePath: 'Icon.png',
+        archivePath: 'Payload/Example.app/Icon.png',
+        size: 100,
+        format: IosImageFormat.png,
+      );
+
+      final text = DetailRenderer.iosIcon(
+        const IosIconResolution(candidates: [candidate]),
+        t,
+      );
+      expect(text, contains('?x?'));
+    });
+
+    test('声明了但取不到的条目连同原因一起给出', () {
+      const resolution = IosIconResolution(unresolved: [
+        IosUnresolvedIcon(
+          source: IosIconSource.assetCatalogName,
+          declared: 'CFBundleIconName=AppIcon',
+          reason: 'the icon lives in Assets.car and cannot be previewed',
+        ),
+      ]);
+
+      final text = DetailRenderer.iosIcon(resolution, t);
+      expect(text, contains(t.ios_info.icon_declared_unresolved));
+      expect(text, contains('CFBundleIconName=AppIcon'));
+      expect(text, contains('Assets.car'));
+      expect(text, contains(t.ios_info.icon_source_asset_catalog));
+    });
+
+    test('多个候选全部列出，而不是只给最大的那个', () {
+      const resolution = IosIconResolution(candidates: [
+        IosIconCandidate(
+          source: IosIconSource.primaryIconFiles,
+          relativePath: 'AppIcon60x60@2x.png',
+          archivePath: 'Payload/Example.app/AppIcon60x60@2x.png',
+          size: 19881,
+          format: IosImageFormat.png,
+          pixelWidth: 120,
+          pixelHeight: 120,
+        ),
+        IosIconCandidate(
+          source: IosIconSource.primaryIconFilesIpad,
+          relativePath: 'AppIcon76x76@2x~ipad.png',
+          archivePath: 'Payload/Example.app/AppIcon76x76@2x~ipad.png',
+          size: 31686,
+          format: IosImageFormat.png,
+          pixelWidth: 152,
+          pixelHeight: 152,
+        ),
+      ]);
+
+      final text = DetailRenderer.iosIcon(resolution, t);
+      expect(text, contains('AppIcon60x60@2x.png'));
+      expect(text, contains('AppIcon76x76@2x~ipad.png'));
+      expect(text, contains('152x152'));
+      expect(text, contains(t.ios_info.icon_source_ipad));
+    });
+
+    test('完全没有图标信息时说明「未找到」，而不是返回空串', () {
+      // 返回空串会让卡片看起来像「这个包没有图标这一项」，而不是「我们没找到」。
+      expect(DetailRenderer.iosIcon(null, t), t.ios_info.icon_unavailable);
+      expect(DetailRenderer.iosIcon(const IosIconResolution(), t),
+          t.ios_info.icon_unavailable);
     });
   });
 
