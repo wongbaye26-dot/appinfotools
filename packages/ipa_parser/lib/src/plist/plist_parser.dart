@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'binary_plist_parser.dart';
@@ -77,4 +78,11 @@ class PlistParser {
           'not a plist: neither bplist00 nor XML'),
     };
   }
+
+  /// 从字符串解析。
+  ///
+  /// 同样走内容识别，不看调用方的声明 —— 外部工具（例如 `codesign`）的输出
+  /// 编码随版本变化，声明式的解析迟早会踩空。
+  static PlistValue parseString(String text) =>
+      parse(Uint8List.fromList(utf8.encode(text)));
 }
