@@ -2,6 +2,7 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
 
 import 'ipa_container.dart';
+import 'plist/plist_fields.dart';
 import 'plist/plist_parser.dart';
 import 'plist/plist_value.dart';
 import 'plist/xml_plist_parser.dart' show PlistParseException;
@@ -238,20 +239,34 @@ class IpaInfoPlistReader {
       ),
     ];
 
+    // 取值规则统一走 PlistFields —— 与描述文件 plist 用的是同一份实现。
+    const source = FieldSource.infoPlist;
+
     return IpaInfoPlist(
       bundle: bundle,
       raw: root,
-      bundleIdentifier: _strictString(root, 'CFBundleIdentifier'),
-      displayName: _strictString(root, 'CFBundleDisplayName'),
-      bundleName: _strictString(root, 'CFBundleName'),
-      shortVersionString: _strictString(root, 'CFBundleShortVersionString'),
-      bundleVersion: _numberOrString(root, 'CFBundleVersion'),
-      executable: _strictString(root, 'CFBundleExecutable'),
-      minimumOSVersion: _strictString(root, 'MinimumOSVersion'),
-      deviceFamily: _intList(root, 'UIDeviceFamily'),
-      queriesSchemes: _stringList(root, 'LSApplicationQueriesSchemes'),
-      requiredDeviceCapabilities:
-          _stringList(root, 'UIRequiredDeviceCapabilities'),
+      bundleIdentifier:
+          PlistFields.strictString(root, 'CFBundleIdentifier', source: source),
+      displayName:
+          PlistFields.strictString(root, 'CFBundleDisplayName', source: source),
+      bundleName:
+          PlistFields.strictString(root, 'CFBundleName', source: source),
+      shortVersionString: PlistFields.strictString(
+          root, 'CFBundleShortVersionString',
+          source: source),
+      bundleVersion:
+          PlistFields.numberOrString(root, 'CFBundleVersion', source: source),
+      executable:
+          PlistFields.strictString(root, 'CFBundleExecutable', source: source),
+      minimumOSVersion:
+          PlistFields.strictString(root, 'MinimumOSVersion', source: source),
+      deviceFamily: PlistFields.intList(root, 'UIDeviceFamily', source: source),
+      queriesSchemes: PlistFields.stringList(
+          root, 'LSApplicationQueriesSchemes',
+          source: source),
+      requiredDeviceCapabilities: PlistFields.stringList(
+          root, 'UIRequiredDeviceCapabilities',
+          source: source),
       icons: _icons(root),
       diagnostics: diagnostics,
     );
@@ -261,110 +276,25 @@ class IpaInfoPlistReader {
   // 字段提取
   // ---------------------------------------------------------------------------
 
-  /// 严格取字符串：类型不是 `string` 就记 [FieldStatus.wrongType]。
-  static FieldValue<String> _strictString(PlistDict root, String key) {
-    final raw = root.value[key];
-    if (raw == null) {
-      return const FieldValue<String>.absent(source: FieldSource.infoPlist);
-    }
-    if (raw is! PlistString) {
-      return FieldValue<String>.wrongType(
-        diagnostic: '$key is ${raw.typeName}, expected a string',
-        source: FieldSource.infoPlist,
-      );
-    }
-    return FieldValue<String>.extracted(raw.value,
-        source: FieldSource.infoPlist);
-  }
-
-  /// 宽松取字符串：整数/浮点也接受。
-  ///
-  /// **只用于 `CFBundleVersion`。** 它按文档是字符串，但被写成 `<integer>`
-  /// 是真实存在的情况；直接判为类型错误只会让用户看到一个空白的构建号，
-  /// 而那个数字本身是准确可用的。
-  static FieldValue<String> _numberOrString(PlistDict root, String key) {
-    final raw = root.value[key];
-    if (raw == null) {
-      return const FieldValue<String>.absent(source: FieldSource.infoPlist);
-    }
-    final value = raw.asString;
-    if (value == null) {
-      return FieldValue<String>.wrongType(
-        diagnostic: '$key is ${raw.typeName}, expected a string or a number',
-        source: FieldSource.infoPlist,
-      );
-    }
-    return FieldValue<String>.extracted(value, source: FieldSource.infoPlist);
-  }
-
-  /// 取整数数组。
-  ///
-  /// 要求确实是数组且元素都是整数。**不接受裸标量**：把 `UIDeviceFamily = 1`
-  /// 当成 `[1]` 是在替文件补结构，而我们无法区分那到底是简写还是写错了。
-  static FieldValue<List<int>> _intList(PlistDict root, String key) {
-    final raw = root.value[key];
-    if (raw == null) {
-      return const FieldValue<List<int>>.absent(source: FieldSource.infoPlist);
-    }
-    if (raw is! PlistArray) {
-      return FieldValue<List<int>>.wrongType(
-        diagnostic: '$key is ${raw.typeName}, expected an array of integers',
-        source: FieldSource.infoPlist,
-      );
-    }
-    final values = <int>[];
-    for (final item in raw.value) {
-      final value = item.asInt;
-      if (value == null) {
-        return FieldValue<List<int>>.wrongType(
-          diagnostic: '$key contains a ${item.typeName}, expected integers',
-          source: FieldSource.infoPlist,
-        );
-      }
-      values.add(value);
-    }
-    return FieldValue<List<int>>.extracted(values,
-        source: FieldSource.infoPlist);
-  }
-
-  /// 取字符串数组。同样要求确实是数组。
-  static FieldValue<List<String>> _stringList(PlistDict root, String key) {
-    final raw = root.value[key];
-    if (raw == null) {
-      return const FieldValue<List<String>>.absent(
-          source: FieldSource.infoPlist);
-    }
-    if (raw is! PlistArray) {
-      return FieldValue<List<String>>.wrongType(
-        diagnostic: '$key is ${raw.typeName}, expected an array of strings',
-        source: FieldSource.infoPlist,
-      );
-    }
-    final values = <String>[];
-    for (final item in raw.value) {
-      final value = item.asString;
-      if (value == null) {
-        return FieldValue<List<String>>.wrongType(
-          diagnostic: '$key contains a ${item.typeName}, expected strings',
-          source: FieldSource.infoPlist,
-        );
-      }
-      values.add(value);
-    }
-    return FieldValue<List<String>>.extracted(values,
-        source: FieldSource.infoPlist);
-  }
-
   /// 提取图标配置。
+  ///
+  /// 这一块没有进 `PlistFields`：图标配置是 `Info.plist` 独有的嵌套结构
+  /// （`CFBundleIcons` → `CFBundlePrimaryIcon` → …），不属于通用取值规则。
   static FieldValue<IosIconConfiguration> _icons(PlistDict root) {
+    const source = FieldSource.infoPlist;
     final config = IosIconConfiguration(
       primary:
           _iconSetFrom(_dictAt(root, 'CFBundleIcons', 'CFBundlePrimaryIcon')),
       alternate: _alternateIcons(root),
       primaryIpad: _iconSetFrom(
           _dictAt(root, 'CFBundleIcons~ipad', 'CFBundlePrimaryIcon')),
-      legacyIconFiles: _stringList(root, 'CFBundleIconFiles').value ?? const [],
-      legacyIconFile: _strictString(root, 'CFBundleIconFile').value,
+      legacyIconFiles:
+          PlistFields.stringList(root, 'CFBundleIconFiles', source: source)
+                  .value ??
+              const [],
+      legacyIconFile:
+          PlistFields.strictString(root, 'CFBundleIconFile', source: source)
+              .value,
     );
 
     if (config.isEmpty) {
@@ -388,9 +318,15 @@ class IpaInfoPlistReader {
 
   static IosIconSet? _iconSetFrom(PlistDict? dict) {
     if (dict == null) return null;
+    const source = FieldSource.infoPlist;
     final set = IosIconSet(
-      iconFiles: _stringList(dict, 'CFBundleIconFiles').value ?? const [],
-      iconName: _strictString(dict, 'CFBundleIconName').value,
+      iconFiles:
+          PlistFields.stringList(dict, 'CFBundleIconFiles', source: source)
+                  .value ??
+              const [],
+      iconName:
+          PlistFields.strictString(dict, 'CFBundleIconName', source: source)
+              .value,
     );
     return set.isEmpty ? null : set;
   }

@@ -4,9 +4,11 @@
 // 没有 Android 组件、没有 Mach-O、没有签名细节。把它放在某一侧的包里，会让
 // 另一侧被迫依赖对方 —— 这正是规范要求「与 Android 解析器解耦」要避免的。
 //
-// 包内只有两样东西：
+// 包内只有这几样东西：
 // - `FieldValue<T>` / `FieldStatus` / `FieldSource`：字段值及其解析状态与来源
 // - `AnalysisDiagnostic`：解析过程中的诊断记录
+// - `SignatureStatus`：受信任工具给出的签名验证结论（Android 与 iOS 共用）
 
 export 'src/diagnostic.dart';
 export 'src/field_value.dart';
+export 'src/signature_status.dart';

@@ -2,35 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 
-/// 签名验证的结果状态。
+/// 重新导出 [SignatureStatus]。
 ///
-/// 这四个状态**必须分开**：
-/// - 把「工具不可用」显示成「签名无效」，会把没装 Android SDK 的开发机
-///   误报成恶意应用；
-/// - 把「结果未知」显示成「验证通过」则是更危险的方向 —— 会让用户以为
-///   已经验证过。
-///
-/// 因此只要没有拿到明确结论，就绝不显示「签名有效」。
-enum SignatureStatus {
-  /// apksigner 明确验证通过。
-  verified,
-
-  /// apksigner 明确报告验证失败（退出码 1 / 输出 `DOES NOT VERIFY`）。
-  verificationFailed,
-
-  /// 找不到或无法执行 apksigner —— **无法得出结论**，不代表签名有问题。
-  toolUnavailable,
-
-  /// 执行了工具，但既非通过也非明确失败（超时、非预期退出码、输出异常）。
-  unknown;
-
-  bool get hasConclusiveResult =>
-      this == SignatureStatus.verified ||
-      this == SignatureStatus.verificationFailed;
-}
+/// 这个枚举原先定义在本文件里，iOS 侧需要同一套结论语义，于是上移到
+/// `analysis_model`（零依赖、平台无关）。这里保留一次 re-export：凡是拿到
+/// [SignatureAnalysis] 的调用方都需要这个类型在作用域内，强迫他们多写一行
+/// import 只是噪音。**定义只有一处**，不会再出现两份漂移的副本。
+export 'package:analysis_model/analysis_model.dart' show SignatureStatus;
 
 /// 单个签名者的证书信息。
 ///
