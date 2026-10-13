@@ -557,10 +557,15 @@ Bad state: No ProviderScope found
    - **4.1 组件提取** → `manifest_parser` 现解析全部 activity / activity-alias / service / receiver / provider，含三态 `exported`、`permission`、`authorities`、`hasIntentFilter`；补 `maxSdkVersion` 与 `applicationDebuggable`。commit `99ea33c` + `cf24e1a`。
    - **可测性重构**：`ManifestParser.parse(bytes)` 拆出 `fromDocument(doc)`（可脱离 AXML 样本单测）；详情页渲染抽成 `DetailRenderer` 纯函数。测试从 40 增至 **79**。
 
-8. **仍待处理**：5.6 解析阻塞 UI isolate、5.7 无取消机制、5.9 `FileState` 值语义缺失、5.10 资产清单不一致；4.1 剩余（SHA-256、DEX 数量、SO 明细、资源目录树）；4.2 加固线索与字段来源/状态模型。
+8. **已处理**（5.6 / 5.7 + 规范第七步的进度与取消）：
+   - **5.6 解析阻塞 UI isolate** → 新增 `lib/apkparser/parse_task.dart`，容器解析与资源表解析移入 worker isolate。图标渲染留在主 isolate（`ApkInfo` 持有 `dart:ui` 的 `Image`，不可跨 isolate 传递）。commit `ce87b22`。
+   - **5.7 无取消机制** → `ApkParseTask.cancel()` 用 `Isolate.immediate` 真正终止 worker；UI 在**确实拿到可取消任务时**才显示取消按钮（XAPK/aapt2 路径尚不可取消，不显示伪可用按钮）。取消用 `ApkParseCancelledException` 与失败区分，不弹错误提示。
+   - **真实进度** → `ApkReader.parse` 新增 `onStage` 回调（commit `676d1ee`），UI 显示当前阶段。**只报阶段、不报百分比**：各阶段耗时极不均匀，百分比会是编造的。
 
-9. **过程中新发现的真实行为**（已记录在对应 commit）：
+9. **仍待处理**：5.9 `FileState` 值语义缺失、5.10 资产清单不一致；4.1 剩余（SHA-256、DEX 数量、SO 明细、资源目录树）；4.2 加固线索与字段来源/状态模型；XAPK/aapt2 路径的可取消化。
+
+10. **过程中新发现的真实行为**（已记录在对应 commit）：
    - 本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
    - `Future.timeout` **不会**终止子进程，只停止等待；已对签名路径改用 `Process.start` + 显式 kill。aapt2 路径仍是旧写法。
 
-10. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+11. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
