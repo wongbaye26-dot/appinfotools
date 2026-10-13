@@ -4,9 +4,8 @@
 // 「没读到」不等于「不存在」，「工具不可用」不等于「签名无效」，
 // 「空候选值」不该抹掉已有的好结果。
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
-import 'package:apk_info_tool/models/analysis/diagnostic.dart';
-import 'package:apk_info_tool/models/analysis/field_value.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
@@ -49,6 +48,31 @@ void main() {
       const failed = FieldValue<String>.failed(diagnostic: 'arsc parse failed');
       expect(failed.diagnostic, isNotNull);
       expect(failed.hasValue, isFalse);
+    });
+
+    test('wrongType 与 absent / failed 都不同，且属于「无法给结论」', () {
+      const wrong = FieldValue<int>.wrongType(
+        diagnostic: 'CFBundleVersion is an array, expected an integer',
+      );
+
+      expect(wrong.status, FieldStatus.wrongType);
+      expect(wrong.status, isNot(FieldStatus.absent),
+          reason: '值在那里，只是类型不符 —— 不是「不存在」');
+      expect(wrong.status, isNot(FieldStatus.failed), reason: '文件本身是好的，不是解析失败');
+      expect(wrong.hasValue, isFalse);
+      expect(wrong.status.isInconclusive, isTrue);
+      expect(wrong.diagnostic, isNotNull);
+    });
+
+    test('iOS 侧的来源都已登记', () {
+      for (final source in [
+        FieldSource.infoPlist,
+        FieldSource.machO,
+        FieldSource.signatureMaterials,
+        FieldSource.codesign,
+      ]) {
+        expect(FieldSource.values, contains(source));
+      }
     });
   });
 

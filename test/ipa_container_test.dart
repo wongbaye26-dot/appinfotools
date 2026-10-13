@@ -29,10 +29,10 @@ Archive _standardIpa() => Archive()
   ..addFile(_file('Payload/MyApp.app/Watch/Companion.app/Info.plist', 300))
   ..addFile(_file('Payload/MyApp.app/Watch/Companion.app/Companion', 1024))
   ..addFile(_dir('Payload/MyApp.app/Frameworks/'))
-  ..addFile(_file('Payload/MyApp.app/Frameworks/Alamofire.framework/Alamofire',
-      8192))
-  ..addFile(_file('Payload/MyApp.app/Frameworks/Alamofire.framework/Info.plist',
-      300));
+  ..addFile(
+      _file('Payload/MyApp.app/Frameworks/Alamofire.framework/Alamofire', 8192))
+  ..addFile(_file(
+      'Payload/MyApp.app/Frameworks/Alamofire.framework/Info.plist', 300));
 
 void main() {
   group('IpaContainerReader — 标准 IPA', () {
@@ -93,8 +93,7 @@ void main() {
       // 主应用：5 个直属文件 + 扩展 2 + Watch 2 + 框架 2 = 11
       expect(main.fileCount, 11);
       expect(extension_.fileCount, 2);
-      expect(main.uncompressedBytes,
-          greaterThan(extension_.uncompressedBytes));
+      expect(main.uncompressedBytes, greaterThan(extension_.uncompressedBytes));
     });
 
     test('目录条目不计入文件数', () {

@@ -119,8 +119,7 @@ class IpaContainer {
   /// 是否存在多个 `Payload/*.app`。标准 IPA 只有一个，多于一个值得注意。
   bool get hasMultipleMainApps => payloadApps.length > 1;
 
-  List<IosBundle> get appExtensions =>
-      _ofKind(IosBundleKind.appExtension);
+  List<IosBundle> get appExtensions => _ofKind(IosBundleKind.appExtension);
 
   List<IosBundle> get watchApps => _ofKind(IosBundleKind.watchApp);
 
@@ -184,12 +183,10 @@ class IpaContainerReader {
 
     // 主应用优先，其余按路径排序 —— 顺序稳定，便于断言与展示。
     bundles.sort((a, b) {
-      if (a.kind == IosBundleKind.mainApp &&
-          b.kind != IosBundleKind.mainApp) {
+      if (a.kind == IosBundleKind.mainApp && b.kind != IosBundleKind.mainApp) {
         return -1;
       }
-      if (b.kind == IosBundleKind.mainApp &&
-          a.kind != IosBundleKind.mainApp) {
+      if (b.kind == IosBundleKind.mainApp && a.kind != IosBundleKind.mainApp) {
         return 1;
       }
       return a.path.compareTo(b.path);

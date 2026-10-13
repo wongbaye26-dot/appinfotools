@@ -9,6 +9,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "91.0.0"
+  analysis_model:
+    dependency: "direct main"
+    description:
+      path: "packages/analysis_model"
+      relative: true
+    source: path
+    version: "0.1.0"
   analysis_server_plugin:
     dependency: transitive
     description:

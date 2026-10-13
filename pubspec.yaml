@@ -44,6 +44,8 @@ dependencies:
     path: packages/apk_parser
   archive_safety:
     path: packages/archive_safety
+  analysis_model:
+    path: packages/analysis_model
   ipa_parser:
     path: packages/ipa_parser
 

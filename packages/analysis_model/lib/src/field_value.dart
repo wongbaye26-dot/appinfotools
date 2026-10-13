@@ -13,6 +13,15 @@ enum FieldStatus {
   /// 文件中确实不存在该字段（例如应用没有声明 `maxSdkVersion`）。
   absent,
 
+  /// 字段**存在**，但类型与预期不符（例如 `CFBundleVersion` 被写成数组）。
+  ///
+  /// 与 [absent] 的区别：值在那里，只是没法按预期读它。
+  /// 与 [failed] 的区别：这不是解析失败，文件本身是好的。
+  ///
+  /// 规范 5.2 明确要求把「类型错误」与「缺失」「无法解析」分别记录 ——
+  /// 三者在排查时指向完全不同的方向。
+  wrongType,
+
   /// 当前来源**不提供**该字段。
   ///
   /// 三种情况都归到这里：
@@ -48,6 +57,7 @@ enum FieldStatus {
   ///
   /// UI 应据此避免把空值渲染成「无」，而要说明为什么没有。
   bool get isInconclusive =>
+      this == FieldStatus.wrongType ||
       this == FieldStatus.unsupported ||
       this == FieldStatus.failed ||
       this == FieldStatus.hardenedUnknown ||
@@ -76,6 +86,21 @@ enum FieldSource {
 
   /// 外部容器清单（XAPK / APKM 的 `manifest.json`）。
   archiveManifest,
+
+  /// `Info.plist`（iOS）。
+  infoPlist,
+
+  /// Mach-O 可执行文件的头部与加载命令（iOS）。
+  machO,
+
+  /// 静态签名材料（`_CodeSignature/`、`embedded.mobileprovision`）。
+  ///
+  /// 注意这与 [codesign] 的区别：前者只是「材料长什么样」，后者是「系统工具
+  /// 验证的结论」。规范 5.5 要求两者分开，不能把材料存在当作验证通过。
+  signatureMaterials,
+
+  /// macOS 的 `codesign` 工具（系统签名验证）。
+  codesign,
 
   /// 未能确定来源。
   unknown,
@@ -115,6 +140,13 @@ class FieldValue<T> {
     this.diagnostic,
   })  : value = null,
         status = FieldStatus.absent;
+
+  /// 字段存在但类型不符。
+  const FieldValue.wrongType({
+    required this.diagnostic,
+    this.source = FieldSource.unknown,
+  })  : value = null,
+        status = FieldStatus.wrongType;
 
   /// 当前解析器不支持。
   const FieldValue.unsupported({this.diagnostic})

@@ -1,5 +1,4 @@
-import 'package:apk_info_tool/models/analysis/diagnostic.dart';
-import 'package:apk_info_tool/models/analysis/field_value.dart';
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';

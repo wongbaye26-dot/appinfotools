@@ -1,8 +1,7 @@
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
     show AndroidComponent, ContainerStructure;
-import 'diagnostic.dart';
-import 'field_value.dart';
 import 'hardening.dart';
 
 /// 应用包所属平台。
