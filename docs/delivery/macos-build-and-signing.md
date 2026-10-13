@@ -69,14 +69,29 @@ Developer ID）→ 打包（有 `create-dmg` 就出 DMG，否则用 `ditto` 出 
 sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 sudo xcodebuild -runFirstLaunch
 
-# 2. CocoaPods —— 本项目有 8 个 macOS 原生插件，必须经它集成
-sudo gem install cocoapods      # 权限受限时改用：brew install cocoapods
-
-# 3. 打包 DMG 用（可选，没有就退回 zip）
+# 2. 打包 DMG 用（可选，没有就退回 zip）
 brew install create-dmg
 ```
 
 `flutter doctor` 里 Xcode 那一项应当变成 `[✓]`。
+
+### 4.1 插件集成：Swift Package Manager 优先，CocoaPods 是退路
+
+本项目有 8 个 macOS 原生插件。**Flutter 3.47 默认用 Swift Package Manager（SPM）
+集成它们，因此通常不需要 CocoaPods。** `tool/build_macos.sh` 不再把缺少
+CocoaPods 当成错误，只在缺少时打印说明。
+
+什么时候才真的需要 CocoaPods：构建时看到
+`Adding Swift Package Manager integration` 之后失败。那时：
+
+```sh
+sudo gem install cocoapods      # 权限受限时：brew install cocoapods
+```
+
+**注意**：CocoaPods 需要 Ruby >= 3.1，而 macOS 自带的系统 Ruby 是 2.6 ——
+在系统 Ruby 上装不上（`securerandom` 等依赖会拒绝安装；即使钉住版本装到
+1.16.2，运行时也会因 `activesupport` 报 `uninitialized constant Logger` 而失败）。
+需要先有 Ruby 3（`brew install ruby` 或 rbenv）。
 
 ## 5. 如果要正式分发
 
@@ -138,3 +153,20 @@ spctl -a -vvv -t install build/macos/APKInfoTool-<版本>.dmg   # 应当 accepte
 | 沙盒下的文件访问与工具下载 | **未执行** —— 需要首次签名构建后实测（见 2 的两条约束） |
 | Developer ID 签名与公证 | **未执行** —— 本机 0 个签名身份 |
 | DMG 在别的 Mac 上的打开体验 | **未执行** —— 需要第二台机器 |
+| 完整的 `flutter build macos --release` | **未执行** —— 见 6.1 |
+
+### 6.1 为什么这个仓库里没有产出 .app
+
+在自动化执行环境里跑不通，两条路都被堵住，且**都与工程本身无关**：
+
+| 路径 | 阻塞点 | 实测证据 |
+| --- | --- | --- |
+| SPM（默认） | 执行环境限制嵌套沙箱 | `swift package resolve` 报 `sandbox-exec: sandbox_apply: Operation not permitted`；`sandbox-exec -p '(allow default)'` 能过、严格 profile 被拒 |
+| CocoaPods（退路） | 系统 Ruby 2.6 太老 | 钉住版本装到 1.16.2 后仍报 `uninitialized constant ActiveSupport::LoggerThreadSafeLevel::Logger` |
+
+**在普通终端里不受此限制** —— 直接执行：
+
+```sh
+tool/build_macos.sh
+```
+
