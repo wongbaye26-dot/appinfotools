@@ -13,6 +13,13 @@
 | `packages/apk_parser` | 纯 Dart Android 解析：AXML、`resources.arsc`、组件、加固线索、容器结构 | archive, archive_safety |
 | `packages/ipa_parser` | 纯 Dart iOS 解析：plist（XML + bplist00）、IPA 容器、Info.plist 字段、图标、Mach-O、签名材料**静态**提取（`_CodeSignature` / `embedded.mobileprovision` 的 CMS 载荷） | archive, archive_safety, analysis_model, xml |
 
+应用层（`lib/`）：
+- `lib/ipaparser/` —— IPA 解析编排。`ipa_analysis.dart`（纯函数流水线）、
+  `ipa_parse_task.dart`（worker isolate）、`ios_codesign_step.dart`（**主 isolate**）。
+- `lib/utils/ipa_bundle_extractor.dart` / `ios_codesign_analyzer.dart` —— 解包与 codesign。
+- **解包 / codesign 不能放进 worker**：`Isolate.immediate` 不保证执行 `finally`，
+  在里面写临时文件会留下垃圾。
+
 **Android 与 iOS 解析器互不依赖**，只共享 `archive_safety` 与 `analysis_model`。
 不要把某一侧的格式模型放进共享包，也不要让一侧依赖另一侧。
 
@@ -76,6 +83,11 @@ flutter test
   「验证通过」。宁可报「无法确认」，也绝不凭空报「签名有效」。
 - 「工具不可用」永远不等于「签名无效」：前者显示「无法确认」。
 - **静态提取与验证必须分开**：本项目不自行实现签名算法。
+- **`absent` 与其余状态在 UI 上必须渲染不同**：`absent` 是「文件里没有」，
+  渲染成「-」；`failed` / `wrongType` 是「我们没读到」，必须带上状态名与原因。
+  把后者渲染成空串等于把「读不到」说成「没有」。
+- 新增 i18n 键后**必须重跑 `dart run build_runner build`**，否则生成代码里没有该 getter。
+  ja / ko 走 `fallback_strategy: base_locale` 回退，只改 en + zh-* 即可。
 
 ## 已知局限（写进代码，不粉饰）
 
