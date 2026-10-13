@@ -68,3 +68,7 @@ lib/gen
 # WorkBuddy 的内部工作笔记（项目约定 / 审计记录 / 每日日志）。
 # 只对本机的工作流有意义，不是项目交付物，不随仓库发布。
 .workbuddy-ai/
+
+# 工作流在 CI 里生成的发布中间文件；本地跑同样的步骤也会出现，不应入库。
+/changelog.md
+/release-body.md

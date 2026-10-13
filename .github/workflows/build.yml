@@ -319,73 +319,90 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
 
-      - name: Build Changelog
-        id: build_changelog
-        uses: mikepenz/release-changelog-builder-action@v5
-        with:
-          mode: "COMMIT"
-          configurationJson: |
-            {
-              "template": "#{{CHANGELOG}}",
-              "categories": [
-                { "title": "## Feature", "labels": ["feat", "feature"] },
-                { "title": "## Fix", "labels": ["fix", "bug"] },
-                { "title": "## Other", "labels": [] }
-              ],
-              "label_extractor": [
-                {
-                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\\([\\w\\-\\.]+\\))?(!)?:\\s.+$",
-                  "on_property": "title",
-                  "target": "$1"
-                }
-              ]
-            }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build changelog from git log
+        id: changelog
+        # 用 `git log` 自己拼，不用外部的 changelog-builder action —— 实测那个在
+        # **首个 release（此前没有任何 tag）**时输出是空的，发布页上只剩一段空白。
+        # 自己拼还有一个好处：规则看得见、可改，不用去翻第三方文档。
+        #
+        # 分类规则按 Conventional Commits 取 type：`type[(scope)][!]:`。
+        # 首行必须是 `type: `，否则整条进「其它」—— 宁可噪音多一点，也不能漏。
+        run: |
+          set -euo pipefail
+          PREV=$(git describe --tags --abbrev=0 'HEAD^' 2>/dev/null || true)
+          if [ -n "${PREV:-}" ]; then
+            RANGE="${PREV}..HEAD"
+          else
+            # 首个 release：从仓库的第一个提交算起。
+            RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"
+          fi
+
+          # %s 是提交主题（首行），不带换行；统一加 "- " 前缀，下面各分类都用它。
+          SUBJECTS=$(git log --no-merges --pretty='- %s' "$RANGE")
+          TYPED='^[-] (feat|fix|perf|refactor|build|ci|chore|docs|style|test|revert)(\([^)]+\))?!?: '
+
+          emit() {
+            # $1 = 小节标题，$2 = 已经筛好的条目；空的一节整节不输出。
+            local title="$1" items="$2"
+            if [ -n "${items//[[:space:]]/}" ]; then
+              printf '### %s\n%s\n\n' "$title" "$items"
+            fi
+          }
+
+          # 兼容 POSIX sh（GitHub 的 run 走 bash，但 emit 在子 shell 里也能用）。
+          emit_typed() {
+            emit "$1" "$(printf '%s\n' "$SUBJECTS" | grep -E "$2" || true)"
+          }
+
+          {
+            printf '## 更新内容\n\n'
+            emit_typed '新功能' "^[-] feat(\([^)]+\))?!?: "
+            emit_typed '修复' "^[-] fix(\([^)]+\))?!?: "
+            emit_typed '重构与优化' "^[-] (perf|refactor)(\([^)]+\))?!?: "
+            emit_typed '工程与构建' "^[-] (build|ci|chore)(\([^)]+\))?!?: "
+            emit_typed '文档' "^[-] docs(\([^)]+\))?!?: "
+            emit_typed '样式' "^[-] style(\([^)]+\))?!?: "
+            emit_typed '测试' "^[-] test(\([^)]+\))?!?: "
+            # 没归进上面任何一类的一条。这里用**否定**而不是 `^` —— `^` 会把
+            # 已经列过的再列一遍。
+            emit '其它' "$(printf '%s\n' "$SUBJECTS" | grep -Ev "$TYPED" || true)"
+          } > changelog.md
+
+          # 冒烟：空输出说明 git log 范围选错了。这时要失败，而不是发布一篇空的。
+          TOTAL=$(printf '%s\n' "$SUBJECTS" | grep -c .)
+          LISTED=$(grep -cE '^[-] ' changelog.md)
+          echo "提交 ${TOTAL} 条，changelog 列出 ${LISTED} 条"
+          if [ "$TOTAL" -lt 1 ] || [ "$LISTED" -ne "$TOTAL" ]; then
+            echo "::error::changelog 异常（RANGE=${RANGE}，${TOTAL} 条提交但只列出 ${LISTED} 条）"
+            exit 1
+          fi
+
+          cat changelog.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assemble release body
+        # 安装说明放在仓库里（`docs/release-install-notes.md`），而不是塞进
+        # 工作流的 `body:` —— 那样一来看不见版本变化，二来 YAML 里的
+        # `${{ }}` 插值的收尾换行处理很脆。用 `body_path` 读文件最稳。
+        id: body
+        run: |
+          set -euo pipefail
+          {
+            cat changelog.md
+            printf '\n---\n\n'
+            cat docs/release-install-notes.md
+          } > release-body.md
+          {
+            echo 'body_path<<EOF'
+            echo 'release-body.md'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+          cp release-body.md "$GITHUB_STEP_SUMMARY"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ github.ref_name }}
-          # 变更日志后面固定附一段安装说明。macOS 的临时签名（ad-hoc）必须在这里
-          # 说清楚：应用是能用的，只是 Gatekeeper 会拦，用户不知道绕过方法就会
-          # 以为包坏了 —— 而本项目没有 Apple 开发者证书，短期内改变不了这一点。
-          body: |
-            ${{ steps.build_changelog.outputs.changelog }}
-
-            ---
-
-            ## 安装说明
-
-            ### macOS（`.dmg`）
-
-            应用是**临时签名（ad-hoc）**的 —— 本项目没有 Apple 开发者证书，因此
-            **没有做公证**。首次打开会被 Gatekeeper 拦下，提示「无法验证开发者」
-            或「已损坏，应将它移到废纸篓」。包本身是完整的，二选一即可打开：
-
-            - 在「访达」里**右键点应用 → 打开**，在弹窗里再点一次「打开」；
-            - 或在终端执行：
-
-              ```sh
-              xattr -dr com.apple.quarantine "/Applications/APP详情工具.app"
-              ```
-
-            系统要求：macOS 11 或更高。
-
-            ### Windows（`.exe` / `.zip`）
-
-            `.exe` 是安装包，`.zip` 解压后直接运行 `apk_info_tool.exe`。
-            两者内容相同，按习惯选一个即可。
-
-            > 未签名的 Windows 程序首次运行可能出现 SmartScreen 提示，选择
-            > 「更多信息 → 仍要运行」。
-
-            ### Linux（`.AppImage`）
-
-            ```sh
-            chmod +x APKInfoTool-*-x86_64.AppImage
-            ./APKInfoTool-*-x86_64.AppImage
-            ```
+          body_path: ${{ steps.body.outputs.body_path }}
           files: |
             windows-release/*.exe
             windows-release/*.zip
