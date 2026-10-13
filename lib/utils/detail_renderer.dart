@@ -382,12 +382,16 @@ class DetailRenderer {
 
     final sb = StringBuffer()
       ..writeln('${t.ios_info.bundles}: ${container.bundles.length}')
-      ..writeln('${t.apk_info.structure_file_count}: '
+      // `structure_file_count` 是带 `{count}` 的**方法**，不是 getter。漏传参数
+      // 不会编译报错（函数对象本身就是个合法值），但会把函数本身插进字符串，
+      // 界面上就出现 `Closure: (required Ordered object) => ...` —— 这一条
+      // 曾经真的出现在 iOS 的「容器」卡片里。
+      ..writeln('${t.apk_info.structure_entries}: '
           '${container.fileEntryCount}');
 
     for (final bundle in container.bundles) {
       sb.writeln('  ${bundle.path}  [${bundleKindLabel(bundle.kind, t)}]  '
-          '${bundle.fileCount} ${t.apk_info.structure_entries}');
+          '${t.apk_info.structure_file_count(count: bundle.fileCount)}');
     }
     return sb.toString().trimRight();
   }

@@ -442,13 +442,39 @@ void main() {
       const container = IpaContainer(
         bundles: [bundle],
         payloadApps: [bundle],
-        fileEntryCount: 7,
+        fileEntryCount: 9,
       );
 
       final text = DetailRenderer.iosContainer(container, t);
       expect(text, contains('Payload/Example.app'));
       expect(text, contains(t.ios_info.bundle_kind_main_app));
-      expect(text, contains('7'));
+      // 总数与每个 bundle 的条目数都要落在**插值后**的文案上，
+      // 而不是只断言「出现过 7」—— 后者在下面的缺陷版本里也会通过。
+      expect(text, contains(t.apk_info.structure_entries));
+      expect(text, contains(t.apk_info.structure_file_count(count: 7)));
+      expect(text, contains('9'));
+    });
+
+    test('容器不把函数对象当值渲染出来（回归：Closure: ...）', () {
+      // `structure_file_count` 是带 `{count}` 的**方法**。漏传参数不会编译
+      // 报错，但会把函数本身插进字符串，界面上出现
+      // `Closure: (required Ordered object) => ...` —— 这一条真的出现在
+      // iOS 的「容器」卡片里，而且分析器看不见。
+      const bundle = IosBundle(
+        kind: IosBundleKind.mainApp,
+        path: 'Payload/Example.app',
+        name: 'Example.app',
+        fileCount: 7,
+      );
+      const container = IpaContainer(
+        bundles: [bundle],
+        payloadApps: [bundle],
+        fileEntryCount: 9,
+      );
+
+      final text = DetailRenderer.iosContainer(container, t);
+      expect(text, isNot(contains('Closure')));
+      expect(text, isNot(contains('=>')));
     });
 
     test('嵌套二进制为空时不渲染', () {

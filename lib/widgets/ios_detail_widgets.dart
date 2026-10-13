@@ -50,6 +50,7 @@ class IosSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
       child: Row(
@@ -67,7 +68,11 @@ class IosSectionHeader extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             title,
-            style: const TextStyle(
+            // 字体**显式取自主题**，不靠环境 `DefaultTextStyle` 继承：
+            // 这是本页唯一没有 `Material`/`Card` 祖先的组件，一旦页面不在
+            // Scaffold 里（测试里就是这样），继承来的会是 `WidgetsApp` 的
+            // 报错样式 —— monospace + 下划线 + w900，看起来就是一排色块。
+            style: theme.textTheme.labelLarge?.copyWith(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: iosAccent,
@@ -215,7 +220,7 @@ class IosHeroCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _badge(badge),
+                      _badge(context, badge),
                       const SizedBox(height: 8),
                       SelectableText(
                         name,
@@ -294,7 +299,7 @@ class IosHeroCard extends StatelessWidget {
         color: iosAccent.withValues(alpha: 0.20),
       );
 
-  Widget _badge(String text) => Container(
+  Widget _badge(BuildContext context, String text) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           color: iosAccent.withValues(alpha: 0.14),
@@ -302,12 +307,12 @@ class IosHeroCard extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: iosAccent,
-            letterSpacing: 0.4,
-          ),
+          // 同 [IosSectionHeader]：字体取自主题而不是环境继承。
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: iosAccent,
+                letterSpacing: 0.4,
+              ),
         ),
       );
 }
