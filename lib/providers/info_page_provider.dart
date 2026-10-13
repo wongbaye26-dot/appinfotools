@@ -129,6 +129,9 @@ class FileState {
       permissions: info.usesPermissions,
       components: info.components,
       hardeningObservations: info.hardeningObservations,
+      // 空结构等于「没收集到」，传 null 而不是一个空对象，
+      // 免得下游把「没数据」渲染成「有数据但全是 0」。
+      structure: info.structure.fileEntryCount == 0 ? null : info.structure,
       signature: signature,
     );
   }

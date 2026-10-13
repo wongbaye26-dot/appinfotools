@@ -160,6 +160,12 @@
     "hardening_summary": "可能經過加固：無法確認原始內容",
     "confidence_strong": "強線索",
     "confidence_weak": "弱線索",
+    "structure": "檔案結構",
+    "structure_entries": "條目數",
+    "structure_dex": "DEX 檔案",
+    "structure_native_libs": "原生庫",
+    "structure_directories": "頂層目錄",
+    "structure_file_count": "{count} 個檔案",
     "text_info": "文本資訊"
   },
   "icon": {

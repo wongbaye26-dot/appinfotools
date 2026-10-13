@@ -57,10 +57,14 @@ class ParsedApkData {
   /// 容器结构上观察到的加固线索（只描述事实，不含厂商判定）。
   final List<HardeningObservation> hardeningObservations;
 
+  /// 容器结构概览（DEX / SO / ABI / 目录）。
+  final ContainerStructure structure;
+
   const ParsedApkData({
     required this.meta,
     required this.arscResources,
     this.hardeningObservations = const [],
+    this.structure = const ContainerStructure(),
   });
 }
 
@@ -181,6 +185,7 @@ void _parseEntryPoint(_ParseRequest request) async {
       meta: meta,
       arscResources: reader.arscParser?.getAllResources() ?? const {},
       hardeningObservations: reader.scanHardeningSignals(),
+      structure: reader.collectStructure(),
     )));
   } catch (e) {
     log.warning('ApkParseTask: worker failed: $e');

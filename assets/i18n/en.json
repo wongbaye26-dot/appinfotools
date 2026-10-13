@@ -160,6 +160,12 @@
     "hardening_summary": "Possible hardening: the original content could not be confirmed",
     "confidence_strong": "strong signal",
     "confidence_weak": "weak signal",
+    "structure": "File structure",
+    "structure_entries": "Entries",
+    "structure_dex": "DEX files",
+    "structure_native_libs": "Native libraries",
+    "structure_directories": "Top-level directories",
+    "structure_file_count": "{count} files",
     "text_info": "Text Info"
   },
   "icon": {

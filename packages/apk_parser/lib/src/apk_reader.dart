@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
 import 'archive_open.dart';
+import 'container_structure.dart';
 import 'hardening.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
@@ -148,6 +149,15 @@ class ApkReader {
   }
 
   ArscParser? get arscParser => _arscParser;
+
+  /// 收集容器结构信息（DEX 数量、原生库、ABI、顶层目录、解压后总字节数）。
+  ///
+  /// 需要在 [open] 之后调用；未打开时返回空结构。
+  ContainerStructure collectStructure() {
+    final archive = _archive;
+    if (archive == null) return const ContainerStructure();
+    return ContainerStructureCollector.collect(archive);
+  }
 
   /// 扫描容器结构，收集可解释的加固线索。
   ///

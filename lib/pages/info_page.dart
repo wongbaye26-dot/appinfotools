@@ -521,6 +521,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ? t.parse.parsing
         : DetailRenderer.parseStageLabel(parseStage, t);
     final analysisNotes = DetailRenderer.analysisNotes(fileState.analysis, t);
+    final structureText =
+        DetailRenderer.structure(fileState.analysis?.android?.structure, t);
     final enableSignature = ref
         .watch(settingStateProvider.select((value) => value.enableSignature));
     final enableHash =
@@ -748,6 +750,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                             child: TitleValueLayout(
                           title: t.apk_info.diagnostics,
                           value: analysisNotes,
+                          minLines: 1,
+                          maxLines: textMaxLines,
+                          selectable: true,
+                        )),
+                      // 文件结构：DEX / 原生库 / ABI / 顶层目录
+                      if (structureText.isNotEmpty)
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.structure,
+                          value: structureText,
                           minLines: 1,
                           maxLines: textMaxLines,
                           selectable: true,

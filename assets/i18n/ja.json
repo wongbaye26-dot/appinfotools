@@ -160,6 +160,12 @@
     "hardening_summary": "パッキングの可能性：元の内容を確認できません",
     "confidence_strong": "強い手がかり",
     "confidence_weak": "弱い手がかり",
+    "structure": "ファイル構成",
+    "structure_entries": "エントリ数",
+    "structure_dex": "DEX ファイル",
+    "structure_native_libs": "ネイティブライブラリ",
+    "structure_directories": "トップレベルディレクトリ",
+    "structure_file_count": "{count} ファイル",
     "text_info": "テキスト情報"
   },
   "icon": {

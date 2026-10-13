@@ -9,4 +9,5 @@ export 'src/arsc/type_spec.dart';
 export 'src/archive_open.dart';
 export 'src/zip_budget.dart';
 export 'src/hardening.dart';
+export 'src/container_structure.dart';
 export 'src/apk_reader.dart';

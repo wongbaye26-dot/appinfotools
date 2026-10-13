@@ -19,6 +19,80 @@ ApkInfo _apkInfo({
 }
 
 void main() {
+  group('DetailRenderer.structure', () {
+    const populated = ContainerStructure(
+      fileEntryCount: 12,
+      dexFiles: [DexEntry(name: 'classes.dex', size: 1024)],
+      nativeLibraries: [
+        NativeLibraryEntry(
+          abi: 'arm64-v8a',
+          name: 'liba.so',
+          path: 'lib/arm64-v8a/liba.so',
+          size: 10,
+        ),
+      ],
+      abis: ['arm64-v8a'],
+      topLevelDirectories: {
+        'res': DirectoryStat(fileCount: 3, uncompressedBytes: 2048),
+        'lib': DirectoryStat(fileCount: 1, uncompressedBytes: 10),
+      },
+      totalUncompressedBytes: 4096,
+    );
+
+    test('null 与空结构都渲染为空串', () {
+      expect(DetailRenderer.structure(null, t), '');
+      expect(DetailRenderer.structure(const ContainerStructure(), t), '');
+    });
+
+    test('列出条目数、DEX、ABI、原生库与顶层目录', () {
+      final text = DetailRenderer.structure(populated, t);
+
+      expect(text, contains(t.apk_info.structure_entries));
+      expect(text, contains('12'));
+      expect(text, contains('${t.apk_info.structure_dex}: 1'));
+      expect(text, contains('${t.apk_info.abi}: arm64-v8a'));
+      expect(text, contains('${t.apk_info.structure_native_libs}: 1'));
+      expect(text, contains('res/'));
+      expect(text, contains('lib/'));
+    });
+
+    test('没有 DEX / 原生库时不显示对应行，而不是显示 0', () {
+      const onlyDirs = ContainerStructure(
+        fileEntryCount: 2,
+        topLevelDirectories: {
+          'res': DirectoryStat(fileCount: 2, uncompressedBytes: 100),
+        },
+        totalUncompressedBytes: 100,
+      );
+
+      final text = DetailRenderer.structure(onlyDirs, t);
+
+      expect(text, isNot(contains(t.apk_info.structure_dex)));
+      expect(text, isNot(contains(t.apk_info.structure_native_libs)));
+      expect(text, isNot(contains(t.apk_info.abi)));
+      expect(text, contains('res/'));
+    });
+
+    test('目录按体积降序，只列前几个', () {
+      final many = ContainerStructure(
+        fileEntryCount: 20,
+        topLevelDirectories: {
+          for (var i = 0; i < 12; i++)
+            'd$i':
+                DirectoryStat(fileCount: 1, uncompressedBytes: (i + 1) * 100),
+        },
+        totalUncompressedBytes: 7800,
+      );
+
+      final text = DetailRenderer.structure(many, t);
+      final lines = text.split('\n');
+
+      // 12 个目录只列 8 个（默认 limit），且最大的在最前
+      expect(lines.where((l) => l.trimLeft().startsWith('d')).length, 8);
+      expect(text.indexOf('d11/'), lessThan(text.indexOf('d4/')));
+    });
+  });
+
   group('DetailRenderer.analysisNotes', () {
     test('null 分析结果渲染为空串（调用方据此隐藏整张卡片）', () {
       expect(DetailRenderer.analysisNotes(null, t), '');

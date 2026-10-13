@@ -3,9 +3,15 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/diagnostic.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
-    show AndroidComponent, ApkParseStage, ArchiveOpenResult, ComponentType;
+    show
+        AndroidComponent,
+        ApkParseStage,
+        ArchiveOpenResult,
+        ComponentType,
+        ContainerStructure;
 
 /// 详情页的纯文本渲染。
 ///
@@ -108,6 +114,41 @@ class DetailRenderer {
         sb.writeln('');
         sb.writeln('${t.signature.diagnostics}:');
         sb.writeln(raw);
+      }
+    }
+
+    return sb.toString().trimRight();
+  }
+
+  /// 渲染容器结构概览（DEX 数量、原生库、ABI、顶层目录）。
+  ///
+  /// 顶层目录只列体积最大的前几个：目录可能有几十个，全列出来在详情页里
+  /// 只会变成噪声。
+  static String structure(ContainerStructure? structure, Translations t) {
+    if (structure == null || structure.fileEntryCount == 0) return '';
+
+    final sb = StringBuffer()
+      ..writeln('${t.apk_info.structure_entries}: '
+          '${structure.fileEntryCount} '
+          '(${formatFileSize(structure.totalUncompressedBytes)})');
+
+    if (structure.dexFileCount > 0) {
+      sb.writeln('${t.apk_info.structure_dex}: ${structure.dexFileCount}');
+    }
+    if (structure.abis.isNotEmpty) {
+      sb.writeln('${t.apk_info.abi}: ${structure.abis.join(', ')}');
+    }
+    if (structure.nativeLibraryCount > 0) {
+      sb.writeln(
+          '${t.apk_info.structure_native_libs}: ${structure.nativeLibraryCount}');
+    }
+
+    if (structure.topLevelDirectories.isNotEmpty) {
+      sb.writeln(t.apk_info.structure_directories);
+      for (final entry in structure.topDirectoriesBySize()) {
+        sb.writeln('  ${entry.key}/  '
+            '${formatFileSize(entry.value.uncompressedBytes)}  '
+            '(${t.apk_info.structure_file_count(count: entry.value.fileCount)})');
       }
     }
 

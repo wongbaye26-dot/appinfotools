@@ -160,6 +160,12 @@
     "hardening_summary": "可能经过加固：无法确认原始内容",
     "confidence_strong": "强线索",
     "confidence_weak": "弱线索",
+    "structure": "文件结构",
+    "structure_entries": "条目数",
+    "structure_dex": "DEX 文件",
+    "structure_native_libs": "原生库",
+    "structure_directories": "顶层目录",
+    "structure_file_count": "{count} 个文件",
     "text_info": "文本信息"
   },
   "icon": {

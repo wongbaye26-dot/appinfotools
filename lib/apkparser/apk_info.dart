@@ -599,6 +599,7 @@ Future<ApkInfo?> _getApkInfoBuiltin(
   _applyMetaToApkInfo(data.meta, apkInfo);
   apkInfo.manifestSource = FieldSource.builtinParser;
   apkInfo.hardeningObservations = data.hardeningObservations;
+  apkInfo.structure = data.structure;
   apkInfo.originalText = _generateTextInfo(data.meta);
 
   // 导出 arsc 资源表数据供图标渲染器使用（替代 aapt2 dump resources）。
@@ -815,6 +816,10 @@ class ApkInfo {
 
   /// 容器结构上观察到的加固线索（只描述事实，不含厂商判定）。
   List<HardeningObservation> hardeningObservations = [];
+
+  /// 容器结构概览（DEX 数量、原生库、ABI、顶层目录、解压后总字节数）。
+  apk_parser.ContainerStructure structure =
+      const apk_parser.ContainerStructure();
   String? label;
   String? mainIconPath; // 主图标路径
   Image? mainIconImage;
@@ -1488,6 +1493,7 @@ class ApkInfo {
     components.clear();
     manifestSource = FieldSource.unknown;
     hardeningObservations = [];
+    structure = const apk_parser.ContainerStructure();
     label = null;
     mainIconPath = null;
     for (final candidate in iconCandidates) {

@@ -5,7 +5,11 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
-    show AndroidComponent, HardeningObservation, HardeningSignal;
+    show
+        AndroidComponent,
+        ContainerStructure,
+        HardeningObservation,
+        HardeningSignal;
 import 'package:path/path.dart' as path;
 
 /// 把各来源的解析结果合并成统一的 [PackageAnalysisResult]。
@@ -39,6 +43,7 @@ class AnalysisBuilder {
     List<String> permissions = const [],
     List<AndroidComponent> components = const [],
     List<HardeningObservation> hardeningObservations = const [],
+    ContainerStructure? structure,
     SignatureAnalysis? signature,
     List<AnalysisDiagnostic> diagnostics = const [],
   }) {
@@ -60,6 +65,7 @@ class AnalysisBuilder {
       components: components,
       signature: signature,
       hardeningHints: hardeningHints,
+      structure: structure,
     );
 
     return PackageAnalysisResult(

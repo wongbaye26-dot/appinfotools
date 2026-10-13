@@ -1,5 +1,6 @@
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
-import 'package:apk_parser/apk_parser.dart' show AndroidComponent;
+import 'package:apk_parser/apk_parser.dart'
+    show AndroidComponent, ContainerStructure;
 import 'diagnostic.dart';
 import 'field_value.dart';
 import 'hardening.dart';
@@ -63,6 +64,13 @@ class AndroidPackageInfo {
   /// 结论的载体。
   final List<HardeningHint> hardeningHints;
 
+  /// 容器结构概览（DEX 数量、原生库、ABI、顶层目录、解压后总字节数）。
+  ///
+  /// 这里刻意**不**用 `FieldValue` 包一层：它是复合结构而不是单一字段，
+  /// 内部的计数要么观测到、要么没有，不存在「值 + 状态 + 来源」的多种组合，
+  /// 来源恒为 `FieldSource.zipDirectory`。
+  final ContainerStructure? structure;
+
   const AndroidPackageInfo({
     this.minSdkVersion = const FieldValue.absent(),
     this.targetSdkVersion = const FieldValue.absent(),
@@ -72,6 +80,7 @@ class AndroidPackageInfo {
     this.components = const [],
     this.signature,
     this.hardeningHints = const [],
+    this.structure,
   });
 
   /// 是否观察到了任何加固线索。
