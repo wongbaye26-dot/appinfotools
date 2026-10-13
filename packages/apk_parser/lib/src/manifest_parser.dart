@@ -16,6 +16,10 @@ class ManifestParser {
   static ApkMeta fromDocument(XmlDocument doc) {
     final meta = ApkMeta();
 
+    // 布局异常要**先**取出来：下面有提前 return 的分支（找不到 <manifest>），
+    // 而「这份文件布局非标准」这个事实与有没有 <manifest> 无关。
+    meta.manifestLayoutAnomalies = doc.layoutAnomalies.evidence();
+
     final manifest = _findElement(doc, 'manifest');
     if (manifest == null) return meta;
 

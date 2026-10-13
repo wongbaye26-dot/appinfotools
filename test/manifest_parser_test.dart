@@ -353,4 +353,68 @@ void main() {
               contains('com.QOCrchtmmAzhekiE.HVkokqyMaKAafvaY.MainActivity')));
     });
   });
+
+  group('ManifestParser — 非标准 AXML 布局的识别', () {
+    // 「读不出来」与「有人不想让我们读出来」是两件事。前者是我们的缺陷，
+    // 后者是关于这个包的事实 —— 必须能分开。
+    late final ApkMeta hardened;
+    late final ApkMeta standard;
+
+    setUpAll(() {
+      hardened = ManifestParser.parse(
+          File('test/fixtures/apk/hardened-manifest.axml').readAsBytesSync());
+      standard = ManifestParser.parse(
+          File('test/fixtures/apk/standard-manifest.axml').readAsBytesSync());
+    });
+
+    test('真实加固清单报出 4 类布局事实', () {
+      expect(hardened.manifestLayoutAnomalies, hasLength(4));
+    });
+
+    test('放大 attributeStart 被识别，并指出最大的那个元素', () {
+      final line = hardened.manifestLayoutAnomalies
+          .firstWhere((l) => l.contains('attributeStart'));
+
+      expect(line, contains('49 elements'));
+      // 最大的那个在 <application> 上，值是 281 —— 指出具体位置才有排查价值。
+      expect(line, contains('281'));
+      expect(line, contains('<application>'));
+      expect(line, contains('standard value is 20'));
+    });
+
+    test('放大 attributeSize 被识别', () {
+      final line = hardened.manifestLayoutAnomalies
+          .firstWhere((l) => l.contains('attributeSize'));
+
+      expect(line, contains('127 elements'));
+      expect(line, contains('26'));
+    });
+
+    test('非标准尺寸的命名空间 chunk 被识别', () {
+      final line = hardened.manifestLayoutAnomalies
+          .firstWhere((l) => l.contains('namespace chunk'));
+
+      expect(line, contains('1220'));
+      expect(line, contains('standard size is 24'));
+    });
+
+    test('标准范围之外的 chunk 类型被识别', () {
+      final line = hardened.manifestLayoutAnomalies
+          .firstWhere((l) => l.contains('chunk type'));
+
+      expect(line, contains('0x0200'));
+    });
+
+    test('标准布局的清单一条都不报（防误报）', () {
+      // 反向验证：如果检测把正常文件也报成加固样本，这条会失败。
+      expect(standard.manifestLayoutAnomalies, isEmpty);
+    });
+
+    test('布局异常不影响字段提取结果', () {
+      // 两份文件的布局一个标准一个不标准，但该读到的字段都要读到。
+      expect(hardened.packageName, 'com.QOCrchtmmAzhekiE.HVkokqyMaKAafvaY');
+      expect(hardened.versionName, '8.5.5');
+      expect(hardened.minSdkVersion, 24);
+    });
+  });
 }

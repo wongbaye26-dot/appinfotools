@@ -17,7 +17,147 @@ class XmlElement {
   List<String> extraStrings = [];
 }
 
-class XmlDocument extends XmlElement {}
+class XmlDocument extends XmlElement {
+  /// 解析过程中观察到的**非标准布局**特征。
+  ///
+  /// 这不是「解析失败」，而是「这份文件故意不像标准 AXML」。两者必须分开：
+  /// 前者说明我们读不出来，后者说明有人不想让我们读出来 —— 后者本身就是
+  /// 一条值得告诉用户的事实。
+  final AxmlLayoutAnomalies layoutAnomalies = AxmlLayoutAnomalies();
+}
+
+/// AXML 的非标准布局特征。
+///
+/// 只累计**可复现的结构事实**，不做任何厂商推断（规范 4.2）。
+///
+/// 各字段的含义见 [evidence] 产出的文本 —— 那也正是展示给用户的内容。
+class AxmlLayoutAnomalies {
+  /// 声明了非标准 `attributeStart` 的元素数。
+  ///
+  /// 标准 AXML 里它恒为 20（`attrExt` 结构体自身的大小）。大于 20 意味着
+  /// 头与真正的属性之间有一段**谁也不会读的字节** —— 正常构建流程不会产出
+  /// 这种文件，它的用处是让「按固定布局硬编码偏移」的解析器读到诱饵。
+  int nonStandardAttributeStart = 0;
+
+  /// 观察到的最大 `attributeStart`。
+  int maxAttributeStart = 0;
+
+  /// 最大 `attributeStart` 所属的元素名（便于定位）。
+  String? maxAttributeStartElement;
+
+  /// 声明了非标准 `attributeSize` 的元素数（标准值同样恒为 20）。
+  int nonStandardAttributeSize = 0;
+
+  /// 观察到的最大 `attributeSize`。
+  int maxAttributeSize = 0;
+
+  /// 未知 chunk 类型 → 出现次数。
+  ///
+  /// 标准 AXML 的元素区只有 `0x0100`–`0x0104` 与 `0x0180` 这几种。
+  final Map<int, int> unknownChunks = {};
+
+  /// 声明了非标准尺寸的命名空间 chunk 数。
+  ///
+  /// `START_NAMESPACE` / `END_NAMESPACE` 的尺寸恒为 24（16 字节头 + 4 字节
+  /// 行号 + 4 字节注释）。实测样本里出现了一个 1220 字节的
+  /// `END_NAMESPACE`，而且它出现在任何 `START_NAMESPACE` 之前 ——
+  /// 正常流程不会产出这种序列。
+  int nonStandardNamespaceChunks = 0;
+
+  /// 观察到的最大命名空间 chunk 尺寸。
+  int maxNamespaceChunkSize = 0;
+
+  bool get isEmpty =>
+      nonStandardAttributeStart == 0 &&
+      nonStandardAttributeSize == 0 &&
+      nonStandardNamespaceChunks == 0 &&
+      unknownChunks.isEmpty;
+
+  /// 标准 AXML 里 `attributeStart` 与 `attributeSize` 的值。
+  static const int standardAttributeLayout = 20;
+
+  /// 标准 AXML 里命名空间 chunk 的尺寸。
+  static const int standardNamespaceChunkSize = 24;
+
+  void observeElement({
+    required String elementName,
+    required int attributeStart,
+    required int attributeSize,
+  }) {
+    if (attributeStart != standardAttributeLayout) {
+      nonStandardAttributeStart++;
+      if (attributeStart > maxAttributeStart) {
+        maxAttributeStart = attributeStart;
+        maxAttributeStartElement = elementName;
+      }
+    }
+    if (attributeSize != standardAttributeLayout) {
+      nonStandardAttributeSize++;
+      if (attributeSize > maxAttributeSize) {
+        maxAttributeSize = attributeSize;
+      }
+    }
+  }
+
+  void observeUnknownChunk(int type) {
+    unknownChunks[type] = (unknownChunks[type] ?? 0) + 1;
+  }
+
+  void observeNamespaceChunk(int chunkSize) {
+    if (chunkSize == standardNamespaceChunkSize) return;
+    nonStandardNamespaceChunks++;
+    if (chunkSize > maxNamespaceChunkSize) maxNamespaceChunkSize = chunkSize;
+  }
+
+  /// 面向用户与报告的说明。
+  ///
+  /// 每一条都说清「看到了什么」与「这意味着什么」，而不是只丢一个数字。
+  List<String> evidence() {
+    final lines = <String>[];
+
+    if (nonStandardAttributeStart > 0) {
+      final where = maxAttributeStartElement == null
+          ? ''
+          : ' (largest $maxAttributeStart on <$maxAttributeStartElement>)';
+      lines.add(
+        '$nonStandardAttributeStart elements declare a non-standard '
+        'attributeStart$where, the standard value is '
+        '$standardAttributeLayout; bytes between the element header and its '
+        'attributes are skipped by a compliant reader but mislead one that '
+        'assumes a fixed layout',
+      );
+    }
+
+    if (nonStandardAttributeSize > 0) {
+      lines.add(
+        '$nonStandardAttributeSize elements declare a non-standard '
+        'attributeSize (largest $maxAttributeSize, the standard value is '
+        '$standardAttributeLayout)',
+      );
+    }
+
+    if (nonStandardNamespaceChunks > 0) {
+      lines.add(
+        '$nonStandardNamespaceChunks namespace chunk(s) declare a '
+        'non-standard size (largest $maxNamespaceChunkSize, the standard '
+        'size is $standardNamespaceChunkSize)',
+      );
+    }
+
+    if (unknownChunks.isNotEmpty) {
+      final described = unknownChunks.entries
+          .map(
+              (e) => '0x${e.key.toRadixString(16).padLeft(4, '0')} x${e.value}')
+          .join(', ');
+      lines.add(
+        '${unknownChunks.length} chunk type(s) are not part of the standard '
+        'AXML element range: $described',
+      );
+    }
+
+    return lines;
+  }
+}
 
 /// Android 框架属性资源 ID → 属性名的映射
 const Map<int, String> _kFrameworkAttrNames = {
@@ -227,6 +367,7 @@ class BinaryXmlDecompressor {
     List<int> resourceIdMap = [];
 
     final doc = XmlDocument();
+    final anomalies = doc.layoutAnomalies;
     final stack = <XmlElement>[doc];
 
     while (reader.remain >= 8) {
@@ -241,6 +382,10 @@ class BinaryXmlDecompressor {
       switch (tag) {
         case START_NAMESPACE_TAG:
         case END_NAMESPACE_TAG:
+          // 标准尺寸恒为 24。尺寸异常说明这一段被塞了别的东西 ——
+          // 实测样本里有一个 1220 字节的 END_NAMESPACE，且出现在任何
+          // START_NAMESPACE 之前。
+          anomalies.observeNamespaceChunk(chunkSize);
           break;
         case RES_XML_RESOURCE_MAP_TYPE:
           resourceIdMap =
@@ -248,7 +393,7 @@ class BinaryXmlDecompressor {
           break;
         case START_ELEMENT_TAG:
           final element = _parseStartElement(
-              reader, packedStrings, resourceIdMap, chunkEnd);
+              reader, packedStrings, resourceIdMap, chunkEnd, anomalies);
           stack.last.children.add(element);
           stack.add(element);
           break;
@@ -264,6 +409,12 @@ class BinaryXmlDecompressor {
           reader.readInt32();
           reader.skipBytes(8);
           break;
+        default:
+          // 标准 AXML 的元素区只有上面几种 chunk。出现别的类型说明这份文件
+          // 被构造过 —— 如实记下来，而不是当作没看见（跳过未知 chunk 本身
+          // 是对的，但「跳过了什么」必须留下痕迹）。
+          anomalies.observeUnknownChunk(tag);
+          break;
       }
       if (reader.position != chunkEnd) reader.position = chunkEnd;
     }
@@ -272,8 +423,12 @@ class BinaryXmlDecompressor {
 
   /// Parse a START_ELEMENT_TAG into an [XmlElement] with name and attributes.
   /// [chunkEnd] 是当前 chunk 的结束位置，用于读取移位属性的溢出数据。
-  XmlElement _parseStartElement(ByteDataReader reader,
-      List<String> packedStrings, List<int> resourceIdMap, int chunkEnd) {
+  XmlElement _parseStartElement(
+      ByteDataReader reader,
+      List<String> packedStrings,
+      List<int> resourceIdMap,
+      int chunkEnd,
+      AxmlLayoutAnomalies anomalies) {
     final element = XmlElement();
 
     // Skip line number and comment
@@ -312,6 +467,14 @@ class BinaryXmlDecompressor {
     if (attrGap > 0) {
       reader.skipBytes(attrGap);
     }
+
+    // 记下这份元素的布局是否非标准。**不影响解析结果**，只作为一条可解释的
+    // 事实告诉用户：这份 manifest 被刻意做得不像标准 AXML。
+    anomalies.observeElement(
+      elementName: element.name,
+      attributeStart: attrStart,
+      attributeSize: attrSize,
+    );
 
     // 缓冲所有原始属性数据（标准 20 字节 + 可能的额外填充）
     final rawAttrs = <List<int>>[];

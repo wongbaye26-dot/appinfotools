@@ -36,6 +36,12 @@ enum ApkParseStage {
 /// APK 文件读取和解析的统一入口
 class ApkReader {
   Archive? _archive;
+
+  /// 最近一次 [parse] 的结果。
+  ///
+  /// 保存它是为了让 [scanHardeningSignals] 能带上 manifest 层的线索 ——
+  /// 那一层的信息只有在 manifest 解出来之后才存在。
+  ApkMeta? _meta;
   ArscParser? _arscParser;
 
   /// 打开 APK 文件（ZIP 格式）。
@@ -117,6 +123,9 @@ class ApkReader {
             ? rawManifestBytes
             : Uint8List.fromList(rawManifestBytes);
     final meta = ManifestParser.parse(manifestBytes);
+    // 记下来供 scanHardeningSignals 使用 —— manifest 层的加固线索只能在
+    // 解析之后才有，而那个方法是在 parse 之后被调用的。
+    _meta = meta;
 
     // 2. 读取并解析 resources.arsc
     onStage?.call(ApkParseStage.resources);
@@ -168,7 +177,21 @@ class ApkReader {
   List<HardeningObservation> scanHardeningSignals() {
     final archive = _archive;
     if (archive == null) return const [];
-    return HardeningScanner.scan(archive);
+
+    return [
+      // 容器层的结构事实（条目名、DEX、SO、资源表）。
+      ...HardeningScanner.scan(archive),
+      // manifest 层的结构事实（非标准 AXML 布局）。
+      //
+      // 与容器层分开是因为它们来自不同的解析阶段：容器层只看条目名，
+      // 这一层要先把 manifest 解出来。两处的判据都是「正常构建流程不会
+      // 产出这个结构」，与具体是哪家的加固器无关。
+      for (final evidence in _meta?.manifestLayoutAnomalies ?? const [])
+        HardeningObservation(
+          HardeningSignal.manifestLayoutAnomaly,
+          evidence,
+        ),
+    ];
   }
 
   Uint8List? readFile(String fileName) {

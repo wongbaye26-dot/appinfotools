@@ -38,6 +38,13 @@ class ApkMeta {
   /// receiver / provider），含 `exported` 与 `permission` 声明。
   List<AndroidComponent> components = [];
 
+  /// 解析时观察到的**非标准 AXML 布局**特征，每项是一句可读的说明。
+  ///
+  /// 这不是解析错误，而是「这份 manifest 被刻意做得不像标准 AXML」——
+  /// 例如属性区之前塞了诱饵字节、chunk 类型不在标准范围内。如实记下来，
+  /// 因为它直接影响「这个包为什么看起来不正常」的判断。
+  List<String> manifestLayoutAnomalies = [];
+
   @override
   String toString() {
     return 'ApkMeta{packageName: $packageName, versionCode: $versionCode, '

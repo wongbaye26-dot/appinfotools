@@ -148,6 +148,28 @@ void main() {
           }
         }
 
+        // 不变量：加固线索必须**两层都覆盖**。
+        //
+        // 容器层的线索只看条目名，manifest 层的线索要先解出 manifest 才有 ——
+        // 如果哪条线断了（例如 reader 没记住 meta），这里就会少一类。
+        if (info != null && (info.hardeningObservations.isNotEmpty)) {
+          final signals =
+              info.hardeningObservations.map((o) => o.signal.name).toSet();
+          expect(
+            signals.any((s) =>
+                s == 'decoyArchiveEntries' ||
+                s == 'manifestLayoutAnomaly' ||
+                s == 'missingPrimaryDex' ||
+                s == 'dexHeaderNotStandard' ||
+                s == 'multipleDexFiles' ||
+                s == 'unusualNativeLibraryName' ||
+                s == 'executableInAssets' ||
+                s == 'resourceTableAnomaly'),
+            isTrue,
+            reason: '${sample.path} 报了线索但种类不在枚举内',
+          );
+        }
+
         // 不变量：哈希必须真的算出来（三种长度）。
         expect(hashes.md5.length, 32);
         expect(hashes.sha1.length, 40);

@@ -186,7 +186,11 @@ void main() {
       // 这条断言的意义在于防止后来者往枚举里加「com.xxx.packer」这类值 ——
       // 规范 4.2 明确禁止据单一特征判定厂商。
       // 数量变化时**必须**回来确认新增的仍是一个结构事实，而不是厂商名。
-      expect(HardeningSignal.values, hasLength(7));
+      //
+      // 已确认：`manifestLayoutAnomaly` 描述的是「AXML 的二进制布局不符合
+      // 标准」（attributeStart/attributeSize 被放大、chunk 类型越界），
+      // 是一个可复现的结构事实，与具体是哪家加固器无关。
+      expect(HardeningSignal.values, hasLength(8));
       final names = HardeningSignal.values.map((s) => s.name).join(' ');
       for (final vendor in [
         'jiagu',

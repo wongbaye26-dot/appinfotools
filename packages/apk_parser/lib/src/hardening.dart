@@ -47,6 +47,16 @@ enum HardeningSignal {
   /// 只描述这个结构事实，不推断是哪家的加固器。
   decoyArchiveEntries,
 
+  /// `AndroidManifest.xml` 的二进制布局不符合标准 AXML。
+  ///
+  /// 具体形态由证据文本给出，常见的有：`attributeStart` / `attributeSize`
+  /// 被放大（属性区之前塞了诱饵字节）、出现标准范围之外的 chunk 类型。
+  ///
+  /// 与其它线索一样，只描述结构事实，不推断是哪家的加固器。这条来自
+  /// **manifest 层**而不是容器层，因此由 [ManifestParser] 的解析结果提供，
+  /// 见 `ApkMeta.manifestLayoutAnomalies`。
+  manifestLayoutAnomaly,
+
   /// `resources.arsc` 缺失或异常小，而 DEX 规模不小。
   ///
   /// 资源表是 Android 应用的必备件；在 DEX 有相当体量的前提下它却几乎不存在，

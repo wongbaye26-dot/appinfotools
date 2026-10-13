@@ -185,7 +185,9 @@ class AnalysisBuilder {
         HardeningSignal.executableInAssets ||
         // 正常构建流程不会产出「文件同时被当目录前缀」的结构 ——
         // 与上面几条同属「单条即可说明异常」。
-        HardeningSignal.decoyArchiveEntries =>
+        HardeningSignal.decoyArchiveEntries ||
+        // 同理：正常构建流程不会产出非标准 AXML 布局。
+        HardeningSignal.manifestLayoutAnomaly =>
           HintConfidence.strong,
         HardeningSignal.multipleDexFiles ||
         HardeningSignal.unusualNativeLibraryName ||
