@@ -67,8 +67,7 @@ class IpaParseTask {
   Isolate? _isolate;
   bool _finished = false;
 
-  IpaParseTask._(this._receive, this._controller)
-      : events = _controller.stream;
+  IpaParseTask._(this._receive, this._controller) : events = _controller.stream;
 
   /// 启动一次解析。返回后 worker isolate 已在运行。
   static Future<IpaParseTask> start(String filePath) async {

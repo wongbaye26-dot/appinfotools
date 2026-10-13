@@ -1,7 +1,9 @@
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -69,6 +71,19 @@ class ParseStage extends _$ParseStage {
   void update(ApkParseStage? stage) => state = stage;
 }
 
+/// IPA 解析当前所处的阶段。
+///
+/// 与 Android 侧分开成两个 provider，而不是塞进一个「平台 + 阶段」的联合
+/// 类型：两条解析流水线的阶段名没有对应关系，硬合并只会让 UI 多写一层
+/// 平台分支去还原原本的语义。
+@Riverpod(keepAlive: true)
+class IosParseStage extends _$IosParseStage {
+  @override
+  IpaParseStage? build() => null;
+
+  void update(IpaParseStage? stage) => state = stage;
+}
+
 /// [FileState.copyWith] 的哨兵值。
 ///
 /// 用来区分「调用方没传这个参数」与「调用方显式传了 null」—— 这是 Dart 里
@@ -82,6 +97,17 @@ class FileState {
   final String? filePath;
   final int? fileSize;
   final ApkInfo? apkInfo;
+
+  /// iOS 侧的结构化解析结果。`null` 表示本次不是 IPA，或尚未完成。
+  final IpaAnalysis? ipaAnalysis;
+
+  /// iOS 侧的 `codesign` 验证结果。
+  ///
+  /// `null` 表示**没有做**这项检查（非 macOS、设置里关掉了、或解包失败）——
+  /// 与「工具不可用」含义不同。UI 必须把这两件事分开显示，否则用户会把
+  /// 「我们没查」读成「查不出」。
+  final IosCodeSignResult? iosCodeSign;
+
   final String? md5Hash;
   final String? sha1Hash;
 
@@ -101,6 +127,8 @@ class FileState {
     this.filePath,
     this.fileSize,
     this.apkInfo,
+    this.ipaAnalysis,
+    this.iosCodeSign,
     this.md5Hash,
     this.sha1Hash,
     this.sha256Hash,
@@ -109,12 +137,37 @@ class FileState {
     this.isComputingSignature = false,
   });
 
+  /// 当前文件的平台。
+  ///
+  /// 由**已到位的解析结果**决定，而不是看扩展名 —— 扩展名可以随便改，
+  /// 而「解析出的是哪种结构」才是事实。
+  PackagePlatform get platform {
+    if (ipaAnalysis != null) return PackagePlatform.ios;
+    if (apkInfo != null) return PackagePlatform.android;
+    return PackagePlatform.unknown;
+  }
+
   /// 由当前已到位的各来源结果**派生**的统一分析结果。
   ///
   /// 刻意做成派生而不是单独维护一份状态：哈希、签名、解析是三条并行的异步
   /// 线，任何一条先到都只更新自己那一项，分析结果随之自动反映最新情况 ——
   /// 不需要额外同步，也不会出现「汇总结果与明细不一致」。
   PackageAnalysisResult? get analysis {
+    final ios = ipaAnalysis;
+    if (ios != null) {
+      final sha256 = sha256Hash;
+      return AnalysisBuilder.buildIos(
+        filePath: filePath ?? '',
+        fileSize: fileSize ?? 0,
+        hashes: sha256 == null
+            ? null
+            : FileHashes(
+                md5: md5Hash ?? '', sha1: sha1Hash ?? '', sha256: sha256),
+        analysis: ios,
+        codeSign: iosCodeSign,
+      );
+    }
+
     final info = apkInfo;
     if (info == null) return null;
 
@@ -153,6 +206,8 @@ class FileState {
     Object? filePath = _unset,
     Object? fileSize = _unset,
     Object? apkInfo = _unset,
+    Object? ipaAnalysis = _unset,
+    Object? iosCodeSign = _unset,
     Object? md5Hash = _unset,
     Object? sha1Hash = _unset,
     Object? sha256Hash = _unset,
@@ -165,6 +220,12 @@ class FileState {
           identical(filePath, _unset) ? this.filePath : filePath as String?,
       fileSize: identical(fileSize, _unset) ? this.fileSize : fileSize as int?,
       apkInfo: identical(apkInfo, _unset) ? this.apkInfo : apkInfo as ApkInfo?,
+      ipaAnalysis: identical(ipaAnalysis, _unset)
+          ? this.ipaAnalysis
+          : ipaAnalysis as IpaAnalysis?,
+      iosCodeSign: identical(iosCodeSign, _unset)
+          ? this.iosCodeSign
+          : iosCodeSign as IosCodeSignResult?,
       md5Hash: identical(md5Hash, _unset) ? this.md5Hash : md5Hash as String?,
       sha1Hash:
           identical(sha1Hash, _unset) ? this.sha1Hash : sha1Hash as String?,
@@ -188,9 +249,9 @@ class FileState {
   /// Riverpod 的 `updateShouldNotify` 默认就是 `previous != next`，因此实现
   /// `==` 能直接省掉「内容没变却通知监听者」的多余重建。
   ///
-  /// [apkInfo] 与 [signature] 用 `identical` 比较：它们是体积不小、且**没有**
-  /// 值语义的可变对象，两个内容相同但实例不同的 `ApkInfo` 仍然是两次不同的
-  /// 解析结果，按引用比较才是诚实的。
+  /// [apkInfo]、[ipaAnalysis]、[iosCodeSign] 与 [signature] 用 `identical`
+  /// 比较：它们是体积不小、且**没有**值语义的可变对象，两个内容相同但实例
+  /// 不同的解析结果仍然是两次不同的解析，按引用比较才是诚实的。
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -198,6 +259,8 @@ class FileState {
           other.filePath == filePath &&
           other.fileSize == fileSize &&
           identical(other.apkInfo, apkInfo) &&
+          identical(other.ipaAnalysis, ipaAnalysis) &&
+          identical(other.iosCodeSign, iosCodeSign) &&
           other.md5Hash == md5Hash &&
           other.sha1Hash == sha1Hash &&
           other.sha256Hash == sha256Hash &&
@@ -210,6 +273,8 @@ class FileState {
         filePath,
         fileSize,
         identityHashCode(apkInfo),
+        identityHashCode(ipaAnalysis),
+        identityHashCode(iosCodeSign),
         md5Hash,
         sha1Hash,
         sha256Hash,

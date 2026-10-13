@@ -5,8 +5,40 @@ import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ipa_parser/ipa_parser.dart'
+    show
+        IosAuthorizationComparison,
+        IosAuthorizationVerdict,
+        IosBundle,
+        IosBundleKind,
+        IosEntitlement,
+        IosIconResolution,
+        IosProvisioningProfile,
+        IosSignatureMaterials,
+        IpaContainer,
+        MachOFile,
+        PlistString;
+
+/// 一个最小可用的 IosPackageInfo，便于逐个断言各段渲染。
+IosPackageInfo _iosInfo({
+  IosSignatureMaterials? materials,
+  IosAuthorizationComparison? authorization,
+  IosCodeSignResult? codeSign,
+  IpaContainer container = const IpaContainer(),
+  MachOFile? executable,
+}) =>
+    IosPackageInfo(
+      container: container,
+      signatureMaterials: materials,
+      authorization: authorization,
+      codeSign: codeSign,
+      executable: executable,
+      icon: const IosIconResolution(),
+    );
 
 ApkInfo _apkInfo({
   bool? debuggable,
@@ -368,6 +400,236 @@ void main() {
         t,
       );
       expect(off, isNot(contains('[${t.apk_info.debuggable}]')));
+    });
+  });
+
+  group('DetailRenderer — iOS 阶段与设备类型', () {
+    test('IPA 的每个阶段都有文案，且不留空', () {
+      for (final stage in IpaParseStage.values) {
+        expect(DetailRenderer.ipaParseStageLabel(stage, t), isNotEmpty,
+            reason: '$stage 没有文案');
+      }
+    });
+
+    test('设备类型按 UIDeviceFamily 映射，未知取值原样给出数字', () {
+      expect(DetailRenderer.deviceFamily([1], t), t.ios_info.device_iphone);
+      expect(DetailRenderer.deviceFamily([1, 2], t),
+          '${t.ios_info.device_iphone}, ${t.ios_info.device_ipad}');
+
+      // 关键：不把未知值映射到最近的一档 —— 猜错会让用户以为支持某类设备。
+      final unknown = DetailRenderer.deviceFamily([99], t);
+      expect(unknown, contains('99'));
+    });
+
+    test('设备类型为空或缺失时返回空串，而不是伪造一项', () {
+      expect(DetailRenderer.deviceFamily(null, t), isEmpty);
+      expect(DetailRenderer.deviceFamily(const [], t), isEmpty);
+    });
+  });
+
+  group('DetailRenderer — iOS 容器与嵌套二进制', () {
+    test('容器为空时不渲染', () {
+      expect(DetailRenderer.iosContainer(const IpaContainer(), t), isEmpty);
+    });
+
+    test('容器列出每个 bundle 的种类与条目数', () {
+      const bundle = IosBundle(
+        kind: IosBundleKind.mainApp,
+        path: 'Payload/Example.app',
+        name: 'Example.app',
+        fileCount: 7,
+      );
+      const container = IpaContainer(
+        bundles: [bundle],
+        payloadApps: [bundle],
+        fileEntryCount: 7,
+      );
+
+      final text = DetailRenderer.iosContainer(container, t);
+      expect(text, contains('Payload/Example.app'));
+      expect(text, contains(t.ios_info.bundle_kind_main_app));
+      expect(text, contains('7'));
+    });
+
+    test('嵌套二进制为空时不渲染', () {
+      expect(DetailRenderer.iosNestedBinaries(const [], t), isEmpty);
+    });
+
+    test('解析失败的嵌套二进制给出原因，而不是显示成「没有架构」', () {
+      const binary = IosNestedBinary(
+        bundlePath: 'Payload/Example.app/Frameworks/Lib.framework',
+        kind: IosBundleKind.framework,
+        path: 'Payload/Example.app/Frameworks/Lib.framework/Lib',
+        failure: 'entry missing or too large',
+      );
+
+      final text = DetailRenderer.iosNestedBinaries([binary], t);
+      expect(text, contains('Lib.framework'));
+      expect(text, contains('entry missing or too large'));
+    });
+  });
+
+  group('DetailRenderer — iOS 签名：材料与结论必须分开', () {
+    test('只有材料、没有 codesign 结论时不出现「验证通过」', () {
+      const materials = IosSignatureMaterials(
+        bundle: IosBundle(
+          kind: IosBundleKind.mainApp,
+          path: 'Payload/Example.app',
+          name: 'Example.app',
+        ),
+        hasCodeSignatureDirectory: true,
+        codeSignatureEntries: ['CodeResources'],
+      );
+
+      final signature =
+          DetailRenderer.iosSignature(_iosInfo(materials: materials), t);
+      expect(signature, contains(t.ios_info.code_signature_dir));
+      expect(signature, contains('CodeResources'));
+
+      // 没跑 codesign —— 必须说「未执行」。
+      final codeSign = DetailRenderer.iosCodeSign(null, t);
+      expect(codeSign, contains(t.ios_info.codesign_not_run));
+      expect(codeSign, isNot(contains(t.signature.status_verified)));
+    });
+
+    test('没有签名材料时如实说「不存在」，不渲染成「无效」', () {
+      const materials = IosSignatureMaterials(
+        bundle: IosBundle(
+          kind: IosBundleKind.mainApp,
+          path: 'Payload/Example.app',
+          name: 'Example.app',
+        ),
+      );
+
+      final signature =
+          DetailRenderer.iosSignature(_iosInfo(materials: materials), t);
+      expect(signature, contains(t.ios_info.presence_no));
+      expect(signature, isNot(contains(t.signature.status_failed)));
+    });
+
+    test('codesign 没有明确结论时给出原始输出，否则用户无从判断', () {
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verificationFailed,
+        toolExecuted: true,
+        exitCode: 3,
+        stderr: 'does not satisfy its designated Requirement',
+        error: 'the signature seal is intact',
+      );
+
+      final text = DetailRenderer.iosCodeSign(result, t);
+      expect(text, contains(t.signature.status_failed));
+      expect(text, contains('designated Requirement'));
+      expect(text, contains(t.signature.diagnostics));
+    });
+
+    test('codesign 通过时给出证书链', () {
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verified,
+        toolExecuted: true,
+        exitCode: 0,
+        info: IosCodeSignInfo(
+          identifier: 'com.example.app',
+          teamIdentifier: 'ABCDE12345',
+          authorities: ['Developer ID Application', 'Apple Root CA'],
+          entitlements: [
+            IosEntitlement(key: 'get-task-allow', value: PlistString('false'))
+          ],
+          entitlementsRead: true,
+        ),
+      );
+
+      final text = DetailRenderer.iosCodeSign(result, t);
+      expect(text, contains(t.signature.status_verified));
+      expect(text, contains('com.example.app'));
+      expect(text, contains('ABCDE12345'));
+      expect(text, contains('Apple Root CA'));
+    });
+
+    test('授权项读不到与「没有授权项」渲染不同', () {
+      // 授权项渲染在「签名与授权」这一段里（它属于授权，不属于验证结论）。
+      const unreadable = IosCodeSignResult(
+        status: SignatureStatus.verified,
+        info: IosCodeSignInfo(entitlementsRead: false),
+      );
+      expect(DetailRenderer.iosSignature(_iosInfo(codeSign: unreadable), t),
+          contains(t.ios_info.entitlements_unreadable));
+
+      const empty = IosCodeSignResult(
+        status: SignatureStatus.verified,
+        info: IosCodeSignInfo(entitlementsRead: true),
+      );
+      expect(DetailRenderer.iosSignature(_iosInfo(codeSign: empty), t),
+          contains(t.ios_info.entitlements_empty));
+    });
+
+    test('没有 codesign 时退回静态描述文件里的授权项，并标明来源', () {
+      const profile = IosProvisioningProfile(
+        entitlements: [
+          IosEntitlement(
+              key: 'aps-environment', value: PlistString('production')),
+        ],
+      );
+      const materials = IosSignatureMaterials(
+        bundle: IosBundle(
+          kind: IosBundleKind.mainApp,
+          path: 'Payload/Example.app',
+          name: 'Example.app',
+        ),
+        profile: FieldValue<IosProvisioningProfile>.extracted(
+          profile,
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+
+      final text =
+          DetailRenderer.iosSignature(_iosInfo(materials: materials), t);
+      expect(text, contains('aps-environment'));
+      expect(text, contains('production'));
+      expect(text, contains(t.ios_info.embedded_provision));
+    });
+
+    test('描述文件读不出来时说明原因，而不是显示成「没有描述文件」', () {
+      const materials = IosSignatureMaterials(
+        bundle: IosBundle(
+          kind: IosBundleKind.mainApp,
+          path: 'Payload/Example.app',
+          name: 'Example.app',
+        ),
+        profile: FieldValue<IosProvisioningProfile>.failed(
+          diagnostic: 'the CMS container could not be unwrapped',
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+
+      final text =
+          DetailRenderer.iosSignature(_iosInfo(materials: materials), t);
+      expect(text, contains('failed'));
+      expect(text, contains('CMS'));
+    });
+
+    test('授权比对四态各有独立文案', () {
+      final labels = {
+        for (final verdict in IosAuthorizationVerdict.values)
+          verdict: DetailRenderer.authorizationVerdictLabel(verdict, t),
+      };
+
+      expect(labels.values.toSet(), hasLength(labels.length),
+          reason: '四态必须给出不同的文案，否则用户分不清');
+      for (final label in labels.values) {
+        expect(label, isNotEmpty);
+      }
+    });
+
+    test('平台中立的签名结论与 iOS 状态文案一致', () {
+      expect(DetailRenderer.signatureVerdictLabel(SignatureVerdict.verified, t),
+          t.signature.status_verified);
+      expect(DetailRenderer.signatureVerdictLabel(SignatureVerdict.rejected, t),
+          t.signature.status_failed);
+      // 「无法确认」在两个平台上必须是同一句话。
+      expect(
+          DetailRenderer.signatureVerdictLabel(
+              SignatureVerdict.inconclusive, t),
+          t.signature.status_unknown);
     });
   });
 }

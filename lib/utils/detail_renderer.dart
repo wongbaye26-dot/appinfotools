@@ -1,9 +1,11 @@
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/format.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
     show
@@ -12,6 +14,8 @@ import 'package:apk_parser/apk_parser.dart'
         ArchiveOpenResult,
         ComponentType,
         ContainerStructure;
+import 'package:ipa_parser/ipa_parser.dart'
+    show IosAuthorizationVerdict, IosBundleKind, IpaContainer, MachOFile;
 
 /// 详情页的纯文本渲染。
 ///
@@ -63,6 +67,21 @@ class DetailRenderer {
       SignatureStatus.verificationFailed => t.signature.status_failed,
       SignatureStatus.toolUnavailable => t.signature.status_tool_unavailable,
       SignatureStatus.unknown => t.signature.status_unknown,
+    };
+  }
+
+  /// 平台中立的签名结论文案。
+  ///
+  /// 与 [signatureStatusLabel] 的区别：[SignatureVerdict] 只有四态且不含
+  /// 平台细节，供 Android / iOS 共用；四态到文案的映射**必须一致** ——
+  /// 用户在两个平台上看到的「无法确认」必须是同一句话。
+  static String signatureVerdictLabel(
+      SignatureVerdict verdict, Translations t) {
+    return switch (verdict) {
+      SignatureVerdict.verified => t.signature.status_verified,
+      SignatureVerdict.rejected => t.signature.status_failed,
+      SignatureVerdict.inconclusive => t.signature.status_unknown,
+      SignatureVerdict.notChecked => t.ios_info.codesign_not_run,
     };
   }
 
@@ -254,5 +273,299 @@ class DetailRenderer {
 
     final name = component.name ?? t.apk_info.component_unnamed;
     return flags.isEmpty ? name : '$name  [${flags.join(', ')}]';
+  }
+
+  // ---------------------------------------------------------------------------
+  // iOS
+  // ---------------------------------------------------------------------------
+
+  /// IPA 解析阶段的本地化文案。
+  static String ipaParseStageLabel(IpaParseStage stage, Translations t) {
+    return switch (stage) {
+      IpaParseStage.openContainer => t.parse.stage_open_container,
+      IpaParseStage.container => t.ios_info.container_section,
+      IpaParseStage.infoPlist => t.parse.stage_manifest,
+      IpaParseStage.icon => t.ios_info.icon_section,
+      IpaParseStage.macho => t.ios_info.binary_section,
+      IpaParseStage.signature => t.ios_info.signature_section,
+      IpaParseStage.done => t.parse.parsing,
+    };
+  }
+
+  /// 设备类型（`UIDeviceFamily`）。
+  ///
+  /// 未知取值**原样给出数字**，不映射到最近的一档 —— `UIDeviceFamily` 的含义
+  /// 由 Apple 定义，猜错会让用户以为这个包支持某类设备。
+  static String deviceFamily(List<int>? families, Translations t) {
+    if (families == null || families.isEmpty) return '';
+    return families
+        .map((code) => switch (code) {
+              1 => t.ios_info.device_iphone,
+              2 => t.ios_info.device_ipad,
+              3 => t.ios_info.device_tv,
+              4 => t.ios_info.device_watch,
+              _ => t.ios_info.device_unknown(code: code),
+            })
+        .join(', ');
+  }
+
+  /// 可执行文件的架构与格式。
+  static String iosExecutable(MachOFile? macho, Translations t) {
+    if (macho == null) return '';
+    if (!macho.isMachO) return '${t.ios_info.macho_format}: -';
+
+    final sb = StringBuffer();
+    sb.writeln('${t.ios_info.macho_format}: ${macho.isFat ? 'fat' : 'thin'}');
+    sb.writeln(
+        '${t.ios_info.architectures}: ${macho.architectureNames.join(', ')}');
+
+    final primary = macho.primary!;
+    sb.writeln('${t.ios_info.macho_format}: ${primary.fileType.name}');
+    if (primary.platformName != null) {
+      sb.writeln('${t.ios_info.target_platform}: ${primary.platformName}');
+    }
+    if (primary.minimumOsVersionText != null) {
+      sb.writeln('${t.ios_info.macho_min_os}: ${primary.minimumOsVersionText}');
+    }
+    if (primary.uuid != null) {
+      sb.writeln('${t.ios_info.uuid}: ${primary.uuid}');
+    }
+    if (macho.allLinkedLibraries.isNotEmpty) {
+      sb.writeln('${t.ios_info.linked_libraries} '
+          '(${macho.allLinkedLibraries.length}):');
+      for (final lib in macho.allLinkedLibraries) {
+        sb.writeln('  $lib');
+      }
+    }
+    if (primary.rpaths.isNotEmpty) {
+      sb.writeln('${t.ios_info.rpaths}:');
+      for (final rpath in primary.rpaths) {
+        sb.writeln('  $rpath');
+      }
+    }
+    return sb.toString().trimRight();
+  }
+
+  /// 嵌套 bundle 的二进制清单。
+  static String iosNestedBinaries(
+      List<IosNestedBinary> binaries, Translations t) {
+    if (binaries.isEmpty) return '';
+
+    final sb = StringBuffer();
+    for (final binary in binaries) {
+      final kind = bundleKindLabel(binary.kind, t);
+      final arch =
+          binary.architectures.isEmpty ? '?' : binary.architectures.join(', ');
+      sb.writeln('${binary.bundlePath}  [$kind]  $arch');
+      // 解析失败时给出原因，而不是显示成「没有架构」。
+      final failure = binary.failureReason;
+      if (failure != null) {
+        sb.writeln('  ! $failure');
+      }
+    }
+    return sb.toString().trimRight();
+  }
+
+  /// bundle 种类的本地化名。
+  static String bundleKindLabel(IosBundleKind kind, Translations t) =>
+      switch (kind) {
+        IosBundleKind.mainApp => t.ios_info.bundle_kind_main_app,
+        IosBundleKind.appExtension => t.ios_info.bundle_kind_app_extension,
+        IosBundleKind.watchApp => t.ios_info.bundle_kind_watch_app,
+        IosBundleKind.nestedApp => t.ios_info.bundle_kind_nested_app,
+        IosBundleKind.framework => t.ios_info.bundle_kind_framework,
+      };
+
+  /// 容器结构概览。
+  static String iosContainer(IpaContainer container, Translations t) {
+    if (container.bundles.isEmpty) return '';
+
+    final sb = StringBuffer()
+      ..writeln('${t.ios_info.bundles}: ${container.bundles.length}')
+      ..writeln('${t.apk_info.structure_file_count}: '
+          '${container.fileEntryCount}');
+
+    for (final bundle in container.bundles) {
+      sb.writeln('  ${bundle.path}  [${bundleKindLabel(bundle.kind, t)}]  '
+          '${bundle.fileCount} ${t.apk_info.structure_entries}');
+    }
+    return sb.toString().trimRight();
+  }
+
+  /// 签名与授权。
+  ///
+  /// 这里最重要的约束是**不能把「有材料」说成「验证通过」**：
+  /// 材料那一节只陈述观察到的事实，结论只来自 [codeSign]。
+  static String iosSignature(IosPackageInfo ios, Translations t) {
+    final sb = StringBuffer();
+
+    // 1. 材料（事实）
+    final materials = ios.signatureMaterials;
+    if (materials != null) {
+      sb.writeln('${t.ios_info.materials}:');
+
+      final presence = materials.hasCodeSignatureDirectory
+          ? t.ios_info.presence_yes
+          : t.ios_info.presence_no;
+      // 条目名一并列出：只有目录、没有 CodeResources 是值得注意的情况。
+      final entries = materials.codeSignatureEntries.isEmpty
+          ? ''
+          : ' (${materials.codeSignatureEntries.join(', ')})';
+      sb.writeln('  ${t.ios_info.code_signature_dir}: $presence$entries');
+
+      final provision = materials.hasEmbeddedProvision
+          ? t.ios_info.presence_yes
+          : t.ios_info.presence_no;
+      sb.writeln('  ${t.ios_info.embedded_provision}: $provision');
+    }
+
+    // 2. 描述文件字段
+    final profile = materials?.profile;
+    if (profile != null && profile.hasValue) {
+      final value = profile.value!;
+      sb.writeln('');
+      sb.writeln('${t.ios_info.embedded_provision}:');
+      if (value.name.value != null) {
+        sb.writeln('  ${t.ios_info.profile_name}: ${value.name.value}');
+      }
+      if (value.teamIdentifiers.value != null) {
+        sb.writeln('  ${t.ios_info.profile_team}: '
+            '${value.teamIdentifiers.value!.join(', ')}');
+      }
+      if (value.applicationIdentifier.value != null) {
+        sb.writeln('  application-identifier: '
+            '${value.applicationIdentifier.value}');
+      }
+      final expiry = value.expirationDate.value;
+      if (expiry != null) {
+        // 用**当前时间**判断是否过期：这是用户唯一关心的相对结论。
+        final expired = value.isExpiredAt(DateTime.now()) ?? false;
+        sb.writeln('  ${t.ios_info.profile_expiry}: '
+            '${expiry.toIso8601String()} '
+            '(${expired ? t.ios_info.profile_expired : t.ios_info.profile_valid})');
+      } else {
+        sb.writeln(
+            '  ${t.ios_info.profile_expiry}: ${t.ios_info.profile_expiry_unknown}');
+      }
+    } else if (profile != null) {
+      // 读不出来时说明原因，而不是显示成「没有描述文件」。
+      sb.writeln('${t.ios_info.embedded_provision}: '
+          '${profile.status.name}${profile.diagnostic == null ? '' : ' — ${profile.diagnostic}'}');
+    }
+
+    // 3. 授权项
+    final codeSign = ios.codeSign;
+    if (codeSign?.info != null) {
+      final info = codeSign!.info!;
+      sb.writeln('');
+      sb.writeln('${t.ios_info.entitlements}:');
+      if (!info.entitlementsRead) {
+        sb.writeln('  ${t.ios_info.entitlements_unreadable}');
+      } else if (info.entitlements.isEmpty) {
+        sb.writeln('  ${t.ios_info.entitlements_empty}');
+      } else {
+        for (final entitlement in info.entitlements) {
+          sb.writeln('  ${entitlement.key} = ${entitlement.valueText}');
+        }
+      }
+    } else if (profile != null && profile.value != null) {
+      // codesign 没跑时退回静态提取到的授权项 —— 但要标明来源不同。
+      final entitlements = profile.value!.entitlements;
+      sb.writeln('');
+      sb.writeln('${t.ios_info.entitlements} '
+          '(${t.ios_info.embedded_provision}):');
+      if (entitlements.isEmpty) {
+        sb.writeln('  ${t.ios_info.entitlements_empty}');
+      } else {
+        for (final entitlement in entitlements) {
+          sb.writeln('  ${entitlement.key} = ${entitlement.valueText}');
+        }
+      }
+    }
+
+    // 4. 授权比对
+    final authorization = ios.authorization;
+    if (authorization != null) {
+      sb.writeln('');
+      sb.writeln('${t.ios_info.authorization}: '
+          '${authorizationVerdictLabel(authorization.verdict, t)}');
+      if (authorization.note != null) {
+        sb.writeln('  ${authorization.note}');
+      }
+    }
+
+    return sb.toString().trimRight();
+  }
+
+  /// 授权比对结论的本地化标签。
+  static String authorizationVerdictLabel(
+          IosAuthorizationVerdict verdict, Translations t) =>
+      switch (verdict) {
+        IosAuthorizationVerdict.matches => t.ios_info.authorization_matches,
+        IosAuthorizationVerdict.wildcardMatch =>
+          t.ios_info.authorization_wildcard,
+        IosAuthorizationVerdict.mismatch => t.ios_info.authorization_mismatch,
+        IosAuthorizationVerdict.incomparable =>
+          t.ios_info.authorization_incomparable,
+      };
+
+  /// `codesign` 的验证结论与描述性信息。
+  ///
+  /// [codeSign] 为 `null` 表示**没做**这项检查 —— 必须如实说「未执行」，
+  /// 而不是显示成「无法确认」或干脆留空（留空会被读成「没问题」）。
+  static String iosCodeSign(IosCodeSignResult? codeSign, Translations t) {
+    if (codeSign == null) {
+      return '${t.ios_info.codesign_section}: ${t.ios_info.codesign_not_run}';
+    }
+
+    final sb = StringBuffer()
+      ..writeln('${t.ios_info.codesign_section}: '
+          '${signatureStatusLabel(codeSign.status, t)}');
+
+    if (codeSign.status == SignatureStatus.toolUnavailable) {
+      sb.writeln(t.signature.tool_hint);
+    }
+
+    final info = codeSign.info;
+    if (info != null) {
+      if (info.identifier != null) {
+        sb.writeln('  ${t.ios_info.codesign_identifier}: ${info.identifier}');
+      }
+      if (info.teamIdentifier != null) {
+        sb.writeln('  ${t.ios_info.codesign_team}: ${info.teamIdentifier}');
+      }
+      if (info.signatureKind != null) {
+        sb.writeln('  ${t.ios_info.codesign_signature_kind}: '
+            '${info.signatureKind}');
+      }
+      if (info.cdHash != null) {
+        sb.writeln('  ${t.ios_info.codesign_cdhash}: ${info.cdHash}');
+      }
+      if (info.sealedResources != null) {
+        sb.writeln('  ${t.ios_info.codesign_sealed_resources}: '
+            '${info.sealedResources}');
+      }
+      if (info.authorities.isNotEmpty) {
+        sb.writeln('  ${t.ios_info.codesign_authorities}:');
+        for (final authority in info.authorities) {
+          sb.writeln('    $authority');
+        }
+      }
+    }
+
+    // 没有验证通过时把工具的原始输出一并给出。
+    //
+    // 判据是「不是 verified」而不是「没有明确结论」：验证**失败**时用户最
+    // 需要的恰恰是具体原因，而那几行只出现在 codesign 的输出里。
+    if (codeSign.status != SignatureStatus.verified) {
+      final raw = codeSign.rawOutput;
+      if (raw.isNotEmpty) {
+        sb.writeln('');
+        sb.writeln('${t.signature.diagnostics}:');
+        sb.writeln(raw);
+      }
+    }
+
+    return sb.toString().trimRight();
   }
 }

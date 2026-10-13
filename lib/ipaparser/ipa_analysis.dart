@@ -130,8 +130,7 @@ class IosNestedBinary {
       ];
 
   /// 无法解析的原因；成功时为 `null`。
-  String? get failureReason =>
-      failure ?? (macho == null ? 'not parsed' : null);
+  String? get failureReason => failure ?? (macho == null ? 'not parsed' : null);
 
   @override
   String toString() => 'IosNestedBinary($path, ${architectures.join('/')})';

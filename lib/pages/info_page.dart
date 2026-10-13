@@ -1,8 +1,14 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:analysis_model/analysis_model.dart';
+
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/apkparser/parse_task.dart';
+import 'package:apk_info_tool/ipaparser/ios_codesign_step.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
+import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
+import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/pages/install_dialog.dart';
@@ -15,11 +21,13 @@ import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
+import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -47,11 +55,29 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   /// 尚不可取消的 XAPK/aapt2 路径）。
   ApkParseTask? _currentParseTask;
 
+  /// 当前正在执行的 IPA 静态解析任务。
+  IpaParseTask? _currentIpaTask;
+
+  /// `codesign` 步骤的取消标志。
+  ///
+  /// 这一步跑在主 isolate 上（会写临时目录），没法靠杀 isolate 取消，
+  /// 只能靠一个协作式标志：解包器每写一条检查一次。取消后仍会走完
+  /// `finally` 清理，因此不会留下临时目录。
+  bool _iosCodeSignCancelled = false;
+
   void openFilePicker() async {
     var result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       dialogTitle: t.open.select_apk_file,
-      allowedExtensions: ['apk', 'xapk', 'apkm', 'apks', 'apk.1', 'apk.1.1'],
+      allowedExtensions: [
+        'apk',
+        'xapk',
+        'apkm',
+        'apks',
+        'ipa',
+        'apk.1',
+        'apk.1.1'
+      ],
       lockParentWindow: true,
     );
     log.fine('openFilePicker: result=$result');
@@ -92,6 +118,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   }
 
   Future<void> loadApkInfo(String filePath) async {
+    // IPA 走自己的解析流水线。分支点放在这里而不是更深处：两条流水线的
+    // 阶段、工具、结论语义都不同，混在一个方法里只会让两边都难读。
+    if (_looksLikeIpa(filePath)) {
+      await _loadIpaInfo(filePath);
+      return;
+    }
+
     final gen = ++_loadGeneration;
     final apkInfoState = ref.read(currentApkInfoProvider.notifier);
     final isParsingState = ref.read(isParsingProvider.notifier);
@@ -213,16 +246,320 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
   }
 
+  /// 是否按 IPA 处理。
+  ///
+  /// 只看扩展名：内容层面的判断由容器解析做（`Payload/` 是否存在），
+  /// 这里只决定走哪条流水线。因此一个改名为 `.ipa` 的 APK 会走 IPA 流水线
+  /// 并如实报告「没有 Payload/ 目录」，而不是被静默当成 APK。
+  bool _looksLikeIpa(String filePath) =>
+      filePath.toLowerCase().endsWith('.ipa');
+
+  /// IPA 的解析流程。
+  ///
+  /// 与 Android 侧一样分三条并行线（哈希 / 静态解析 / 签名验证），
+  /// 每条线只更新自己那一项，`FileState.analysis` 作为派生值自动反映最新情况。
+  Future<void> _loadIpaInfo(String filePath) async {
+    final gen = ++_loadGeneration;
+    final fileState = ref.read(currentFileStateProvider.notifier);
+    final isParsingState = ref.read(isParsingProvider.notifier);
+    final iosStageState = ref.read(iosParseStageProvider.notifier);
+    final enableSignature =
+        ref.read(settingStateProvider.select((value) => value.enableSignature));
+    final enableHash =
+        ref.read(settingStateProvider.select((value) => value.enableHash));
+
+    // 切文件时先把上一个文件的状态清干净。用显式 null 而不是不传 ——
+    // 不传会保留上一个文件的 ipaAnalysis，造成跨文件串数据。
+    fileState.update(FileState(
+      filePath: filePath,
+      fileSize: File(filePath).lengthSync(),
+      isComputingHash: enableHash,
+    ));
+    ref.read(currentApkInfoProvider.notifier).reset();
+    ref.read(selectedIconIndexProvider.notifier).reset();
+    isParsingState.update(true);
+    iosStageState.update(null);
+    _currentParseTask = null;
+    _currentIpaTask = null;
+    _iosCodeSignCancelled = false;
+
+    if (enableHash) {
+      computeFileHashes(filePath).then((hashes) {
+        if (!mounted || _loadGeneration != gen) return;
+        fileState.update(ref.read(currentFileStateProvider).copyWith(
+              md5Hash: hashes.md5,
+              sha1Hash: hashes.sha1,
+              sha256Hash: hashes.sha256,
+              isComputingHash: false,
+            ));
+      }).catchError((e) {
+        log.warning('_loadIpaInfo: failed to compute hashes: $e');
+        if (!mounted || _loadGeneration != gen) return;
+        fileState.update(ref
+            .read(currentFileStateProvider)
+            .copyWith(isComputingHash: false));
+      });
+    }
+
+    IpaParseTask task;
+    try {
+      task = await IpaParseTask.start(filePath);
+    } catch (e) {
+      log.warning('_loadIpaInfo: failed to start the IPA task: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t.parse.parse_apk_info_fail)),
+        );
+      }
+      if (_loadGeneration == gen) {
+        isParsingState.update(false);
+        iosStageState.update(null);
+      }
+      return;
+    }
+
+    if (_loadGeneration != gen) {
+      // 在 worker 起来的这段时间里用户又切了文件 —— 直接丢掉这次任务。
+      task.cancel();
+      return;
+    }
+    _currentIpaTask = task;
+
+    IpaAnalysis? parsed;
+    await for (final event in task.events) {
+      if (_loadGeneration != gen) break;
+
+      switch (event) {
+        case IpaStageReached(:final stage):
+          iosStageState.update(stage);
+        case IpaOpenFailed(:final result):
+          // 容器打不开：显示**具体原因**，而不是笼统的「解析失败」。
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(DetailRenderer.openFailure(result, t))),
+            );
+          }
+        case IpaParseFailed(:final reason):
+          log.warning('_loadIpaInfo: parse failed: $reason');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(t.parse.parse_apk_info_fail)),
+            );
+          }
+        case IpaParseSucceeded(:final analysis):
+          parsed = analysis;
+        case IpaParseCancelled():
+          // 用户主动取消 —— 不弹错误提示。
+          log.info('_loadIpaInfo: cancelled by user');
+      }
+    }
+
+    if (_loadGeneration != gen) return;
+
+    if (parsed != null) {
+      fileState.update(
+          ref.read(currentFileStateProvider).copyWith(ipaAnalysis: parsed));
+      isParsingState.update(false);
+      iosStageState.update(null);
+
+      // 签名验证是单独一步：它要解包到磁盘，因此在主 isolate 上跑，
+      // 并且在静态解析完成之后才开始 —— 静态结果先呈现给用户。
+      final mainApp = parsed.mainApp;
+      if (enableSignature && mainApp != null) {
+        await _verifyIosSignature(filePath, gen, mainApp);
+      }
+      return;
+    }
+
+    isParsingState.update(false);
+    iosStageState.update(null);
+  }
+
+  /// 解包主应用并调用 `codesign`。
+  ///
+  /// 失败/不可用时**不弹错误**：这不是「解析失败」，而是「这项检查没做成」，
+  /// 结果会如实显示在详情页的签名卡片里。弹错误会让用户以为整个包有问题。
+  Future<void> _verifyIosSignature(
+    String filePath,
+    int gen,
+    IosBundle mainApp,
+  ) async {
+    final fileState = ref.read(currentFileStateProvider.notifier);
+    try {
+      final result = await IosCodeSignStep.run(
+        filePath,
+        mainApp,
+        isCancelled: () => _iosCodeSignCancelled || _loadGeneration != gen,
+      );
+      if (!mounted || _loadGeneration != gen) return;
+      fileState.update(
+          ref.read(currentFileStateProvider).copyWith(iosCodeSign: result));
+    } catch (e) {
+      log.warning('_verifyIosSignature: $e');
+      if (!mounted || _loadGeneration != gen) return;
+      fileState.update(ref.read(currentFileStateProvider).copyWith(
+            iosCodeSign: IosCodeSignResult(
+              status: SignatureStatus.unknown,
+              error: '$e',
+            ),
+          ));
+    }
+  }
+
   /// 取消当前解析。
   ///
   /// 只在真的拿到可取消的任务时才有意义 —— XAPK/APKM/APKS 路径仍走 aapt2
   /// 子进程，暂不可取消，因此 UI 在该路径下不显示取消按钮（未实现的功能不得
   /// 出现伪可用按钮）。
   void _cancelParse() {
+    _iosCodeSignCancelled = true;
+    final ipaTask = _currentIpaTask;
+    if (ipaTask != null) {
+      log.info('_cancelParse: cancelling the IPA task');
+      ipaTask.cancel();
+    }
     final task = _currentParseTask;
     if (task == null) return;
     log.info('_cancelParse: requested by user');
     task.cancel();
+  }
+
+  /// iOS 平台的详情卡片。
+  ///
+  /// 只渲染**确实拿到了数据**的项：每一项都先判断状态，读不到就说明为什么，
+  /// 而不是留一个空值 —— 空值会被读成「这个包没有这项信息」。
+  List<Widget> _buildIosCards(FileState fileState, int textMaxLines) {
+    // 分三层取值，含义不同，不能混：
+    // - [parsed] 是 iOS 侧的结构化解析结果（可能有，也可能还没跑完）；
+    // - [analysis] 是统一模型（解析结果 + 哈希 + 签名汇合后的派生值）；
+    // - [ios] 是统一模型里的 iOS 部分，UI 只读它。
+    final parsed = fileState.ipaAnalysis;
+    final result = fileState.analysis;
+    final ios = result?.ios;
+    final cards = <Widget>[];
+
+    Widget card(String title, String value, {Widget? end, int? maxLines}) =>
+        Card(
+          child: TitleValueLayout(
+            title: title,
+            value: value,
+            end: end,
+            maxLines: maxLines ?? textMaxLines,
+            selectable: !fileState.isComputingHash,
+          ),
+        );
+
+    /// 把一个 [FieldValue] 渲染成「值」或「为什么没有值」。
+    ///
+    /// 关键在于**不把「读不到」渲染成空串**：`absent` 与 `failed` 对用户的
+    /// 含义完全不同，前者是「文件里没有」，后者是「我们没读出来」。
+    String field(FieldValue<Object?> value) {
+      if (value.hasValue) return '${value.value}';
+      // `absent` 显示为「-」：文件里确实没有这一项，空着是准确的。
+      // 其余状态一律**带上状态名与原因** —— 它们意味着「我们没读到」。
+      if (value.status == FieldStatus.absent) return '-';
+      final reason = value.diagnostic;
+      return reason == null
+          ? '[${value.status.name}]'
+          : '[${value.status.name}] $reason';
+    }
+
+    cards.add(card(t.file_info.file, fileState.filePath ?? "",
+        end: _buildFileActionMenu()));
+    cards.add(card(
+      t.file_info.size,
+      fileState.fileSize != null
+          ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
+          : "",
+    ));
+
+    // 平台标识 —— 用户第一眼要能确认「这是个 iOS 包」。
+    cards.add(card(t.ios_info.section, t.ios_info.platform_badge));
+
+    if (parsed == null || result == null || ios == null) {
+      // 解析还没完成或整体失败：只说明原因，不渲染一堆空卡片 ——
+      // 一排空值会被读成「这个包什么都没有」。
+      cards.add(card(t.ios_info.section, t.ios_info.unavailable));
+      return cards;
+    }
+
+    if (ios.hasMultipleMainApps) {
+      cards.add(card(
+        t.ios_info.bundles,
+        '${ios.container.payloadApps.length} '
+        '${t.ios_info.bundle_kind_main_app}: '
+        '${ios.container.payloadApps.map((b) => b.path).join(', ')}',
+      ));
+    }
+
+    cards.add(card(t.apk_info.app_name, field(ios.preferredName)));
+    cards.add(card(t.ios_info.bundle_id, field(ios.bundleIdentifier),
+        end: _buildCopyButton(
+            ios.bundleIdentifier.value, ios.bundleIdentifier.hasValue)));
+    cards.add(card(t.apk_info.version_name, field(ios.shortVersion)));
+    cards.add(card(t.apk_info.version_code, field(ios.buildNumber)));
+    cards.add(card(t.ios_info.minimum_os, field(ios.minimumOSVersion)));
+    cards.add(card(
+        t.ios_info.device_family,
+        ios.deviceFamily.hasValue
+            ? DetailRenderer.deviceFamily(ios.deviceFamily.value, t)
+            : field(ios.deviceFamily)));
+    cards.add(card(t.ios_info.executable, field(ios.executableName)));
+
+    final executable = DetailRenderer.iosExecutable(ios.executable, t);
+    if (executable.isNotEmpty) {
+      cards.add(card(t.ios_info.binary_section, executable));
+    }
+
+    final container = DetailRenderer.iosContainer(ios.container, t);
+    if (container.isNotEmpty) {
+      cards.add(card(t.ios_info.container_section, container));
+    }
+
+    final nested = DetailRenderer.iosNestedBinaries(ios.nestedBinaries, t);
+    if (nested.isNotEmpty) {
+      cards.add(card(t.ios_info.nested_binaries, nested));
+    }
+
+    if (ios.queriesSchemes.hasValue) {
+      cards.add(card(
+          t.ios_info.queries_schemes, ios.queriesSchemes.value!.join('\n')));
+    }
+    if (ios.requiredDeviceCapabilities.hasValue) {
+      cards.add(card(t.ios_info.required_capabilities,
+          ios.requiredDeviceCapabilities.value!.join('\n')));
+    }
+
+    // 签名结论 —— 用与 Android 同一套四态文案。
+    final verdict = result.signatureVerdict;
+    cards.add(card(
+      t.apk_info.signature_info,
+      '${DetailRenderer.signatureVerdictLabel(verdict, t)}\n\n'
+      '${DetailRenderer.iosSignature(ios, t)}\n\n'
+      '${DetailRenderer.iosCodeSign(ios.codeSign, t)}',
+    ));
+
+    cards.add(
+      card(
+          t.file_info.sha256,
+          fileState.isComputingHash
+              ? t.file_info.computing_hash
+              : (fileState.sha256Hash ?? ''),
+          end: _buildCopyButton(
+              fileState.sha256Hash, fileState.sha256Hash != null),
+          maxLines: 2),
+    );
+    cards.add(card(t.file_info.md5, fileState.md5Hash ?? '',
+        end: _buildCopyButton(fileState.md5Hash, fileState.md5Hash != null)));
+    cards.add(card(t.file_info.sha1, fileState.sha1Hash ?? '',
+        end: _buildCopyButton(fileState.sha1Hash, fileState.sha1Hash != null)));
+
+    final diagnostics = DetailRenderer.diagnostics(result.diagnostics, t);
+    if (diagnostics.isNotEmpty) {
+      cards.add(card(t.apk_info.diagnostics, diagnostics));
+    }
+
+    return cards;
   }
 
   Future<void> _initPlatformState() async {
@@ -517,9 +854,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final fileState = ref.watch(currentFileStateProvider);
     final isParsing = ref.watch(isParsingProvider);
     final parseStage = ref.watch(parseStageProvider);
-    final parseStageLabel = parseStage == null
-        ? t.parse.parsing
-        : DetailRenderer.parseStageLabel(parseStage, t);
+    final iosParseStage = ref.watch(iosParseStageProvider);
+    // 两条流水线的阶段名没有对应关系，各自映射，不硬合并成一个联合类型。
+    final parseStageLabel = iosParseStage != null
+        ? DetailRenderer.ipaParseStageLabel(iosParseStage, t)
+        : parseStage == null
+            ? t.parse.parsing
+            : DetailRenderer.parseStageLabel(parseStage, t);
     final analysisNotes = DetailRenderer.analysisNotes(fileState.analysis, t);
     final structureText =
         DetailRenderer.structure(fileState.analysis?.android?.structure, t);
@@ -545,6 +886,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   lowered.endsWith('.apkm') ||
                   lowered.endsWith('.apks') ||
                   lowered.endsWith('.zip') ||
+                  lowered.endsWith('.ipa') ||
                   RegExp(r'\.(apk|xapk|apkm|apks)(\.\d+)+$')
                       .hasMatch(lowered)) {
                 openApk(file.path);
@@ -565,217 +907,226 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     children: [
-                      Card(
-                          child: TitleValueLayout(
-                              title: t.file_info.file,
-                              value: fileState.filePath ?? "",
-                              end: _buildFileActionMenu())),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.file_info.size,
-                        value: fileState.fileSize != null
-                            ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
-                            : "",
-                      )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.app_name,
-                        value: _getDisplayLabel(apkInfo),
-                        end: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildLabelLocaleMenu(apkInfo),
-                            _buildCopyButton(_getDisplayLabel(apkInfo),
-                                apkInfo?.label != null),
-                          ],
-                        ),
-                      )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.package_name,
-                        value: apkInfo?.packageName ?? "",
-                        end: _buildCopyButton(
-                            apkInfo?.packageName, apkInfo?.packageName != null),
-                      )),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                              child: Column(
+                      // 平台分支：IPA 走自己的一组卡片。
+                      //
+                      // 不复用 Android 那组再逐张判空 —— 那些卡片读的是
+                      // `apkInfo?.x`，在 iOS 上会渲染成一排空值卡片，
+                      // 看起来像「这个包什么都没有」，而不是「这里不适用」。
+                      if (fileState.platform == PackagePlatform.ios) ...[
+                        ..._buildIosCards(fileState, textMaxLines),
+                      ] else ...[
+                        Card(
+                            child: TitleValueLayout(
+                                title: t.file_info.file,
+                                value: fileState.filePath ?? "",
+                                end: _buildFileActionMenu())),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.file_info.size,
+                          value: fileState.fileSize != null
+                              ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
+                              : "",
+                        )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.app_name,
+                          value: _getDisplayLabel(apkInfo),
+                          end: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Card(
-                                  child: TitleValueLayout(
-                                title: t.apk_info.version_code,
-                                value: "${apkInfo?.versionCode ?? ""}",
-                              )),
-                              Card(
-                                  child: TitleValueLayout(
-                                title: t.apk_info.version_name,
-                                value: apkInfo?.versionName ?? "",
-                              )),
-                              if (iconRowSpan >= 3)
-                                Card(
-                                  child: TitleValueLayout(
-                                    title: t.apk_info.min_sdk,
-                                    value:
-                                        getSdkVersionText(apkInfo?.sdkVersion),
-                                  ),
-                                ),
-                              if (apkInfo?.isXapk ?? false)
+                              _buildLabelLocaleMenu(apkInfo),
+                              _buildCopyButton(_getDisplayLabel(apkInfo),
+                                  apkInfo?.label != null),
+                            ],
+                          ),
+                        )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.package_name,
+                          value: apkInfo?.packageName ?? "",
+                          end: _buildCopyButton(apkInfo?.packageName,
+                              apkInfo?.packageName != null),
+                        )),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                                child: Column(
+                              children: [
                                 Card(
                                     child: TitleValueLayout(
-                                  title: t.apk_info.archive_type,
-                                  value: apkInfo?.archiveType ?? "",
+                                  title: t.apk_info.version_code,
+                                  value: "${apkInfo?.versionCode ?? ""}",
                                 )),
-                            ],
-                          )),
-                          _buildIconWidget(apkInfo, iconRowSpan),
-                        ],
-                      ),
-                      if (iconRowSpan < 3)
-                        Card(
-                          child: TitleValueLayout(
-                            title: t.apk_info.min_sdk,
-                            value: getSdkVersionText(apkInfo?.sdkVersion),
-                          ),
+                                Card(
+                                    child: TitleValueLayout(
+                                  title: t.apk_info.version_name,
+                                  value: apkInfo?.versionName ?? "",
+                                )),
+                                if (iconRowSpan >= 3)
+                                  Card(
+                                    child: TitleValueLayout(
+                                      title: t.apk_info.min_sdk,
+                                      value: getSdkVersionText(
+                                          apkInfo?.sdkVersion),
+                                    ),
+                                  ),
+                                if (apkInfo?.isXapk ?? false)
+                                  Card(
+                                      child: TitleValueLayout(
+                                    title: t.apk_info.archive_type,
+                                    value: apkInfo?.archiveType ?? "",
+                                  )),
+                              ],
+                            )),
+                            _buildIconWidget(apkInfo, iconRowSpan),
+                          ],
                         ),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.target_sdk,
-                        value: getSdkVersionText(apkInfo?.targetSdkVersion),
-                      )),
-                      if (apkInfo?.isXapk ?? false)
+                        if (iconRowSpan < 3)
+                          Card(
+                            child: TitleValueLayout(
+                              title: t.apk_info.min_sdk,
+                              value: getSdkVersionText(apkInfo?.sdkVersion),
+                            ),
+                          ),
                         Card(
                             child: TitleValueLayout(
-                          title: t.apk_info.split_apks,
-                          value: apkInfo?.splitApks.join("\n") ?? "",
+                          title: t.apk_info.target_sdk,
+                          value: getSdkVersionText(apkInfo?.targetSdkVersion),
+                        )),
+                        if (apkInfo?.isXapk ?? false)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.split_apks,
+                            value: apkInfo?.splitApks.join("\n") ?? "",
+                            minLines: 1,
+                            maxLines: textMaxLines,
+                            selectable: true,
+                          )),
+                        if ((apkInfo?.obbFiles.isNotEmpty ?? false))
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.obb_files,
+                            value: apkInfo?.obbFiles.join("\n") ?? "",
+                            minLines: 1,
+                            maxLines: textMaxLines,
+                            selectable: true,
+                          )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.screen_size,
+                          value: apkInfo?.supportsScreens.join(" ") ?? "",
+                        )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.screen_density,
+                          value: apkInfo?.densities.join(" ") ?? "",
+                        )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.abi,
+                          value: apkInfo?.nativeCodes.join(" ") ?? "",
+                        )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.languages,
+                          value: apkInfo?.locales.join(" ") ?? "",
+                        )),
+                        Card(
+                            child: TitleValueLayout(
+                          title: t.apk_info.permissions,
+                          value: apkInfo?.usesPermissions.join("\n") ?? "",
                           minLines: 1,
                           maxLines: textMaxLines,
                           selectable: true,
                         )),
-                      if ((apkInfo?.obbFiles.isNotEmpty ?? false))
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.obb_files,
-                          value: apkInfo?.obbFiles.join("\n") ?? "",
-                          minLines: 1,
-                          maxLines: textMaxLines,
-                          selectable: true,
-                        )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.screen_size,
-                        value: apkInfo?.supportsScreens.join(" ") ?? "",
-                      )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.screen_density,
-                        value: apkInfo?.densities.join(" ") ?? "",
-                      )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.abi,
-                        value: apkInfo?.nativeCodes.join(" ") ?? "",
-                      )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.languages,
-                        value: apkInfo?.locales.join(" ") ?? "",
-                      )),
-                      Card(
-                          child: TitleValueLayout(
-                        title: t.apk_info.permissions,
-                        value: apkInfo?.usesPermissions.join("\n") ?? "",
-                        minLines: 1,
-                        maxLines: textMaxLines,
-                        selectable: true,
-                      )),
-                      if (apkInfo?.maxSdkVersion != null)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.max_sdk,
-                          value: getSdkVersionText(apkInfo?.maxSdkVersion),
-                        )),
-                      if (apkInfo?.components.isNotEmpty ?? false)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.components,
-                          value: DetailRenderer.components(apkInfo, t),
-                          minLines: 1,
-                          maxLines: textMaxLines,
-                          selectable: true,
-                        )),
-                      // MD5 哈希值
-                      if (enableHash)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.file_info.md5,
-                          value: fileState.isComputingHash
-                              ? t.file_info.computing_hash
-                              : (fileState.md5Hash ?? ""),
-                          end: _buildCopyButton(
-                              fileState.md5Hash,
-                              fileState.md5Hash != null &&
-                                  !fileState.isComputingHash),
-                        )),
-                      // SHA1 哈希值
-                      if (enableHash)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.file_info.sha1,
-                          value: fileState.isComputingHash
-                              ? t.file_info.computing_hash
-                              : (fileState.sha1Hash ?? ""),
-                          end: _buildCopyButton(
-                              fileState.sha1Hash,
-                              fileState.sha1Hash != null &&
-                                  !fileState.isComputingHash),
-                        )),
-                      // SHA-256 哈希值（规范 4.1 要求）
-                      if (enableHash)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.file_info.sha256,
-                          value: fileState.isComputingHash
-                              ? t.file_info.computing_hash
-                              : (fileState.sha256Hash ?? ""),
-                          end: _buildCopyButton(
-                              fileState.sha256Hash,
-                              fileState.sha256Hash != null &&
-                                  !fileState.isComputingHash),
-                        )),
-                      // 解析诊断：加固线索 + 诊断记录
-                      if (analysisNotes.isNotEmpty)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.diagnostics,
-                          value: analysisNotes,
-                          minLines: 1,
-                          maxLines: textMaxLines,
-                          selectable: true,
-                        )),
-                      // 文件结构：DEX / 原生库 / ABI / 顶层目录
-                      if (structureText.isNotEmpty)
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.structure,
-                          value: structureText,
-                          minLines: 1,
-                          maxLines: textMaxLines,
-                          selectable: true,
-                        )),
-                      if (enableSignature && !(apkInfo?.isXapk ?? false))
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.signature_info,
-                          value: fileState.isComputingSignature
-                              ? t.file_info.computing_hash
-                              : DetailRenderer.signature(
-                                  fileState.signature, t),
-                          minLines: 1,
-                          maxLines: textMaxLines,
-                          selectable: !fileState.isComputingSignature,
-                        )),
+                        if (apkInfo?.maxSdkVersion != null)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.max_sdk,
+                            value: getSdkVersionText(apkInfo?.maxSdkVersion),
+                          )),
+                        if (apkInfo?.components.isNotEmpty ?? false)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.components,
+                            value: DetailRenderer.components(apkInfo, t),
+                            minLines: 1,
+                            maxLines: textMaxLines,
+                            selectable: true,
+                          )),
+                        // MD5 哈希值
+                        if (enableHash)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.file_info.md5,
+                            value: fileState.isComputingHash
+                                ? t.file_info.computing_hash
+                                : (fileState.md5Hash ?? ""),
+                            end: _buildCopyButton(
+                                fileState.md5Hash,
+                                fileState.md5Hash != null &&
+                                    !fileState.isComputingHash),
+                          )),
+                        // SHA1 哈希值
+                        if (enableHash)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.file_info.sha1,
+                            value: fileState.isComputingHash
+                                ? t.file_info.computing_hash
+                                : (fileState.sha1Hash ?? ""),
+                            end: _buildCopyButton(
+                                fileState.sha1Hash,
+                                fileState.sha1Hash != null &&
+                                    !fileState.isComputingHash),
+                          )),
+                        // SHA-256 哈希值（规范 4.1 要求）
+                        if (enableHash)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.file_info.sha256,
+                            value: fileState.isComputingHash
+                                ? t.file_info.computing_hash
+                                : (fileState.sha256Hash ?? ""),
+                            end: _buildCopyButton(
+                                fileState.sha256Hash,
+                                fileState.sha256Hash != null &&
+                                    !fileState.isComputingHash),
+                          )),
+                        // 解析诊断：加固线索 + 诊断记录
+                        if (analysisNotes.isNotEmpty)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.diagnostics,
+                            value: analysisNotes,
+                            minLines: 1,
+                            maxLines: textMaxLines,
+                            selectable: true,
+                          )),
+                        // 文件结构：DEX / 原生库 / ABI / 顶层目录
+                        if (structureText.isNotEmpty)
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.structure,
+                            value: structureText,
+                            minLines: 1,
+                            maxLines: textMaxLines,
+                            selectable: true,
+                          )),
+                        if (enableSignature && !(apkInfo?.isXapk ?? false))
+                          Card(
+                              child: TitleValueLayout(
+                            title: t.apk_info.signature_info,
+                            value: fileState.isComputingSignature
+                                ? t.file_info.computing_hash
+                                : DetailRenderer.signature(
+                                    fileState.signature, t),
+                            minLines: 1,
+                            maxLines: textMaxLines,
+                            selectable: !fileState.isComputingSignature,
+                          )),
+                      ],
                     ],
                   ),
                 ),
@@ -809,7 +1160,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   // 只有真的拿到可取消的任务时才显示取消按钮：
                   // XAPK/APKM/APKS 路径仍走 aapt2 子进程，暂不可取消，
                   // 在那里显示一个按不动的按钮属于伪可用。
-                  if (_currentParseTask != null) ...[
+                  if (_currentParseTask != null || _currentIpaTask != null) ...[
                     const SizedBox(width: 4),
                     Tooltip(
                       message: t.parse.cancel_parse,
