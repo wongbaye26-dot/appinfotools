@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_info_tool/apkparser/parse_task.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/pages/install_dialog.dart';
@@ -39,6 +40,12 @@ class APKInfoPage extends ConsumerStatefulWidget implements PageBase {
 
 class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   int _loadGeneration = 0;
+
+  /// 当前正在执行的解析任务，用于支持取消。
+  ///
+  /// 为 `null` 表示当前没有可取消的任务（解析未开始、已结束，或走的是
+  /// 尚不可取消的 XAPK/aapt2 路径）。
+  ApkParseTask? _currentParseTask;
 
   void openFilePicker() async {
     var result = await FilePicker.platform.pickFiles(
@@ -88,6 +95,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final gen = ++_loadGeneration;
     final apkInfoState = ref.read(currentApkInfoProvider.notifier);
     final isParsingState = ref.read(isParsingProvider.notifier);
+    final parseStageState = ref.read(parseStageProvider.notifier);
     final fileState = ref.read(currentFileStateProvider.notifier);
     final enableSignature =
         ref.read(settingStateProvider.select((value) => value.enableSignature));
@@ -97,6 +105,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ref.read(selectedIconIndexProvider.notifier).reset();
     ref.read(selectedLabelLocaleProvider.notifier).reset();
     isParsingState.update(true);
+    parseStageState.update(null);
+    _currentParseTask = null;
 
     // 初始化文件状态
     final isXapk = filePath.toLowerCase().endsWith('.xapk');
@@ -154,7 +164,17 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     try {
-      final apkInfo = await getApkInfo(filePath);
+      final apkInfo = await getApkInfo(
+        filePath,
+        // 阶段由解析器在真正推进到该步时上报，不是定时器编出来的。
+        onStage: (stage) {
+          if (_loadGeneration == gen) parseStageState.update(stage);
+        },
+        // 拿到可取消的任务句柄后，取消按钮才可用。
+        onTaskStarted: (task) {
+          if (_loadGeneration == gen) _currentParseTask = task;
+        },
+      );
       if (apkInfo == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -171,6 +191,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           ));
         }
       }
+    } on ApkParseCancelledException {
+      // 用户主动取消 —— 不该弹错误提示，界面上也没有需要清理的残留状态。
+      log.info('loadApkInfo: cancelled by user');
     } catch (e) {
       log.warning('loadApkInfo: $e');
       if (mounted) {
@@ -183,8 +206,22 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     } finally {
       if (_loadGeneration == gen) {
         isParsingState.update(false);
+        parseStageState.update(null);
+        _currentParseTask = null;
       }
     }
+  }
+
+  /// 取消当前解析。
+  ///
+  /// 只在真的拿到可取消的任务时才有意义 —— XAPK/APKM/APKS 路径仍走 aapt2
+  /// 子进程，暂不可取消，因此 UI 在该路径下不显示取消按钮（未实现的功能不得
+  /// 出现伪可用按钮）。
+  void _cancelParse() {
+    final task = _currentParseTask;
+    if (task == null) return;
+    log.info('_cancelParse: requested by user');
+    task.cancel();
   }
 
   Future<void> _initPlatformState() async {
@@ -478,6 +515,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final apkInfo = ref.watch(currentApkInfoProvider);
     final fileState = ref.watch(currentFileStateProvider);
     final isParsing = ref.watch(isParsingProvider);
+    final parseStage = ref.watch(parseStageProvider);
+    final parseStageLabel = parseStage == null
+        ? t.parse.parsing
+        : DetailRenderer.parseStageLabel(parseStage, t);
     final enableSignature = ref
         .watch(settingStateProvider.select((value) => value.enableSignature));
     final enableHash =
@@ -727,7 +768,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(t.parse.parsing),
+                  Text(parseStageLabel),
+                  // 只有真的拿到可取消的任务时才显示取消按钮：
+                  // XAPK/APKM/APKS 路径仍走 aapt2 子进程，暂不可取消，
+                  // 在那里显示一个按不动的按钮属于伪可用。
+                  if (_currentParseTask != null) ...[
+                    const SizedBox(width: 4),
+                    Tooltip(
+                      message: t.parse.cancel_parse,
+                      child: InkWell(
+                        onTap: _cancelParse,
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Padding(
+                          padding: EdgeInsets.all(2),
+                          child: Icon(Icons.close, size: 16),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -116,7 +116,12 @@
     "open_failure_not_archive": "유효한 압축 파일이 아닙니다",
     "open_failure_corrupt": "압축 파일이 손상되어 읽을 수 없습니다",
     "open_failure_budget": "안전한 압축 해제 한도를 초과하여 열기를 거부했습니다",
-    "open_failure_io": "파일을 읽을 수 없습니다"
+    "open_failure_io": "파일을 읽을 수 없습니다",
+    "stage_open_container": "압축 파일을 여는 중…",
+    "stage_manifest": "매니페스트를 읽는 중…",
+    "stage_resources": "리소스를 분석하는 중…",
+    "stage_native_libraries": "네이티브 라이브러리를 검사하는 중…",
+    "cancel_parse": "취소"
   },
   "file_info": {
     "file": "파일",

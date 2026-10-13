@@ -1,5 +1,6 @@
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
+import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'info_page_provider.g.dart';
@@ -51,6 +52,18 @@ class IsParsing extends _$IsParsing {
   void update(bool isParsing) {
     state = isParsing;
   }
+}
+
+/// 当前解析所处的阶段。
+///
+/// `null` 表示尚未收到任何阶段回报（解析刚开始，或已结束）。UI 据此显示
+/// **真实**进度文案 —— 阶段由解析器在真正推进到该步时上报，不是定时器编出来的。
+@Riverpod(keepAlive: true)
+class ParseStage extends _$ParseStage {
+  @override
+  ApkParseStage? build() => null;
+
+  void update(ApkParseStage? stage) => state = stage;
 }
 
 class FileState {

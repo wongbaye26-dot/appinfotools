@@ -116,7 +116,12 @@
     "open_failure_not_archive": "不是有效的封存檔",
     "open_failure_corrupt": "封存檔已損毀，無法讀取",
     "open_failure_budget": "已拒絕開啟：封存檔超出安全解壓上限",
-    "open_failure_io": "無法讀取該檔案"
+    "open_failure_io": "無法讀取該檔案",
+    "stage_open_container": "正在開啟封存檔…",
+    "stage_manifest": "正在讀取清單…",
+    "stage_resources": "正在解析資源表…",
+    "stage_native_libraries": "正在掃描原生函式庫…",
+    "cancel_parse": "取消"
   },
   "file_info": {
     "file": "檔案",

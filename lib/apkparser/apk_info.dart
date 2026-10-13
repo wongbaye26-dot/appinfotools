@@ -12,7 +12,9 @@ import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
+import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:path/path.dart' as path;
+import 'parse_task.dart';
 import 'xapk_info.dart';
 
 enum IconCandidateType { bitmap, xmlVector }
@@ -269,7 +271,20 @@ class ApkOpenException implements Exception {
   String toString() => 'ApkOpenException($filePath): ${result.description}';
 }
 
-Future<ApkInfo?> getApkInfo(String apk) async {
+/// 解析被用户取消。
+///
+/// 单独成类型是为了让 UI 能区分「用户主动取消」与「解析失败」——
+/// 前者不该弹错误提示。
+class ApkParseCancelledException implements Exception {
+  @override
+  String toString() => 'ApkParseCancelledException';
+}
+
+Future<ApkInfo?> getApkInfo(
+  String apk, {
+  void Function(ApkParseStage stage)? onStage,
+  void Function(ApkParseTask task)? onTaskStarted,
+}) async {
   log.info("getApkInfo: apk=[$apk] start");
   final apkInfo = ApkInfo();
   apkInfo.apkPath = apk;
@@ -305,6 +320,10 @@ Future<ApkInfo?> getApkInfo(String apk) async {
     var aapt2Ms = 0;
     var parseMs = 0;
     var iconMs = 0;
+
+    // XAPK/APKM/APKS 路径仍走 aapt2 子进程，阶段粒度只能到「打开容器 / 完成」。
+    // 不为此编造中间阶段 —— 进度必须反映真实发生的事情。
+    onStage?.call(ApkParseStage.openContainer);
 
     // 共享同一个 ZipHelper 实例，避免重复打开同一个大文件
     final zip = ZipHelper();
@@ -447,6 +466,7 @@ Future<ApkInfo?> getApkInfo(String apk) async {
     }
 
     totalSw.stop();
+    onStage?.call(ApkParseStage.done);
     log.info(
         "[PERF] getApkInfo(archive): total=${totalSw.elapsedMilliseconds}ms"
         " | zip_open=${zipOpenMs}ms"
@@ -461,7 +481,12 @@ Future<ApkInfo?> getApkInfo(String apk) async {
 
   // 根据配置选择解析引擎
   if (Config.parserEngine.value == Config.kParserBuiltin) {
-    return await _getApkInfoBuiltin(apk, apkInfo);
+    return await _getApkInfoBuiltin(
+      apk,
+      apkInfo,
+      onStage: onStage,
+      onTaskStarted: onTaskStarted,
+    );
   }
 
   // 原有的APK解析逻辑（aapt2）
@@ -519,72 +544,76 @@ Future<ApkInfo?> getApkInfo(String apk) async {
   return null;
 }
 
-Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
+/// 用内置解析引擎解析。
+///
+/// 容器解析与资源表解析跑在**独立 isolate** 中（[ApkParseTask]）：
+/// 这些是同步 CPU 密集计算，跑在主 isolate 上会让大 APK 冻住界面，而且
+/// 无法取消。图标渲染必须留在主 isolate —— `ApkInfo` 持有 `dart:ui` 的
+/// `Image`，不能跨 isolate 传递。
+Future<ApkInfo?> _getApkInfoBuiltin(
+  String apk,
+  ApkInfo apkInfo, {
+  void Function(ApkParseStage stage)? onStage,
+  void Function(ApkParseTask task)? onTaskStarted,
+}) async {
   final totalSw = Stopwatch()..start();
-  final phaseSw = Stopwatch();
 
-  final reader = apk_parser.ApkReader();
-  try {
-    phaseSw
-      ..reset()
-      ..start();
-    final openResult = await reader.open(apk);
-    if (!openResult.isOk) {
-      log.warning(
-          "_getApkInfoBuiltin: failed to open APK: ${openResult.description}");
-      throw ApkOpenException(openResult, apk);
+  final task = await ApkParseTask.start(apk);
+  onTaskStarted?.call(task);
+
+  ParsedApkData? parsed;
+  var cancelled = false;
+
+  await for (final event in task.events) {
+    switch (event) {
+      case ParseStageReached(:final stage):
+        onStage?.call(stage);
+      case ParseOpenFailed(:final result):
+        log.warning(
+            "_getApkInfoBuiltin: failed to open APK: ${result.description}");
+        throw ApkOpenException(result, apk);
+      case ParseFailed(:final reason):
+        log.warning("_getApkInfoBuiltin: parse failed: $reason");
+        return null;
+      case ParseSucceeded(:final data):
+        parsed = data;
+      case ParseCancelled():
+        cancelled = true;
     }
-    final openMs = phaseSw.elapsedMilliseconds;
-
-    // 先 yield 让 UI 渲染 loading 指示器，再执行 CPU 密集型解析
-    await Future<void>.delayed(Duration.zero);
-
-    phaseSw
-      ..reset()
-      ..start();
-    final meta = await reader.parse();
-    final parseMs = phaseSw.elapsedMilliseconds;
-
-    if (meta == null) {
-      log.warning("_getApkInfoBuiltin: failed to parse APK");
-      return null;
-    }
-
-    _applyMetaToApkInfo(meta, apkInfo);
-    apkInfo.originalText = _generateTextInfo(meta);
-
-    // 导出 arsc 资源表数据供图标渲染器使用（替代 aapt2 dump resources）
-    if (reader.arscParser != null) {
-      apkInfo.arscResources = reader.arscParser!.getAllResources();
-    }
-
-    // 图标加载（复用现有逻辑）
-    phaseSw
-      ..reset()
-      ..start();
-    final iconImage = await apkInfo.loadIcon();
-    if (iconImage != null) {
-      apkInfo.mainIconImage ??= iconImage;
-    }
-    apkInfo.arscResources = null; // 图标加载完成后释放资源表数据
-    final iconMs = phaseSw.elapsedMilliseconds;
-
-    totalSw.stop();
-    log.info(
-        "[PERF] getApkInfo(builtin): total=${totalSw.elapsedMilliseconds}ms"
-        " | open=${openMs}ms | parse=${parseMs}ms"
-        " | icon=${iconMs}ms");
-
-    return apkInfo;
-  } on ApkOpenException {
-    // 容器层失败的具体原因必须原样透出，不能被下面的兜底 catch 吞掉。
-    rethrow;
-  } catch (e, stackTrace) {
-    log.warning("_getApkInfoBuiltin: error=$e\n$stackTrace");
-    return null;
-  } finally {
-    reader.close();
   }
+
+  if (cancelled) {
+    log.info("_getApkInfoBuiltin: cancelled by user");
+    throw ApkParseCancelledException();
+  }
+
+  final data = parsed;
+  if (data == null) {
+    log.warning("_getApkInfoBuiltin: worker produced no result");
+    return null;
+  }
+
+  _applyMetaToApkInfo(data.meta, apkInfo);
+  apkInfo.originalText = _generateTextInfo(data.meta);
+
+  // 导出 arsc 资源表数据供图标渲染器使用（替代 aapt2 dump resources）。
+  // 渲染完成后立即释放 —— 资源表在大 APK 上可能占用可观内存。
+  if (data.arscResources.isNotEmpty) {
+    apkInfo.arscResources = data.arscResources;
+  }
+  final iconSw = Stopwatch()..start();
+  final iconImage = await apkInfo.loadIcon();
+  if (iconImage != null) {
+    apkInfo.mainIconImage ??= iconImage;
+  }
+  apkInfo.arscResources = null;
+  final iconMs = iconSw.elapsedMilliseconds;
+
+  totalSw.stop();
+  log.info("[PERF] getApkInfo(builtin): total=${totalSw.elapsedMilliseconds}ms"
+      " | icon=${iconMs}ms (parsing ran in a worker isolate)");
+
+  return apkInfo;
 }
 
 void _applyMetaToApkInfo(apk_parser.ApkMeta meta, ApkInfo apkInfo) {

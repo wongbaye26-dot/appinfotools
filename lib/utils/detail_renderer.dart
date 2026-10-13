@@ -2,7 +2,7 @@ import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
-    show AndroidComponent, ArchiveOpenResult, ComponentType;
+    show AndroidComponent, ApkParseStage, ArchiveOpenResult, ComponentType;
 
 /// 详情页的纯文本渲染。
 ///
@@ -26,6 +26,20 @@ class DetailRenderer {
       ArchiveOpenResult.resourceBudgetExceeded => t.parse.open_failure_budget,
       ArchiveOpenResult.ioError => t.parse.open_failure_io,
       ArchiveOpenResult.ok => t.parse.parse_apk_info_fail,
+    };
+  }
+
+  /// 解析阶段的本地化文案。
+  ///
+  /// [ApkParseStage.done] 复用通用的「解析中…」：它只会出现一瞬，
+  /// 紧接着解析就结束了。
+  static String parseStageLabel(ApkParseStage stage, Translations t) {
+    return switch (stage) {
+      ApkParseStage.openContainer => t.parse.stage_open_container,
+      ApkParseStage.manifest => t.parse.stage_manifest,
+      ApkParseStage.resources => t.parse.stage_resources,
+      ApkParseStage.nativeLibraries => t.parse.stage_native_libraries,
+      ApkParseStage.done => t.parse.parsing,
     };
   }
 

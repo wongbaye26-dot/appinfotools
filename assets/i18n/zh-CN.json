@@ -116,7 +116,12 @@
     "open_failure_not_archive": "不是有效的归档文件",
     "open_failure_corrupt": "归档已损坏，无法读取",
     "open_failure_budget": "已拒绝打开：归档超出安全解压上限",
-    "open_failure_io": "无法读取该文件"
+    "open_failure_io": "无法读取该文件",
+    "stage_open_container": "正在打开归档…",
+    "stage_manifest": "正在读取清单…",
+    "stage_resources": "正在解析资源表…",
+    "stage_native_libraries": "正在扫描原生库…",
+    "cancel_parse": "取消"
   },
   "file_info": {
     "file": "文件",

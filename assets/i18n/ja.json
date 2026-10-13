@@ -116,7 +116,12 @@
     "open_failure_not_archive": "有効なアーカイブファイルではありません",
     "open_failure_corrupt": "アーカイブが破損しているため読み取れません",
     "open_failure_budget": "安全な解凍上限を超えるため開くことを拒否しました",
-    "open_failure_io": "ファイルを読み取れません"
+    "open_failure_io": "ファイルを読み取れません",
+    "stage_open_container": "アーカイブを開いています…",
+    "stage_manifest": "マニフェストを読み込んでいます…",
+    "stage_resources": "リソースを解析しています…",
+    "stage_native_libraries": "ネイティブライブラリを走査しています…",
+    "cancel_parse": "キャンセル"
   },
   "file_info": {
     "file": "ファイル",

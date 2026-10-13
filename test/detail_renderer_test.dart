@@ -16,6 +16,28 @@ ApkInfo _apkInfo({
 }
 
 void main() {
+  group('DetailRenderer.parseStageLabel', () {
+    test('每个阶段都有文案，且四个真实阶段互不相同', () {
+      final labels = {
+        for (final s in ApkParseStage.values)
+          s: DetailRenderer.parseStageLabel(s, t),
+      };
+
+      for (final entry in labels.entries) {
+        expect(entry.value, isNotEmpty, reason: '${entry.key} 缺少文案');
+      }
+
+      final distinct = {
+        ApkParseStage.openContainer,
+        ApkParseStage.manifest,
+        ApkParseStage.resources,
+        ApkParseStage.nativeLibraries,
+      }.map((s) => labels[s]).toSet();
+
+      expect(distinct, hasLength(4), reason: '进度文案必须能区分真实阶段，否则用户看不出在做什么');
+    });
+  });
+
   group('DetailRenderer.openFailure', () {
     test('四种失败原因互不相同，尤其安全拒绝不能与「损坏」同话术', () {
       final messages = {
