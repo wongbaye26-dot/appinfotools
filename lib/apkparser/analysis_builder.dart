@@ -12,6 +12,23 @@ import 'package:apk_parser/apk_parser.dart'
         HardeningSignal;
 import 'package:path/path.dart' as path;
 
+/// 可被多个来源提供的 Android 字段。
+///
+/// 存在的意义是支撑 [AnalysisBuilder.capabilities]：**一个来源不报某字段**，
+/// 与**文件里没有这个字段**，是两件必须分开的事。
+enum AndroidField {
+  appName,
+  packageId,
+  version,
+  buildNumber,
+  minSdkVersion,
+  targetSdkVersion,
+  maxSdkVersion,
+  debuggable,
+  components,
+  permissions,
+}
+
 /// 把各来源的解析结果合并成统一的 [PackageAnalysisResult]。
 ///
 /// 这是规范 4.2 第 4 步「对每个字段分别合并可靠结果，保留字段来源和错误原因」
@@ -22,6 +39,49 @@ import 'package:path/path.dart' as path;
 /// 各自如实标注来源。
 class AnalysisBuilder {
   AnalysisBuilder._();
+
+  /// 各来源**能够**提供的字段。
+  ///
+  /// 这是「分层、可回退」合并策略的前提。清单依据的是各工具的实际输出能力，
+  /// 不是想当然：
+  ///
+  /// - 内置解析器直接读 AXML / ARSC，因此 manifest 里的东西它都能给，
+  ///   包括全部五类组件与 `android:exported`。
+  /// - `aapt2 dump badging` 的输出里**没有** `maxSdkVersion`，**没有**
+  ///   `debuggable`，组件方面只给 `launchable-activity` —— 没有
+  ///   service / receiver / provider，也没有 `exported`。
+  ///   所以这三项不在 aapt2 的能力范围内。
+  ///
+  /// 缺了这份清单，aapt2 分支的空白就会被记成 `absent`（「文件里没有」），
+  /// 而不是 `unsupported`（「这个来源不报」）—— 前者会误导用户，
+  /// 也会让后续的字段级合并做出错误判断。
+  static const Map<FieldSource, Set<AndroidField>> capabilities = {
+    FieldSource.builtinParser: {
+      AndroidField.appName,
+      AndroidField.packageId,
+      AndroidField.version,
+      AndroidField.buildNumber,
+      AndroidField.minSdkVersion,
+      AndroidField.targetSdkVersion,
+      AndroidField.maxSdkVersion,
+      AndroidField.debuggable,
+      AndroidField.components,
+      AndroidField.permissions,
+    },
+    FieldSource.aapt2: {
+      AndroidField.appName,
+      AndroidField.packageId,
+      AndroidField.version,
+      AndroidField.buildNumber,
+      AndroidField.minSdkVersion,
+      AndroidField.targetSdkVersion,
+      AndroidField.permissions,
+    },
+  };
+
+  /// 某个来源是否提供某个字段。
+  static bool sourceProvides(FieldSource source, AndroidField field) =>
+      capabilities[source]?.contains(field) ?? false;
 
   /// 构建 Android 分析结果。
   ///
@@ -57,12 +117,20 @@ class AnalysisBuilder {
     ];
 
     final android = AndroidPackageInfo(
-      minSdkVersion: _manifest(minSdkVersion, manifestSource),
-      targetSdkVersion: _manifest(targetSdkVersion, manifestSource),
-      maxSdkVersion: _manifest(maxSdkVersion, manifestSource),
-      debuggable: _manifest(debuggable, manifestSource),
+      minSdkVersion:
+          _manifest(minSdkVersion, manifestSource, AndroidField.minSdkVersion),
+      targetSdkVersion: _manifest(
+          targetSdkVersion, manifestSource, AndroidField.targetSdkVersion),
+      maxSdkVersion:
+          _manifest(maxSdkVersion, manifestSource, AndroidField.maxSdkVersion),
+      debuggable:
+          _manifest(debuggable, manifestSource, AndroidField.debuggable),
       permissions: permissions,
-      components: components,
+      components: _manifest(
+        components.isEmpty ? null : components,
+        manifestSource,
+        AndroidField.components,
+      ),
       signature: signature,
       hardeningHints: hardeningHints,
       structure: structure,
@@ -87,10 +155,11 @@ class AnalysisBuilder {
               hashes.sha256,
               source: FieldSource.fileSystem,
             ),
-      appName: _manifest(appName, manifestSource),
-      packageId: _manifest(packageId, manifestSource),
-      version: _manifest(version, manifestSource),
-      buildNumber: _manifest(buildNumber, manifestSource),
+      appName: _manifest(appName, manifestSource, AndroidField.appName),
+      packageId: _manifest(packageId, manifestSource, AndroidField.packageId),
+      version: _manifest(version, manifestSource, AndroidField.version),
+      buildNumber:
+          _manifest(buildNumber, manifestSource, AndroidField.buildNumber),
       signatureVerdict: PackageAnalysisResult.verdictFrom(signature),
       diagnostics: diagnostics,
       android: android,
@@ -121,11 +190,25 @@ class AnalysisBuilder {
 
   /// 构造一个来自 manifest 的字段值。
   ///
-  /// `null` 一律记为 [FieldStatus.absent]：解析器**成功读到了** manifest 时，
-  /// 取不到值就意味着 manifest 里确实没有声明该属性。这与「读不到」不同 ——
-  /// 读不到由 [FieldValue.failed] / [FieldValue.hardenedUnknown] 表达。
-  static FieldValue<T> _manifest<T>(T? value, FieldSource source) {
-    if (value == null) return FieldValue<T>.absent(source: source);
-    return FieldValue<T>.extracted(value, source: source);
+  /// 三种结果的判定依据是**来源能力**，而不是「值是否为空」：
+  /// - 有值 → [FieldStatus.extracted]
+  /// - 该来源会报这个字段、但没有值 → [FieldStatus.absent]（文件里确实没声明）
+  /// - 该来源**不报**这个字段 → [FieldStatus.unsupported]（我们没读到，不是没有）
+  ///
+  /// 第三点是这次对齐的核心：`aapt2 dump badging` 不输出 `maxSdkVersion`、
+  /// `debuggable`，组件方面也只给 `launchable-activity`。若把这些空白一律记成
+  /// `absent`，用户会以为文件里没有，而后续的字段级合并也会做出错误判断。
+  static FieldValue<T> _manifest<T>(
+    T? value,
+    FieldSource source,
+    AndroidField field,
+  ) {
+    if (value != null) return FieldValue<T>.extracted(value, source: source);
+    if (sourceProvides(source, field)) {
+      return FieldValue<T>.absent(source: source);
+    }
+    return FieldValue<T>.unsupported(
+      diagnostic: '${source.name} does not report ${field.name}',
+    );
   }
 }

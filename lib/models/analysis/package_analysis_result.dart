@@ -50,7 +50,14 @@ class AndroidPackageInfo {
   final FieldValue<bool> debuggable;
 
   final List<String> permissions;
-  final List<AndroidComponent> components;
+
+  /// 组件列表。
+  ///
+  /// 是 [FieldValue] 而不是裸 List：`aapt2 dump badging` 只输出
+  /// `launchable-activity`，不输出 service / receiver / provider，也没有
+  /// `exported`。用一个空列表表示「没有组件」会让用户以为应用真的没有这些
+  /// 组件 —— 实际是那个来源根本不报。状态字段把这两件事分开。
+  final FieldValue<List<AndroidComponent>> components;
 
   /// 签名分析详情（含证书、方案、工具原始输出）。
   ///
@@ -77,7 +84,7 @@ class AndroidPackageInfo {
     this.maxSdkVersion = const FieldValue.absent(),
     this.debuggable = const FieldValue.absent(),
     this.permissions = const [],
-    this.components = const [],
+    this.components = const FieldValue<List<AndroidComponent>>.absent(),
     this.signature,
     this.hardeningHints = const [],
     this.structure,

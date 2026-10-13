@@ -262,6 +262,105 @@ void main() {
     });
   });
 
+  group('来源能力对齐', () {
+    test('内置解析器提供全部受管字段', () {
+      for (final field in AndroidField.values) {
+        expect(
+          AnalysisBuilder.sourceProvides(FieldSource.builtinParser, field),
+          isTrue,
+          reason: '${field.name} 内置解析器应当能提供',
+        );
+      }
+    });
+
+    test('aapt2 不报的字段记为 unsupported，而不是 absent', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.aapt2,
+      );
+
+      // `aapt2 dump badging` 不输出 maxSdkVersion、不输出 debuggable，
+      // 组件方面也只给 launchable-activity。
+      for (final status in [
+        result.android!.maxSdkVersion.status,
+        result.android!.debuggable.status,
+        result.android!.components.status,
+      ]) {
+        expect(status, FieldStatus.unsupported);
+        expect(status, isNot(FieldStatus.absent),
+            reason: '「这个来源不报」不能记成「文件里没有」');
+        expect(status.isInconclusive, isTrue);
+      }
+
+      // 但它确实会报的字段，取不到就是真取不到
+      expect(result.packageId.status, FieldStatus.absent);
+      expect(result.android!.minSdkVersion.status, FieldStatus.absent);
+    });
+
+    test('unsupported 的诊断里说明是哪个来源不报哪个字段', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.aapt2,
+      );
+
+      final diagnostic = result.android!.maxSdkVersion.diagnostic!;
+      expect(diagnostic, contains('aapt2'));
+      expect(diagnostic, contains('maxSdkVersion'));
+    });
+
+    test('有值时来源能力不影响取值', () {
+      final result = AnalysisBuilder.buildAndroid(
+        filePath: '/tmp/a.apk',
+        fileSize: 1,
+        manifestSource: FieldSource.aapt2,
+        packageId: 'com.example',
+        minSdkVersion: 21,
+      );
+
+      expect(result.packageId.status, FieldStatus.extracted);
+      expect(result.packageId.source, FieldSource.aapt2);
+      expect(result.android!.minSdkVersion.value, 21);
+    });
+
+    test('能力表里没有的来源一律视为「不提供」', () {
+      for (final source in [
+        FieldSource.unknown,
+        FieldSource.zipDirectory,
+        FieldSource.apksigner,
+        FieldSource.fileSystem,
+        FieldSource.archiveManifest,
+      ]) {
+        expect(
+          AnalysisBuilder.sourceProvides(source, AndroidField.packageId),
+          isFalse,
+          reason: '${source.name} 不在能力表里，不应被当作能提供 manifest 字段',
+        );
+      }
+    });
+
+    test('两个来源共同提供的字段就是可以安全合并的那些', () {
+      const mergeable = {
+        AndroidField.appName,
+        AndroidField.packageId,
+        AndroidField.version,
+        AndroidField.buildNumber,
+        AndroidField.minSdkVersion,
+        AndroidField.targetSdkVersion,
+        AndroidField.permissions,
+      };
+
+      for (final field in mergeable) {
+        expect(
+          AnalysisBuilder.sourceProvides(FieldSource.aapt2, field),
+          isTrue,
+          reason: '${field.name} 两个来源都能提供，可以合并',
+        );
+      }
+    });
+  });
+
   group('平台专属信息', () {
     test('AndroidPackageInfo 的 debuggable 未声明时是 absent，不是 false', () {
       const info = AndroidPackageInfo();
