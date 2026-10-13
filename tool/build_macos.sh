@@ -30,20 +30,53 @@ done
 fail() { printf '\n[✗] %s\n' "$1" >&2; shift; for line in "$@"; do printf '    %s\n' "$line" >&2; done; exit 1; }
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 ok()   { printf '    [✓] %s\n' "$1"; }
+info() { printf '    [i] %s\n' "$1"; }
 
 # ---------------------------------------------------------------------------
 # 0. 前置检查
 # ---------------------------------------------------------------------------
 step "检查前置条件"
 
-if ! command -v flutter >/dev/null 2>&1; then
-  if [ -n "${FLUTTER_ROOT:-}" ] && [ -x "${FLUTTER_ROOT}/bin/flutter" ]; then
-    PATH="${FLUTTER_ROOT}/bin:${PATH}"; export PATH
-  else
-    fail "找不到 flutter" "把它加进 PATH，或设置 FLUTTER_ROOT 指向 Flutter SDK 根目录"
+# 定位 Flutter SDK。
+#
+# 不去要求用户先配好 PATH：绝大多数人装了 SDK 但没把它写进 shell 配置，
+# 于是「找不到 flutter」这种与任务无关的报错会挡在最前面。实测踩过一次。
+# 这里按「显式指定 → PATH → 常见安装位置」的顺序找，找到就把它的 bin 加进
+# PATH —— 这样 `dart` 也会一起可用，两者必须来自同一个 SDK。
+FLUTTER_BIN=""
+if [ -n "${FLUTTER_ROOT:-}" ] && [ -x "${FLUTTER_ROOT}/bin/flutter" ]; then
+  FLUTTER_BIN="${FLUTTER_ROOT}/bin"
+elif command -v flutter >/dev/null 2>&1; then
+  FLUTTER_BIN="$(cd "$(dirname "$(command -v flutter)")" && pwd)"
+else
+  for candidate in \
+    "$HOME/development/flutter" \
+    "$HOME/flutter" \
+    "$HOME/fvm/default" \
+    "$HOME/.puro/flutter" \
+    /opt/homebrew/opt/flutter \
+    /usr/local/flutter \
+    /opt/flutter
+  do
+    if [ -x "$candidate/bin/flutter" ]; then FLUTTER_BIN="$candidate/bin"; break; fi
+  done
+  # fvm / puro 的按版本目录
+  if [ -z "$FLUTTER_BIN" ]; then
+    for candidate in "$HOME"/fvm/versions/* "$HOME"/.puro/envs/*/flutter; do
+      if [ -x "$candidate/bin/flutter" ]; then FLUTTER_BIN="$candidate/bin"; break; fi
+    done
   fi
 fi
-ok "flutter $(flutter --version 2>/dev/null | head -1 | awk '{print $2}')"
+
+if [ -z "$FLUTTER_BIN" ]; then
+  fail "找不到 Flutter SDK" \
+       "已查找：\$FLUTTER_ROOT、PATH、~/development/flutter、~/flutter、" \
+       "        ~/fvm/default、~/.puro/flutter、/opt/homebrew/opt/flutter" \
+       "指定位置再跑：FLUTTER_ROOT=/path/to/flutter tool/build_macos.sh" \
+       "还没装的话：https://docs.flutter.dev/get-started/install/macos"
+fi
+PATH="${FLUTTER_BIN}:${PATH}"; export PATH
+ok "flutter $(flutter --version 2>/dev/null | head -1 | awk '{print $2}')  (${FLUTTER_BIN})"
 
 DEV_DIR="$(xcode-select -p 2>/dev/null || true)"
 case "$DEV_DIR" in
