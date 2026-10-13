@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
 
+import 'cgbi_png.dart';
 import 'ipa_info_plist.dart';
 
 /// 图片格式，由**魔数**判定。
@@ -166,8 +167,26 @@ class IpaIconResolver {
   static const int maxIconBytes = 4 * 1024 * 1024;
 
   /// `CFBundleIconFiles` 里给的是**不含扩展名**的基础名，实际文件按平台的
-  /// `@2x` / `@3x` 约定命名。这里按该约定逐个尝试，不做目录扫描。
-  static const List<String> _suffixes = ['', '.png', '@2x.png', '@3x.png'];
+  /// 命名约定加上倍率与设备修饰符。这里按该约定逐个尝试，不做目录扫描。
+  ///
+  /// 顺序有意义：不带修饰符的排在前面，设备专属的排在后面 —— 同名时优先
+  /// 通用那张。
+  ///
+  /// `~ipad` / `~iphone` 这一档不能漏：实测真实样本的
+  /// `CFBundleIcons~ipad` 声明的是 `AppIcon76x76`，而文件叫
+  /// `AppIcon76x76@2x~ipad.png`，只试 `@2x.png` / `@3x.png` 会找不到。
+  static const List<String> _suffixes = [
+    '',
+    '.png',
+    '@2x.png',
+    '@3x.png',
+    '~ipad.png',
+    '@2x~ipad.png',
+    '@3x~ipad.png',
+    '~iphone.png',
+    '@2x~iphone.png',
+    '@3x~iphone.png',
+  ];
 
   static IosIconResolution resolve(Archive archive, IpaInfoPlist info) {
     final diagnostics = <AnalysisDiagnostic>[];
@@ -235,16 +254,28 @@ class IpaIconResolver {
     // 最高分辨率排在最前 —— 展示时优先用它。
     candidates.sort((a, b) => b.pixelArea.compareTo(a.pixelArea));
 
+    // 同一份声明会被多个入口各报一次：实测 `CFBundleIconName=AppIcon` 同时
+    // 出现在 `CFBundleIcons` 与 `CFBundleIcons~ipad` 里，于是「取不到」清单
+    // 里出现了两条一模一样的记录。用户要看到的是「有几条取不到」，
+    // 不是「我们报了几次」。
+    final uniqueUnresolved = <IosUnresolvedIcon>[];
+    final seenUnresolved = <(IosIconSource, String)>{};
+    for (final item in unresolved) {
+      if (seenUnresolved.add((item.source, item.declared))) {
+        uniqueUnresolved.add(item);
+      }
+    }
+
     diagnostics.add(AnalysisDiagnostic.info(
       'ios.icons.resolved',
       '${candidates.length} previewable icon(s), '
-          '${unresolved.length} unresolved',
+          '${uniqueUnresolved.length} unresolved',
       source: FieldSource.infoPlist,
     ));
 
     return IosIconResolution(
       candidates: candidates,
-      unresolved: unresolved,
+      unresolved: uniqueUnresolved,
       diagnostics: diagnostics,
     );
   }
@@ -414,26 +445,16 @@ class IpaIconResolver {
 
   /// 从 PNG 的 IHDR 读出像素尺寸。
   ///
-  /// 布局：8 字节签名 + 4 字节块长度 + `IHDR` + 宽(4) + 高(4)。
+  /// 走块链定位 `IHDR`，**不写死偏移 12**：CgBI（Apple 的 PNG 变体）在签名与
+  /// `IHDR` 之间还有一个 `CgBI` 块，写死偏移会让尺寸读成 `null` —— 而尺寸是
+  /// 「按面积排序」和「解码前的像素预算检查」的前提。
+  ///
   /// **只读头部，不解码像素** —— 这正是规范 5.3 想要的：知道图有多大，
   /// 而不必先把整张图解出来。
   static (int, int)? readPngDimensions(List<int> bytes) {
-    if (bytes.length < 24) return null;
-    if (bytes[12] != 0x49 || // I
-        bytes[13] != 0x48 || // H
-        bytes[14] != 0x44 || // D
-        bytes[15] != 0x52) {
-      return null;
-    }
-    final width = _readUint32(bytes, 16);
-    final height = _readUint32(bytes, 20);
-    if (width <= 0 || height <= 0) return null;
-    return (width, height);
+    final size = readPngSize(bytes);
+    if (size == null) return null;
+    if (size.$1 <= 0 || size.$2 <= 0) return null;
+    return size;
   }
-
-  static int _readUint32(List<int> bytes, int offset) =>
-      (bytes[offset] << 24) |
-      (bytes[offset + 1] << 16) |
-      (bytes[offset + 2] << 8) |
-      bytes[offset + 3];
 }

@@ -36,13 +36,16 @@ List<int> _be32(int value) => [
 
 /// 只含 PNG 签名与 IHDR 的最小头部，用于构造指定尺寸的候选。
 ///
-/// 不是完整可解码的 PNG —— 尺寸读取只碰头部，不校验 CRC。
+/// 不是完整可解码的 PNG。块必须**四个部分齐全**（长度 + 类型 + 数据 + CRC）——
+/// 尺寸读取走的是块链，缺 CRC 就是被截断的块，会被当成畸形文件拒掉；CRC 的
+/// 值本身不校验（填 0）。
 Uint8List _pngHeader(int width, int height) => Uint8List.fromList([
       0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // 签名
       0, 0, 0, 13, // IHDR 块长度
       0x49, 0x48, 0x44, 0x52, // "IHDR"
       ..._be32(width), ..._be32(height),
       8, 6, 0, 0, 0, // 位深 / 颜色类型 / 压缩 / 过滤 / 隔行
+      0, 0, 0, 0, // CRC 占位
     ]);
 
 ArchiveFile _file(String name, List<int> bytes, {int? declaredSize}) =>

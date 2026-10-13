@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:ipa_parser/ipa_parser.dart'
-    show IosIconCandidate, IosImageFormat;
+    show IosIconCandidate, IosImageFormat, isCgbiPng, normalizeCgbiPng;
 
 /// 一次图标解码的结果。
 ///
@@ -57,8 +57,8 @@ class IosIconDecoder {
   };
 
   static Future<IosIconDecodeResult> decode(IosIconCandidate candidate) async {
-    final bytes = candidate.bytes;
-    if (bytes == null || bytes.isEmpty) {
+    final raw = candidate.bytes;
+    if (raw == null || raw.isEmpty) {
       return const IosIconDecodeResult.failure(
         'the resolver did not carry this candidate\'s bytes '
         '(it exceeds the size limit)',
@@ -87,6 +87,28 @@ class IosIconDecoder {
           '${width}x$height exceeds the $maxPixels pixel decode budget',
         );
       }
+    }
+
+    // Xcode 打包时会把 bundle 里的彩色 PNG 换成 Apple 的 CgBI 变体
+    // （`CgBI` 块、裸 deflate、BGRA 预乘），Flutter 的解码器读不了它 ——
+    // 表现就是「图标找到了却显示不出来」。这里先规范化成标准 PNG。
+    //
+    // 转换失败时**如实说明原因**，绝不退而求其次去找一张别的图：
+    // 规范 5.3 禁止拿启动画面或截图冒充应用图标。
+    var bytes = raw;
+    if (isCgbiPng(raw)) {
+      final normalized = normalizeCgbiPng(raw);
+      if (!normalized.ok) {
+        log.warning('IosIconDecoder: ${candidate.archivePath} 是 CgBI 但无法'
+            '转换: ${normalized.failure}');
+        return IosIconDecodeResult.failure(
+          'this is an Apple CgBI ("PNG crush") image and it could not be '
+          'converted to a standard PNG: ${normalized.failure}',
+        );
+      }
+      log.info('IosIconDecoder: 已把 CgBI 图标 ${candidate.archivePath} '
+          '转成标准 PNG (${raw.length} -> ${normalized.png!.length} bytes)');
+      bytes = normalized.png!;
     }
 
     ui.Codec? codec;

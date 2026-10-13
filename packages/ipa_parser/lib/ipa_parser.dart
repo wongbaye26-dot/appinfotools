@@ -16,6 +16,7 @@
 // 明确**不**包含：签名验证。规范 5.5 禁止自行实现签名算法并宣称权威结论，
 // 因此本包只回答「文件里有什么」，验证由调用方交给 `codesign`。
 
+export 'src/cgbi_png.dart';
 export 'src/cms.dart';
 export 'src/ipa_container.dart';
 export 'src/ipa_icon.dart';
