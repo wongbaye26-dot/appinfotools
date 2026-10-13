@@ -547,5 +547,14 @@ Bad state: No ProviderScope found
 
 ### 其他遗留（非阻塞）
 
-6. 5.3 ZIP 预算双份实现、5.4 解析失败原因不可区分、5.5 签名状态未建模、5.6 解析阻塞 UI isolate、5.7 无取消机制、5.9 `FileState` 值语义缺失、5.11 `InstallDialog` 守卫不全 —— 均待第 1 阶段处理。
-7. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
+6. **已处理**（第二步前半）：
+   - **5.3 ZIP 预算双份实现** → 下沉为 `packages/apk_parser/lib/src/zip_budget.dart` 单一实现（`ZipBudget` + `ZipBombException`），`ZipGuard` 只保留路径级防护。commit `a157b97`。
+   - **5.4 解析失败原因不可区分** → 引入 `ArchiveOpenResult`（ok / notArchive / corrupt / resourceBudgetExceeded / ioError），并新增 `looksStructurallyBroken` 兜住 archive fork 的宽松行为；`getApkInfo` 改抛 `ApkOpenException`，`info_page` 映射为 6 语言的真实文案。commit `a157b97` + `4a59a6a`。
+   - **5.11 `InstallDialog` 守卫不全** → 补齐 8 处 await 后的 `setState` 守卫，并让安装循环在 `!mounted` 时也 break。commit `6830e73`。
+   - 测试从 23 增至 **40** 个（新增 `archive_open_test`、`install_dialog_lifecycle_test`、`apk_info_open_failure_test`）。
+
+7. **仍待处理**：5.5 签名状态四态建模、5.6 解析阻塞 UI isolate、5.7 无取消机制、5.9 `FileState` 值语义缺失、5.10 资产清单不一致。
+
+8. **过程中新发现的真实行为**（已记录在对应 commit）：本仓库使用的 archive fork 对「有 ZIP 魔数但结构损坏」的输入**不抛异常**，而是返回空归档 —— 若不额外判断，损坏文件会被判为打开成功，直到找不到 `AndroidManifest.xml` 才失败。已用 `looksStructurallyBroken` 兜住。
+
+9. `.workbuddy-ai/memory/` 已被纳入版本控制（随基线快照一起提交）。若不需要，可在 `.gitignore` 中排除。
