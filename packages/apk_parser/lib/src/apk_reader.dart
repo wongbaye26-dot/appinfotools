@@ -10,6 +10,27 @@ import 'zip_budget.dart';
 
 final _log = Logger('ApkReader');
 
+/// 解析推进到的阶段。
+///
+/// 用途是向 UI 报告**真实**进度，因此只暴露实际可观测的边界，
+/// 不提供虚构的百分比。
+enum ApkParseStage {
+  /// 打开归档容器（由调用方在 [ApkReader.open] 前后报告）。
+  openContainer,
+
+  /// 解析 `AndroidManifest.xml`。
+  manifest,
+
+  /// 解析 `resources.arsc` 资源表 —— 通常是耗时最长的一步。
+  resources,
+
+  /// 扫描 `lib/` 下的原生库，得到 ABI 列表。
+  nativeLibraries,
+
+  /// 全部完成。
+  done,
+}
+
 /// APK 文件读取和解析的统一入口
 class ApkReader {
   Archive? _archive;
@@ -74,12 +95,18 @@ class ApkReader {
     }
   }
 
-  /// 解析 APK 基础信息
-  Future<ApkMeta?> parse() async {
+  /// 解析 APK 基础信息。
+  ///
+  /// [onStage] 在每个阶段**开始时**被调用，用于向调用方报告真实进度。
+  ///
+  /// 刻意不提供百分比：各阶段耗时分布极不均匀（`resources.arsc` 通常占绝大
+  /// 部分），编一个百分比只会误导用户。阶段本身就是最细的可信粒度。
+  Future<ApkMeta?> parse({void Function(ApkParseStage stage)? onStage}) async {
     final archive = _archive;
     if (archive == null) return null;
 
     // 1. 读取并解析 AndroidManifest.xml
+    onStage?.call(ApkParseStage.manifest);
     final manifestFile = archive.findFile('AndroidManifest.xml');
     if (manifestFile == null) return null;
     final rawManifestBytes = manifestFile.content;
@@ -90,6 +117,7 @@ class ApkReader {
     final meta = ManifestParser.parse(manifestBytes);
 
     // 2. 读取并解析 resources.arsc
+    onStage?.call(ApkParseStage.resources);
     final arscFile = archive.findFile('resources.arsc');
     if (arscFile != null) {
       // 确保 arscBytes 是独立的 Uint8List（而非底层 ZIP 缓冲区的 view），
@@ -111,8 +139,10 @@ class ApkReader {
     }
 
     // 3. 扫描 lib/ 目录获取 native codes
+    onStage?.call(ApkParseStage.nativeLibraries);
     meta.nativeCodes = _scanNativeCodes();
 
+    onStage?.call(ApkParseStage.done);
     return meta;
   }
 
