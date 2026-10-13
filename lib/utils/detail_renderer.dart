@@ -513,14 +513,35 @@ class DetailRenderer {
   ///
   /// [codeSign] 为 `null` 表示**没做**这项检查 —— 必须如实说「未执行」，
   /// 而不是显示成「无法确认」或干脆留空（留空会被读成「没问题」）。
-  static String iosCodeSign(IosCodeSignResult? codeSign, Translations t) {
+  ///
+  /// 输出自带表头，适合独立成段使用。详情页把表头放进了卡片标题，用的是
+  /// [iosCodeSignBody]。
+  static String iosCodeSign(IosCodeSignResult? codeSign, Translations t) =>
+      _iosCodeSign(codeSign, t, header: t.ios_info.codesign_section);
+
+  /// 同 [iosCodeSign]，但**不带**表头。
+  ///
+  /// 详情页把「codesign 验证」渲染成卡片标题，正文再重复一遍表头就会出现
+  /// 「codesign 验证   codesign 验证: 验证通过」这种叠字。
+  static String iosCodeSignBody(IosCodeSignResult? codeSign, Translations t) =>
+      _iosCodeSign(codeSign, t, header: null);
+
+  /// 两个入口的共用实现。
+  ///
+  /// [header] 为 `null` 表示调用方已经自己给出了表头。
+  static String _iosCodeSign(
+    IosCodeSignResult? codeSign,
+    Translations t, {
+    required String? header,
+  }) {
     if (codeSign == null) {
-      return '${t.ios_info.codesign_section}: ${t.ios_info.codesign_not_run}';
+      final reason = t.ios_info.codesign_not_run;
+      return header == null ? reason : '$header: $reason';
     }
 
-    final sb = StringBuffer()
-      ..writeln('${t.ios_info.codesign_section}: '
-          '${signatureStatusLabel(codeSign.status, t)}');
+    final sb = StringBuffer();
+    final status = signatureStatusLabel(codeSign.status, t);
+    sb.writeln(header == null ? status : '$header: $status');
 
     if (codeSign.status == SignatureStatus.toolUnavailable) {
       sb.writeln(t.signature.tool_hint);

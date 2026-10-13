@@ -29,7 +29,7 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
-import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
+import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -426,7 +426,23 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   ///
   /// 只渲染**确实拿到了数据**的项：每一项都先判断状态，读不到就说明为什么，
   /// 而不是留一个空值 —— 空值会被读成「这个包没有这项信息」。
-  List<Widget> _buildIosCards(FileState fileState, int textMaxLines) {
+  ///
+  /// 版式上刻意与 Android 侧分开，分三处：
+  /// - **分组**：Android 是一列平铺的卡片，iOS 按「文件 / 应用 / 容器与二进制 /
+  ///   签名 / 校验」分组，用户不必逐张读卡片标题才知道自己在看哪一类；
+  /// - **Hero 卡片**：图标、平台徽标、应用名、Bundle ID、版本收在第一张卡里，
+  ///   而不是像 Android 那样把图标单独放在右侧一栏；
+  /// - **字体与配色**：标识符（Bundle ID、可执行文件名、哈希）用等宽字体，
+  ///   强调色用固定的 iOS 系统蓝。
+  ///
+  /// 三者里只有第三项依赖视觉，前两项是结构差异 —— 主题色被改成和 iOS 蓝
+  /// 一样时，两页仍然分得开。
+  ///
+  /// 这里**不设 `maxLines`**：`SelectableText` 的 `maxLines` 是裁剪而不是
+  /// 溢出滚动（超出的行根本不会被绘制），而这一页上超过六行的正是签名、
+  /// 容器清单、诊断这些一旦截断就等于在隐藏信息的内容。Android 侧的
+  /// 「最大行数」是用户可调设置，行为保持不变。
+  List<Widget> _buildIosCards(FileState fileState) {
     // 分三层取值，含义不同，不能混：
     // - [parsed] 是 iOS 侧的结构化解析结果（可能有，也可能还没跑完）；
     // - [analysis] 是统一模型（解析结果 + 哈希 + 签名汇合后的派生值）；
@@ -436,15 +452,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final ios = result?.ios;
     final cards = <Widget>[];
 
-    Widget card(String title, String value, {Widget? end, int? maxLines}) =>
-        Card(
-          child: TitleValueLayout(
-            title: title,
-            value: value,
-            end: end,
-            maxLines: maxLines ?? textMaxLines,
-            selectable: !fileState.isComputingHash,
-          ),
+    Widget section(String title, IconData icon) =>
+        IosSectionHeader(title: title, icon: icon);
+
+    Widget card(String title, String value,
+            {Widget? end, bool monospace = false}) =>
+        IosInfoCard(
+          title: title,
+          value: value,
+          end: end,
+          monospace: monospace,
         );
 
     /// 把一个 [FieldValue] 渲染成「值」或「为什么没有值」。
@@ -462,6 +479,29 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           : '[${value.status.name}] $reason';
     }
 
+    // Hero 卡片：平台徽标 + 图标 + 应用名 + Bundle ID + 版本。
+    //
+    // 打开一个 IPA，用户最先要确认的就是「这是哪个应用、哪个版本」，这四项
+    // 应该在第一屏一次看全，而不是散在六张卡片里靠滚动拼起来。
+    // 图标的诊断（候选清单、未解析原因）也挂在同一张卡的底部通栏。
+    cards.add(IosHeroCard(
+      icon: ios?.icon,
+      badge: t.ios_info.platform_badge,
+      name: ios == null ? '-' : field(ios.preferredName),
+      bundleId: ios == null ? '-' : field(ios.bundleIdentifier),
+      bundleIdEnd: ios == null
+          ? null
+          : _buildCopyButton(
+              ios.bundleIdentifier.value, ios.bundleIdentifier.hasValue),
+      version: ios == null
+          ? '-'
+          // 版本名与构建号可能各自读不到，不能简单拼接 —— 缺失的那一半要
+          // 带上状态，否则会拼出一个只剩括号的串。
+          : '${field(ios.shortVersion)} (${field(ios.buildNumber)})',
+    ));
+
+    // ---- 文件信息 ----
+    cards.add(section(t.ios_info.group_file, Icons.insert_drive_file_outlined));
     cards.add(card(t.file_info.file, fileState.filePath ?? "",
         end: _buildFileActionMenu()));
     cards.add(card(
@@ -471,15 +511,23 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           : "",
     ));
 
-    // 平台标识 —— 用户第一眼要能确认「这是个 iOS 包」。
-    cards.add(card(t.ios_info.section, t.ios_info.platform_badge));
-
     if (parsed == null || result == null || ios == null) {
       // 解析还没完成或整体失败：只说明原因，不渲染一堆空卡片 ——
       // 一排空值会被读成「这个包什么都没有」。
+      cards.add(section(t.ios_info.group_app, Icons.phone_iphone));
       cards.add(card(t.ios_info.section, t.ios_info.unavailable));
       return cards;
     }
+
+    // 容器里没有 `Payload/*.app` 时，Hero 卡片会是一排「-」，后面每一组也都是
+    // 空的 —— 而「-」的含义是「文件里没有这一项」，与「我们没找到应用」是
+    // 两件事。所以要在最前面说清楚原因，而不是让用户对着一页短横线猜。
+    if (ios.mainApp == null) {
+      cards.add(card(t.ios_info.unavailable, t.ios_info.no_main_app));
+    }
+
+    // ---- 应用信息 ----
+    cards.add(section(t.ios_info.group_app, Icons.phone_iphone));
 
     if (ios.hasMultipleMainApps) {
       cards.add(card(
@@ -490,53 +538,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ));
     }
 
-    // 图标：数据来自解析器按 Info.plist 点名的文件定位的结果，
-    // 找不到或解不开都会说明原因，而不是留一个空白框。
-    cards.add(Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              t.ios_info.icon_section,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
-            ),
-            const SizedBox(height: 8),
-            IosIconPreview(resolution: ios.icon),
-          ],
-        ),
-      ),
-    ));
-
-    cards.add(card(t.apk_info.app_name, field(ios.preferredName)));
-    cards.add(card(t.ios_info.bundle_id, field(ios.bundleIdentifier),
-        end: _buildCopyButton(
-            ios.bundleIdentifier.value, ios.bundleIdentifier.hasValue)));
-    cards.add(card(t.apk_info.version_name, field(ios.shortVersion)));
-    cards.add(card(t.apk_info.version_code, field(ios.buildNumber)));
     cards.add(card(t.ios_info.minimum_os, field(ios.minimumOSVersion)));
     cards.add(card(
         t.ios_info.device_family,
         ios.deviceFamily.hasValue
             ? DetailRenderer.deviceFamily(ios.deviceFamily.value, t)
             : field(ios.deviceFamily)));
-    cards.add(card(t.ios_info.executable, field(ios.executableName)));
-
-    final executable = DetailRenderer.iosExecutable(ios.executable, t);
-    if (executable.isNotEmpty) {
-      cards.add(card(t.ios_info.binary_section, executable));
-    }
-
-    final container = DetailRenderer.iosContainer(ios.container, t);
-    if (container.isNotEmpty) {
-      cards.add(card(t.ios_info.container_section, container));
-    }
-
-    final nested = DetailRenderer.iosNestedBinaries(ios.nestedBinaries, t);
-    if (nested.isNotEmpty) {
-      cards.add(card(t.ios_info.nested_binaries, nested));
-    }
+    cards.add(card(t.ios_info.executable, field(ios.executableName),
+        monospace: true));
 
     if (ios.queriesSchemes.hasValue) {
       cards.add(card(
@@ -547,30 +556,62 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           ios.requiredDeviceCapabilities.value!.join('\n')));
     }
 
-    // 签名结论 —— 用与 Android 同一套四态文案。
-    final verdict = result.signatureVerdict;
+    // ---- 容器与二进制 ----
+    final executable = DetailRenderer.iosExecutable(ios.executable, t);
+    final container = DetailRenderer.iosContainer(ios.container, t);
+    final nested = DetailRenderer.iosNestedBinaries(ios.nestedBinaries, t);
+    if (executable.isNotEmpty || container.isNotEmpty || nested.isNotEmpty) {
+      cards.add(section(t.ios_info.group_container, Icons.folder_outlined));
+      if (executable.isNotEmpty) {
+        cards.add(card(t.ios_info.binary_section, executable));
+      }
+      if (container.isNotEmpty) {
+        cards.add(card(t.ios_info.container_section, container));
+      }
+      if (nested.isNotEmpty) {
+        cards.add(card(t.ios_info.nested_binaries, nested));
+      }
+    }
+
+    // ---- 签名与授权 ----
+    //
+    // 结论、材料、授权项、codesign 是四个不同的问题，原先挤在一张卡片里用
+    // 空行分隔，读起来是一整块文字。拆成两张：结论与材料一张，工具验证一张。
+    cards
+        .add(section(t.ios_info.group_signature, Icons.verified_user_outlined));
     cards.add(card(
-      t.apk_info.signature_info,
-      '${DetailRenderer.signatureVerdictLabel(verdict, t)}\n\n'
-      '${DetailRenderer.iosSignature(ios, t)}\n\n'
-      '${DetailRenderer.iosCodeSign(ios.codeSign, t)}',
+      // 卡片标题不能也叫「签名与授权」—— 那会和上面的分组标题重复成两行
+      // 一模一样的字。这一张装的是结论 + 材料 + 授权比对。
+      t.ios_info.signature_verdict,
+      '${DetailRenderer.signatureVerdictLabel(result.signatureVerdict, t)}\n\n'
+      '${DetailRenderer.iosSignature(ios, t)}',
+    ));
+    cards.add(card(
+      t.ios_info.codesign_section,
+      // 用不带表头的版本：表头已经在卡片标题里，正文再来一遍就成了
+      // 「codesign 验证   codesign 验证: 验证通过」。
+      DetailRenderer.iosCodeSignBody(ios.codeSign, t),
     ));
 
-    cards.add(
-      card(
-          t.file_info.sha256,
-          fileState.isComputingHash
-              ? t.file_info.computing_hash
-              : (fileState.sha256Hash ?? ''),
-          end: _buildCopyButton(
-              fileState.sha256Hash, fileState.sha256Hash != null),
-          maxLines: 2),
-    );
+    // ---- 文件校验 ----
+    cards.add(section(t.ios_info.group_integrity, Icons.fingerprint));
+    cards.add(card(
+      t.file_info.sha256,
+      fileState.isComputingHash
+          ? t.file_info.computing_hash
+          : (fileState.sha256Hash ?? ''),
+      end: _buildCopyButton(fileState.sha256Hash, fileState.sha256Hash != null),
+      monospace: true,
+    ));
     cards.add(card(t.file_info.md5, fileState.md5Hash ?? '',
-        end: _buildCopyButton(fileState.md5Hash, fileState.md5Hash != null)));
+        end: _buildCopyButton(fileState.md5Hash, fileState.md5Hash != null),
+        monospace: true));
     cards.add(card(t.file_info.sha1, fileState.sha1Hash ?? '',
-        end: _buildCopyButton(fileState.sha1Hash, fileState.sha1Hash != null)));
+        end: _buildCopyButton(fileState.sha1Hash, fileState.sha1Hash != null),
+        monospace: true));
 
+    // 解析诊断：单张卡片，不另起分组标题 —— 标题会和卡片标题重复成
+    // 「解析诊断  解析诊断」。
     final diagnostics = DetailRenderer.diagnostics(result.diagnostics, t);
     if (diagnostics.isNotEmpty) {
       cards.add(card(t.apk_info.diagnostics, diagnostics));
@@ -930,7 +971,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                       // `apkInfo?.x`，在 iOS 上会渲染成一排空值卡片，
                       // 看起来像「这个包什么都没有」，而不是「这里不适用」。
                       if (fileState.platform == PackagePlatform.ios) ...[
-                        ..._buildIosCards(fileState, textMaxLines),
+                        ..._buildIosCards(fileState),
                       ] else ...[
                         Card(
                             child: TitleValueLayout(

@@ -607,6 +607,54 @@ void main() {
       expect(text, contains('CMS'));
     });
 
+    test('不带表头的版本与带表头的版本只差表头那一行', () {
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verified,
+        toolExecuted: true,
+        exitCode: 0,
+        info: IosCodeSignInfo(
+          identifier: 'com.example.app',
+          teamIdentifier: 'ABCDE12345',
+        ),
+      );
+
+      final withHeader = DetailRenderer.iosCodeSign(result, t);
+      final body = DetailRenderer.iosCodeSignBody(result, t);
+
+      // 详情页把「codesign 验证」放进卡片标题，正文再带一遍表头就成了
+      // 「codesign 验证   codesign 验证: 验证通过」。
+      expect(withHeader, startsWith('${t.ios_info.codesign_section}: '));
+      expect(body, isNot(contains(t.ios_info.codesign_section)));
+      expect(body, startsWith(t.signature.status_verified));
+
+      // 去掉的**只能**是表头 —— 结论与细节一个都不能少。
+      expect(withHeader, endsWith(body));
+      expect(body, contains('com.example.app'));
+      expect(body, contains('ABCDE12345'));
+    });
+
+    test('不带表头的版本同样如实说「未执行」，且不为空串', () {
+      final body = DetailRenderer.iosCodeSignBody(null, t);
+
+      expect(body, contains(t.ios_info.codesign_not_run));
+      // 空串会被读成「没问题」—— 「没查」必须说出来。
+      expect(body, isNotEmpty);
+      expect(body, isNot(contains(t.signature.status_verified)));
+    });
+
+    test('验证失败时不带表头的版本仍然给出原始输出', () {
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verificationFailed,
+        toolExecuted: true,
+        exitCode: 3,
+        stderr: 'does not satisfy its designated Requirement',
+      );
+
+      final body = DetailRenderer.iosCodeSignBody(result, t);
+      expect(body, contains(t.signature.status_failed));
+      expect(body, contains('designated Requirement'));
+    });
+
     test('授权比对四态各有独立文案', () {
       final labels = {
         for (final verdict in IosAuthorizationVerdict.values)
