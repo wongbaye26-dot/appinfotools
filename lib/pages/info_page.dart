@@ -17,6 +17,7 @@ import 'package:apk_info_tool/providers/home_page_provider.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
@@ -1214,11 +1215,55 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             enabled: state.filePath != null),
         _buildMenuItem('text_info', Icons.text_snippet, t.apk_info.text_info,
             enabled: state.filePath != null && apkInfo != null),
+        // 只有真的拿到了分析结果才让点 —— 未实现/无数据的功能不得出现
+        // 伪可用按钮。
+        _buildMenuItem(
+            'export_report', Icons.description_outlined, t.report.export_action,
+            enabled: state.analysis != null),
         _buildMenuItem('close_file', Icons.close, t.open.close_file,
             enabled: state.filePath != null),
       ],
       onSelected: onMenuActionSelected,
     );
+  }
+
+  /// 导出解析报告。
+  ///
+  /// 报告里带**字段状态与来源**，以及「哪些检查没做」—— 那是它与界面截图的
+  /// 区别所在：截图看不出某个空白是「文件里没有」还是「我们没读出来」。
+  Future<void> _exportAnalysisReport() async {
+    final state = ref.read(currentFileStateProvider);
+    final analysis = state.analysis;
+    if (analysis == null) return;
+
+    try {
+      final now = DateTime.now();
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: t.report.export_action,
+        fileName: AnalysisReport.suggestedFileName(analysis, now),
+        type: FileType.custom,
+        allowedExtensions: ['md'],
+        lockParentWindow: true,
+      );
+      // 用户取消保存 —— 不是错误，不提示。
+      if (savePath == null) return;
+
+      await File(savePath).writeAsString(
+        AnalysisReport.render(analysis, t, generatedAt: now),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t.report.export_success)),
+        );
+      }
+    } catch (e) {
+      log.warning('_exportAnalysisReport: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t.report.export_failed(error: '$e'))),
+        );
+      }
+    }
   }
 
   // 显示重命名对话框
@@ -1645,6 +1690,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             ),
           );
         }
+        break;
+      case 'export_report':
+        await _exportAnalysisReport();
         break;
       case 'open_directory':
         final fileState = ref.read(currentFileStateProvider);
