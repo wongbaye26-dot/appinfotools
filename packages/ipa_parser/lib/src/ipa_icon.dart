@@ -198,7 +198,8 @@ class IpaIconResolver {
         }
         for (final path in matched) {
           if (!seenPaths.add(path)) continue;
-          final candidate = _buildCandidate(archive, source, path, diagnostics);
+          final candidate = _buildCandidate(
+              archive, source, info.bundle.path, path, diagnostics);
           if (candidate != null) candidates.add(candidate);
         }
       }
@@ -267,6 +268,7 @@ class IpaIconResolver {
   static IosIconCandidate? _buildCandidate(
     Archive archive,
     IosIconSource source,
+    String bundleRoot,
     String archivePath,
     List<AnalysisDiagnostic> diagnostics,
   ) {
@@ -298,7 +300,7 @@ class IpaIconResolver {
 
     return IosIconCandidate(
       source: source,
-      relativePath: archivePath,
+      relativePath: _relativeTo(bundleRoot, archivePath),
       archivePath: archivePath,
       size: entry.size,
       format: format,
@@ -306,6 +308,20 @@ class IpaIconResolver {
       pixelHeight: height,
       bytes: bytes,
     );
+  }
+
+  /// 去掉 bundle 根前缀，得到相对路径。
+  ///
+  /// 保留这个区分是有用的：用户看到的「图标文件名」应当是
+  /// `Icon@2x.png`，而排查时要用的归档条目名是
+  /// `Payload/Example.app/Icon@2x.png`。两者曾经被填成同一个值，
+  /// 于是字段名与内容对不上。
+  static String _relativeTo(String bundleRoot, String archivePath) {
+    final prefix = '$bundleRoot/';
+    if (archivePath.startsWith(prefix)) {
+      return archivePath.substring(prefix.length);
+    }
+    return archivePath;
   }
 
   /// 记录一个「图标在 Assets.car 里」的声明。

@@ -1,0 +1,356 @@
+import 'dart:typed_data';
+
+import 'package:analysis_model/analysis_model.dart';
+import 'package:archive/archive.dart';
+import 'package:ipa_parser/ipa_parser.dart';
+
+/// IPA 解析推进到的阶段。
+///
+/// 与 `ApkParseStage` 一样，**只报阶段、不报百分比**：各阶段耗时极不均匀
+/// （图标定位几乎是瞬时的，Mach-O 解析取决于可执行文件大小），百分比会是
+/// 编出来的。阶段由解析器在真正推进到该步时上报。
+enum IpaParseStage {
+  /// 打开 ZIP 容器。
+  openContainer,
+
+  /// 枚举 bundle（主应用 / 扩展 / Watch / 框架）。
+  container,
+
+  /// 解析 `Info.plist`。
+  infoPlist,
+
+  /// 定位图标资源。
+  icon,
+
+  /// 解析 Mach-O 可执行文件。
+  macho,
+
+  /// 读取签名材料与描述文件。
+  signature,
+
+  /// 完成。
+  done,
+}
+
+/// 一个 IPA 的解析结果（**不含**任何需要外部工具的部分）。
+///
+/// 全部字段都是普通数据，可以跨 isolate 传递 —— worker 与主 isolate 用的是
+/// 同一个类型，不存在两套模型。
+///
+/// 这里只装**静态**结果：签名材料「有什么」在这里，签名「是否有效」不在。
+/// 后者由 `codesign` 得出（见 `IosCodeSignAnalyzer`），刻意分开是因为
+/// 规范 5.5 要求两者不得混为一谈。
+class IpaAnalysis {
+  final IpaContainer container;
+
+  /// 主应用 bundle。没有 `Payload/*.app` 时为 `null`。
+  final IosBundle? mainApp;
+
+  /// 主应用的 `Info.plist` 字段。
+  final IpaInfoPlist? infoPlist;
+
+  /// 图标定位结果。
+  final IosIconResolution? icon;
+
+  /// 主可执行文件的 Mach-O 解析结果。
+  final MachOFile? executable;
+
+  /// 主可执行文件在归档中的条目名；取不到时为 `null`。
+  final String? executablePath;
+
+  /// 主应用的签名材料。
+  final IosSignatureMaterials? signature;
+
+  /// 应用声明与描述文件授权的比较。无法比较时为 `null`。
+  final IosAuthorizationComparison? authorization;
+
+  /// 嵌套 bundle 的 Mach-O（扩展 / Watch / 框架）。
+  ///
+  /// 只解析**顶层镜像**，不做递归展开：一个 IPA 里可能有几十个框架，
+  /// 全解析会让「打开一个包」变成一次重型操作，而用户关心的是主应用。
+  final List<IosNestedBinary> nestedBinaries;
+
+  final List<AnalysisDiagnostic> diagnostics;
+
+  const IpaAnalysis({
+    required this.container,
+    this.mainApp,
+    this.infoPlist,
+    this.icon,
+    this.executable,
+    this.executablePath,
+    this.signature,
+    this.authorization,
+    this.nestedBinaries = const [],
+    this.diagnostics = const [],
+  });
+
+  /// 全部诊断（含各子解析器的）。
+  ///
+  /// 汇总顺序固定为「容器 → Info.plist → 图标 → Mach-O → 签名材料」，
+  /// 与解析推进顺序一致，用户读到的顺序就是解析发生的顺序。
+  List<AnalysisDiagnostic> get allDiagnostics => [
+        ...diagnostics,
+        ...?infoPlist?.diagnostics,
+        ...?icon?.diagnostics,
+        ...?executable?.diagnostics,
+        for (final nested in nestedBinaries) ...?nested.macho?.diagnostics,
+        ...?signature?.diagnostics,
+      ];
+
+  bool get hasMainApp => mainApp != null;
+}
+
+/// 一个嵌套 bundle 里的 Mach-O 概览。
+class IosNestedBinary {
+  final String bundlePath;
+  final IosBundleKind kind;
+
+  /// 可执行文件在归档中的条目名。
+  final String path;
+
+  /// 解析结果；无法解析时为 `null`（原因见 [failure]）。
+  final MachOFile? macho;
+
+  /// 无法解析的原因。
+  final String? failure;
+
+  const IosNestedBinary({
+    required this.bundlePath,
+    required this.kind,
+    required this.path,
+    this.macho,
+    this.failure,
+  });
+
+  /// 全部架构名。
+  List<String> get architectures => [
+        for (final image in macho?.images ?? const <MachOImage>[])
+          image.architectureName,
+      ];
+
+  /// 无法解析的原因；成功时为 `null`。
+  String? get failureReason =>
+      failure ?? (macho == null ? 'not parsed' : null);
+
+  @override
+  String toString() => 'IosNestedBinary($path, ${architectures.join('/')})';
+}
+
+/// 对一个**已打开的** IPA 归档做静态解析。
+///
+/// 不解压到磁盘、不执行任何外部命令，因此这一层没有路径穿越面，也可以安全地
+/// 放进 worker isolate（`Isolate.immediate` 终止不会留下任何东西）。
+class IpaAnalysisReader {
+  IpaAnalysisReader._();
+
+  /// 解析嵌套 bundle 的 Mach-O 数量上限。
+  ///
+  /// 只影响展示用的清单；超过之后不再解析并记一条诊断，而不是把整个解析
+  /// 拖成几十秒。
+  static const int maxNestedBinaries = 24;
+
+  /// 单个 Mach-O 的体积上限（64 MiB）。
+  ///
+  /// 真实的 iOS 主可执行文件通常在几十 MB 以内；超过这个量级多半不是可执行
+  /// 文件，继续解析只会白占内存。
+  static const int maxMachOBytes = 64 * 1024 * 1024;
+
+  static IpaAnalysis analyze(
+    Archive archive, {
+    void Function(IpaParseStage)? onStage,
+  }) {
+    final diagnostics = <AnalysisDiagnostic>[];
+
+    onStage?.call(IpaParseStage.container);
+    final container = IpaContainerReader.read(archive);
+
+    if (!container.hasPayloadDirectory) {
+      diagnostics.add(
+        AnalysisDiagnostic.warning(
+          'ios.container.no_payload',
+          'the archive has no Payload/ directory; this is not a standard IPA',
+          source: FieldSource.zipDirectory,
+        ),
+      );
+    }
+    if (container.hasMultipleMainApps) {
+      // 不猜「哪个才是真的」—— 仅凭结构无法可靠判断，猜测只会掩盖异常。
+      diagnostics.add(
+        AnalysisDiagnostic.warning(
+          'ios.container.multiple_main_apps',
+          'the archive contains ${container.payloadApps.length} '
+              'Payload/*.app bundles: '
+              '${container.payloadApps.map((b) => b.path).join(', ')}',
+          source: FieldSource.zipDirectory,
+        ),
+      );
+    }
+
+    final mainApp = container.mainApp;
+    if (mainApp == null) {
+      diagnostics.add(
+        const AnalysisDiagnostic.error(
+          'ios.container.no_main_app',
+          'no Payload/*.app bundle was found',
+          source: FieldSource.zipDirectory,
+        ),
+      );
+      return IpaAnalysis(
+        container: container,
+        diagnostics: diagnostics,
+      );
+    }
+
+    onStage?.call(IpaParseStage.infoPlist);
+    final infoPlist = IpaInfoPlistReader.read(archive, mainApp);
+
+    onStage?.call(IpaParseStage.icon);
+    final icon = IpaIconResolver.resolve(archive, infoPlist);
+
+    onStage?.call(IpaParseStage.macho);
+    final executablePath = _executablePath(mainApp, infoPlist);
+    MachOFile? executable;
+    if (executablePath == null) {
+      diagnostics.add(
+        AnalysisDiagnostic.warning(
+          'ios.macho.no_executable_declared',
+          '${mainApp.path} does not declare a usable CFBundleExecutable',
+          source: FieldSource.infoPlist,
+        ),
+      );
+    } else {
+      final bytes = _readEntry(archive, executablePath, maxMachOBytes);
+      if (bytes == null) {
+        diagnostics.add(
+          AnalysisDiagnostic.warning(
+            'ios.macho.missing',
+            '$executablePath is not present or is too large to read',
+            source: FieldSource.zipDirectory,
+          ),
+        );
+      } else {
+        executable = MachOParser.parse(bytes);
+        if (!executable.isMachO) {
+          diagnostics.add(
+            AnalysisDiagnostic.warning(
+              'ios.macho.unparsable',
+              '$executablePath could not be parsed as Mach-O',
+              source: FieldSource.machO,
+            ),
+          );
+        }
+      }
+    }
+
+    final nestedBinaries = _readNestedBinaries(archive, container, mainApp);
+
+    onStage?.call(IpaParseStage.signature);
+    final signature = IpaSignatureMaterialReader.read(archive, mainApp);
+
+    // 只在**能可靠解析**时给出比对结论：缺任一侧就返回 incomparable，
+    // 而不是猜一个「大概匹配」。
+    final authorization = signature.profile.value == null
+        ? null
+        : compareIosAuthorization(
+            bundleIdentifier: infoPlist.bundleIdentifier,
+            profile: signature.profile.value!,
+          );
+
+    onStage?.call(IpaParseStage.done);
+
+    return IpaAnalysis(
+      container: container,
+      mainApp: mainApp,
+      infoPlist: infoPlist,
+      icon: icon,
+      executable: executable,
+      executablePath: executablePath,
+      signature: signature,
+      authorization: authorization,
+      nestedBinaries: nestedBinaries,
+      diagnostics: diagnostics,
+    );
+  }
+
+  /// 主可执行文件在归档里的路径。
+  ///
+  /// 由 `CFBundleExecutable` 决定，**不猜文件名**（猜「与 .app 同名」在真实
+  /// 应用里经常不成立）。取不到声明时返回 `null`。
+  static String? _executablePath(IosBundle bundle, IpaInfoPlist info) {
+    final name = info.executable.value;
+    if (name == null || name.isEmpty) return null;
+    // 声明里带路径分隔符是非法的，宁可拒绝也不去拼一个可疑路径。
+    if (name.contains('/') || name.contains('\\')) return null;
+    return '${bundle.path}/$name';
+  }
+
+  static List<IosNestedBinary> _readNestedBinaries(
+    Archive archive,
+    IpaContainer container,
+    IosBundle mainApp,
+  ) {
+    // 只列真正「装着代码」的 bundle 类型；`Payload/` 直属的其他 .app 已经
+    // 在主应用之外被容器层标记为 nestedApp，这里一并纳入。
+    const interesting = {
+      IosBundleKind.framework,
+      IosBundleKind.appExtension,
+      IosBundleKind.watchApp,
+      IosBundleKind.nestedApp,
+    };
+
+    final result = <IosNestedBinary>[];
+    for (final bundle in container.bundles) {
+      if (bundle.path == mainApp.path) continue;
+      if (!interesting.contains(bundle.kind)) continue;
+      if (result.length >= maxNestedBinaries) break;
+
+      final info = IpaInfoPlistReader.read(archive, bundle);
+      final path = _executablePath(bundle, info);
+      if (path == null) {
+        result.add(IosNestedBinary(
+          bundlePath: bundle.path,
+          kind: bundle.kind,
+          path: '',
+          failure: 'no usable CFBundleExecutable',
+        ));
+        continue;
+      }
+
+      final bytes = _readEntry(archive, path, maxMachOBytes);
+      if (bytes == null) {
+        result.add(IosNestedBinary(
+          bundlePath: bundle.path,
+          kind: bundle.kind,
+          path: path,
+          failure: 'entry missing or too large',
+        ));
+        continue;
+      }
+
+      final macho = MachOParser.parse(bytes);
+      result.add(IosNestedBinary(
+        bundlePath: bundle.path,
+        kind: bundle.kind,
+        path: path,
+        macho: macho.isMachO ? macho : null,
+        failure: macho.isMachO
+            ? null
+            : (macho.diagnostics.isEmpty
+                ? 'not a Mach-O'
+                : macho.diagnostics.first.message),
+      ));
+    }
+    return result;
+  }
+
+  /// 读一个条目，超过 [maxBytes] 时返回 `null`（不读、不分配）。
+  static Uint8List? _readEntry(Archive archive, String path, int maxBytes) {
+    final entry = archive.findFile(path);
+    if (entry == null) return null;
+    if (entry.size > maxBytes) return null;
+    final content = entry.content;
+    if (content.length > maxBytes) return null;
+    return content;
+  }
+}

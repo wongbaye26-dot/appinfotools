@@ -16,6 +16,13 @@ import 'package:path/path.dart' as path;
 class ZipHelper {
   Archive? _archive;
 
+  /// 已打开的归档；未打开或打开失败时为 `null`。
+  ///
+  /// 暴露出来是为了让 IPA 解析能在**已经过全部安全检查**的同一个归档上继续
+  /// 工作 —— 否则调用方只能自己再开一次，等于把 [open] 里那串安全判定
+  /// （魔数、结构完整性、解压预算）抄第二遍。
+  Archive? get archive => _archive;
+
   /// 打开 ZIP 文件，使用 InputFileStream 流式读取避免将整个文件加载到内存。
   ///
   /// 返回具体的失败原因而非 `bool`，调用方据此区分「不是归档」「归档损坏」
