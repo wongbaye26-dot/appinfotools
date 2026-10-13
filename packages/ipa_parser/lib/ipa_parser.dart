@@ -7,7 +7,9 @@
 //
 // 当前已实现：
 // - plist 解析（XML 与二进制 `bplist00`）
+// - IPA 容器结构解析（bundle 枚举、主应用定位、签名材料存在性）
 
+export 'src/ipa_container.dart';
 export 'src/plist/binary_plist_parser.dart';
 export 'src/plist/plist_parser.dart';
 export 'src/plist/plist_value.dart';
