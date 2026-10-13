@@ -90,6 +90,22 @@
     "parser_engine_aapt2": "aapt2 (外部工具, 相容性好)",
     "parser_engine_builtin": "內建 (Dart, 速度快)"
   },
+  "signature": {
+    "status_verified": "簽名驗證通過",
+    "status_failed": "簽名驗證失敗",
+    "status_tool_unavailable": "未驗證簽名（apksigner 不可用）",
+    "status_unknown": "簽名驗證結果未知",
+    "tool_hint": "需要安裝或設定 apksigner（Android SDK Build Tools）才能驗證簽名。這不代表簽名無效。",
+    "schemes": "已驗證的簽名方案",
+    "signer": "簽名者 #{index}",
+    "subject": "憑證 DN",
+    "sha256": "SHA-256 指紋",
+    "sha1": "SHA-1 指紋",
+    "key_algorithm": "金鑰演算法",
+    "key_size_bits": "{bits} 位",
+    "validity": "有效期限",
+    "diagnostics": "診斷資訊"
+  },
   "parse": {
     "signature_verify_failed": "簽名驗證失敗",
     "please_set_path": "請先設定 {name} 路徑",

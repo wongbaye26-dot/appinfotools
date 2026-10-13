@@ -714,36 +714,6 @@ String _generateTextInfo(apk_parser.ApkMeta meta) {
   return sb.toString();
 }
 
-Future<String> getSignatureInfo(String apkPath) async {
-  final apksigner = CommandTools.findApkSignerPath();
-  if (apksigner == null || apksigner.isEmpty) {
-    throw Exception(t.parse.please_set_path(name: "apksigner"));
-  }
-
-  try {
-    final result = await Process.run(
-      apksigner,
-      ['verify', '--print-certs', '--verbose', apkPath],
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    ).timeout(
-      const Duration(seconds: 120),
-      onTimeout: () {
-        throw TimeoutException('apksigner verify timeout');
-      },
-    );
-
-    if (result.exitCode == 0) {
-      return result.stdout.toString();
-    } else {
-      throw Exception('获取签名失败: ${result.stderr}');
-    }
-  } catch (e) {
-    log.warning('getSignatureInfo: 获取签名信息失败: $e');
-    rethrow;
-  }
-}
-
 void parseApkInfoFromOutput(String output, ApkInfo apkInfo) {
   apkInfo.originalText = output;
   final lines = output.split("\n");
@@ -804,7 +774,6 @@ class ApkInfo {
   List<String> nativeCodes = [];
 
   List<String> others = [];
-  String signatureInfo = "";
 
   // 文件哈希值
   String? md5Hash;
@@ -1427,7 +1396,7 @@ class ApkInfo {
 
   @override
   String toString() {
-    return 'ApkInfo{apkPath: $apkPath, apkSize: $apkSize, isXapk: $isXapk, archiveType: $archiveType, packageName: $packageName, versionCode: $versionCode, versionName: $versionName, platformBuildVersionName: $platformBuildVersionName, platformBuildVersionCode: $platformBuildVersionCode, compileSdkVersion: $compileSdkVersion, compileSdkVersionCodename: $compileSdkVersionCodename, sdkVersion: $sdkVersion, targetSdkVersion: $targetSdkVersion, label: $label, mainIcon: $mainIconPath, labels: $labels, usesPermissions: $usesPermissions, icons: $icons, application: $application, launchableActivity: $launchableActivity, userFeatures: $userFeatures, userFeaturesNotRequired: $userFeaturesNotRequired, userImpliedFeatures: $userImpliedFeatures, supportsScreens: $supportsScreens, locales: $locales, densities: $densities, supportsAnyDensity: $supportsAnyDensity, nativeCodes: $nativeCodes, others: $others, signatureInfo: $signatureInfo, xapkName: $xapkName, splitConfigs: $splitConfigs, splitApks: $splitApks, archiveApks: $archiveApks, obbFiles: $obbFiles, totalSize: $totalSize}';
+    return 'ApkInfo{apkPath: $apkPath, apkSize: $apkSize, isXapk: $isXapk, archiveType: $archiveType, packageName: $packageName, versionCode: $versionCode, versionName: $versionName, platformBuildVersionName: $platformBuildVersionName, platformBuildVersionCode: $platformBuildVersionCode, compileSdkVersion: $compileSdkVersion, compileSdkVersionCodename: $compileSdkVersionCodename, sdkVersion: $sdkVersion, targetSdkVersion: $targetSdkVersion, label: $label, mainIcon: $mainIconPath, labels: $labels, usesPermissions: $usesPermissions, icons: $icons, application: $application, launchableActivity: $launchableActivity, userFeatures: $userFeatures, userFeaturesNotRequired: $userFeaturesNotRequired, userImpliedFeatures: $userImpliedFeatures, supportsScreens: $supportsScreens, locales: $locales, densities: $densities, supportsAnyDensity: $supportsAnyDensity, nativeCodes: $nativeCodes, others: $others, xapkName: $xapkName, splitConfigs: $splitConfigs, splitApks: $splitApks, archiveApks: $archiveApks, obbFiles: $obbFiles, totalSize: $totalSize}';
   }
 
   /// 释放持有的 GPU 资源（dart:ui.Image）
@@ -1475,7 +1444,6 @@ class ApkInfo {
     supportsAnyDensity = null;
     nativeCodes.clear();
     others.clear();
-    signatureInfo = "";
     md5Hash = null;
     sha1Hash = null;
     xapkName = null;

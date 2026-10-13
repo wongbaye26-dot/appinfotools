@@ -90,6 +90,22 @@
     "parser_engine_aapt2": "aapt2 (外部ツール, 互換性良好)",
     "parser_engine_builtin": "内蔵 (Dart, 高速)"
   },
+  "signature": {
+    "status_verified": "署名を検証しました",
+    "status_failed": "署名の検証に失敗しました",
+    "status_tool_unavailable": "署名は未検証（apksigner が利用できません）",
+    "status_unknown": "署名の検証結果は不明です",
+    "tool_hint": "署名を検証するには apksigner（Android SDK Build Tools）のインストールまたは設定が必要です。これは署名が無効であることを意味しません。",
+    "schemes": "検証済みの署名方式",
+    "signer": "署名者 #{index}",
+    "subject": "証明書 DN",
+    "sha256": "SHA-256 フィンガープリント",
+    "sha1": "SHA-1 フィンガープリント",
+    "key_algorithm": "鍵アルゴリズム",
+    "key_size_bits": "{bits} ビット",
+    "validity": "有効期間",
+    "diagnostics": "診断情報"
+  },
   "parse": {
     "signature_verify_failed": "署名検証失敗",
     "please_set_path": "{name}のパスを先に設定してください",

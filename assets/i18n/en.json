@@ -83,6 +83,22 @@
     "parser_engine_aapt2": "aapt2 (External, Better Compatibility)",
     "parser_engine_builtin": "Built-in (Dart, Faster)"
   },
+  "signature": {
+    "status_verified": "Signature verified",
+    "status_failed": "Signature verification failed",
+    "status_tool_unavailable": "Signature not verified (apksigner unavailable)",
+    "status_unknown": "Signature verification result unknown",
+    "tool_hint": "apksigner (Android SDK Build Tools) must be installed or configured to verify signatures. This does not mean the signature is invalid.",
+    "schemes": "Verified schemes",
+    "signer": "Signer #{index}",
+    "subject": "Certificate DN",
+    "sha256": "SHA-256 fingerprint",
+    "sha1": "SHA-1 fingerprint",
+    "key_algorithm": "Key algorithm",
+    "key_size_bits": "{bits} bits",
+    "validity": "Validity",
+    "diagnostics": "Diagnostics"
+  },
   "parse": {
     "signature_verify_failed": "Signature verification failed",
     "please_set_path": "Please set the {name} path first",

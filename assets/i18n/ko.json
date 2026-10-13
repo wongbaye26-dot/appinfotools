@@ -90,6 +90,22 @@
     "parser_engine_aapt2": "aapt2 (외부 도구, 호환성 우수)",
     "parser_engine_builtin": "내장 (Dart, 빠름)"
   },
+  "signature": {
+    "status_verified": "서명이 검증되었습니다",
+    "status_failed": "서명 검증에 실패했습니다",
+    "status_tool_unavailable": "서명 미검증 (apksigner 사용 불가)",
+    "status_unknown": "서명 검증 결과를 알 수 없습니다",
+    "tool_hint": "서명을 검증하려면 apksigner(Android SDK Build Tools)를 설치하거나 설정해야 합니다. 서명이 유효하지 않다는 뜻은 아닙니다.",
+    "schemes": "검증된 서명 방식",
+    "signer": "서명자 #{index}",
+    "subject": "인증서 DN",
+    "sha256": "SHA-256 지문",
+    "sha1": "SHA-1 지문",
+    "key_algorithm": "키 알고리즘",
+    "key_size_bits": "{bits}비트",
+    "validity": "유효 기간",
+    "diagnostics": "진단 정보"
+  },
   "parse": {
     "signature_verify_failed": "서명 확인 실패",
     "please_set_path": "{name} 경로를 먼저 설정하세요",

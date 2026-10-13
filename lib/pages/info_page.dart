@@ -16,6 +16,7 @@ import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
+import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:apk_parser/apk_parser.dart' show ArchiveOpenResult;
@@ -98,6 +99,73 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     };
   }
 
+  /// 签名状态的本地化标签。
+  ///
+  /// 关键在于**不能把「工具不可用」说成「验证失败」**—— 那会把没装
+  /// Android SDK 的机器误报成恶意应用；同样也不能把「结果未知」说成「通过」，
+  /// 那会让用户以为已经验证过了。
+  String _signatureStatusLabel(SignatureStatus status) {
+    return switch (status) {
+      SignatureStatus.verified => t.signature.status_verified,
+      SignatureStatus.verificationFailed => t.signature.status_failed,
+      SignatureStatus.toolUnavailable => t.signature.status_tool_unavailable,
+      SignatureStatus.unknown => t.signature.status_unknown,
+    };
+  }
+
+  /// 把签名分析结果渲染为详情页展示的多行文本。
+  String _renderSignature(SignatureAnalysis? analysis) {
+    if (analysis == null) return '';
+
+    final sb = StringBuffer()..writeln(_signatureStatusLabel(analysis.status));
+
+    if (analysis.status == SignatureStatus.toolUnavailable) {
+      sb.writeln(t.signature.tool_hint);
+    }
+
+    if (analysis.verifiedSchemes.isNotEmpty) {
+      final schemes = analysis.verifiedSchemes.toList()..sort();
+      sb.writeln('${t.signature.schemes}: ${schemes.join(', ')}');
+    }
+
+    for (final signer in analysis.signers) {
+      if (signer.isEmpty) continue;
+      sb.writeln('');
+      sb.writeln(t.signature.signer(index: signer.index));
+      if (signer.subjectDn != null) {
+        sb.writeln('  ${t.signature.subject}: ${signer.subjectDn}');
+      }
+      if (signer.sha256Digest != null) {
+        sb.writeln('  ${t.signature.sha256}: ${signer.sha256Digest}');
+      }
+      if (signer.sha1Digest != null) {
+        sb.writeln('  ${t.signature.sha1}: ${signer.sha1Digest}');
+      }
+      if (signer.keyAlgorithm != null) {
+        final bits = signer.keySizeBits;
+        final suffix =
+            bits == null ? '' : ' (${t.signature.key_size_bits(bits: bits)})';
+        sb.writeln(
+            '  ${t.signature.key_algorithm}: ${signer.keyAlgorithm}$suffix');
+      }
+      if (signer.validity != null) {
+        sb.writeln('  ${t.signature.validity}: ${signer.validity}');
+      }
+    }
+
+    // 没有结论时把工具的原始输出一并给出 —— 否则用户无从判断为什么没有结论。
+    if (!analysis.status.hasConclusiveResult) {
+      final raw = analysis.rawOutput;
+      if (raw.isNotEmpty) {
+        sb.writeln('');
+        sb.writeln('${t.signature.diagnostics}:');
+        sb.writeln(raw);
+      }
+    }
+
+    return sb.toString().trimRight();
+  }
+
   Future<void> loadApkInfo(String filePath) async {
     final gen = ++_loadGeneration;
     final apkInfoState = ref.read(currentApkInfoProvider.notifier);
@@ -147,27 +215,23 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     // 如果启用签名检查，异步获取签名信息（与 APK 解析并行）
     if (enableSignature && !isXapk) {
-      getSignatureInfo(filePath).then((signatureInfo) {
-        if (mounted) {
-          final currentState = ref.read(currentFileStateProvider);
-          if (_loadGeneration == gen) {
-            fileState.update(currentState.copyWith(
-              signatureInfo: signatureInfo,
+      SignatureAnalyzer.analyze(filePath).then((analysis) {
+        if (!mounted || _loadGeneration != gen) return;
+        fileState.update(ref.read(currentFileStateProvider).copyWith(
+              signature: analysis,
               isComputingSignature: false,
             ));
-          }
-        }
       }).catchError((e) {
-        log.warning('loadApkInfo: failed to get signature: $e');
-        if (mounted) {
-          final currentState = ref.read(currentFileStateProvider);
-          if (_loadGeneration == gen) {
-            fileState.update(currentState.copyWith(
-              signatureInfo: "${t.parse.signature_verify_failed}: $e",
+        // analyze 内部已兜住各类失败，这里只防未捕获的异步错误。
+        log.warning('loadApkInfo: signature analysis failed: $e');
+        if (!mounted || _loadGeneration != gen) return;
+        fileState.update(ref.read(currentFileStateProvider).copyWith(
+              signature: SignatureAnalysis(
+                status: SignatureStatus.unknown,
+                error: '$e',
+              ),
               isComputingSignature: false,
             ));
-          }
-        }
       });
     }
 
@@ -695,7 +759,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                           title: t.apk_info.signature_info,
                           value: fileState.isComputingSignature
                               ? t.file_info.computing_hash
-                              : (fileState.signatureInfo ?? ""),
+                              : _renderSignature(fileState.signature),
                           minLines: 1,
                           maxLines: textMaxLines,
                           selectable: !fileState.isComputingSignature,

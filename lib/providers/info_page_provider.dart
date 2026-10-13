@@ -1,4 +1,5 @@
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'info_page_provider.g.dart';
@@ -59,7 +60,12 @@ class FileState {
   final String? md5Hash;
   final String? sha1Hash;
   final bool isComputingHash;
-  final String? signatureInfo;
+
+  /// 签名分析结果。`null` 表示尚未完成，或本次未启用签名检查。
+  ///
+  /// 存结构化结果而不是一个字符串：验证通过 / 验证失败 / 工具不可用 /
+  /// 结果未知这四态对用户的含义完全不同，压成一个字符串就没法区分了。
+  final SignatureAnalysis? signature;
   final bool isComputingSignature;
 
   FileState({
@@ -69,7 +75,7 @@ class FileState {
     this.md5Hash,
     this.sha1Hash,
     this.isComputingHash = false,
-    this.signatureInfo,
+    this.signature,
     this.isComputingSignature = false,
   });
 
@@ -80,7 +86,7 @@ class FileState {
     String? md5Hash,
     String? sha1Hash,
     bool? isComputingHash,
-    String? signatureInfo,
+    SignatureAnalysis? signature,
     bool? isComputingSignature,
   }) {
     return FileState(
@@ -90,7 +96,7 @@ class FileState {
       md5Hash: md5Hash ?? this.md5Hash,
       sha1Hash: sha1Hash ?? this.sha1Hash,
       isComputingHash: isComputingHash ?? this.isComputingHash,
-      signatureInfo: signatureInfo ?? this.signatureInfo,
+      signature: signature ?? this.signature,
       isComputingSignature: isComputingSignature ?? this.isComputingSignature,
     );
   }
