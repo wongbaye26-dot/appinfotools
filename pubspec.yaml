@@ -44,6 +44,8 @@ dependencies:
     path: packages/apk_parser
   archive_safety:
     path: packages/archive_safety
+  ipa_parser:
+    path: packages/ipa_parser
 
 dev_dependencies:
   flutter_test:

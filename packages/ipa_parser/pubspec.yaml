@@ -1,0 +1,20 @@
+name: ipa_parser
+description: Pure Dart IPA parser - reads iOS .ipa containers, Info.plist, Mach-O executables and signature materials.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  archive:
+    git:
+      url: https://github.com/huanfeng/archive.git
+      ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
+  archive_safety:
+    path: ../archive_safety
+  xml: ^6.5.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.24.0

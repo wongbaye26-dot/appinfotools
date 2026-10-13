@@ -28,7 +28,15 @@ jobs:
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Check formatting
-        run: dart format --set-exit-if-changed .
+        # 只检查项目**自己拥有**的文件。
+        #
+        # `lib/gen/` 与 `*.g.dart` / `*.freezed.dart` 由生成器排版，而生成器
+        # 用的 dart_style 与 SDK 的 `dart format` 风格并不一致（构造器初始化列表
+        # 的缩进、`=>` 的换行位置都不同），把它们纳入检查会让这一步永远失败。
+        #
+        # 生成物已被 .gitignore 排除，因此用 `git ls-files` 取文件列表即可精确
+        # 表达「只检查我们维护的代码」这个边界。
+        run: dart format --output=none --set-exit-if-changed $(git ls-files '*.dart')
 
       - name: Analyze
         run: flutter analyze --fatal-infos --fatal-warnings
