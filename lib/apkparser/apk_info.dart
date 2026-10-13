@@ -254,6 +254,21 @@ String? _findBaseApkEntry(List<String> apkEntries) {
   return apkEntries.first;
 }
 
+/// 归档容器层就打开失败，携带可供 UI 展示的具体原因。
+///
+/// 这里刻意抛异常而不是返回 `null`：`null` 会让「不是归档」「归档损坏」
+/// 「命中解压预算」「IO 失败」四种情况全部退化成同一句「解析失败」，
+/// 既掩盖真实原因，也让安全拒绝（解压预算）无法被单独呈现。
+class ApkOpenException implements Exception {
+  final apk_parser.ArchiveOpenResult result;
+  final String filePath;
+
+  ApkOpenException(this.result, this.filePath);
+
+  @override
+  String toString() => 'ApkOpenException($filePath): ${result.description}';
+}
+
 Future<ApkInfo?> getApkInfo(String apk) async {
   log.info("getApkInfo: apk=[$apk] start");
   final apkInfo = ApkInfo();
@@ -302,7 +317,7 @@ Future<ApkInfo?> getApkInfo(String apk) async {
       if (!openResult.isOk) {
         log.warning(
             "getApkInfo: failed to open XAPK file: ${openResult.description}");
-        return null;
+        throw ApkOpenException(openResult, apk);
       }
       zipOpenMs = zipOpenSw.elapsedMilliseconds;
 
@@ -517,7 +532,7 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
     if (!openResult.isOk) {
       log.warning(
           "_getApkInfoBuiltin: failed to open APK: ${openResult.description}");
-      return null;
+      throw ApkOpenException(openResult, apk);
     }
     final openMs = phaseSw.elapsedMilliseconds;
 
@@ -561,6 +576,9 @@ Future<ApkInfo?> _getApkInfoBuiltin(String apk, ApkInfo apkInfo) async {
         " | icon=${iconMs}ms");
 
     return apkInfo;
+  } on ApkOpenException {
+    // 容器层失败的具体原因必须原样透出，不能被下面的兜底 catch 吞掉。
+    rethrow;
   } catch (e, stackTrace) {
     log.warning("_getApkInfoBuiltin: error=$e\n$stackTrace");
     return null;

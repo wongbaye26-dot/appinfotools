@@ -89,7 +89,11 @@
     "parsing": "Parsing...",
     "parse_apk": "Parse APK Info",
     "parse_timeout": "Parse timeout, file may be too large",
-    "parse_apk_info_fail": "Failed to parse APK information!"
+    "parse_apk_info_fail": "Failed to parse APK information!",
+    "open_failure_not_archive": "Not a valid archive file",
+    "open_failure_corrupt": "The archive is damaged and cannot be read",
+    "open_failure_budget": "Refused to open: the archive exceeds the safe decompression limit",
+    "open_failure_io": "Cannot read the file"
   },
   "open": {
     "open_apk": "Open APK/XAPK/APKM/APKS",

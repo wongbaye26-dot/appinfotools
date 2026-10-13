@@ -18,6 +18,7 @@ import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
+import 'package:apk_parser/apk_parser.dart' show ArchiveOpenResult;
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   String getSdkVersionText(int? sdkVersion) {
     if (sdkVersion == null) return "";
     return "$sdkVersion (${AndroidVersion.getAndroidVersion(sdkVersion)})";
+  }
+
+  /// 把容器打开失败的原因映射为可展示文案。
+  ///
+  /// 这四种原因对用户的含义完全不同，不能统一退化成「解析失败」；
+  /// 其中 [ArchiveOpenResult.resourceBudgetExceeded] 是**安全拒绝**，
+  /// 必须让用户看到真实原因。
+  String _describeOpenFailure(ArchiveOpenResult result) {
+    return switch (result) {
+      ArchiveOpenResult.notArchive => t.parse.open_failure_not_archive,
+      ArchiveOpenResult.corrupt => t.parse.open_failure_corrupt,
+      ArchiveOpenResult.resourceBudgetExceeded => t.parse.open_failure_budget,
+      ArchiveOpenResult.ioError => t.parse.open_failure_io,
+      ArchiveOpenResult.ok => t.parse.parse_apk_info_fail,
+    };
   }
 
   Future<void> loadApkInfo(String filePath) async {
@@ -176,7 +192,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     } catch (e) {
       log.warning('loadApkInfo: $e');
       if (mounted) {
-        final message = e.toString().replaceFirst('Exception: ', '');
+        final message = e is ApkOpenException
+            ? _describeOpenFailure(e.result)
+            : e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
       }

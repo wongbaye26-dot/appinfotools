@@ -96,7 +96,11 @@
     "parse_apk": "APK情報を解析",
     "parsing": "解析中...",
     "parse_timeout": "解析タイムアウト、ファイルが大きすぎる可能性があります",
-    "parse_apk_info_fail": "APK情報の解析に失敗しました!"
+    "parse_apk_info_fail": "APK情報の解析に失敗しました!",
+    "open_failure_not_archive": "有効なアーカイブファイルではありません",
+    "open_failure_corrupt": "アーカイブが破損しているため読み取れません",
+    "open_failure_budget": "安全な解凍上限を超えるため開くことを拒否しました",
+    "open_failure_io": "ファイルを読み取れません"
   },
   "file_info": {
     "file": "ファイル",

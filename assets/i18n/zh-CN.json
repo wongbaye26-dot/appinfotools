@@ -96,7 +96,11 @@
     "parse_apk": "解析APK信息",
     "parsing": "正在解析中...",
     "parse_timeout": "解析超时,文件可能过大",
-    "parse_apk_info_fail": "解析APK信息失败!"
+    "parse_apk_info_fail": "解析APK信息失败!",
+    "open_failure_not_archive": "不是有效的归档文件",
+    "open_failure_corrupt": "归档已损坏，无法读取",
+    "open_failure_budget": "已拒绝打开：归档超出安全解压上限",
+    "open_failure_io": "无法读取该文件"
   },
   "file_info": {
     "file": "文件",
