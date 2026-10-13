@@ -88,9 +88,22 @@ CocoaPods 当成错误，只在缺少时打印说明。
 sudo gem install cocoapods      # 权限受限时：brew install cocoapods
 ```
 
-**注意**：CocoaPods 需要 Ruby >= 3.1，而 macOS 自带的系统 Ruby 是 2.6 ——
-在系统 Ruby 上装不上（`securerandom` 等依赖会拒绝安装；即使钉住版本装到
-1.16.2，运行时也会因 `activesupport` 报 `uninitialized constant Logger` 而失败）。
+**先别急着装 CocoaPods。** 报「plugins do not support Swift Package Manager」
+时，正确的第一步是**升级那个插件**：
+
+```sh
+flutter pub upgrade <包名>
+flutter pub get --enforce-lockfile
+```
+
+本项目实测踩过一次：`screen_retriever_macos`（`window_manager` 的传递依赖）
+锁在 0.2.0 时不支持 SPM，而 pub.dev 的 changelog 写着 `0.2.1  Add Swift Package
+Manager support.` —— 升到 0.2.2 后所有插件都支持 SPM，**完全不需要 CocoaPods**。
+
+只有升级也解决不了时才装 CocoaPods。**它需要 Ruby >= 3.1，而 macOS 自带的是
+2.6**：在系统 Ruby 上装不上（`securerandom` 等依赖会拒绝安装；即使逐个钉住
+版本装到 1.16.2，运行时也会因 `activesupport` 报
+`uninitialized constant ActiveSupport::LoggerThreadSafeLevel::Logger` 而失败）。
 需要先有 Ruby 3（`brew install ruby` 或 rbenv）。
 
 ## 5. 如果要正式分发
