@@ -21,7 +21,7 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: HEAD
+      ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
       resolved-ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
       url: "https://github.com/huanfeng/archive.git"
     source: git

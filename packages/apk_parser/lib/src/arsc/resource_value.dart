@@ -1,3 +1,9 @@
+// ignore_for_file: constant_identifier_names
+//
+// 这些常量名刻意对齐 Android 平台 `Res_value` 的规范命名
+// （AOSP: frameworks/base/libs/androidfw/include/androidfw/ResourceTypes.h），
+// 以便与 AOSP 源码逐项对照。改成 lowerCamelCase 会破坏这种可核对性。
+
 import 'dart:typed_data';
 import '../byte_data_reader.dart';
 

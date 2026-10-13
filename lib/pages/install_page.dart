@@ -1,7 +1,6 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/pages/pages.dart';
 import 'package:apk_info_tool/providers/home_page_provider.dart';
-import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

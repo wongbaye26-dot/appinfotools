@@ -1,3 +1,8 @@
+// ignore_for_file: avoid_print
+//
+// 这是开发者用的命令行工具，stdout 就是它的接口。
+// `avoid_print` 面向应用代码，对 CLI 脚本属误报，故整文件豁免。
+
 import 'dart:io';
 import 'package:apk_parser/apk_parser.dart';
 

@@ -300,7 +300,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -549,7 +549,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
               color: Color(themeColor),
               shape: BoxShape.circle,
               border: Border.all(
-                color: Theme.of(context).dividerColor.withOpacity(0.2),
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
                 width: 1,
               ),
             ),
@@ -665,7 +665,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -754,7 +754,6 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
   bool _downloading = false;
   String _installDir = '';
   String _installDirDisplay = '';
-  bool _isCustomDirSelected = false;
   double? _platformProgress;
   double? _buildProgress;
 
@@ -770,22 +769,18 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
     if (configDir.isEmpty) {
       _installDir = ToolPaths.installBinDir;
       _installDirDisplay = ToolPaths.toRelativeDownloadDir(_installDir);
-      _isCustomDirSelected = false;
     } else if (path.isAbsolute(configDir)) {
       final defaultDir = ToolPaths.installBinDir;
       if (path.normalize(configDir) == path.normalize(defaultDir)) {
         _installDir = defaultDir;
         _installDirDisplay = ToolPaths.toRelativeDownloadDir(defaultDir);
-        _isCustomDirSelected = false;
       } else {
         _installDir = configDir;
         _installDirDisplay = configDir;
-        _isCustomDirSelected = true;
       }
     } else {
       _installDir = ToolPaths.resolveDownloadDir(configDir);
       _installDirDisplay = configDir;
-      _isCustomDirSelected = false;
     }
     _installDirController.text = _installDirDisplay;
   }
@@ -805,7 +800,6 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
         _installDir = result;
         _installDirDisplay = result;
         _installDirController.text = result;
-        _isCustomDirSelected = true;
       });
       await Config.downloadDir.updateValue(_installDirDisplay);
     }
@@ -817,7 +811,6 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
       _installDir = ToolPaths.installBinDir;
       _installDirDisplay = relative;
       _installDirController.text = relative;
-      _isCustomDirSelected = false;
     });
     Config.downloadDir.updateValue(_installDirDisplay);
   }

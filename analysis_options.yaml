@@ -34,5 +34,16 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
-  plugins:
-    - custom_lint
+
+# 分析器插件（Dart 新体系）。
+#
+# 原先这里是 `analyzer.plugins: [custom_lint]`。那套写法已被 Dart 废弃并将
+# 在后续版本移除，而且 `custom_lint` 早已不在本项目的依赖图里
+# （`riverpod_lint` 3.1.0 起改用 `analysis_server_plugin`），所以那段配置
+# 实际是死的：既不生效，又持续产生 analysis_options_deprecated_plugins 告警。
+#
+# 新机制要求插件声明在顶层 `plugins:` 下。插件定义的 lint 规则默认关闭，
+# 需要时在 plugins.<name>.diagnostics 下逐条开启；此处暂不开启任何规则，
+# 因此不会引入新的诊断。
+plugins:
+  riverpod_lint: ^3.1.0

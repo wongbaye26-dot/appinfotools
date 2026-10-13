@@ -17,13 +17,9 @@ class ManifestParser {
 
     // 混淆 APK 可能无法通过属性名找到 package，
     // 启发式查找：在 manifest 属性中寻找类似包名的字符串值
-    if (meta.packageName == null) {
-      meta.packageName = _guessPackageName(manifest);
-    }
+    meta.packageName ??= _guessPackageName(manifest);
     // 混淆 APK: versionName 可能被藏匿在 ns 字段中
-    if (meta.versionName == null) {
-      meta.versionName = _guessVersionName(manifest);
-    }
+    meta.versionName ??= _guessVersionName(manifest);
 
     meta.compileSdkVersion =
         _parseInt(manifest.attributes['compileSdkVersion']);
@@ -99,9 +95,7 @@ class ManifestParser {
       meta.applicationIcon = application.attributes['icon'];
 
       // 混淆 APK: name/label 可能无法通过标准属性名找到
-      if (meta.applicationName == null) {
-        meta.applicationName = _guessClassName(application);
-      }
+      meta.applicationName ??= _guessClassName(application);
 
       for (final activity in application.children) {
         if (activity.name != 'activity' && activity.name != 'activity-alias') {
@@ -110,9 +104,7 @@ class ManifestParser {
         if (_isLaunchableActivity(activity)) {
           String? activityName = activity.attributes['name'];
           // 混淆 APK: activity name 可能在非标准属性中
-          if (activityName == null) {
-            activityName = _guessClassName(activity);
-          }
+          activityName ??= _guessClassName(activity);
           meta.launchableActivities.add(ActivityInfo(
             name: activityName,
             label: activity.attributes['label'],

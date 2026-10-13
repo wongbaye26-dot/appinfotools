@@ -37,8 +37,10 @@ class ThemeManager extends Notifier<ThemeState> {
   ThemeState build() => ThemeState(themeColor: Config.themeColor.value);
 
   void updateThemeColor(Color color) {
-    state = ThemeState(themeColor: color.value);
-    Config.themeColor.updateValue(color.value);
+    // `Color.value` 已废弃（Flutter 3.27+），`toARGB32()` 返回等值的 int。
+    final argb = color.toARGB32();
+    state = ThemeState(themeColor: argb);
+    Config.themeColor.updateValue(argb);
   }
 }
 

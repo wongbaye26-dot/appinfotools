@@ -8,13 +8,11 @@ import 'package:path/path.dart' as path;
 
 class ZipHelper {
   Archive? _archive;
-  String? _filePath;
 
   /// 打开 ZIP 文件，使用 InputFileStream 流式读取避免将整个文件加载到内存
   Future<bool> open(String filePath) async {
     InputFileStream? inputStream;
     try {
-      _filePath = filePath;
       inputStream = InputFileStream(filePath);
       _archive = ZipDecoder().decodeStream(inputStream);
       if (_isZipBomb(_archive!)) {
@@ -33,7 +31,7 @@ class ZipHelper {
   Future<Uint8List?> readFileContent(String fileName) async {
     try {
       final file = _archive?.findFile(fileName);
-      return file?.content as Uint8List?;
+      return file?.content;
     } catch (e) {
       log.severe('Failed to read file content: $e');
       return null;
@@ -51,8 +49,6 @@ class ZipHelper {
             name.toLowerCase().endsWith(lowerExtension))
         .toList();
   }
-
-  String _safeJoin(String root, String entry) => ZipGuard.safeJoin(root, entry);
 
   // ZIP bomb protection
   bool _isZipBomb(Archive archive) => ZipGuard.isBomb(archive);
@@ -90,6 +86,5 @@ class ZipHelper {
   void close() {
     _archive?.clearSync();
     _archive = null;
-    _filePath = null;
   }
 }

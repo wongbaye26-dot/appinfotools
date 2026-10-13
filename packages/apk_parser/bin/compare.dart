@@ -1,3 +1,8 @@
+// ignore_for_file: avoid_print
+//
+// 这是开发者用的命令行差分工具（Dart 解析器 vs aapt2），stdout 就是它的接口。
+// `avoid_print` 面向应用代码，对 CLI 脚本属误报，故整文件豁免。
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:apk_parser/apk_parser.dart';
@@ -49,9 +54,9 @@ void main(List<String> args) async {
   for (var i = 0; i < apkFiles.length; i++) {
     final file = apkFiles[i];
     final fileName = file.uri.pathSegments.last;
-    print('${"=" * 60}');
+    print('=' * 60);
     print('[${i + 1}/${apkFiles.length}] $fileName');
-    print('${"=" * 60}');
+    print('=' * 60);
 
     // Dart parse
     final dartSw = Stopwatch()..start();
@@ -134,7 +139,7 @@ void main(List<String> args) async {
   }
 
   // Summary
-  print('${"=" * 60}');
+  print('=' * 60);
   print('Summary: ${apkFiles.length} APKs tested');
   print('  Pass: $passCount  Fail: $failCount  Skip: $skipCount');
   if (totalDartMs > 0 && totalAapt2Ms > 0) {

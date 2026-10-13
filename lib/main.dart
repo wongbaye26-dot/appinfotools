@@ -55,13 +55,17 @@ void main(List<String> arguments) async {
 
   // 配置写入有 100ms 防抖，应用失焦/退出时若不主动 flush，
   // 最后一次修改会随进程一起丢失。
-  final lifecycleListener = AppLifecycleListener(
+  //
+  // `AppLifecycleListener` 的构造函数会把自己注册进 `WidgetsBinding`
+  // （见 flutter/lib/src/widgets/app_lifecycle_listener.dart 的 addObserver），
+  // 而 `WidgetsBinding.instance` 是进程级单例，绑定对象因此已被强引用持有，
+  // 无需再用顶层变量防止被 GC 回收。
+  AppLifecycleListener(
     onInactive: () => Config.flushAll(),
     onPause: () => Config.flushAll(),
     onHide: () => Config.flushAll(),
     onDetach: () => Config.flushAll(),
   );
-  _appLifecycleListener = lifecycleListener;
 
   final lang = Config.language.value;
   if (lang.isEmpty || lang == Config.kLanguageAuto) {
@@ -73,10 +77,6 @@ void main(List<String> arguments) async {
 }
 
 final _navigatorKey = GlobalKey<NavigatorState>();
-
-/// 应用生命周期监听器，用于在退出前落盘配置。
-/// 持有引用避免被 GC 回收导致监听失效。
-AppLifecycleListener? _appLifecycleListener;
 
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});

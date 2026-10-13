@@ -34,7 +34,7 @@ class LoggerInit {
     return _timeFormat.format(time);
   }
 
-  static initLogger() async {
+  static Future<void> initLogger() async {
     Logger.root.level = Level.INFO;
     instance._logSubscription = Logger.root.onRecord.listen((record) {
       if (!kReleaseMode) {

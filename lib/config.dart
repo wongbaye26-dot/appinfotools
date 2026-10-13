@@ -19,7 +19,7 @@ class ConfigItem<T> {
   /// 写入失败（磁盘满、权限不足、preferences 后端异常）时记录日志，
   /// 避免用户以为设置已保存。
   Future<bool> _applyValue() async {
-    final value = this._value;
+    final value = _value;
     try {
       bool ok;
       if (value is String) {
@@ -44,7 +44,7 @@ class ConfigItem<T> {
   }
 
   Future<void> updateValue(T value) async {
-    this._value = value;
+    _value = value;
     _applyTimer?.cancel();
     _applyTimer = Timer(const Duration(milliseconds: 100), () {
       _applyTimer = null;
@@ -101,7 +101,9 @@ class Config {
   static const kParserAapt2 = "aapt2";
   static final parserEngine = ConfigItem("parser_engine", kParserBuiltin);
   static final maxLines = ConfigItem("max_lines", 6);
-  static final themeColor = ConfigItem("theme_color", Colors.blue.value);
+  // 注意：`Color.value` 已废弃（Flutter 3.27+），`toARGB32()` 返回等值的
+  // 32 位 ARGB int，与既有持久化数据兼容。
+  static final themeColor = ConfigItem("theme_color", Colors.blue.toARGB32());
   static final titleWidth = ConfigItem("title_width", 100.0);
   static final language = ConfigItem("language", kLanguageAuto);
   static final iconRowSpan = ConfigItem("icon_row_span", 2);
