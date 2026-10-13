@@ -25,7 +25,7 @@
 
 ## 功能亮点
 
-📦 **全格式支持** — APK / XAPK / APKM / APKS 一网打尽，自动识别分包结构与 OBB 文件
+📦 **全格式支持** — APK / XAPK / APKM / APKS /IPA 一网打尽，自动识别分包结构与 OBB 文件
 
 🔍 **深度解析** — 包名、版本、SDK 版本、权限清单、Activity、签名信息、文件哈希（MD5/SHA1）
 
@@ -169,6 +169,7 @@ flutter build linux     # Linux
 ## 致谢
 
 - 应用图标使用 [AppIcon Forge](https://github.com/zhangyu1818/appicon-forge) 制作
+- 感谢huanfeng开源 apkinfotool https://github.com/huanfeng/ApkInfoTool 
 
 ## 开源协议
 
