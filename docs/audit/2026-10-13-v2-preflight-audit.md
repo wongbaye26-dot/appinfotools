@@ -9,7 +9,7 @@
 
 ## 0. 执行摘要
 
-1. **前一份审计报告声称的 T0/T1 整改，绝大部分是真实落地的**，有源码与文件系统证据（见第 4 节）。这一点必须肯定。
+1. **前一份审计报告声称的 T0/T1 整改，绝大部分是真实落地的**，有源码与文件系统证据（见第 4 节）。这一点必须肯定。其中 **2 条为「部分完成」**：`pubspec.lock` 的 `ref` 未同步（5.1）、`InstallDialog` 的 `mounted` 守卫只补了 1/8 处（5.11）。
 2. **但本机环境存在两个硬阻塞**，导致第一步要求的「基线验证结果」在当前条件下**无法产出**：
    - **无 Flutter / Dart SDK**（已穷举搜索，见第 1 节）→ `flutter analyze` / `flutter test` / `dart format` / `flutter build` 全部不可执行。
    - **本目录不是 Git 仓库**（无 `.git`）→ 无法建立基线、无法分阶段提交、无法满足「不得重置 Git 工作区」与「每阶段独立提交」的交付形态要求。
@@ -174,13 +174,13 @@ getSignatureInfo (apk_info.dart:685)
 | T1-3 | CI 加 quality 闸门 + PR 触发 | ✅ **真实** | `.github/workflows/build.yml:15-43` quality job（format→analyze→test→包 analyze），三个 build job `needs: quality`，`pull_request` 已加，`--enforce-lockfile` 已加 |
 | T1-4 | `info_page` 补 `dispose()` 反注册 MethodChannel | ✅ **真实** | `info_page.dart:857-860` |
 | T1-5 | 引入 `_loadGeneration` 代次令牌 | ✅ **真实** | `info_page.dart:39,86,113,137,167,184` |
-| T1-6 | `InstallDialog` 补 `dispose()` + `mounted` 守卫 | ✅ **真实**（未逐行穷举 21 处） | `install_dialog.dart` 存在 `dispose()` 与 `mounted` 判断 |
+| T1-6 | `InstallDialog` 补 `dispose()` + `mounted` 守卫 | ⚠️ **部分** | `dispose()` 真实存在且正确（`install_dialog.dart:310-315` 置 `_isCancelled` 并 kill 进程/取消安装器）；**但 `mounted` 守卫只加在 `_installApk` 的 `finally` 一处（:268）**，其余 await 后的 `setState` 全部无守卫 → 见 5.11 |
 | T1-7 | `ConfigItem.flush()` + `flushAll()` + 生命周期落盘 | ✅ **真实** | `config.dart:58-62,148-156`；`main.dart:58-64` `AppLifecycleListener` |
 | T1-8 | entitlements 补 `network.client`、移除 `network.server` | ✅ **真实** | 两份 entitlements 均含 `network.client`，无 `network.server` |
 | T1-9 | `compare.dart` 失败时 `exit(1)` | ✅ **真实** | `bin/compare.dart` 已改 |
 | 逻辑 bug | `formatFileSize` / `SplitType.fromId` / `trimSQ` | ✅ **真实** | `format.dart:20-25` 进位修正；`split_type.dart:11-38` 正则重写；`apk_info.dart:729-735` `trimSQ` 用 `RegExp(r"[^']")` |
 
-**核验小结**：前次整改是**诚实的**，无「声称已改但实际未改」的情况。唯一不实之处是 T1-1 的「lockfile 同步」——见下节。
+**核验小结**：前次整改整体是**诚实的**，无「声称已改但实际未改」的情况。两处为**部分完成**：T1-1 的「lockfile 同步」（见 5.1）、T1-6 的「mounted 守卫」（见 5.11）。
 
 ---
 
@@ -208,7 +208,12 @@ getSignatureInfo (apk_info.dart:685)
 
 **必须验证**：`flutter pub get --enforce-lockfile` 是否真的失败。**本机无 SDK，无法验证 → 标记为「待验证」。**
 
-**修复方向**：在装有 SDK 的环境执行 `flutter pub get`（不加 `--enforce-lockfile`）重新生成两个 lockfile，确认 `ref:` 字段变为 SHA。
+**修复方向**：执行一次普通的 `flutter pub get` 重新生成两个 lockfile，确认 `ref:` 字段变为 SHA。
+
+> **✅ 已实证（2026-10-13，SDK 就绪后）**：执行 `flutter pub get` 后，`pubspec.lock` 的
+> `archive.ref` 已由 `HEAD` 刷新为 `cb3a07c80d6a475ef8d36e5642bc2691612d074e`，
+> 与 pubspec 声明一致。随后 `flutter pub get --enforce-lockfile` **返回 exit 0**。
+> 结论：该缺陷**确实存在过**，且**已通过重新解析依赖修复**。
 
 ### 5.2 【中】lint 规则仍全部注释掉
 
@@ -236,9 +241,17 @@ getSignatureInfo (apk_info.dart:685)
 
 全链路无 `CancellationToken`。V2.0 第 5.1、7 节要求「支持取消操作」+「解析取消后不留孤儿进程或临时文件」。当前 aapt2 路径只有 120s 超时看门狗，builtin 路径无超时无取消。
 
-### 5.8 【低】`freezed` 声明但未使用
+### 5.8 【已更正·非问题】`freezed` 实际在使用
 
-`pubspec.yaml:38,53` 声明 `freezed_annotation` / `freezed`，但全仓库无 `*.freezed.dart`，模型均为手写类。属未清理依赖。
+**初判有误，特此更正**：初次静态审计时因仓库内不存在 `*.freezed.dart`（被 `.gitignore` 排除）而误判「freezed 声明未使用」。
+运行 `dart run build_runner build` 后实际产出：
+
+```
+lib/providers/setting_provider.freezed.dart
+lib/providers/ui_config_provider.freezed.dart
+```
+
+即 `freezed` 用于 `setting_provider` 与 `ui_config_provider` 的状态类。**依赖声明是必要的，不应移除。**
 
 ### 5.9 【低】`FileState` 无法置空字段且无值语义
 
@@ -247,6 +260,53 @@ getSignatureInfo (apk_info.dart:685)
 ### 5.10 【低】`assets/image/icon_512.png` 未在 pubspec 声明
 
 `pubspec.yaml:57-58` 只声明 `assets/image/icon.png`，但 README 引用了 `icon_512.png`。不影响运行（README 图片），但属资产清单不一致。
+
+### 5.11 【中】`InstallDialog` 的 `mounted` 守卫只补了一处
+
+`install_dialog.dart` 的 `dispose()` 已正确实现（:310-315），但 **`mounted` 守卫仅存在于 `_installApk` 的 `finally`（:268）**。以下 await 之后的 `setState` 全部无守卫：
+
+| 位置 | 场景 |
+|---|---|
+| `_loadDevices` :132, :138 | `Process.run(adb devices)` 期间用户关闭对话框 → `setState` on disposed |
+| `_loadSplitApks` :150 | `getSplitApks` 期间关闭 |
+| `_showStopConfirmDialog` :300 | 确认弹窗期间关闭 |
+| `_installApk` 循环 :189, :237, :244, :255, :261 | `dispose()` 置 `_isCancelled` 后，循环内 `setState` 仍会执行 |
+
+前次报告称「21 处 `setState`、0 处 `mounted` 守卫」已修复，实测**仅修复 1 处**。T1-6 应重开为**部分完成**。
+
+### 5.12 【高·已实证】CI 的 `quality` 门禁此前从未成功执行过，两个步骤都会红
+
+SDK 就绪后实测，T1-3 新增的 `quality` job 的**前两个步骤都会失败**：
+
+**① `flutter pub get` 解析失败**（`build.yml:27`）
+
+```
+Because apk_info_tool depends on flutter_localizations from sdk
+which depends on intl ^0.20.3, intl ^0.20.3 is required.
+So, because apk_info_tool depends on intl 0.20.2, version solving failed.
+```
+
+项目把 `intl` 死锁在 `0.20.2`，而 Flutter 3.47.7（当前 stable）的 `flutter_localizations` 要求 `^0.20.3`。
+经实测各版本 `flutter_localizations/pubspec.yaml`：
+
+| Flutter | `intl` 约束 |
+|---|---|
+| 3.35.0 / 3.38.0 / 3.41.0 / 3.44.0 | `0.20.2` |
+| 3.47.7（当前 stable） | `^0.20.3` |
+
+即该 pin 在 3.44 → 3.47 之间被 SDK 演进打破。**CI 用 `channel: stable`，因此必然失败。**
+
+**② `dart format --set-exit-if-changed .` 必然失败**（`build.yml:31`）
+
+```
+Formatted 49 files (37 changed) in 0.14 seconds.
+```
+
+Dart 3.7+ 引入新格式化器，本仓库代码仍是旧格式。**37/49 个文件会被重排。**
+
+**结论**：`quality` 门禁自加入起就**没有被真正跑通过**（这与前次报告第八节「待验证（阻塞）：本机无 Flutter/Dart SDK」自述一致 —— 门禁是照计划写好但从未执行）。因此三个 `build-*` job 的 `needs: quality` 也会被连带阻断。
+
+**处置**：经确认采用「对齐当前 stable」路线 —— `intl: 0.20.2 → ^0.20.3`，并落盘一次 `dart format`。作为**独立的「环境对齐」提交**，与 V2.0 改动严格分离。
 
 ---
 
@@ -298,7 +358,8 @@ getSignatureInfo (apk_info.dart:685)
 1. **`pubspec.lock` ref 一致性**（5.1）：重生成两个 lockfile，验证 `--enforce-lockfile` 通过。
 2. **ZIP 预算去重**（5.3）：把预算常量与 `isBomb` 下沉到 `packages/apk_parser`，`lib/utils/zip_guard.dart` 改为薄封装。
 3. **解析失败原因可区分**（5.4）：为 `ApkReader.open` / `ZipHelper.open` 引入结果枚举（`notZip` / `corrupt` / `bomb` / `ok`），贯穿到 UI 诊断。
-4. **`analysis_options.yaml` 启用 lint**（5.2）+ `riverpod_lint`。
+4. **`InstallDialog` 补齐 `mounted` 守卫**（5.11）：`_loadDevices` / `_loadSplitApks` / `_showStopConfirmDialog` / `_installApk` 循环内共 8 处。
+5. **`analysis_options.yaml` 启用 lint**（5.2）+ `riverpod_lint`。
 
 ### 阶段 2：统一数据模型（第四步）
 - 新增 `packages/apk_parser/lib/src/analysis/`（或应用层 `lib/models/`）：
