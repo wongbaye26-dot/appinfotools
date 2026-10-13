@@ -4,10 +4,13 @@
 // `==` 之后「内容没变」不再触发通知 —— Riverpod 的 `updateShouldNotify`
 // 默认就是 `previous != next`，所以 `==` 直接决定了会不会多余重建。
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ipa_parser/ipa_parser.dart' show IpaContainer;
 
 void main() {
   group('FileState.copyWith 的置空语义', () {
@@ -90,6 +93,43 @@ void main() {
       const empty = FileState();
 
       expect(empty == empty.copyWith(), isTrue);
+    });
+  });
+
+  group('FileState.analysis — 诊断必须传到统一结果里', () {
+    // 曾经漏了这一句：`buildIos` / `buildAndroid` 的 `diagnostics` 参数有默认值
+    // `const []`，于是**不传也不会报错**，统一结果里的诊断永远是空的 ——
+    // 详情页的「解析诊断」卡片与导出的报告里因此什么都看不到，
+    // 而 iOS 侧其实产出了几十条诊断。
+    //
+    // 「读不到」与「没有可说的」必须分得开，这条链路断在这里就等于把前者
+    // 说成了后者。
+    test('iOS 的诊断出现在统一结果里', () {
+      const diagnostic = AnalysisDiagnostic.warning(
+        'ios.icons.asset_catalog',
+        'CFBundleIconName resolves into Assets.car',
+      );
+      final state = FileState(
+        filePath: 'Example.ipa',
+        ipaAnalysis: const IpaAnalysis(
+          container: IpaContainer(),
+          diagnostics: [diagnostic],
+        ),
+      );
+
+      final analysis = state.analysis!;
+      expect(analysis.diagnostics, contains(diagnostic));
+      // 同时也要能从 iOS 专属部分查到 —— 两处是同一批数据，不该只有一处有。
+      expect(analysis.ios!.diagnostics, contains(diagnostic));
+    });
+
+    test('没有诊断时是空列表，而不是 null', () {
+      final state = FileState(
+        filePath: 'Example.ipa',
+        ipaAnalysis: const IpaAnalysis(container: IpaContainer()),
+      );
+
+      expect(state.analysis!.diagnostics, isEmpty);
     });
   });
 }

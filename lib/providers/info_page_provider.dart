@@ -165,6 +165,12 @@ class FileState {
                 md5: md5Hash ?? '', sha1: sha1Hash ?? '', sha256: sha256),
         analysis: ios,
         codeSign: iosCodeSign,
+        // 诊断必须传上来。此前漏了这一句，于是详情页的「解析诊断」卡片与
+        // 导出的报告里**永远**是空的 —— 而 iOS 侧其实产出了几十条诊断
+        // （Info.plist 解析、图标定位、Mach-O、描述文件…）。
+        // 「读不到」与「没有可说的」必须分得开，这条链路断在这里就等于
+        // 把前者说成了后者。
+        diagnostics: ios.allDiagnostics,
       );
     }
 

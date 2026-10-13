@@ -47,6 +47,16 @@ jobs:
       - name: Unit tests
         run: flutter test
 
+      - name: Compile the whole app (no platform toolchain needed)
+        # `flutter test` 只编译测试**引用到**的代码，而 `main.dart` 可达的代码
+        # 可能更多 —— 一个从未被测试实例化的页面组件，在测试里完全不会被编译。
+        # `flutter build bundle` 从 `main.dart` 出发编译整个程序，并解析资产
+        # 清单，正好补上这个缺口，而且不需要 Xcode / Android SDK。
+        #
+        # 注意：这一步**不等于**跨平台构建验证。真正产出可执行文件仍需要
+        # 对应平台的工具链（见 README 的说明）。
+        run: flutter build bundle
+
       - name: Analyze Dart packages
         # 遍历 packages/ 而不是逐个硬编码：新增包会被自动纳入门禁，
         # 否则新包的分析结果永远不进 CI（这正是 apk_parser 当初的处境）。
