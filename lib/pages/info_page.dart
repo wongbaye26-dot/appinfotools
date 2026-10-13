@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:analysis_model/analysis_model.dart';
 
 import 'package:apk_info_tool/apkparser/apk_info.dart';
-import 'package:apk_info_tool/apkparser/parse_task.dart';
 import 'package:apk_info_tool/ipaparser/ios_codesign_step.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
@@ -19,6 +18,7 @@ import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
+import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
@@ -49,14 +49,14 @@ class APKInfoPage extends ConsumerStatefulWidget implements PageBase {
 class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   int _loadGeneration = 0;
 
-  /// 当前正在执行的解析任务，用于支持取消。
+  /// 当前正在执行的可取消任务。
   ///
-  /// 为 `null` 表示当前没有可取消的任务（解析未开始、已结束，或走的是
-  /// 尚不可取消的 XAPK/aapt2 路径）。
-  ApkParseTask? _currentParseTask;
-
-  /// 当前正在执行的 IPA 静态解析任务。
-  IpaParseTask? _currentIpaTask;
+  /// 三种任务的取消机制完全不同（杀 isolate / 杀子进程 / 协作式标志），
+  /// 但 UI 只需要知道「现在有没有可取消的东西」。用一个统一句柄而不是三个
+  /// 字段，是为了让「显示取消按钮」与「取消真的有效」永远是同一件事。
+  ///
+  /// 为 `null` 表示当前没有可取消的任务（解析未开始或已结束）。
+  CancellableParseTask? _currentTask;
 
   /// `codesign` 步骤的取消标志。
   ///
@@ -139,7 +139,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ref.read(selectedLabelLocaleProvider.notifier).reset();
     isParsingState.update(true);
     parseStageState.update(null);
-    _currentParseTask = null;
+    _currentTask = null;
 
     // 初始化文件状态
     final isXapk = filePath.toLowerCase().endsWith('.xapk');
@@ -206,7 +206,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         },
         // 拿到可取消的任务句柄后，取消按钮才可用。
         onTaskStarted: (task) {
-          if (_loadGeneration == gen) _currentParseTask = task;
+          if (_loadGeneration == gen) _currentTask = task;
         },
       );
       if (apkInfo == null) {
@@ -241,7 +241,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       if (_loadGeneration == gen) {
         isParsingState.update(false);
         parseStageState.update(null);
-        _currentParseTask = null;
+        _currentTask = null;
       }
     }
   }
@@ -279,8 +279,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ref.read(selectedIconIndexProvider.notifier).reset();
     isParsingState.update(true);
     iosStageState.update(null);
-    _currentParseTask = null;
-    _currentIpaTask = null;
+    _currentTask = null;
     _iosCodeSignCancelled = false;
 
     if (enableHash) {
@@ -323,7 +322,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       task.cancel();
       return;
     }
-    _currentIpaTask = task;
+    _currentTask = task;
 
     IpaAnalysis? parsed;
     await for (final event in task.events) {
@@ -412,13 +411,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   /// 子进程，暂不可取消，因此 UI 在该路径下不显示取消按钮（未实现的功能不得
   /// 出现伪可用按钮）。
   void _cancelParse() {
+    // 解包 + codesign 那一步用协作式标志：它要写临时目录，不能被强杀。
     _iosCodeSignCancelled = true;
-    final ipaTask = _currentIpaTask;
-    if (ipaTask != null) {
-      log.info('_cancelParse: cancelling the IPA task');
-      ipaTask.cancel();
-    }
-    final task = _currentParseTask;
+
+    final task = _currentTask;
     if (task == null) return;
     log.info('_cancelParse: requested by user');
     task.cancel();
@@ -1160,7 +1156,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   // 只有真的拿到可取消的任务时才显示取消按钮：
                   // XAPK/APKM/APKS 路径仍走 aapt2 子进程，暂不可取消，
                   // 在那里显示一个按不动的按钮属于伪可用。
-                  if (_currentParseTask != null || _currentIpaTask != null) ...[
+                  if (_currentTask != null && !_currentTask!.isFinished) ...[
                     const SizedBox(width: 4),
                     Tooltip(
                       message: t.parse.cancel_parse,

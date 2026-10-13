@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
+import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:archive_safety/archive_safety.dart' show ArchiveOpenResult;
@@ -58,7 +59,7 @@ class IpaParseCancelled extends IpaParseEvent {
 /// `Isolate.immediate`，`finally` 不保证执行 —— 因此解包与 `codesign` 这类
 /// 会写磁盘、要删临时目录的工作**不在这个 worker 里做**，由主 isolate 在
 /// 本任务完成之后单独执行（见 `IosCodeSignStep`）。
-class IpaParseTask {
+class IpaParseTask implements CancellableParseTask {
   final Stream<IpaParseEvent> events;
 
   final ReceivePort _receive;
@@ -97,6 +98,10 @@ class IpaParseTask {
   /// 用 [Isolate.immediate] 而不是默认的 `beforeNextEvent`：后者要等 worker
   /// 回到事件循环才生效，而 worker 的绝大部分时间耗在一段同步解析里 ——
   /// 那恰恰是用户想取消的时刻。
+  @override
+  bool get isFinished => _finished;
+
+  @override
   void cancel() {
     if (_finished) return;
     _finished = true;

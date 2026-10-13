@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_parser/apk_parser.dart';
 
@@ -75,7 +76,7 @@ class ParsedApkData {
 ///   密集计算，跑在主 isolate 上会让大 APK 冻住整个界面。
 /// - **真能取消**：`Isolate.run` 无法中断，只能把结果丢掉。这里持有
 ///   `Isolate` 句柄，[cancel] 是真正的终止。
-class ApkParseTask {
+class ApkParseTask implements CancellableParseTask {
   /// 解析过程的事件流。
   final Stream<ParseEvent> events;
 
@@ -119,6 +120,10 @@ class ApkParseTask {
   /// 代价是立即终止不会执行 `finally`，worker 若正持有文件句柄，该句柄要等
   /// 进程退出才释放。这里可以接受：worker 不创建临时文件，句柄也只在解析
   /// 期间短暂存在。**这也是 worker 内不做任何需要显式清理的副作用的原因。**
+  @override
+  bool get isFinished => _finished;
+
+  @override
   void cancel() {
     if (_finished) return;
     _finished = true;

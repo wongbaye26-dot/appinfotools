@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -7,6 +6,7 @@ import 'dart:ui';
 import 'package:apk_info_tool/apkparser/adaptive_icon_renderer.dart';
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
@@ -16,6 +16,7 @@ import 'package:apk_parser/apk_parser.dart' as apk_parser;
 import 'package:apk_parser/apk_parser.dart'
     show ApkParseStage, HardeningObservation;
 import 'package:path/path.dart' as path;
+import 'aapt2_task.dart';
 import 'parse_task.dart';
 import 'xapk_info.dart';
 
@@ -278,6 +279,8 @@ class ApkOpenException implements Exception {
 /// 单独成类型是为了让 UI 能区分「用户主动取消」与「解析失败」——
 /// 前者不该弹错误提示。
 class ApkParseCancelledException implements Exception {
+  const ApkParseCancelledException();
+
   @override
   String toString() => 'ApkParseCancelledException';
 }
@@ -285,7 +288,7 @@ class ApkParseCancelledException implements Exception {
 Future<ApkInfo?> getApkInfo(
   String apk, {
   void Function(ApkParseStage stage)? onStage,
-  void Function(ApkParseTask task)? onTaskStarted,
+  void Function(CancellableParseTask task)? onTaskStarted,
 }) async {
   log.info("getApkInfo: apk=[$apk] start");
   final apkInfo = ApkInfo();
@@ -373,19 +376,17 @@ Future<ApkInfo?> getApkInfo(
               throw Exception(t.parse.please_set_path(name: 'aapt2'));
             }
             final aapt2Sw = Stopwatch()..start();
-            final result = await Process.run(
+            final result = await Aapt2Task.run(
               aaptPath,
               ['dump', 'badging', baseApkPath],
-              stdoutEncoding: utf8,
-              stderrEncoding: utf8,
-            ).timeout(
-              const Duration(seconds: 120),
-              onTimeout: () {
-                throw TimeoutException('Parse timeout');
-              },
+              onStarted: onTaskStarted,
             );
             aapt2Ms = aapt2Sw.elapsedMilliseconds;
-            if (result.exitCode == 0) {
+            // 取消：不是失败，也不该继续走后面的图标加载。
+            if (result.cancelled) {
+              throw const ApkParseCancelledException();
+            }
+            if (result.isSuccess) {
               final originalPath = apkInfo.apkPath;
               apkInfo.apkPath = baseApkPath;
               final parseSw = Stopwatch()..start();
@@ -404,6 +405,10 @@ Future<ApkInfo?> getApkInfo(
               }
               apkInfo.apkPath = originalPath;
             }
+          } on ApkParseCancelledException {
+            // 用户取消不是「base APK 解析失败」—— 必须往上抛，否则会被记成
+            // 一条无关的警告，然后继续走后面的图标加载，白等一场。
+            rethrow;
           } catch (e) {
             log.warning("getApkInfo: base APK parse failed: $e");
           }
@@ -503,25 +508,23 @@ Future<ApkInfo?> getApkInfo(
 
   try {
     final aapt2Sw = Stopwatch()..start();
-    var result = await Process.run(
+    final result = await Aapt2Task.run(
       aaptPath,
       ['dump', 'badging', apk],
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    ).timeout(
-      const Duration(seconds: 120),
-      onTimeout: () {
-        throw TimeoutException('Parse timeout');
-      },
+      onStarted: onTaskStarted,
     );
     aapt2BadgingMs = aapt2Sw.elapsedMilliseconds;
 
-    var exitCode = result.exitCode;
+    if (result.cancelled) {
+      throw const ApkParseCancelledException();
+    }
+
+    final exitCode = result.exitCode;
     log.fine("getApkInfo: aapt2 exitCode=$exitCode");
 
-    if (exitCode == 0) {
+    if (result.isSuccess) {
       final parseSw = Stopwatch()..start();
-      parseApkInfoFromOutput(result.stdout.toString(), apkInfo);
+      parseApkInfoFromOutput(result.stdout, apkInfo);
       outputParseMs = parseSw.elapsedMilliseconds;
 
       final iconSw = Stopwatch()..start();
@@ -539,6 +542,9 @@ Future<ApkInfo?> getApkInfo(
 
       return apkInfo;
     }
+  } on ApkParseCancelledException {
+    // 用户主动取消 —— 往上抛，让调用方与「解析失败」区分开。
+    rethrow;
   } catch (e) {
     log.warning("getApkInfo: error=$e");
   }
