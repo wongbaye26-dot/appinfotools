@@ -95,6 +95,15 @@ class ResourceEntry {
 }
 
 /// ResTable_config
+///
+/// 字段偏移按 AOSP `ResTable_config` 的实际布局（不是猜的）：
+/// 4 mcc、6 mnc、8 language、10 country、12 orientation、13 touchscreen、
+/// 14 density、16 keyboard、17 navigation、18 inputFlags、19 inputPad0、
+/// 20 screenWidth、22 screenHeight、24 sdkVersion、26 minorVersion、
+/// 28 screenLayout、**29 uiMode**、30 smallestScreenWidthDp、
+/// 32 screenWidthDp、34 screenHeightDp、36 localeScript、40 localeVariant。
+///
+/// `size` 决定哪些字段真的存在：解析器必须按 `size` 判断，不能直接读到越界。
 class ResourceConfig {
   final int size;
   final int mcc;
@@ -105,6 +114,12 @@ class ResourceConfig {
   final String variant;
   final int density;
 
+  /// `uiMode` 原始字节（偏移 29）。
+  ///
+  /// 高 2 位（掩码 [uiModeNightMask]）表示夜间模式，低 4 位
+  /// （掩码 [uiModeTypeMask]）表示设备类型。配置里没有该字段时为 0。
+  final int uiMode;
+
   ResourceConfig({
     this.size = 0,
     this.mcc = 0,
@@ -114,7 +129,44 @@ class ResourceConfig {
     this.script = '',
     this.variant = '',
     this.density = 0,
+    this.uiMode = 0,
   });
+
+  /// `uiMode` 里设备类型部分的掩码。
+  static const int uiModeTypeMask = 0x0f;
+
+  /// `uiMode` 里夜间模式部分的掩码。
+  static const int uiModeNightMask = 0x30;
+
+  /// `uiMode & [uiModeNightMask]` 取到该值表示**夜间模式**。
+  static const int uiModeNightYes = 0x20;
+
+  /// 该配置是否是夜间模式（`values-night` / `drawable-night` 等）。
+  ///
+  /// `uiMode & 0x30 == 0x20` 才是夜间；`0x10` 是显式的「非夜间」，
+  /// `0x00` 是未指定 —— 后两者都不算夜间变体。
+  bool get isNightMode => (uiMode & uiModeNightMask) == uiModeNightYes;
+
+  /// `uiMode` 里的设备类型（低 4 位）。
+  int get uiModeType => uiMode & uiModeTypeMask;
+
+  /// `uiMode` 设备类型（低 4 位）对应的稳定标识符。
+  ///
+  /// 刻意返回**标识符**而不是自然语言：与加固线索的枚举名同理，它们要能与
+  /// 代码、日志、aapt2 的输出对照，翻成「车载模式」反而更难排查。
+  static const Map<int, String> uiModeTypeNames = {
+    1: 'normal',
+    2: 'desk',
+    3: 'car',
+    4: 'television',
+    5: 'appliance',
+    6: 'watch',
+    7: 'vrheadset',
+  };
+
+  /// 设备类型的可读标识；未知取值返回 `type<N>`，不猜也不丢。
+  static String uiModeTypeName(int type) =>
+      uiModeTypeNames[type] ?? 'type$type';
 
   String get locale {
     if (language.isEmpty) return '';
@@ -143,6 +195,7 @@ class ResourceConfig {
     int density = 0;
     String script = '';
     String variant = '';
+    int uiMode = 0;
 
     if (size >= 12) {
       final langBytes = reader.readUint8List(2);
@@ -155,6 +208,12 @@ class ResourceConfig {
       reader.readUint8(); // orientation
       reader.readUint8(); // touchscreen
       density = reader.readUint16();
+    }
+
+    // uiMode: 1 byte at offset 29（需要 size >= 30 才存在）
+    if (size >= 30) {
+      reader.position = startPos + 29;
+      uiMode = reader.readUint8();
     }
 
     // localeScript: 4 bytes at offset 36 (when size >= 40)
@@ -183,6 +242,7 @@ class ResourceConfig {
       script: script,
       variant: variant,
       density: density,
+      uiMode: uiMode,
     );
   }
 

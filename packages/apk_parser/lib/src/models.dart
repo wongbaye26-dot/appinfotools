@@ -74,6 +74,20 @@ class ApkMeta {
   List<String> locales = [];
   List<int> densities = [];
 
+  /// 资源表里是否有夜间模式变体；`null` 表示**没读到资源表**（无法判断）。
+  ///
+  /// 三态而非 bool：资源表缺失或解析失败时，`false` 会被读成「这个应用没有
+  /// 夜间资源」，而事实是「我们不知道」。与 [locales] / [densities] 的区别
+  /// 在于那两者为空列表时语义已经够清楚（没有多语言 / 没有密度变体），
+  /// 而「没有夜间资源」是一个会被用户当作结论的事实。
+  bool? hasNightMode;
+
+  /// 资源表里出现过的 `uiMode` 设备类型，已排序。
+  ///
+  /// 是稳定标识符（`car` / `television` / `watch` …），不是原始数字 ——
+  /// 与加固线索的枚举名同理，要能与代码和日志对照。未指定不包含。
+  List<String> uiModeTypes = [];
+
   /// `<uses-permission>` 的结构化形式：权限名 + `android:maxSdkVersion`。
   ///
   /// **不能只用 [permissions]**：`maxSdkVersion` 是版本适用条件，而

@@ -174,6 +174,43 @@ class ArscParser {
     return densities;
   }
 
+  /// 资源表里是否有**夜间模式**变体（`values-night` / `drawable-night` 等）。
+  ///
+  /// 判据是配置的 `uiMode` 里夜间位为 `0x20`。注意 `0x10` 是显式的「非夜间」
+  /// 变体、`0x00` 是未指定 —— 后两者都不算夜间资源，只有 `0x20` 才算。
+  ///
+  /// 这与 [getLocales] / [getDensities] 是同一类事实：**文件里声明了什么**，
+  /// 不是「应用运行时会怎样」。用户把系统切到深色模式时是否真的变暗，还取决于
+  /// 主题与代码，静态资源只能说明「随附了夜间资源」。
+  bool get hasNightModeResources {
+    for (final package in _packages) {
+      for (final typeSpec in package.typeSpecs.values) {
+        for (final config in typeSpec.configs) {
+          if (config.config.isNightMode) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// 资源表中出现过的 `uiMode` 设备类型，已排序。
+  ///
+  /// 返回**稳定标识符**（`car` / `television` / `watch` …）而不是原始数字：
+  /// 与加固线索的枚举名同理，它们要能与代码和日志对照。未指定（0）不返回 ——
+  /// 它是「没写」而不是一种设备类型。
+  List<String> getUiModeTypes() {
+    final types = <String>{};
+    for (final package in _packages) {
+      for (final typeSpec in package.typeSpecs.values) {
+        for (final config in typeSpec.configs) {
+          final t = config.config.uiModeType;
+          if (t != 0) types.add(ResourceConfig.uiModeTypeName(t));
+        }
+      }
+    }
+    return types.toList()..sort();
+  }
+
   /// 导出所有资源条目信息，供外部使用（如图标渲染器）
   /// 按资源 ID 聚合所有 config 变体的值
   Map<int, ResourceInfo> getAllResources() {

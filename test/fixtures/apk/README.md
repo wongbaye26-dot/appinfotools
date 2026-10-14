@@ -49,3 +49,43 @@
 存在的唯一目的是**反向验证**：确保「非标准布局」的检测不会把正常文件误报成
 加固样本。这份文件是手工拼的 —— 没有工具会产出「这么小的标准 AXML」，
 而它要断言的正是「什么都不报」。
+
+## night-mode-resources.apk / no-night-mode-resources.apk
+
+一对**由 `aapt2` 真实产出**的最小 APK，用来钉住 `resources.arsc` 里的
+`uiMode`（夜间模式）解析。区别只有一个：前者多一个 `res/values-night/`。
+
+用真实产物而不是手拼字节，是因为 `ResTable_config` 的字段偏移必须与
+AOSP 的实际布局一致 —— 手拼的样本会带着与解析器相同的错误假设，等于自证。
+生成命令（macOS，Android SDK build-tools 36.1.0）：
+
+```sh
+AAPT2=~/Library/Android/sdk/build-tools/36.1.0/aapt2
+JAR=~/Library/Android/sdk/platforms/android-34/android.jar
+
+# 每个样本一个目录，内含：
+#   AndroidManifest.xml（package=com.example.fixture, minSdk=21, targetSdk=34）
+#   res/values/strings.xml        —— app_name + color/bg
+#   res/values-night/strings.xml  —— 仅 night 样本有，覆盖 color/bg
+#   res/drawable/icon.png         —— 1x1 PNG
+
+(cd "$dir" && "$AAPT2" compile --dir res -o compiled.zip \
+  && "$AAPT2" link -o out.apk -I "$JAR" --manifest AndroidManifest.xml compiled.zip)
+```
+
+### 期望值（用 aapt2 独立核对，不是从本项目的解析器拿的）
+
+```sh
+$AAPT2 dump configurations night-mode-resources.apk
+night
+$AAPT2 dump configurations no-night-mode-resources.apk
+（空）
+```
+
+| 夹具 | `hasNightModeResources` | 依据 |
+|---|---|---|
+| `night-mode-resources.apk` | `true` | `aapt2 dump configurations` 输出 `night` |
+| `no-night-mode-resources.apk` | `false` | 同上，输出为空 |
+
+两个都要留：只留带夜间资源的那个，`hasNightModeResources` 直接
+`return true` 也能通过。

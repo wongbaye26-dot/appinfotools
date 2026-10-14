@@ -1412,6 +1412,23 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         title: t.apk_info.languages,
         value: apkInfo?.locales.join(" ") ?? "",
       )),
+      // `null` 是「资源表没读到」，与「没有夜间资源」结论相反，必须分开呈现 ——
+      // 与 D5 的字段状态处理同一个道理，只是这里的载体是个 bool?。
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.night_mode,
+        value: switch (apkInfo?.hasNightMode) {
+          true => t.apk_info.night_mode_yes,
+          false => t.apk_info.night_mode_no,
+          null => t.apk_info.night_mode_unknown,
+        },
+      )),
+      if (apkInfo?.uiModeTypes.isNotEmpty ?? false)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.ui_mode_types,
+          value: apkInfo!.uiModeTypes.join(" "),
+        )),
       _SectionHeader(title: t.apk_info.permissions, tab: DetailTab.permissions),
       Card(
           child: TitleValueLayout(

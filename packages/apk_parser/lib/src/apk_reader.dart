@@ -197,6 +197,10 @@ class ApkReader {
         _resolveIconPaths(meta);
         meta.locales = _arscParser!.getLocales().toList();
         meta.densities = _arscParser!.getDensities().toList();
+        // 只有资源表真的解析成功了才设这两项 —— 保持 `null` 表示「没读到」，
+        // 免得把「资源表解析失败」呈现成「没有夜间资源」。
+        meta.hasNightMode = _arscParser!.hasNightModeResources;
+        meta.uiModeTypes = _arscParser!.getUiModeTypes();
       } catch (e, stackTrace) {
         // arsc 解析失败不影响基本信息，但记录详细错误便于排查
         _log.warning('arsc parse failed: $e\n$stackTrace');

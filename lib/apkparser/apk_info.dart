@@ -848,6 +848,8 @@ void _applyMetaToApkInfo(apk_parser.ApkMeta meta, ApkInfo apkInfo) {
   apkInfo.nativeCodes = meta.nativeCodes;
   apkInfo.locales = meta.locales;
   apkInfo.densities = meta.densities.map((d) => d.toString()).toList();
+  apkInfo.hasNightMode = meta.hasNightMode;
+  apkInfo.uiModeTypes = meta.uiModeTypes;
 
   // 从 arsc 解析的图标路径填充 icons map
   meta.iconPaths.forEach((dpi, iconPath) {
@@ -948,6 +950,17 @@ String _generateTextInfo(apk_parser.ApkMeta meta) {
     sb.writeln("densities: ${meta.densities.map((d) => "'$d'").join(' ')}");
   }
 
+  // 夜间模式资源（aapt2 dump badging 不输出这一项，由内置解析器补上）
+  if (meta.hasNightMode != null) {
+    sb.writeln('night-mode-resources: ${meta.hasNightMode!}');
+  }
+
+  // uiMode 设备类型（3=车载 4=电视 6=手表）
+  if (meta.uiModeTypes.isNotEmpty) {
+    sb.writeln(
+        "ui-mode-types: ${meta.uiModeTypes.map((t) => "'$t'").join(' ')}");
+  }
+
   // native code
   if (meta.nativeCodes.isNotEmpty) {
     sb.writeln("native-code: ${meta.nativeCodes.map((n) => "'$n'").join(' ')}");
@@ -1041,6 +1054,19 @@ class ApkInfo {
   List<String> densities = [];
   bool? supportsAnyDensity;
   List<String> nativeCodes = [];
+
+  /// 资源表里是否有夜间模式变体；`null` 表示**没读到资源表**。
+  ///
+  /// 只有内置解析器会填这一项。aapt2 的 `dump badging` 输出里没有这个字段，
+  /// 分包安装包（XAPK / APKM / APKS）走 aapt2 路径，因此保持 `null` ——
+  /// 界面上必须与「没有夜间资源」区分开。
+  bool? hasNightMode;
+
+  /// 资源表里出现过的 `uiMode` 设备类型，已排序。
+  ///
+  /// 稳定标识符（`car` / `television` / `watch` …）。与 [hasNightMode] 一样
+  /// 只有内置解析器会填。
+  List<String> uiModeTypes = [];
 
   List<String> others = [];
 
