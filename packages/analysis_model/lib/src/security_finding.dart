@@ -1,0 +1,332 @@
+/// 安全检测引擎的**平台中立**数据模型。
+///
+/// 与 `FieldValue` 同属一类东西：描述「我们观察到了什么、证据在哪、有多确定」，
+/// 不含任何 Android / iOS 格式概念。两个平台的审计器各自产出 [SecurityFinding]，
+/// 应用层的规则引擎、UI 与报告只面对这一套类型。
+///
+/// 三条设计约束，来自规格本身，不是偏好：
+///
+/// 1. **等级不是权限数量决定的**。规则引擎要考虑证据强度、业务合理性、数据
+///    敏感程度、用户参与方式与数据流关联程度，因此 severity 与 finding 分离：
+///    同一条权限在不同组合里可以落在不同等级。
+/// 2. **「没有找到」不等于「安全」**。[SecurityAnalysisResult] 因此把
+///    `limitations`（未覆盖、被截断、加固读不到）与 `findings` 并列，
+///    「未发现相关特征」必须由规则 F 显式产出一条 INFO，而不是靠空列表暗示。
+/// 3. **没有证据的字段必须留空或标 unknown**，不允许为了让报告显得完整而猜测。
+library;
+
+/// 平台。
+enum SecurityPlatform {
+  android,
+  ios;
+
+  String get displayName => switch (this) {
+        SecurityPlatform.android => 'Android',
+        SecurityPlatform.ios => 'iOS',
+      };
+}
+
+/// 风险等级。规格第五章。
+///
+/// [rank] 越小越严重，用于「取最严重的一条」。UNKNOWN 单独一类：它不是「没风险」，
+/// 而是「没法给结论」，与 P3（低风险）有本质区别。
+enum SecuritySeverity {
+  p0('Severe'),
+  p1('High'),
+  p2('Medium'),
+  p3('Low'),
+  info('Info'),
+  unknown('Unknown');
+
+  const SecuritySeverity(this.label);
+
+  final String label;
+
+  /// 排序权重：0 最严重，5 是「无法确认」。
+  int get rank => switch (this) {
+        SecuritySeverity.p0 => 0,
+        SecuritySeverity.p1 => 1,
+        SecuritySeverity.p2 => 2,
+        SecuritySeverity.p3 => 3,
+        SecuritySeverity.info => 4,
+        SecuritySeverity.unknown => 5,
+      };
+
+  /// 是否属于「需要关注的风险档位」（P0–P3）。
+  bool get isRisk =>
+      this == SecuritySeverity.p0 ||
+      this == SecuritySeverity.p1 ||
+      this == SecuritySeverity.p2 ||
+      this == SecuritySeverity.p3;
+
+  /// 该等级是否意味着「覆盖不足 / 无法得出结论」。
+  ///
+  /// UI 见到它必须渲染成「暂不能作出完整结论」而不是绿色。
+  bool get isInconclusive => this == SecuritySeverity.unknown;
+}
+
+/// 证据置信度 / 关联状态。规格 7.3 的四态。
+///
+/// 四态必须分开渲染：把「仅发现独立能力」显示成「已证实关联」是最危险的误导 ——
+/// 用户会以为数据流已经被追踪到了。
+enum SecurityConfidence {
+  /// 已证实：同一可追踪路径上的证据，或受信任工具的明确结论。
+  confirmed,
+
+  /// 疑似关联：多个线索同时存在，但静态分析未能证实数据流向。
+  suspected,
+
+  /// 仅发现独立能力：例如只看到 OCR SDK，没有输入源也没有去路。
+  independentCapability,
+
+  /// 无法确认：加固、混淆、加密、解析失败或检测范围之外。
+  unknown;
+
+  String get label => switch (this) {
+        SecurityConfidence.confirmed => 'confirmed',
+        SecurityConfidence.suspected => 'suspected association',
+        SecurityConfidence.independentCapability =>
+          'independent capability only',
+        SecurityConfidence.unknown => 'unknown',
+      };
+}
+
+/// 发现项类别。规格 3.x / 4.x 的检测主题。
+enum SecurityCategory {
+  /// 照片、视频、存储等媒体访问。
+  photoAccess,
+
+  /// OCR、图像处理、截图分析。
+  ocrImage,
+
+  /// 敏感数据向网络请求 / 上传接口 / 第三方服务的汇聚。
+  dataExfiltration,
+
+  /// 网络能力、域名、明文通信。
+  network,
+
+  /// 第三方 SDK 与依赖。
+  thirdPartySdk,
+
+  /// 后台任务、动态加载、危险组件。
+  backgroundTask,
+
+  /// 设备标识、应用列表等其它敏感数据来源。
+  deviceData,
+
+  /// 配置类问题（明文流量、危险开关）。
+  configuration,
+
+  /// 未归类。
+  other;
+
+  String get label => switch (this) {
+        SecurityCategory.photoAccess => 'photo & media access',
+        SecurityCategory.ocrImage => 'OCR & image processing',
+        SecurityCategory.dataExfiltration => 'data collection & exfiltration',
+        SecurityCategory.network => 'network behaviour',
+        SecurityCategory.thirdPartySdk => 'third-party SDK',
+        SecurityCategory.backgroundTask => 'background tasks',
+        SecurityCategory.deviceData => 'device data',
+        SecurityCategory.configuration => 'configuration',
+        SecurityCategory.other => 'other',
+      };
+}
+
+/// 证据的来源类型。规格 7.5 要求报告注明「证据是来自 Manifest、Info.plist、
+/// 隐私清单、DEX 字符串、Mach-O 符号、静态调用分析还是实际运行时记录」。
+enum SecurityEvidenceSource {
+  /// Android `AndroidManifest.xml`。
+  manifest,
+
+  /// iOS `Info.plist`。
+  infoPlist,
+
+  /// iOS `PrivacyInfo.xcprivacy`。
+  privacyInfo,
+
+  /// DEX 字符串。
+  dexString,
+
+  /// Mach-O 符号 / 字符串。
+  machoSymbol,
+
+  /// 归档条目名或结构（ZIP 目录）。
+  zipEntry,
+
+  /// 描述文件 / Entitlements。
+  provisioning,
+
+  /// 运行时观察（本版本不产出，枚举先行占位）。
+  runtime,
+
+  /// 其它 / 未能归类。
+  other;
+
+  String get label => switch (this) {
+        SecurityEvidenceSource.manifest => 'AndroidManifest.xml',
+        SecurityEvidenceSource.infoPlist => 'Info.plist',
+        SecurityEvidenceSource.privacyInfo => 'PrivacyInfo.xcprivacy',
+        SecurityEvidenceSource.dexString => 'DEX strings',
+        SecurityEvidenceSource.machoSymbol => 'Mach-O symbols',
+        SecurityEvidenceSource.zipEntry => 'archive entry',
+        SecurityEvidenceSource.provisioning => 'provisioning / entitlements',
+        SecurityEvidenceSource.runtime => 'runtime observation',
+        SecurityEvidenceSource.other => 'other',
+      };
+}
+
+/// 一条原始证据。
+///
+/// [location] 必须能指回文件里的具体位置（例如
+/// `AndroidManifest.xml / manifest / uses-permission[@name=…]`），
+/// [detail] 是原文或原文摘录 —— 「有证据」的最低标准就是别人能按这个地址复现。
+class SecurityEvidence {
+  final SecurityEvidenceSource source;
+
+  /// 证据在文件中的位置描述。
+  final String location;
+
+  /// 原文或摘录（可能很长，由产出方自行截断，但不得改写含义）。
+  final String detail;
+
+  const SecurityEvidence({
+    required this.source,
+    required this.location,
+    required this.detail,
+  });
+
+  @override
+  String toString() => 'SecurityEvidence(${source.label} @ $location: $detail)';
+}
+
+/// 一条安全发现项。规格第六章的统一数据模型。
+///
+/// 刻意不用「拼接好的段落」而是结构化字段：UI 要按类别筛选、报告要按证据
+/// 追溯、规则引擎要能比较等级与置信度 —— 三者都要求字段可寻址。
+class SecurityFinding {
+  /// 规则编号，例如 `ANDROID-RULE-B`。同一规则重复命中时应复用同一编号，
+  /// 便于统计与规则库版本对照。
+  final String ruleId;
+
+  final SecurityPlatform platform;
+
+  final SecurityCategory category;
+
+  final SecuritySeverity severity;
+
+  final SecurityConfidence confidence;
+
+  /// 发现内容（一句话结论）。措辞受规格约束：
+  /// 未证实的数据流只能用「疑似」「可能」「发现……线索」。
+  final String finding;
+
+  /// 支撑该结论的原始证据。空列表意味着这条发现没有依据 —— 不允许出现。
+  final List<SecurityEvidence> evidence;
+
+  /// 可能的数据来源（照片、OCR 文本、设备标识……）；没有则为 `null`。
+  ///
+  /// 留空而不是填「未知」占位：没有证据的来源写上去就是编造。
+  final String? dataSource;
+
+  /// 可能的数据去向（上传请求、第三方域名……）；没有则为 `null`。
+  final String? dataSink;
+
+  /// 来源 → 处理 → 去向之间的关联情况说明。
+  ///
+  /// 未证实时要**明确展示未能证实的环节**，不得补全不存在的证据。
+  final String? relationship;
+
+  /// 该发现的检测局限（例如「未反汇编，关联来自标记同现」）。
+  final String? limitation;
+
+  /// 建议的人工核查或整改措施。
+  final String recommendation;
+
+  const SecurityFinding({
+    required this.ruleId,
+    required this.platform,
+    required this.category,
+    required this.severity,
+    required this.confidence,
+    required this.finding,
+    required this.evidence,
+    this.dataSource,
+    this.dataSink,
+    this.relationship,
+    this.limitation,
+    required this.recommendation,
+  });
+
+  @override
+  String toString() => 'SecurityFinding($ruleId, ${severity.name}/'
+      '${confidence.name}${category.name}: $finding)';
+}
+
+/// 一次安全分析的结果。
+///
+/// 与 findings 并列的 [limitations] 是关键设计：规格第十章要求「无法解析、加固或
+/// 加密的样本应明确标记检测覆盖不足，而不是显示全绿」。若没有这个字段，
+/// 「没发现」与「没查」在界面上长得一模一样。
+class SecurityAnalysisResult {
+  /// 检测引擎版本。
+  final String engineVersion;
+
+  /// 规则库版本。规则是数据驱动的，改规则必须升这个版本号，
+  /// 否则两份报告无法对照。
+  final String rulesVersion;
+
+  final List<SecurityFinding> findings;
+
+  /// 未覆盖范围、被预算截断的部分、以及「因为加固/混淆读不到」的说明。
+  final List<String> limitations;
+
+  /// 本版本是否包含运行时证据。当前恒为 `false`（规格：不得把未实现的
+  /// 动态检测包装成已实现功能）。
+  final bool includesRuntimeEvidence;
+
+  const SecurityAnalysisResult({
+    required this.engineVersion,
+    required this.rulesVersion,
+    this.findings = const [],
+    this.limitations = const [],
+    this.includesRuntimeEvidence = false,
+  });
+
+  /// 各等级发现数量。
+  Map<SecuritySeverity, int> countBySeverity() {
+    final counts = <SecuritySeverity, int>{};
+    for (final finding in findings) {
+      counts[finding.severity] = (counts[finding.severity] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  /// 最严重的**风险档**发现；没有 P0–P3 发现时返回 `null`。
+  ///
+  /// 返回 `null` 时总体结论只能是「当前分析范围内未发现明确的高风险证据」
+  /// 这类审慎表述，绝不允许推导成「安全」。
+  SecurityFinding? get highestRiskFinding {
+    SecurityFinding? worst;
+    for (final finding in findings) {
+      if (!finding.severity.isRisk) continue;
+      if (worst == null || finding.severity.rank < worst.severity.rank) {
+        worst = finding;
+      }
+    }
+    return worst;
+  }
+
+  bool get hasRiskFindings => highestRiskFinding != null;
+
+  /// 是否存在「无法确认」类的发现或局限。
+  ///
+  /// UI 据此显示「暂不能作出完整结论」而不是绿色。
+  bool get hasCoverageGaps =>
+      findings.any((f) => f.severity.isInconclusive) || limitations.isNotEmpty;
+
+  @override
+  String toString() => 'SecurityAnalysisResult(engine: $engineVersion, '
+      'rules: $rulesVersion, findings: ${findings.length}, '
+      'limitations: ${limitations.length})';
+}

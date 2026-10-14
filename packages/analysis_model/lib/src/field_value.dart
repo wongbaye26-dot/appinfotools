@@ -99,6 +99,15 @@ enum FieldSource {
   /// 验证的结论」。规范 5.5 要求两者分开，不能把材料存在当作验证通过。
   signatureMaterials,
 
+  /// iOS `PrivacyInfo.xcprivacy` 隐私清单。
+  ///
+  /// 声明性材料：它说明应用**声称**处理哪些数据，不等于系统已证实的实际
+  /// 数据访问行为。引用它的字段必须带上这层区别。
+  privacyInfo,
+
+  /// V1.1 安全检测引擎的字符串/符号线索（DEX 字符串、Mach-O 符号）。
+  securityClue,
+
   /// macOS 的 `codesign` 工具（系统签名验证）。
   codesign,
 

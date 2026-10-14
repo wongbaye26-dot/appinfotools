@@ -1,0 +1,540 @@
+import 'package:analysis_model/analysis_model.dart';
+
+import '../models.dart';
+import 'dex_clue_scanner.dart';
+import 'permission_catalog.dart';
+
+/// Android 侧的安全审计编排。
+///
+/// 输入是**已经解析好的** [ApkMeta] 与 DEX 条目字节，不自己开归档 ——
+/// 规格第六章要求「先检查现有代码组织，复用已有解析器」，因此这里只做
+/// 规则匹配与定级，文件读取、ZIP 预算、解包都由调用方按既有管线完成。
+///
+/// 定级口径见 [PermissionCatalog] 与各规则的注释。总原则：**权限数量不决定
+/// 等级**；未证实的数据流一律标 [SecurityConfidence.suspected] 并在
+/// relationship 里写清哪个环节没被证实。
+class AndroidSecurityAudit {
+  AndroidSecurityAudit._();
+
+  /// 引擎版本（与规则库版本分开：规则可以单独更新）。
+  static const String engineVersion = 'android-security-1.1.0';
+
+  static const String rulesVersion = PermissionCatalog.rulesVersion;
+
+  /// [manifestParsed] 为 false 时必须给出原因（记入覆盖不足）。
+  static SecurityAnalysisResult audit({
+    required ApkMeta meta,
+    required List<DexBytes> dexEntries,
+    bool manifestParsed = true,
+    String? manifestFailureReason,
+    List<String> containerAnomalies = const [],
+  }) {
+    final findings = <SecurityFinding>[];
+    final limitations = <String>[];
+
+    if (!manifestParsed) {
+      limitations.add(
+        'AndroidManifest.xml 未能解析（${manifestFailureReason ?? '原因未记录'}）：'
+        '权限与组件审计无法进行，本次结果仅包含可读取的部分，'
+        '不能作为完整结论。',
+      );
+    }
+
+    final targetSdk = meta.targetSdkVersion;
+
+    // ---- DEX 字符串扫描（第一层取证）----
+    final scan = DexClueScanner.scan(dexEntries);
+    for (final skipped in scan.skippedForBudget) {
+      limitations.add('DEX 扫描预算：$skipped —— 该文件只扫描了部分内容，'
+          '未覆盖的字节中可能存在未被发现的线索。');
+    }
+    if (dexEntries.isEmpty) {
+      limitations.add('未读取到任何 classes.dex 内容：OCR、上传、网络域名等'
+          '代码线索无法检查。权限与配置结论不受影响，但不构成完整分析。');
+    } else {
+      limitations.add('DEX 字符串扫描只覆盖 ${scan.scannedDexCount} 个文件、'
+          '共 ${scan.scannedBytes} 字节，且仅提取可打印 ASCII 字符串：'
+          '非 ASCII 字面量、原生库（lib/**.so）、资源文件与加固壳内的代码'
+          '均不在覆盖范围内。');
+    }
+
+    // 加固特征直接转化为覆盖不足说明（HardeningScanner 的输出）。
+    for (final anomaly in containerAnomalies) {
+      limitations.add('容器/解析异常可能影响覆盖完整性：$anomaly');
+    }
+
+    final ocrClues = scan.clues
+        .where((c) => c.category == SecurityCategory.ocrImage)
+        .toList();
+    final uploadClues = scan.clues
+        .where((c) =>
+            c.markerId == 'multipart' ||
+            c.markerId == 'multipartbody' ||
+            c.markerId == 'uploadfile' ||
+            c.markerId == 'uploadimage')
+        .toList();
+    final backgroundClues = scan.clues
+        .where((c) => c.category == SecurityCategory.backgroundTask)
+        .toList();
+    final photoClues = scan.clues
+        .where((c) => c.category == SecurityCategory.photoAccess)
+        .toList();
+
+    // ---- 权限逐条审计 ----
+    final effectivePhotoAccess = <AndroidPermissionRequest>[];
+    final broadStorage = <AndroidPermissionRequest>[];
+    final backgroundPermissions = <AndroidPermissionRequest>[];
+
+    for (final request in meta.permissionRequests) {
+      // sdk-23 声明单独在下面处理（它的生效条件无法静态判定），
+      // 不走常规目录，否则同一条权限会产出两份重复的发现。
+      if (request.sdk23Only) continue;
+      final rule = PermissionCatalog.lookup(request.name);
+      if (rule == null) continue; // 未编目的稍后汇总
+      if (rule.category == SecurityCategory.backgroundTask) {
+        backgroundPermissions.add(request);
+      }
+      final verdict = _versionVerdict(request, rule, targetSdk);
+      if (!verdict.effective) {
+        // 版本条件不满足：只作事实记录，不计入组合规则的输入。
+        findings.add(SecurityFinding(
+          ruleId: 'ANDROID-PERMISSION-EXPIRED',
+          platform: SecurityPlatform.android,
+          category: rule.category,
+          severity: SecuritySeverity.info,
+          confidence: SecurityConfidence.confirmed,
+          finding: '${request.shortName}：${verdict.note}',
+          evidence: [_manifestEvidence(request)],
+          limitation: '版本条件按 targetSdk=$targetSdk 判定；'
+              '若实际设备版本不同，生效情况以设备为准。',
+          recommendation: '该声明在当前目标版本下不构成实际访问能力，可保留观察。',
+        ));
+        continue;
+      }
+      if (verdict.partial) {
+        // 生效但效果被削弱（例如 Android 13 后的旧版存储权限）。
+        findings.add(SecurityFinding(
+          ruleId: 'ANDROID-PERMISSION-INERT',
+          platform: SecurityPlatform.android,
+          category: rule.category,
+          severity: SecuritySeverity.p3,
+          confidence: SecurityConfidence.confirmed,
+          finding: '${request.shortName}：${verdict.note}',
+          evidence: [_manifestEvidence(request)],
+          recommendation: '确认应用是否仍依赖该权限的旧行为；'
+              '高 targetSdk 下它通常已被分区存储取代。',
+        ));
+      }
+
+      if (rule.category == SecurityCategory.photoAccess) {
+        effectivePhotoAccess.add(request);
+        if (rule.name == 'MANAGE_EXTERNAL_STORAGE' ||
+            (rule.name == 'READ_EXTERNAL_STORAGE' &&
+                (targetSdk == null || targetSdk <= 32) &&
+                !verdict.partial)) {
+          broadStorage.add(request);
+        }
+      }
+
+      if (!verdict.partial) {
+        findings.add(SecurityFinding(
+          ruleId: 'ANDROID-PERMISSION-${rule.name}',
+          platform: SecurityPlatform.android,
+          category: rule.category,
+          severity: rule.baseSeverity,
+          confidence: SecurityConfidence.confirmed,
+          finding:
+              '${rule.description}${verdict.note.isEmpty ? '' : '（${verdict.note}）'}',
+          evidence: [_manifestEvidence(request)],
+          limitation: '权限声明本身只是意图，不证明运行时一定访问了对应数据。',
+          recommendation: rule.riskNote,
+        ));
+      }
+    }
+
+    // 未编目权限：汇总一条，不逐条刷屏。
+    final uncatalogued = meta.permissionRequests
+        .where((r) => !r.sdk23Only && PermissionCatalog.lookup(r.name) == null)
+        .toList();
+    if (uncatalogued.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-PERMISSION-UNCATEGORIZED',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: '另有 ${uncatalogued.length} 项权限未纳入风险目录，'
+            '仅作事实记录：${uncatalogued.map((r) => r.shortName).take(20).join(', ')}'
+            '${uncatalogued.length > 20 ? ' …' : ''}',
+        evidence:
+            uncatalogued.take(20).map((r) => _manifestEvidence(r)).toList(),
+        recommendation: '未编目不等于无风险：如需评估这些权限，'
+            '请对照 Android 权限文档人工确认。',
+      ));
+    }
+    for (final request in meta.permissionRequests.where((r) => r.sdk23Only)) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-PERMISSION-SDK23-CONDITIONAL',
+        platform: SecurityPlatform.android,
+        category: PermissionCatalog.lookup(request.name)?.category ??
+            SecurityCategory.other,
+        severity: SecuritySeverity.unknown,
+        confidence: SecurityConfidence.unknown,
+        finding: '${request.shortName} 声明于 <uses-permission-sdk-23>，'
+            '只在设备 API < 23 时授予；设备版本无法从安装包静态判定。',
+        evidence: [_manifestEvidence(request)],
+        limitation: 'targetSdk 不能代替设备 API 级别：两者可能不同。',
+        recommendation: '如需结论，请在目标系统版本的设备上验证。',
+      ));
+    }
+
+    // ---- OCR / 上传 / 网络 등能力发现（每条都带证据原文）----
+    if (ocrClues.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-OCR-CAPABILITY',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.ocrImage,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.independentCapability,
+        finding: '发现图像文字识别能力：${ocrClues.map((c) => c.description).join('、')}。'
+            '仅发现能力本身，不判定恶意。',
+        evidence: [
+          for (final clue in ocrClues)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.dexString,
+              location: clue.dexNames.join(', '),
+              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+            ),
+        ],
+        limitation: '字符串命中不等于调用发生：代码路径未被反汇编验证。',
+        recommendation: '确认识别功能的输入来源（用户主动提供 / 相册扫描）'
+            '与结果去向（本地处理 / 网络发送）。',
+      ));
+    }
+
+    if (uploadClues.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-UPLOAD-API',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.independentCapability,
+        finding: '发现上传相关 API 或代码：'
+            '${uploadClues.map((c) => c.description).join('、')}。'
+            '只证明存在上传能力，不证明上传了敏感数据。',
+        evidence: [
+          for (final clue in uploadClues)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.dexString,
+              location: clue.dexNames.join(', '),
+              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+            ),
+        ],
+        recommendation: '人工确认上传的内容、触发条件与目的地。',
+      ));
+    }
+
+    if (scan.domains.isNotEmpty || scan.ips.isNotEmpty) {
+      final parts = <String>[
+        if (scan.domains.isNotEmpty)
+          '域名 ${scan.domains.length} 个：${scan.domains.take(12).join(', ')}'
+              '${scan.domains.length > 12 ? ' …' : ''}',
+        if (scan.ips.isNotEmpty)
+          'IP ${scan.ips.length} 个：${scan.ips.take(8).join(', ')}'
+              '${scan.ips.length > 8 ? ' …' : ''}',
+      ];
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-NETWORK-ENDPOINTS',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.network,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: '从静态字符串中提取到 ${parts.join('；')}。'
+            '静态提取不等于运行时实际访问过 —— 域名出现在字符串里'
+            '可能是配置项、SDK 地址或从未连接的备用端点。',
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexString,
+            location: '${scan.scannedDexCount} 个 DEX 的字符串',
+            detail: [...scan.domains.take(12), ...scan.ips.take(8)].join(', '),
+          ),
+        ],
+        limitation: '字符串表不包含全部构造式 URL（拼接、加密配置）'
+            '，也不反映实际连接。',
+        recommendation: '对陌生域名结合证书固定、流量观察进一步核实；'
+            '仅凭域名陌生、使用 CDN 或加密不构成恶意证据。',
+      ));
+    }
+
+    // ---- 规则 A：广泛相册访问 + 未见明显业务用途 ----
+    if (broadStorage.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-RULE-A',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.photoAccess,
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: '发现广泛存储/相册访问：'
+            '${broadStorage.map((r) => r.shortName).join('、')}，'
+            '列为待人工复核的中风险候选项。'
+            '本次分析未从安装包中发现与之对应的明显图片业务功能线索'
+            '（如系统照片选择器调用、图片列表界面等）。',
+        evidence: [
+          for (final request in broadStorage) _manifestEvidence(request),
+        ],
+        limitation: '「缺少业务用途」是静态推断：业务代码可能位于未扫描的'
+            '原生库、加固外壳或动态加载模块中。',
+        recommendation: '人工复核该应用是否真的需要全盘文件访问；'
+            '如不需要，建议改用系统照片选择器（Photo Picker）。'
+            '本项为待复核候选项，不是恶意判定。',
+      ));
+    }
+
+    // ---- 规则 B：相册访问 + OCR ----
+    final hasImageInput =
+        effectivePhotoAccess.isNotEmpty || photoClues.isNotEmpty;
+    if (hasImageInput && ocrClues.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-RULE-B',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.ocrImage,
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: '同时发现图像输入来源与文字识别能力：'
+            '权限/代码线索（${[
+          ...effectivePhotoAccess.map((r) => r.shortName),
+          ...photoClues.map((c) => c.description),
+        ].join('、')}）与识别能力（${ocrClues.map((c) => c.description).join('、')}）。'
+            '该组合可能对应正常功能（文档扫描、翻译、名片识别）。',
+        evidence: [
+          for (final request in effectivePhotoAccess)
+            _manifestEvidence(request),
+          for (final clue in [...photoClues, ...ocrClues])
+            SecurityEvidence(
+              source: SecurityEvidenceSource.dexString,
+              location: clue.dexNames.join(', '),
+              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+            ),
+        ],
+        relationship: '图像输入 → 文字识别：两段线索同现，但未被证实位于'
+            '同一条调用路径上。',
+        limitation: '未反汇编，无法确认识别模块实际处理的是用户主动选择的'
+            '图片还是批量扫描的媒体文件。',
+        recommendation: '确认识别的输入来源与用户授权方式（是否走系统'
+            '照片选择器）。',
+      ));
+    }
+
+    // ---- 规则 C：相册 + OCR + 上传 ----
+    if (hasImageInput && ocrClues.isNotEmpty && uploadClues.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-RULE-C',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.p1,
+        confidence: SecurityConfidence.suspected,
+        finding: '发现「图像输入 + 文字识别 + 上传调用」三段线索同现，'
+            '存在敏感数据外传的疑似链路。这是高风险**候选项**，'
+            '静态分析未能证实数据确实流入上传请求。',
+        evidence: [
+          for (final request in effectivePhotoAccess)
+            _manifestEvidence(request),
+          for (final clue in [...ocrClues, ...uploadClues])
+            SecurityEvidence(
+              source: SecurityEvidenceSource.dexString,
+              location: clue.dexNames.join(', '),
+              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+            ),
+        ],
+        dataSource: '照片/媒体文件与其中的识别文本',
+        dataSink: '上传请求（multipart / upload API）',
+        relationship: '读取照片 → 图像文字识别 → 构建上传请求：三段分别有证据，'
+            '但「同一代码路径上的数据流」未被证实 —— 未证实的环节是'
+            '识别结果进入上传请求这一跳。',
+        limitation: '关联来自多标记同现，不是调用图分析；反射、动态加载与'
+            '加固均可能使真实链路不同。',
+        recommendation: '优先人工复核；可在隔离环境中抓包验证实际外联内容'
+            '（需动态测试，本版本不提供）。',
+      ));
+    }
+
+    // ---- 规则 D：敏感数据 + 明文通信 ----
+    if (meta.applicationUsesCleartextTraffic == true) {
+      final withSensitive = hasImageInput ||
+          ocrClues.isNotEmpty ||
+          uploadClues.isNotEmpty ||
+          scan.domains.isNotEmpty;
+      findings.add(SecurityFinding(
+        ruleId: withSensitive ? 'ANDROID-RULE-D-ESCALATED' : 'ANDROID-RULE-D',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.configuration,
+        severity: withSensitive ? SecuritySeverity.p1 : SecuritySeverity.p2,
+        confidence: SecurityConfidence.confirmed,
+        finding: withSensitive
+            ? '应用允许明文流量（usesCleartextTraffic=true），且同时存在'
+                '图像/识别/上传相关线索：敏感数据可能经未加密链路传输。'
+            : '应用允许明文流量（usesCleartextTraffic=true）。',
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.manifest,
+            location: 'AndroidManifest.xml / manifest / application',
+            detail: 'android:usesCleartextTraffic="true"',
+          ),
+        ],
+        limitation: '配置允许明文不等同于实际使用了明文；具体请求需抓包确认'
+            '。networkSecurityConfig 的例外域未被展开。',
+        recommendation: '确认是否存在明文传输的实际请求；'
+            '如无必要应关闭该开关。',
+      ));
+    }
+
+    // ---- 规则 E：后台 + 敏感数据 + 回传 ----
+    final hasBackground = backgroundPermissions.isNotEmpty ||
+        backgroundClues.isNotEmpty ||
+        meta.components.any((c) =>
+            c.type == ComponentType.service ||
+            c.type == ComponentType.receiver);
+    if (hasBackground &&
+        (hasImageInput || ocrClues.isNotEmpty) &&
+        uploadClues.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-RULE-E',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.backgroundTask,
+        severity: SecuritySeverity.p1,
+        confidence: SecurityConfidence.suspected,
+        finding: '后台任务、敏感数据访问与上传调用三类线索同时存在，'
+            '且相互印证：需在运行时进一步验证。仅发现后台任务或网络权限'
+            '不构成恶意证据。',
+        evidence: [
+          for (final clue in backgroundClues)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.dexString,
+              location: clue.dexNames.join(', '),
+              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+            ),
+          if (backgroundPermissions.isNotEmpty)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.manifest,
+              location: 'AndroidManifest.xml / manifest / uses-permission',
+              detail: backgroundPermissions
+                  .map((r) => r.shortName)
+                  .take(8)
+                  .join(', '),
+            ),
+          for (final request in effectivePhotoAccess)
+            _manifestEvidence(request),
+        ],
+        relationship: '后台入口 + 敏感数据来源 + 上传去路：三类证据同现，'
+            '「后台是否实际处理并上传媒体数据」未获证实。',
+        limitation: '未运行动态分析，后台任务的真实触发与执行无法观察。',
+        recommendation: '在隔离环境执行并观察网络行为后确认。',
+      ));
+    }
+
+    // ---- 规则 F：未发现上传特征 ----
+    //
+    // 规格规则 F：只能输出「当前分析范围内未发现相关特征」，不能输出
+    // 「确认不存在恶意行为」。因此没有上传线索时**必须显式产出这一条**，
+    // 而不是留一个空列表让人以为查过了就等于安全。
+    if (uploadClues.isEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-RULE-F',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.info,
+        confidence: dexEntries.isEmpty
+            ? SecurityConfidence.unknown
+            : SecurityConfidence.confirmed,
+        finding: '当前分析范围内未发现上传相关代码特征'
+            '（未命中 multipart 上传、文件上传接口等标记）。'
+            '这不表示应用不存在上传行为 —— 只说明本次静态扫描没有发现。',
+        evidence: const [],
+        limitation: dexEntries.isEmpty
+            ? '本次未读取到 DEX 内容，「未发现」的置信度是不完整的。'
+            : '字符串扫描不覆盖原生库、资源与加固壳内代码。',
+        recommendation: '如需排除上传行为，请结合动态流量观察（本版本不提供）。',
+      ));
+    }
+
+    limitations.add('本次为离线静态分析：未安装、未运行、未观察网络流量。'
+        '运行时证据（includesRuntimeEvidence）恒为 false，'
+        '报告不得据此声称已完成行为确认。');
+    limitations.add('OCR / 上传 / 后台的判定基于字符串标记同现，'
+        '未做反汇编与跨方法数据流还原；混淆与动态加载可能改变结论。');
+
+    return SecurityAnalysisResult(
+      engineVersion: engineVersion,
+      rulesVersion: rulesVersion,
+      findings: findings,
+      limitations: limitations,
+    );
+  }
+
+  /// 版本条件判定结果。
+  ///
+  /// - [effective]：该请求在 targetSdk 下是否仍然生效；
+  /// - [partial]：生效但效果被大幅削弱（例如 Android 13 后的旧版存储权限）；
+  /// - [note]：给用户看的原因说明。
+  static _Verdict _versionVerdict(
+    AndroidPermissionRequest request,
+    PermissionRule rule,
+    int? targetSdk,
+  ) {
+    if (request.sdk23Only) {
+      return const _Verdict(effective: true, partial: false, note: '');
+    }
+    if (request.maxSdkVersion != null) {
+      final max = request.maxSdkVersion!;
+      if (targetSdk != null && targetSdk > max) {
+        return _Verdict(
+          effective: false,
+          partial: false,
+          note: '该权限声明了 maxSdkVersion=$max，而应用 targetSdk=$targetSdk，'
+              '系统不再授予（在 Android ${max + 1}+ 上不生效）。',
+        );
+      }
+      return const _Verdict(effective: true, partial: false, note: '');
+    }
+    if (rule.minApi != null && targetSdk != null && targetSdk < rule.minApi!) {
+      return _Verdict(
+        effective: true,
+        partial: false,
+        note: '面向 API ${rule.minApi}+ 的权限，应用 targetSdk=$targetSdk：'
+            '实际生效的可能是旧版访问模型，需结合 minSdk 判断。',
+      );
+    }
+    if (rule.maxApiEffectiveAbove != null && targetSdk != null) {
+      if (targetSdk > rule.maxApiEffectiveAbove!) {
+        return _Verdict(
+          effective: true,
+          partial: true,
+          note: 'targetSdk=$targetSdk 高于 API ${rule.maxApiEffectiveAbove}，'
+              '该权限的实际效果已被分区存储大幅削弱。',
+        );
+      }
+    }
+    return const _Verdict(effective: true, partial: false, note: '');
+  }
+
+  static SecurityEvidence _manifestEvidence(AndroidPermissionRequest request) {
+    return SecurityEvidence(
+      source: SecurityEvidenceSource.manifest,
+      location: 'AndroidManifest.xml / manifest / uses-permission'
+          '[@name="${request.name}"]',
+      detail: '$request',
+    );
+  }
+}
+
+class _Verdict {
+  final bool effective;
+  final bool partial;
+  final String note;
+
+  const _Verdict({
+    required this.effective,
+    required this.partial,
+    required this.note,
+  });
+}

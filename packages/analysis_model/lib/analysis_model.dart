@@ -8,7 +8,11 @@
 // - `FieldValue<T>` / `FieldStatus` / `FieldSource`：字段值及其解析状态与来源
 // - `AnalysisDiagnostic`：解析过程中的诊断记录
 // - `SignatureStatus`：受信任工具给出的签名验证结论（Android 与 iOS 共用）
+// - `SecurityFinding` 等：安全检测引擎的平台中立发现项模型
+// - `AsciiStrings`：二进制 ASCII 字符串提取（Android 与 iOS 的安全扫描共用）
 
+export 'src/ascii_strings.dart';
 export 'src/diagnostic.dart';
 export 'src/field_value.dart';
+export 'src/security_finding.dart';
 export 'src/signature_status.dart';

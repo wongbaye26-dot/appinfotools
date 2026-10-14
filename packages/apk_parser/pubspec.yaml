@@ -7,6 +7,8 @@ environment:
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
+  analysis_model:
+    path: ../analysis_model
   archive:
     git:
       url: https://github.com/huanfeng/archive.git

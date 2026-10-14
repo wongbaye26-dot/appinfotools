@@ -10,6 +10,13 @@ export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';
 
+// 安全检测引擎（V1.1）：权限规则目录、DEX 字符串线索、Android 侧审计编排。
+// 产出的是 `analysis_model` 里的平台中立发现项模型，与平台自身的解析结果
+// 分开导出 ——「解析出了什么」和「据此判断有什么风险」是两个问题。
+export 'src/security/android_security_audit.dart';
+export 'src/security/dex_clue_scanner.dart';
+export 'src/security/permission_catalog.dart';
+
 // ZIP 容器安全原语已下沉到 `archive_safety` —— 它们与「里面装的是 APK 还是
 // IPA」无关，IPA 解析器也要用同一份实现（复制一份安全防护意味着两边的阈值
 // 会各自漂移）。

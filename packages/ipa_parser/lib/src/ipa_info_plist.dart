@@ -71,6 +71,32 @@ class IosIconConfiguration {
 /// 每个字段都是 [FieldValue]：**值 + 状态 + 来源 + 诊断**。规范 5.2 要求
 /// 「对缺失、类型错误或无法解析的字段分别记录状态，不得将空值替换为虚构数据」，
 /// 这个结构就是那句话的落地。
+/// `PrivacyInfo.xcprivacy` 隐私清单的摘要。
+///
+/// 只取与隐私检测相关的三类内容：是否声明追踪、追踪域名、声明的收集数据类型。
+/// **不解释、不定级** —— 规格 4.4 明确它是声明性材料， interpretations 属于
+/// 审计器（`ios_privacy_audit`）的职责。
+class IosPrivacyInfo {
+  /// `NSPrivacyTracking`：应用是否声明自己会跟踪用户。
+  final bool? tracking;
+
+  /// `NSPrivacyTrackingDomains`。
+  final List<String> trackingDomains;
+
+  /// `NSPrivacyCollectedDataTypes[].NSPrivacyCollectedDataType` 的去重列表，
+  /// 例如 `NSPrivacyCollectedDataTypePhotos`。
+  final List<String> collectedDataTypes;
+
+  const IosPrivacyInfo({
+    this.tracking,
+    this.trackingDomains = const [],
+    this.collectedDataTypes = const [],
+  });
+
+  bool get isEmpty =>
+      tracking == null && trackingDomains.isEmpty && collectedDataTypes.isEmpty;
+}
+
 class IpaInfoPlist {
   final IosBundle bundle;
 
@@ -94,6 +120,28 @@ class IpaInfoPlist {
   final FieldValue<List<String>> requiredDeviceCapabilities;
   final FieldValue<IosIconConfiguration> icons;
 
+  /// `NS*UsageDescription` 系列键：用途说明键名 → 说明原文。
+  ///
+  /// 规格 4.2 的关键点：**有用途说明不代表一定使用了该能力，没有用途说明
+  /// 也不等于发生了恶意访问**。因此这里只记录「声明了什么」，是否使用由
+  /// `ios_privacy_audit` 结合 Mach-O 符号线索判断。
+  final FieldValue<Map<String, String>> privacyUsageDescriptions;
+
+  /// `NSAppTransportSecurity.NSAllowsArbitraryLoads`（ATS 明文放行开关）。
+  ///
+  /// 三态：未声明、显式 true、显式 false。与 Android 的
+  /// `usesCleartextTraffic` 同一口径 —— 不把「未声明」折算成任何值。
+  final FieldValue<bool> allowsArbitraryLoads;
+
+  /// ATS 例外域名（`NSExceptionDomains` 的键）。
+  final FieldValue<List<String>> atsExceptionDomains;
+
+  /// `PrivacyInfo.xcprivacy` 隐私清单的摘要。
+  ///
+  /// 规格 4.4：隐私清单是**声明性材料**，不等于系统已证实的实际数据访问
+  /// 行为。因此它只是事实记录，不能据此声称应用「确实收集了」某些数据。
+  final FieldValue<IosPrivacyInfo> privacyInfo;
+
   /// 读取与解析过程中的诊断。
   final List<AnalysisDiagnostic> diagnostics;
 
@@ -111,6 +159,11 @@ class IpaInfoPlist {
     this.queriesSchemes = const FieldValue<List<String>>.absent(),
     this.requiredDeviceCapabilities = const FieldValue<List<String>>.absent(),
     this.icons = const FieldValue<IosIconConfiguration>.absent(),
+    this.privacyUsageDescriptions =
+        const FieldValue<Map<String, String>>.absent(),
+    this.allowsArbitraryLoads = const FieldValue<bool>.absent(),
+    this.atsExceptionDomains = const FieldValue<List<String>>.absent(),
+    this.privacyInfo = const FieldValue<IosPrivacyInfo>.absent(),
     this.diagnostics = const [],
   });
 
@@ -140,6 +193,10 @@ class IpaInfoPlist {
         queriesSchemes,
         requiredDeviceCapabilities,
         icons,
+        privacyUsageDescriptions,
+        allowsArbitraryLoads,
+        atsExceptionDomains,
+        privacyInfo,
       ].any((f) => f.hasValue);
 }
 
@@ -227,10 +284,11 @@ class IpaInfoPlistReader {
       );
     }
 
-    return _extract(bundle, parsed, path);
+    return _extract(archive, bundle, parsed, path);
   }
 
-  static IpaInfoPlist _extract(IosBundle bundle, PlistDict root, String path) {
+  static IpaInfoPlist _extract(
+      Archive archive, IosBundle bundle, PlistDict root, String path) {
     final diagnostics = <AnalysisDiagnostic>[
       AnalysisDiagnostic.info(
         'ios.info_plist.parsed',
@@ -268,8 +326,149 @@ class IpaInfoPlistReader {
           root, 'UIRequiredDeviceCapabilities',
           source: source),
       icons: _icons(root),
+      privacyUsageDescriptions: _usageDescriptions(root, source),
+      allowsArbitraryLoads: _atsArbitraryLoads(root, source),
+      atsExceptionDomains: _atsExceptionDomains(root, source),
+      privacyInfo: _readPrivacyInfo(archive, bundle, diagnostics),
       diagnostics: diagnostics,
     );
+  }
+
+  /// 用途说明键。
+  ///
+  /// 只收 `NS` 开头、`UsageDescription` 结尾的键 —— 这是 Apple 规定的
+  /// 命名约定（`NSCameraUsageDescription`、`NSPhotoLibraryUsageDescription`…）。
+  /// 不按一张写死的表列举：Apple 每加一个新受保护资源就可能加一个新键，
+  /// 约定比清单更难过期。值是原文（未截断），供人工阅读。
+  static FieldValue<Map<String, String>> _usageDescriptions(
+      PlistDict root, FieldSource source) {
+    final found = <String, String>{};
+    for (final entry in root.value.entries) {
+      final key = entry.key;
+      if (!key.startsWith('NS') || !key.endsWith('UsageDescription')) continue;
+      final text = entry.value.asString;
+      if (text == null || text.trim().isEmpty) {
+        // 键在但值不是字符串：如实记为空串，让调用方看到「声明了却读不出内容」。
+        found[key] = '';
+      } else {
+        found[key] = text;
+      }
+    }
+    if (found.isEmpty) {
+      return FieldValue<Map<String, String>>.absent(source: source);
+    }
+    return FieldValue<Map<String, String>>.extracted(found, source: source);
+  }
+
+  /// `NSAppTransportSecurity.NSAllowsArbitraryLoads`。
+  static FieldValue<bool> _atsArbitraryLoads(
+      PlistDict root, FieldSource source) {
+    final ats = root.value['NSAppTransportSecurity'];
+    if (ats is! PlistDict) return FieldValue<bool>.absent(source: source);
+    final allows = ats.value['NSAllowsArbitraryLoads'];
+    if (allows is! PlistValue) {
+      return FieldValue<bool>.absent(source: source);
+    }
+    final value = allows.asBool;
+    if (value == null) {
+      return FieldValue<bool>.wrongType(
+        source: source,
+        diagnostic: 'NSAllowsArbitraryLoads is not a boolean',
+      );
+    }
+    return FieldValue<bool>.extracted(value, source: source);
+  }
+
+  /// ATS 例外域名（不展开每个域内的具体例外设置 —— 那需要继续下钻
+  /// `NSExceptionAllowsInsecureHTTPLoads` 等，规格只要求识别放行配置的存在）。
+  static FieldValue<List<String>> _atsExceptionDomains(
+      PlistDict root, FieldSource source) {
+    final ats = root.value['NSAppTransportSecurity'];
+    if (ats is! PlistDict) {
+      return FieldValue<List<String>>.absent(source: source);
+    }
+    final domains = ats.value['NSExceptionDomains'];
+    if (domains is! PlistDict) {
+      return FieldValue<List<String>>.absent(source: source);
+    }
+    if (domains.value.isEmpty) {
+      return FieldValue<List<String>>.absent(source: source);
+    }
+    return FieldValue<List<String>>.extracted(
+      domains.value.keys.toList(),
+      source: source,
+    );
+  }
+
+  /// 读取 bundle 内的 `PrivacyInfo.xcprivacy`。
+  ///
+  /// 文件不存在是**正常情况**（不是每个应用都有隐私清单），记为 absent；
+  /// 存在但解析失败记为 failed —— 两者的区别要留住。
+  static FieldValue<IosPrivacyInfo> _readPrivacyInfo(
+    Archive archive,
+    IosBundle bundle,
+    List<AnalysisDiagnostic> diagnostics,
+  ) {
+    const source = FieldSource.privacyInfo;
+    final path = '${bundle.path}/PrivacyInfo.xcprivacy';
+    final entry = archive.findFile(path);
+    if (entry == null) {
+      return const FieldValue<IosPrivacyInfo>.absent(source: source);
+    }
+    final content = entry.content;
+    if (content.length > maxInfoPlistBytes) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.privacy_info.too_large',
+        '$path declares ${content.length} bytes, above the limit',
+      ));
+      return const FieldValue<IosPrivacyInfo>.failed(
+        source: source,
+        diagnostic: 'PrivacyInfo.xcprivacy exceeds the size limit',
+      );
+    }
+    final PlistValue parsed;
+    try {
+      parsed = PlistParser.parse(content);
+    } on PlistParseException catch (e) {
+      diagnostics.add(AnalysisDiagnostic.error(
+        'ios.privacy_info.unparsable',
+        '$path could not be parsed: ${e.message}',
+      ));
+      return FieldValue<IosPrivacyInfo>.failed(
+        source: source,
+        diagnostic: '$path could not be parsed: ${e.message}',
+      );
+    }
+    if (parsed is! PlistDict) {
+      return FieldValue<IosPrivacyInfo>.failed(
+        source: source,
+        diagnostic: '$path root is ${parsed.typeName}, expected a dictionary',
+      );
+    }
+
+    final tracking = parsed.value['NSPrivacyTracking'];
+    final trackingDomains =
+        (parsed.value['NSPrivacyTrackingDomains']).asStringList ?? const [];
+    final collectedRaw = parsed.value['NSPrivacyCollectedDataTypes'];
+    final collectedTypes = <String>{};
+    if (collectedRaw is PlistArray) {
+      for (final item in collectedRaw.value) {
+        if (item is! PlistDict) continue;
+        final type = item.value['NSPrivacyCollectedDataType'];
+        final text = type.asString;
+        if (text != null) collectedTypes.add(text);
+      }
+    }
+
+    final info = IosPrivacyInfo(
+      tracking: tracking?.asBool,
+      trackingDomains: trackingDomains,
+      collectedDataTypes: collectedTypes.toList()..sort(),
+    );
+    if (info.isEmpty) {
+      return const FieldValue<IosPrivacyInfo>.absent(source: source);
+    }
+    return FieldValue<IosPrivacyInfo>.extracted(info, source: source);
   }
 
   // ---------------------------------------------------------------------------
@@ -388,6 +587,18 @@ class IpaInfoPlistReader {
         source: FieldSource.infoPlist,
       ),
       icons: FieldValue<IosIconConfiguration>.failed(
+        diagnostic: diagnostic.message,
+        source: FieldSource.infoPlist,
+      ),
+      privacyUsageDescriptions: FieldValue<Map<String, String>>.failed(
+        diagnostic: diagnostic.message,
+        source: FieldSource.infoPlist,
+      ),
+      allowsArbitraryLoads: FieldValue<bool>.failed(
+        diagnostic: diagnostic.message,
+        source: FieldSource.infoPlist,
+      ),
+      atsExceptionDomains: FieldValue<List<String>>.failed(
         diagnostic: diagnostic.message,
         source: FieldSource.infoPlist,
       ),

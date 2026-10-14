@@ -51,13 +51,36 @@ class ManifestParser {
     }
 
     // <uses-permission>
+    //
+    // 同时保留两种形态：`permissions` 只要名字（应用层与既有测试的既有口径），
+    // `permissionRequests` 额外记录 `maxSdkVersion` —— 权限审计需要按版本
+    // 条件判断请求是否仍然生效，把条件丢掉会把旧版遗留声明误当成当前风险。
     for (final child in manifest.children) {
       if (child.name == 'uses-permission') {
         final name = child.attributes['name'];
         if (name != null && name.isNotEmpty) {
           meta.permissions.add(name);
+          meta.permissionRequests.add(AndroidPermissionRequest(
+            name,
+            maxSdkVersion: _parseInt(child.attributes['maxSdkVersion']),
+          ));
         }
       }
+    }
+
+    // <uses-permission-sdk-23>：该声明只在**设备 API < 23** 时授予。
+    // 注意这与 maxSdkVersion 的条件口径不同（一个是设备版本、一个是声明上限），
+    // 用 sdk23Only 标记，审计据此输出「无法从静态判定是否生效」。
+    for (final child in manifest.children) {
+      if (child.name != 'uses-permission-sdk-23') continue;
+      final name = child.attributes['name'];
+      if (name == null || name.isEmpty) continue;
+      meta.permissionRequests.add(AndroidPermissionRequest(
+        name,
+        maxSdkVersion: _parseInt(child.attributes['maxSdkVersion']),
+        sdk23Only: true,
+      ));
+      if (!meta.permissions.contains(name)) meta.permissions.add(name);
     }
 
     // <uses-feature>
@@ -108,6 +131,14 @@ class ManifestParser {
       meta.applicationIcon = application.attributes['icon'];
       meta.applicationDebuggable =
           _parseBool(application.attributes['debuggable']);
+
+      // 明文流量开关（规则 D 的输入）。三态：未声明时系统按 targetSdk 给
+      // 默认值（≥28 默认禁止），但那与「显式声明了 false」不是一回事，
+      // 因此这里不把 null 折算成 true/false。
+      meta.applicationUsesCleartextTraffic =
+          _parseBool(application.attributes['usesCleartextTraffic']);
+      meta.networkSecurityConfig =
+          application.attributes['networkSecurityConfig'];
 
       // 混淆 APK: name/label 可能无法通过标准属性名找到
       meta.applicationName ??= _guessClassName(application);

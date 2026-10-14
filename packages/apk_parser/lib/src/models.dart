@@ -1,3 +1,45 @@
+/// manifest 中声明的一条权限请求。
+///
+/// [maxSdkVersion] 是 Android 平台的「版本适用条件」：超过该 API 级别后
+/// 这项请求不再生效。它不是可省略的细节 —— 权限审计必须结合 targetSdk
+/// 判断「这项请求现在到底生不生效」，否则会把旧版遗留声明当成当前风险。
+class AndroidPermissionRequest {
+  /// 完整权限名，例如 `android.permission.READ_MEDIA_IMAGES`。
+  final String name;
+
+  /// `android:maxSdkVersion`；未声明为 `null`。
+  ///
+  /// 与 [sdk23Only] 的区别：前者约束的是**设备 API 级别**的上限
+  /// （系统在 `maxSdkVersion` 之上直接忽略该请求），判断时以设备实际
+  /// 系统版本为准，targetSdk 只是近似代理。
+  final int? maxSdkVersion;
+
+  /// 是否来自 `<uses-permission-sdk-23>`：该声明只在**设备 API < 23** 时授予。
+  ///
+  /// 不能拿 targetSdk 代替设备版本判断 —— 两者可能不同（targetSdk 34 的
+  /// 应用也可能装在 Android 10 上）。这种情况下静态分析无法确定该请求
+  /// 当前是否生效，审计必须输出「无法确认」而不是替用户下结论。
+  final bool sdk23Only;
+
+  const AndroidPermissionRequest(
+    this.name, {
+    this.maxSdkVersion,
+    this.sdk23Only = false,
+  });
+
+  /// 短名（去掉 `android.permission.` 前缀），便于展示与规则匹配。
+  String get shortName =>
+      name.startsWith('android.permission.') ? name.substring(19) : name;
+
+  @override
+  String toString() {
+    final suffix = sdk23Only
+        ? ' (sdk-23: device API < 23 only)'
+        : (maxSdkVersion == null ? '' : ' (maxSdkVersion=$maxSdkVersion)');
+    return '$name$suffix';
+  }
+}
+
 /// APK 解析结果数据模型
 class ApkMeta {
   String? packageName;
@@ -31,6 +73,27 @@ class ApkMeta {
   List<String> nativeCodes = [];
   List<String> locales = [];
   List<int> densities = [];
+
+  /// `<uses-permission>` 的结构化形式：权限名 + `android:maxSdkVersion`。
+  ///
+  /// **不能只用 [permissions]**：`maxSdkVersion` 是版本适用条件，而
+  /// `READ_EXTERNAL_STORAGE` 在真实样本里就带 `maxSdkVersion=32`
+  /// （targetSdk 34 的应用在 Android 13 上根本拿不到它）。丢掉这个条件，
+  /// 就会把「只在旧系统生效的广泛存储访问」与「当前照常生效」混为一谈。
+  ///
+  /// [permissions] 保留原样（只有名字），应用层与既有测试不受影响。
+  List<AndroidPermissionRequest> permissionRequests = [];
+
+  /// `<application android:usesCleartextTraffic>`。
+  ///
+  /// 三态而非 bool：未声明时系统有默认值（targetSdk ≥ 28 默认 false），
+  /// 但那与「应用显式声明了 false」是两回事，规则引擎需要区分。
+  bool? applicationUsesCleartextTraffic;
+
+  /// `<application android:networkSecurityConfig>` 引用的资源路径；
+  /// 未声明为 `null`。存在该属性意味着 ATS 行为被自定义配置覆盖，
+  /// 静态层面只能记录，不能展开资源表里那份 XML 的每条配置。
+  String? networkSecurityConfig;
 
   List<ActivityInfo> launchableActivities = [];
 
