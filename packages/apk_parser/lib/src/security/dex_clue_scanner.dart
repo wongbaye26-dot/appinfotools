@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 
+import 'code_markers.dart';
+
 /// 一个待扫描的 DEX 文件：名字 + 字节。
 ///
 /// 与容器层的 `DexEntry`（只有名字与声明大小）不是一回事：那个描述「归档里
@@ -75,18 +77,11 @@ class DexScanResult {
 }
 
 /// 一个待匹配的字符串标记。
-class _Marker {
-  final String id;
-  final SecurityCategory category;
-  final String description;
-
-  /// 字面量子串（区分大小写）。Java 标识符与 SDK 包名用字面量最可靠；
-  /// 正则太宽会把 `RECORD` 之类误判成 OCR。
-  final String literal;
-
-  const _Marker(this.id, this.category, this.description, this.literal);
-}
-
+///
+/// 标记表已抽到 [codeMarkers]（`code_markers.dart`）—— 方法引用扫描器要用
+/// 同一份。两边各写一份必然漂移：加了新标记却只改一处，就会得出「字符串里
+/// 命中了、代码引用里没命中」这种自相矛盾的结论。
+///
 /// 有界的 DEX 字符串线索扫描器。
 ///
 /// 规格 3.3 明确要求「避免只依赖关键词搜索」，因此这里只做**第一层取证**：
@@ -123,59 +118,6 @@ class DexClueScanner {
 
   /// 域名 / IP 最多保留多少条。
   static const int maxEndpoints = 50;
-
-  static final List<_Marker> _markers = [
-    // ---- OCR / 图像识别 ----
-    const _Marker('ocr-mlkit', SecurityCategory.ocrImage,
-        'ML Kit text recognition SDK', 'com.google.mlkit'),
-    const _Marker('ocr-textrecognition', SecurityCategory.ocrImage,
-        'text recognition API', 'TextRecognition'),
-    const _Marker('ocr-recognizetext', SecurityCategory.ocrImage,
-        'text recognition call', 'recognizeText'),
-    const _Marker('ocr-tesseract', SecurityCategory.ocrImage, 'Tesseract OCR',
-        'esseract'),
-    const _Marker('ocr-literal', SecurityCategory.ocrImage,
-        'OCR literal in code/strings', 'OCR'),
-    // ---- 截图 / 屏幕内容 ----
-    const _Marker('screenshot', SecurityCategory.ocrImage, 'screenshot capture',
-        'creenshot'),
-    const _Marker('screencapture', SecurityCategory.ocrImage, 'screen capture',
-        'MediaProjection'),
-    // ---- 图片读取 ----
-    const _Marker('mediastore', SecurityCategory.photoAccess,
-        'media database access', 'MediaStore'),
-    const _Marker('externalcontenturi', SecurityCategory.photoAccess,
-        'external storage content URI', 'EXTERNAL_CONTENT_URI'),
-    // ---- 上传 / 网络 ----
-    const _Marker('multipart', SecurityCategory.dataExfiltration,
-        'multipart form upload', 'multipart/form-data'),
-    const _Marker('multipartbody', SecurityCategory.dataExfiltration,
-        'multipart request body', 'MultipartBody'),
-    const _Marker(
-        'okhttp', SecurityCategory.network, 'OkHttp HTTP client', 'okhttp3'),
-    const _Marker('retrofit', SecurityCategory.network, 'Retrofit HTTP client',
-        'retrofit2'),
-    const _Marker('httpurlconnection', SecurityCategory.network,
-        'HttpURLConnection', 'HttpURLConnection'),
-    const _Marker('volley', SecurityCategory.network, 'Volley HTTP client',
-        'com.android.volley'),
-    const _Marker('uploadfile', SecurityCategory.dataExfiltration,
-        'file upload call', 'ploadFile'),
-    const _Marker('uploadimage', SecurityCategory.dataExfiltration,
-        'image upload call', 'ploadImage'),
-    // ---- 后台 ----
-    const _Marker('jobscheduler', SecurityCategory.backgroundTask,
-        'JobScheduler', 'JobScheduler'),
-    const _Marker('workmanager', SecurityCategory.backgroundTask, 'WorkManager',
-        'androidx.work'),
-    // ---- 第三方 SDK（只作事实记录，不作风险判定）----
-    const _Marker('sdk-firebase', SecurityCategory.thirdPartySdk,
-        'Firebase SDK', 'com.google.firebase'),
-    const _Marker('sdk-umeng', SecurityCategory.thirdPartySdk,
-        'Umeng analytics SDK', 'com.umeng'),
-    const _Marker('sdk-bugly', SecurityCategory.thirdPartySdk,
-        'Bugly crash reporting SDK', 'com.tencent.bugly'),
-  ];
 
   /// URL 主机名提取：`scheme://host[:port]/…`。
   static final RegExp _urlPattern =
@@ -232,7 +174,7 @@ class DexClueScanner {
     }
 
     final clues = <CodeClue>[];
-    for (final marker in _markers) {
+    for (final marker in codeMarkers) {
       final samples = markerSamples[marker.id];
       if (samples == null || samples.isEmpty) continue;
       final dexes = markerDexes[marker.id]!;
@@ -283,12 +225,9 @@ class DexClueScanner {
     // （`Lcom/google/mlkit/vision/text/TextRecognizer;`），字符串字面量用
     // 点号（`com.google.mlkit.vision.text`）。匹配前把 `/` 归一成 `.`，
     // 否则换一种写法就整类漏掉 —— 真实的加固样本里两种形态都出现过。
-    final normalized = value.replaceAll('/', '.');
-    for (final marker in _markers) {
-      if (!value.contains(marker.literal) &&
-          !normalized.contains(marker.literal)) {
-        continue;
-      }
+    //
+    // 归一化与匹配逻辑在 [matchCodeMarkers] 里，与方法引用扫描器共用。
+    for (final marker in matchCodeMarkers(value)) {
       (samples[marker.id] ??= <String>{}).add(value);
       (dexes[marker.id] ??= <String>{}).add(dexName);
     }

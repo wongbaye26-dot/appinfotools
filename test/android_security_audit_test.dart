@@ -518,4 +518,101 @@ void main() {
       expect(summary, isNot(contains('classes.dex 的结构')));
     });
   });
+
+  // 第二层取证：把「代码引用了」与「字符串里提到了」分开陈述。
+  group('DEX 方法引用进入发现项', () {
+    Uint8List fixture(String name) =>
+        File('test/fixtures/dex/$name').readAsBytesSync();
+
+    test('代码引用以 dexMethodReference 作为证据来源', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('real-netprobe.dex'))],
+      );
+
+      final finding = _byId(result, 'ANDROID-NETWORK-CLIENT');
+      expect(finding, isNotNull,
+          reason: '实际发现项：${result.findings.map((f) => f.ruleId).toList()}');
+      expect(
+        finding!.evidence
+            .any((e) => e.source == SecurityEvidenceSource.dexMethodReference),
+        isTrue,
+        reason: '代码引用必须用不同的证据来源标注，不能与字符串混为一谈',
+      );
+      expect(
+        finding.evidence.any((e) =>
+            e.source == SecurityEvidenceSource.dexMethodReference &&
+            e.detail.contains('HttpURLConnection')),
+        isTrue,
+        reason: '实际证据：${finding.evidence.map((e) => e.detail).toList()}',
+      );
+    });
+
+    test('只有字符串时明确说「没有任何 method_ids 条目引用它们」', () {
+      // 这个 blob 不是合法 DEX（结构不可遍历），因此只可能有字符串线索。
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [
+          DexBytes(
+              'classes.dex', _blob(['com.google.mlkit', 'okhttp3 client'])),
+        ],
+      );
+
+      final finding = _byId(result, 'ANDROID-NETWORK-CLIENT');
+      expect(finding, isNotNull);
+      expect(
+        finding!.relationship,
+        contains('只出现在字符串里'),
+        reason: '实际 relationship：${finding.relationship}',
+      );
+      expect(
+        finding.evidence
+            .every((e) => e.source == SecurityEvidenceSource.dexString),
+        isTrue,
+      );
+    });
+
+    test('能力类发现项仍然不抬高置信度（证据来源与关联强度是两件事）', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('real-netprobe.dex'))],
+      );
+
+      final finding = _byId(result, 'ANDROID-NETWORK-CLIENT');
+      expect(
+        finding!.confidence,
+        SecurityConfidence.independentCapability,
+        reason: '「代码引用了网络库」不等于「数据流被追踪到」，'
+            '不能借代码引用把置信度抬到 confirmed',
+      );
+    });
+
+    test('写明「引用 ≠ 调用」这条局限', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('real-netprobe.dex'))],
+      );
+
+      expect(
+        result.limitations
+            .any((l) => l.contains('method_ids') && l.contains('不证明它们在运行时被调用')),
+        isTrue,
+        reason: '实际局限：${result.limitations}',
+      );
+    });
+
+    test('结构不可信的文件会写明「没做方法引用分析」', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('bad-magic.dex'))],
+      );
+
+      expect(
+        result.limitations
+            .any((l) => l.contains('未做方法引用分析') && l.contains('classes.dex')),
+        isTrue,
+        reason: '「没查到」与「没有」结论相反，必须说清：${result.limitations}',
+      );
+    });
+  });
 }

@@ -127,3 +127,31 @@ class_defs_size     : 2     class_defs_off  : 464  (0x0001d0)
 写夹具时把 `0x58` / `0x5C` 记反过一次，是 `dexdump` 的报错（
 `... for method-ids` 指向的是 off 而不是 size）纠正的 —— 所以每个畸变样本都
 必须先过一遍 `dexdump` 再写期望值。
+
+## `method_ids` 的完整基准
+
+`dexdump` 没有直接 dump 整张 `method_ids` 的选项（`-d` 只显示被 `invoke-*`
+引用到的那些，共 7 条）。整张表有 11 条，逐条都能从 Java 源码推出 ——
+构造器、被调用的方法、以及 `Caller` 继承链上的调用：
+
+| # | 引用 |
+|---|---|
+| 0 | `Lcom/example/fixture/Caller;.<init>()V` |
+| 1 | `Lcom/example/fixture/Caller;.call()I` |
+| 2 | `Lcom/example/fixture/NetProbe;.<init>()V` |
+| 3 | `Lcom/example/fixture/NetProbe;.decoy()Ljava/lang/String;` |
+| 4 | `Lcom/example/fixture/NetProbe;.helper(I)I` |
+| 5 | `Lcom/example/fixture/NetProbe;.open(Ljava/lang/String;)Ljava/io/InputStream;` |
+| 6 | `Ljava/lang/Object;.<init>()V` |
+| 7 | `Ljava/net/HttpURLConnection;.getInputStream()Ljava/io/InputStream;` |
+| 8 | `Ljava/net/HttpURLConnection;.setRequestMethod(Ljava/lang/String;)V` |
+| 9 | `Ljava/net/URL;.<init>(Ljava/lang/String;)V` |
+| 10 | `Ljava/net/URL;.openConnection()Ljava/net/URLConnection;` |
+
+其中 #2/#4/#6/#7/#8/#9/#10 七条能在 `dexdump -d` 的 `invoke-*` 行里逐字对上
+（见上面的调用点），这是测试里逐个断言的那批。#0/#1/#3/#5 是定义在样本里的
+方法自身（`method_ids` 同时收录被引用与被定义的方法）。
+
+**`okhttp3` 不在这张表里** —— 它只出现在 `string_ids` 的
+`string[000024]`。这一条正是「字符串提到了」与「代码引用了」的分界，也是
+`test/dex_method_scanner_test.dart` 要钉住的东西。

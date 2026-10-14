@@ -148,6 +148,17 @@ enum SecurityEvidenceSource {
   /// DEX 字符串。
   dexString,
 
+  /// DEX 方法引用（`method_ids` 里的条目）。
+  ///
+  /// 与 [dexString] 刻意分开：字符串常量可以随便写（`"okhttp3"` 出现在一句
+  /// 注释式的字面量里也会被扫到），而 `method_ids` 的条目来自字节码的 invoke
+  /// 指令、方法签名或方法句柄 —— 它回答的是「代码引用了这个方法」，
+  /// 比「字符串里提到了这个词」强得多。
+  ///
+  /// 但**仍然不等于「调用了」**：`method_ids` 只说明引用存在，
+  /// 没有回答「在哪个方法里、被调了几次」。
+  dexMethodReference,
+
   /// Mach-O 符号 / 字符串。
   machoSymbol,
 
@@ -168,6 +179,7 @@ enum SecurityEvidenceSource {
         SecurityEvidenceSource.infoPlist => 'Info.plist',
         SecurityEvidenceSource.privacyInfo => 'PrivacyInfo.xcprivacy',
         SecurityEvidenceSource.dexString => 'DEX strings',
+        SecurityEvidenceSource.dexMethodReference => 'DEX method references',
         SecurityEvidenceSource.machoSymbol => 'Mach-O symbols',
         SecurityEvidenceSource.zipEntry => 'archive entry',
         SecurityEvidenceSource.provisioning => 'provisioning / entitlements',

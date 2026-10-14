@@ -3,6 +3,7 @@ import 'package:analysis_model/analysis_model.dart';
 import '../dex/dex_structure.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
+import 'dex_method_scanner.dart';
 import 'permission_catalog.dart';
 
 /// Android 侧的安全审计编排。
@@ -91,6 +92,32 @@ class AndroidSecurityAudit {
           '未覆盖的字节中可能存在未被发现的线索。');
     }
 
+    // ---- DEX 方法引用（第三层取证：把「代码引用了」与「字符串提到了」分开）----
+    //
+    // `method_ids` 的条目只可能来自字节码的 invoke 指令、方法签名或方法句柄，
+    // 不会来自字符串字面量。因此「命中」的含义比字符串线索强一档 ——
+    // 但**仍然不等于「调用了」**：那要遍历 code_item 里的指令。
+    final methodScan = DexMethodScanner.scan(dexEntries);
+    if (methodScan.notTraversable.isNotEmpty) {
+      limitations.add('${methodScan.notTraversable.length} 个 DEX 结构不可信，'
+          '未做方法引用分析（${methodScan.notTraversable.join('、')}）：'
+          '这些文件上的「没发现代码引用」是「没查到」，不是「没有」。');
+    }
+    if (methodScan.truncatedForBudget.isNotEmpty) {
+      limitations.add('方法引用遍历达到预算上限，'
+          '${methodScan.truncatedForBudget.join('、')} 只分析了部分条目。');
+    }
+    if (methodScan.skippedEntries > 0) {
+      limitations.add('方法引用遍历中有 ${methodScan.skippedEntries} 个 '
+          'method_ids 条目解析不出来（索引越界或字符串读不出来），'
+          '这些条目里的引用未被看到。');
+    }
+    if (dexEntries.isNotEmpty && methodScan.scannedDexCount > 0) {
+      limitations.add('方法引用来自 method_ids：它证明代码**引用**了这些方法，'
+          '不证明它们在运行时被调用 —— 本次未遍历 code_item 里的指令，'
+          '因此没有调用点、调用次数与调用者的信息。');
+    }
+
     // 加固特征直接转化为覆盖不足说明（HardeningScanner 的输出）。
     for (final anomaly in containerAnomalies) {
       limitations.add('容器/解析异常可能影响覆盖完整性：$anomaly');
@@ -112,6 +139,37 @@ class AndroidSecurityAudit {
     final photoClues = scan.clues
         .where((c) => c.category == SecurityCategory.photoAccess)
         .toList();
+
+    // 同一批标记在**代码引用**层面的命中。与字符串线索刻意分开保存：
+    // 规则里要把「代码引用了」与「字符串里提到了」分开陈述。
+    List<CodeReference> codeRefsOf(Set<String> markerIds) =>
+        methodScan.references
+            .where((r) => markerIds.contains(r.markerId))
+            .toList();
+
+    const uploadMarkerIds = {
+      'multipart',
+      'multipartbody',
+      'uploadfile',
+      'uploadimage',
+    };
+    final uploadCodeRefs = codeRefsOf(uploadMarkerIds);
+    final ocrCodeRefs = methodScan.references
+        .where((r) => r.category == SecurityCategory.ocrImage)
+        .toList();
+    final networkClues = scan.clues
+        .where((c) => c.category == SecurityCategory.network)
+        .toList();
+    final networkCodeRefs = methodScan.references
+        .where((r) => r.category == SecurityCategory.network)
+        .toList();
+
+    // 规则输入用「能力是否存在」而不是「有没有字符串线索」：只看字符串会漏掉
+    // 「代码引用了 MultipartBody，但字面量 multipart/form-data 从未出现」这类
+    // 情况。两者分开保存，陈述时也要分开。
+    final hasOcrCapability = ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty;
+    final hasUploadCapability =
+        uploadClues.isNotEmpty || uploadCodeRefs.isNotEmpty;
 
     // ---- 权限逐条审计 ----
     final effectivePhotoAccess = <AndroidPermissionRequest>[];
@@ -222,47 +280,64 @@ class AndroidSecurityAudit {
     }
 
     // ---- OCR / 上传 / 网络 등能力发现（每条都带证据原文）----
-    if (ocrClues.isNotEmpty) {
+    //
+    // 证据分两种来源，**必须分开标注**：`dexString` 是字符串字面量命中，
+    // `dexMethodReference` 是 method_ids 命中。后者强得多（字符串常量可以
+    // 随便写），但两者都**不等于**「调用发生了」。
+    if (ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty) {
+      final sources = <String>[
+        if (ocrCodeRefs.isNotEmpty)
+          '代码引用 ${ocrCodeRefs.map((r) => r.description).join('、')}',
+        if (ocrClues.isNotEmpty)
+          '字符串提及 ${ocrClues.map((c) => c.description).join('、')}',
+      ];
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-OCR-CAPABILITY',
         platform: SecurityPlatform.android,
         category: SecurityCategory.ocrImage,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.independentCapability,
-        finding: '发现图像文字识别能力：${ocrClues.map((c) => c.description).join('、')}。'
+        finding: '发现图像文字识别能力：${sources.join('；')}。'
             '仅发现能力本身，不判定恶意。',
         evidence: [
-          for (final clue in ocrClues)
-            SecurityEvidence(
-              source: SecurityEvidenceSource.dexString,
-              location: clue.dexNames.join(', '),
-              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
-            ),
+          ..._referenceEvidence(ocrCodeRefs),
+          ..._clueEvidence(ocrClues),
         ],
-        limitation: '字符串命中不等于调用发生：代码路径未被反汇编验证。',
+        relationship: ocrCodeRefs.isNotEmpty
+            ? '「代码引用」来自 method_ids：字节码引用过这些方法，'
+                '但不证明它们在运行时被调用（未遍历 code_item 的指令）。'
+            : '全部命中只出现在字符串里，没有任何 method_ids 条目引用它们。',
+        limitation: '代码引用与字符串命中都**不等于调用发生**：'
+            '代码路径未被反汇编验证。',
         recommendation: '确认识别功能的输入来源（用户主动提供 / 相册扫描）'
             '与结果去向（本地处理 / 网络发送）。',
       ));
     }
 
-    if (uploadClues.isNotEmpty) {
+    if (uploadClues.isNotEmpty || uploadCodeRefs.isNotEmpty) {
+      final sources = <String>[
+        if (uploadCodeRefs.isNotEmpty)
+          '代码引用 ${uploadCodeRefs.map((r) => r.description).join('、')}',
+        if (uploadClues.isNotEmpty)
+          '字符串提及 ${uploadClues.map((c) => c.description).join('、')}',
+      ];
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-UPLOAD-API',
         platform: SecurityPlatform.android,
         category: SecurityCategory.dataExfiltration,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.independentCapability,
-        finding: '发现上传相关 API 或代码：'
-            '${uploadClues.map((c) => c.description).join('、')}。'
+        finding: '发现上传相关 API 或代码：${sources.join('；')}。'
             '只证明存在上传能力，不证明上传了敏感数据。',
         evidence: [
-          for (final clue in uploadClues)
-            SecurityEvidence(
-              source: SecurityEvidenceSource.dexString,
-              location: clue.dexNames.join(', '),
-              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
-            ),
+          ..._referenceEvidence(uploadCodeRefs),
+          ..._clueEvidence(uploadClues),
         ],
+        relationship: uploadCodeRefs.isNotEmpty
+            ? '「代码引用」来自 method_ids：字节码引用过这些方法/类型，'
+                '但不证明它们在运行时被调用。'
+            : '全部命中只出现在字符串里（例如 multipart/form-data 是请求头的'
+                '取值，本来就只会以字面量形式出现）。',
         recommendation: '人工确认上传的内容、触发条件与目的地。',
       ));
     }
@@ -299,6 +374,49 @@ class AndroidSecurityAudit {
       ));
     }
 
+    // ---- 网络客户端库：字符串线索与代码引用分开陈述 ----
+    //
+    // 这一条同时补上了两处「只产出不消费」：网络类别的字符串线索此前没有任何
+    // 规则读取，而方法引用是本次新增的产出。
+    if (networkClues.isNotEmpty || networkCodeRefs.isNotEmpty) {
+      final parts = <String>[
+        if (networkCodeRefs.isNotEmpty)
+          '代码引用：'
+              '${networkCodeRefs.map((r) => r.description).join('、')}',
+        if (networkClues.isNotEmpty)
+          '仅字符串提及：'
+              '${networkClues.map((c) => c.description).join('、')}',
+      ];
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-NETWORK-CLIENT',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.network,
+        severity: SecuritySeverity.info,
+        // 刻意**不用** `confirmed`：该枚举的语义是「同一可追踪路径上的证据」，
+        // 而这里只证明「存在网络客户端代码」，没有任何数据流被追踪到。
+        // 代码引用比字符串强，但那是**证据来源**上的差别，由 evidence 的
+        // source 与 relationship 陈述，不靠抬高置信度来表达。
+        confidence: SecurityConfidence.independentCapability,
+        finding: '发现网络客户端相关代码（${parts.join('；')}）。'
+            '只证明存在网络通信能力，不证明发生过数据传输，'
+            '也不说明数据去向。',
+        evidence: [
+          ..._referenceEvidence(networkCodeRefs),
+          ..._clueEvidence(networkClues),
+        ],
+        relationship: networkCodeRefs.isNotEmpty
+            ? '「代码引用」来自 method_ids：它证明字节码引用过这些方法/类型，'
+                '但不证明它们在运行时被调用（未遍历 code_item 的指令）。'
+                '「仅字符串提及」可能是配置项、注释式字面量或从未使用的 SDK。'
+            : '全部命中都只出现在字符串里，没有任何 method_ids 条目引用它们 —— '
+                '存在这些字面量不等于存在对应实现。',
+        limitation: '使用反射、动态加载或加固壳的 HTTP 实现不会出现在 '
+            'method_ids 里，因此「没有代码引用」不等于「没有网络通信」。',
+        recommendation: '如需确认实际外联，请结合证书固定、网络抓包或'
+            '企业侧流量审计；仅凭使用了某个网络库不构成风险判定。',
+      ));
+    }
+
     // ---- 规则 A：广泛相册访问 + 未见明显业务用途 ----
     if (broadStorage.isNotEmpty) {
       findings.add(SecurityFinding(
@@ -326,7 +444,7 @@ class AndroidSecurityAudit {
     // ---- 规则 B：相册访问 + OCR ----
     final hasImageInput =
         effectivePhotoAccess.isNotEmpty || photoClues.isNotEmpty;
-    if (hasImageInput && ocrClues.isNotEmpty) {
+    if (hasImageInput && hasOcrCapability) {
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-RULE-B',
         platform: SecurityPlatform.android,
@@ -342,12 +460,8 @@ class AndroidSecurityAudit {
         evidence: [
           for (final request in effectivePhotoAccess)
             _manifestEvidence(request),
-          for (final clue in [...photoClues, ...ocrClues])
-            SecurityEvidence(
-              source: SecurityEvidenceSource.dexString,
-              location: clue.dexNames.join(', '),
-              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
-            ),
+          ..._referenceEvidence(ocrCodeRefs),
+          ..._clueEvidence([...photoClues, ...ocrClues]),
         ],
         relationship: '图像输入 → 文字识别：两段线索同现，但未被证实位于'
             '同一条调用路径上。',
@@ -359,7 +473,7 @@ class AndroidSecurityAudit {
     }
 
     // ---- 规则 C：相册 + OCR + 上传 ----
-    if (hasImageInput && ocrClues.isNotEmpty && uploadClues.isNotEmpty) {
+    if (hasImageInput && hasOcrCapability && hasUploadCapability) {
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-RULE-C',
         platform: SecurityPlatform.android,
@@ -372,12 +486,8 @@ class AndroidSecurityAudit {
         evidence: [
           for (final request in effectivePhotoAccess)
             _manifestEvidence(request),
-          for (final clue in [...ocrClues, ...uploadClues])
-            SecurityEvidence(
-              source: SecurityEvidenceSource.dexString,
-              location: clue.dexNames.join(', '),
-              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
-            ),
+          ..._referenceEvidence([...ocrCodeRefs, ...uploadCodeRefs]),
+          ..._clueEvidence([...ocrClues, ...uploadClues]),
         ],
         dataSource: '照片/媒体文件与其中的识别文本',
         dataSink: '上传请求（multipart / upload API）',
@@ -394,8 +504,8 @@ class AndroidSecurityAudit {
     // ---- 规则 D：敏感数据 + 明文通信 ----
     if (meta.applicationUsesCleartextTraffic == true) {
       final withSensitive = hasImageInput ||
-          ocrClues.isNotEmpty ||
-          uploadClues.isNotEmpty ||
+          hasOcrCapability ||
+          hasUploadCapability ||
           scan.domains.isNotEmpty;
       findings.add(SecurityFinding(
         ruleId: withSensitive ? 'ANDROID-RULE-D-ESCALATED' : 'ANDROID-RULE-D',
@@ -428,8 +538,8 @@ class AndroidSecurityAudit {
             c.type == ComponentType.service ||
             c.type == ComponentType.receiver);
     if (hasBackground &&
-        (hasImageInput || ocrClues.isNotEmpty) &&
-        uploadClues.isNotEmpty) {
+        (hasImageInput || hasOcrCapability) &&
+        hasUploadCapability) {
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-RULE-E',
         platform: SecurityPlatform.android,
@@ -560,6 +670,35 @@ class AndroidSecurityAudit {
           '[@name="${request.name}"]',
       detail: '$request',
     );
+  }
+
+  /// 把方法引用转成证据条目。
+  ///
+  /// 单独成一个方法是为了让**证据来源**一眼可见：`dexMethodReference` 与
+  /// `dexString` 不是同一档证据，UI 与报告据此分开渲染。
+  static List<SecurityEvidence> _referenceEvidence(
+    List<CodeReference> references,
+  ) {
+    return [
+      for (final reference in references)
+        SecurityEvidence(
+          source: SecurityEvidenceSource.dexMethodReference,
+          location: reference.dexNames.join(', '),
+          detail: '${reference.markerId}: ${reference.samples.join(' | ')}',
+        ),
+    ];
+  }
+
+  /// 把字符串线索转成证据条目。
+  static List<SecurityEvidence> _clueEvidence(List<CodeClue> clues) {
+    return [
+      for (final clue in clues)
+        SecurityEvidence(
+          source: SecurityEvidenceSource.dexString,
+          location: clue.dexNames.join(', '),
+          detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+        ),
+    ];
   }
 }
 

@@ -11,6 +11,7 @@ export 'src/arsc/reference_graph.dart';
 // DEX 结构级解析（安全分析的第二层）。与 `security/dex_clue_scanner.dart` 的
 // 字符串扫描分开：那个回答「出现了哪些字面量」，这个回答「文件结构长什么样」。
 export 'src/dex/dex_structure.dart';
+export 'src/dex/dex_method_table.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';
@@ -20,6 +21,8 @@ export 'src/apk_reader.dart';
 // 分开导出 ——「解析出了什么」和「据此判断有什么风险」是两个问题。
 export 'src/security/android_security_audit.dart';
 export 'src/security/dex_clue_scanner.dart';
+export 'src/security/dex_method_scanner.dart';
+export 'src/security/code_markers.dart';
 export 'src/security/permission_catalog.dart';
 
 // ZIP 容器安全原语已下沉到 `archive_safety` —— 它们与「里面装的是 APK 还是
