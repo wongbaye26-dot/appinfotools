@@ -444,14 +444,34 @@ jobs:
         #
         # `{版本}` 是文档里的占位符（仓库里那份要让各个版本都能看），
         # 在这里替换成 tag 的真实版本 —— 否则发布页上会明晃晃写着 `{版本}`。
+        #
+        # 用 bash 的参数展开而不是 sed：**sed 的正则里 `{` 是量词起始符**，
+        # 中文花括号在 BSD sed（本地）与 GNU sed（CI）上的行为不一致，
+        # 第一次就在这栽了。参数展开是原样子串替换，没有这层差别。
         id: body
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(cat docs/release-install-notes.md)
+
+          BEFORE=$(printf '%s\n' "$NOTES" | grep -c '{版本}' || true)
+          NOTES="${NOTES//\{版本\}/$VERSION}"
+          AFTER=$(printf '%s\n' "$NOTES" | grep -c '{版本}' || true)
+          echo "安装说明：{版本} 替换前 ${BEFORE} 处，替换后 ${AFTER} 处"
+
+          # 只断言**安装说明**这一段，不要断言整个正文：changelog 来自 git log，
+          # 提交标题里完全可能正当地提到 {版本}（本项目就有一条），
+          # 那是说明文字不是漏替换。
+          if [ "$AFTER" != "0" ]; then
+            echo "::error::安装说明里还有未替换的 {版本}"
+            printf '%s\n' "$NOTES" | grep -n '{版本}'
+            exit 1
+          fi
+
           {
             cat changelog.md
             printf '\n---\n\n'
-            sed "s/{版本}/${VERSION}/g" docs/release-install-notes.md
+            printf '%s\n' "$NOTES"
           } > release-body.md
           {
             echo 'body_path<<EOF'
@@ -460,11 +480,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           cp release-body.md "$GITHUB_STEP_SUMMARY"
           echo "发布正文版本号：${VERSION}"
-          # 占位符必须全部替换掉；漏一个说明文档又加了新写法。
-          if grep -q '{版本}' release-body.md; then
-            echo "::error::发布正文里还有未替换的 {版本}"
-            exit 1
-          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
