@@ -8,8 +8,10 @@
 #
 # 前置（缺任何一个都会在开头就报出来，不会跑到一半才失败）：
 #   1. 完整 Xcode        —— xcode-select -p 必须指向 Xcode.app
-#   2. CocoaPods         —— 本项目有 8 个 macOS 原生插件，必须经 CocoaPods 集成
-#   3. Flutter SDK       —— 在 PATH 里，或用 FLUTTER_ROOT 指定
+#   2. Flutter SDK       —— 在 PATH 里，或用 FLUTTER_ROOT 指定
+#
+# **不需要 CocoaPods**：Flutter 3.47 默认用 Swift Package Manager 集成插件，
+# 本项目所有插件都已确认支持 SPM。检测不到 CocoaPods 时只给提示、不失败。
 #
 # 签名说明见 docs/delivery/macos-build-and-signing.md。
 
@@ -22,7 +24,7 @@ PACKAGE=1
 for arg in "$@"; do
   case "$arg" in
     --no-package) PACKAGE=0 ;;
-    -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "未知参数：$arg" >&2; exit 2 ;;
   esac
 done
