@@ -1,3 +1,14 @@
+## 下载
+
+| 平台 | 文件 |
+|---|---|
+| Windows 安装包 | `AppInfoTool-{版本}-Windows-x86_64-Setup.exe` |
+| Windows 免安装 | `AppInfoTool-{版本}-Windows-x86_64.zip` |
+| macOS | `AppInfoTool-{版本}-macOS-universal.dmg` |
+| Linux | `AppInfoTool-{版本}-Linux-x86_64.AppImage` |
+
+macOS 的 dmg 是 universal 包，同一份在 Intel 与 Apple Silicon 上都能跑。
+
 ## 安装说明
 
 ### macOS（`.dmg`）
@@ -13,21 +24,44 @@
   xattr -dr com.apple.quarantine "/Applications/APP详情工具.app"
   ```
 
-系统要求：macOS 11 或更高。macOS 版自带 `aapt2` 与 `adb`，无需再下载 Android SDK。
+系统要求：macOS 11 或更高。
 
-### Windows（`.exe` / `.zip`）
+macOS 版**自带** `aapt2` 与 `adb`，装完就能用，不需要另外装 Android SDK。
 
-`.exe` 是安装包，`.zip` 解压后直接运行 `apk_info_tool.exe`。
+### Windows（`.zip` / `-Setup.exe`）
+
+`-Setup.exe` 是安装包，双击一路下一步即可；`.zip` 是绿色版，解压后运行
+`apk_info_tool.exe`（可执行文件名是 Dart 工程名，与产物名不是一回事）。
 两者内容相同，按习惯选一个即可。
 
-Windows 版**不内置** `aapt2` / `adb`，请到「设置 → 环境」里一键下载。
+> Windows 版**不内置** `aapt2` / `adb`。首次用到时去「设置 → 环境」里
+> 一键下载，不需要自己装 Android SDK。
 
-> 未签名的 Windows 程序首次运行可能出现 SmartScreen 提示，选择
-> 「更多信息 → 仍要运行」。
+未签名的 Windows 程序首次运行可能出现 SmartScreen 提示，选择
+「更多信息 → 仍要运行」。
 
 ### Linux（`.AppImage`）
 
 ```sh
-chmod +x APKInfoTool-*-x86_64.AppImage
-./APKInfoTool-*-x86_64.AppImage
+chmod +x AppInfoTool-*-Linux-x86_64.AppImage
+./AppInfoTool-*-Linux-x86_64.AppImage
+```
+
+## 命令行下载（可选）
+
+如果浏览器下载不方便，可以直接用 curl 或 PowerShell：
+
+```sh
+# macOS / Linux
+V=1.0.0
+curl -L -o "AppInfoTool-${V}-macOS-universal.dmg" \
+  "https://github.com/wongbaye26-dot/appinfotools/releases/download/v${V}/AppInfoTool-${V}-macOS-universal.dmg"
+```
+
+```powershell
+# Windows（PowerShell）
+$V = "1.0.0"
+Invoke-WebRequest `
+  "https://github.com/wongbaye26-dot/appinfotools/releases/download/v$V/AppInfoTool-$V-Windows-x86_64-Setup.exe" `
+  -OutFile "AppInfoTool-$V-Windows-x86_64-Setup.exe"
 ```

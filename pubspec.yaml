@@ -70,7 +70,12 @@ flutter:
 inno_bundle:
   id: 8cdac933-dde4-5d06-985d-4c99f7247903
   publisher: Feng
-  name: ApkInfoTool
+  # 同时决定：安装包文件名（<name>-<arch>-<version>-Installer.exe）、
+  # 安装目录、开始菜单快捷方式名，以及「应用与功能」里的显示名。
+  # 与应用显示名「APP详情工具」刻意分开：产物名用纯 ASCII，
+  # 免得文件名和下载链接里带中文（URL 会被转义成 %，命令行下载很难用）。
+  # 应用内的显示名来自 assets/i18n 的 title，两处不是一回事。
+  name: AppInfoTool
   languages:
     - english
 #    - chinesesimplified

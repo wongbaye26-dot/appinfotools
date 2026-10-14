@@ -113,18 +113,39 @@ jobs:
       - name: Create Installer
         run: dart run inno_bundle:build --release
 
-      - name: Create ZIP Package
+      # inno_bundle 的输出名写死在它自己的 script_builder 里
+      # （OutputBaseFilename=<name>-<arch>-<version>-Installer.exe），改不掉。
+      # 这里统一改成与另外三个平台一致的命名，免得三平台三个样。
+      - name: Normalize installer name
+        shell: bash
         run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          cd build/windows/x64/installer/Release
+          SRC=$(ls *-Installer.exe 2>/dev/null | head -n 1 || true)
+          if [ -z "$SRC" ]; then
+            echo "::error::在 installer/Release 下没找到 *-Installer.exe"
+            exit 1
+          fi
+          DST="AppInfoTool-${V}-Windows-x86_64-Setup.exe"
+          mv "$SRC" "$DST"
+          echo "安装包改名：$SRC -> $DST"
+
+      - name: Create ZIP Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
           cd build/windows/x64/runner/Release
-          7z a ../../installer/Release/ApkInfoTool-Windows-x86_64-${{ steps.version.outputs.version }}.zip *
+          7z a "../../installer/Release/AppInfoTool-${V}-Windows-x86_64.zip" *
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-release
           path: |
-            build/windows/x64/installer/Release/*.exe
-            build/windows/x64/installer/Release/*.zip
+            build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe
+            build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64.zip
 
   build-macos:
     needs: quality
@@ -169,17 +190,41 @@ jobs:
           flutter build macos --release
 
       - name: Create DMG
+        shell: bash
         run: |
+          set -euo pipefail
+          # 挂载后卷标用中文（用户看到的名字），文件名用纯 ASCII。
+          # 构建产物是 universal（x86_64 + arm64），因此名字里写 universal
+          # 而不是某个架构。
+          V="${{ steps.version.outputs.version }}"
           create-dmg \
-            --volname "APP详情工具 ${{ steps.version.outputs.version }}" \
+            --volname "APP详情工具 ${V}" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
             --icon "APP详情工具.app" 200 190 \
             --hide-extension "APP详情工具.app" \
             --app-drop-link 600 185 \
-            "build/macos/APKInfoTool-${{ steps.version.outputs.version }}.dmg" \
+            "build/macos/AppInfoTool-${V}-macOS-universal.dmg" \
             "build/macos/Build/Products/Release/APP详情工具.app"
+
+      - name: Verify DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          DMG="build/macos/AppInfoTool-${V}-macOS-universal.dmg"
+          test -f "$DMG" || { echo "::error::$DMG 不存在"; exit 1; }
+          # 产物必须真的挂在起来、里面是那个 .app，并且名字对得上 ——
+          # 否则发布出去的是一个空壳。
+          MOUNT=$(hdiutil attach -nobrowse -readonly -plist "$DMG" \
+            | plutil -extract system-entities xml1 -o - - \
+            | grep -o '/Volumes/[^<]*' | head -n 1)
+          ls -la "${MOUNT}/" | sed 's/^/  /'
+          test -d "${MOUNT}/APP详情工具.app"
+          codesign --verify --strict "${MOUNT}/APP详情工具.app"
+          hdiutil detach -quiet "$MOUNT"
+          echo "DMG 校验通过：$DMG"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -293,8 +338,10 @@ jobs:
             --output appimage \
             -v0
 
-          # 重命名 AppImage
-          mv *.AppImage APKInfoTool-${{ steps.version.outputs.version }}-x86_64.AppImage
+          # 重命名 AppImage。linuxdeploy 的默认名不可控，统一改成与其余平台
+          # 一致的命名。可执行文件名仍是 apk_info_tool（Dart 包名），
+          # 那是工程名不是产物名，不随这里改。
+          mv *.AppImage AppInfoTool-${{ steps.version.outputs.version }}-Linux-x86_64.AppImage
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -459,9 +506,9 @@ jobs:
               --arg app "apk_info_tool" \
               --arg repo "$REPO" \
               --arg ver "$VERSION" \
-              --arg asset "ApkInfoTool-Windows-x86_64-${VERSION}.zip" \
+              --arg asset "AppInfoTool-Windows-x86_64-${VERSION}.zip" \
               --arg bin "apk_info_tool.exe" \
-              --arg desc "A simple tool for viewing APK/XAPK/APKM file information and installation." \
+              --arg desc "A tool for viewing APK/XAPK/APKM and IPA information." \
               --arg homepage "https://github.com/huanfeng/ApkInfoTool" \
               --arg license "MIT" \
               '{
