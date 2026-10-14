@@ -192,7 +192,7 @@
     "failed": "名前変更失敗",
     "new_file_name": "新しいファイル名",
     "name_cannot_be_empty": "ファイル名は空にできません",
-    "must_end_with_apk": "ファイル名は .apk/.xapk/.apkm/.apks で終わる必要があります",
+    "must_end_with_apk": "ファイル名は .apk/.xapk/.apkm/.apks/.ipa で終わる必要があります",
     "default_name": "デフォルト名"
   },
   "install": {

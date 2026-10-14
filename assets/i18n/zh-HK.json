@@ -192,7 +192,7 @@
     "failed": "重命名失敗",
     "new_file_name": "新文件名",
     "name_cannot_be_empty": "文件名不能為空",
-    "must_end_with_apk": "文件名必須以 .apk/.xapk/.apkm/.apks 結尾",
+    "must_end_with_apk": "檔案名稱必須以 .apk/.xapk/.apkm/.apks/.ipa 結尾",
     "default_name": "預設名稱"
   },
   "install": {

@@ -192,7 +192,7 @@
     "failed": "Rename failed",
     "new_file_name": "New File Name",
     "name_cannot_be_empty": "File name cannot be empty",
-    "must_end_with_apk": "File name must end with .apk/.xapk/.apkm/.apks",
+    "must_end_with_apk": "File name must end with .apk/.xapk/.apkm/.apks/.ipa",
     "default_name": "Default Name"
   },
   "install": {

@@ -1468,24 +1468,49 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
   }
 
-  // 显示重命名对话框
+  // 显示重命名对话框。
+  //
+  // 同时支持 Android（APK/XAPK/APKM/APKS）与 iOS（IPA）。
+  // 重命名使用异步 `File.rename()` 而非 `renameSync()`：
+  // - Windows 上文件被占用时 `renameSync` 会抛异常；
+  // - macOS 上跨文件系统（如从 /tmp 到 ~/Desktop）时 `renameSync` 会失败。
+  // `File.rename()` 在跨文件系统时会自动回退到复制+删除。
   void _showRenameDialog() {
-    final apkInfo = ref.read(currentApkInfoProvider);
     final state = ref.read(currentFileStateProvider);
-    if (state.filePath == null || apkInfo == null) return;
+    final filePath = state.filePath;
+    if (filePath == null) return;
 
-    final fileName = _getDisplayLabel(apkInfo);
-    final versionName = apkInfo.versionName ?? '';
-    final extension = path.extension(state.filePath!).toLowerCase();
-    final targetExtension = extension.isNotEmpty ? extension : '.apk';
-    final defaultName = '$fileName-$versionName$targetExtension';
+    final isIpa = _looksLikeIpa(filePath);
+    final isApk = !isIpa;
+
+    // 从 APK 或 IPA 解析结果中提取应用名与版本号。
+    final String displayName;
+    final String versionName;
+    if (isApk) {
+      final apkInfo = ref.read(currentApkInfoProvider);
+      if (apkInfo == null) return;
+      displayName = _getDisplayLabel(apkInfo);
+      versionName = apkInfo.versionName ?? '';
+    } else {
+      final ipa = state.ipaAnalysis;
+      if (ipa == null) return;
+      displayName = ipa.infoPlist?.preferredName.value ??
+          ipa.infoPlist?.bundleIdentifier.value ??
+          '';
+      versionName = ipa.infoPlist?.shortVersionString.value ?? '';
+    }
+
+    final extension = path.extension(filePath).toLowerCase();
+    final targetExtension =
+        extension.isNotEmpty ? extension : (isApk ? '.apk' : '.ipa');
+    final defaultName = '$displayName-$versionName$targetExtension';
 
     final controller = TextEditingController(text: defaultName);
     final formKey = GlobalKey<FormFieldState>();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         title: Text(t.rename.rename_file),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1500,10 +1525,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 if (value == null || value.isEmpty) {
                   return t.rename.name_cannot_be_empty;
                 }
-                if (!(value.toLowerCase().endsWith('.apk') ||
-                    value.toLowerCase().endsWith('.xapk') ||
-                    value.toLowerCase().endsWith('.apkm') ||
-                    value.toLowerCase().endsWith('.apks'))) {
+                final lower = value.toLowerCase();
+                final valid = lower.endsWith('.apk') ||
+                    lower.endsWith('.xapk') ||
+                    lower.endsWith('.apkm') ||
+                    lower.endsWith('.apks') ||
+                    lower.endsWith('.ipa');
+                if (!valid) {
                   return t.rename.must_end_with_apk;
                 }
                 return null;
@@ -1522,13 +1550,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 ),
                 OutlinedButton(
                   onPressed: () {
-                    controller.text = '$fileName$targetExtension';
+                    controller.text = '$displayName$targetExtension';
                   },
                   child: Text(t.rename.app_name_only),
                 ),
                 OutlinedButton(
                   onPressed: () {
-                    controller.text = '$fileName-v$versionName$targetExtension';
+                    controller.text =
+                        '$displayName-v$versionName$targetExtension';
                   },
                   child: Text(t.rename.name_with_version),
                 ),
@@ -1538,29 +1567,38 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
             child: Text(t.base.cancel),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               if (formKey.currentState?.validate() ?? false) {
                 final newName = controller.text;
-                final oldFile = File(state.filePath!);
+                final oldFile = File(filePath);
                 final directory = oldFile.parent;
                 final newPath =
                     '${directory.path}${Platform.pathSeparator}$newName';
 
                 try {
-                  oldFile.renameSync(newPath);
-                  // 更新当前文件路径
+                  // 优先使用异步 rename，它在跨文件系统时会自动回退到
+                  // 复制+删除。renameSync 在 macOS 跨卷或 Windows 占用时
+                  // 会无条件抛 FileSystemException。
+                  await oldFile.rename(newPath);
+                } on FileSystemException catch (e) {
+                  // 回退：复制 + 删除。这在跨文件系统或文件被锁定时
+                  // 是最后的可靠手段。
+                  log.info(
+                      'rename failed (${e.message}), falling back to copy+delete');
+                  await oldFile.copy(newPath);
+                  await oldFile.delete();
+                }
+
+                if (mounted) {
+                  // 重新打开新路径的文件，更新 UI 状态。
                   openApk(newPath);
-                  Navigator.pop(context);
+                  Navigator.of(context, rootNavigator: true).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(t.rename.success)),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${t.rename.failed}: $e')),
                   );
                 }
               }
