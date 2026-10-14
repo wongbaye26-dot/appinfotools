@@ -52,8 +52,11 @@ It builds on the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTo
 |---|---|
 | Permission review | Per-permission severity, purpose and rationale. Version conditions such as `maxSdkVersion` and `uses-permission-sdk-23` are preserved rather than dropped |
 | OCR / sensitive-data clues | Scans DEX strings for document scanning, screenshots, photo-library access and similar capabilities |
+| Code-level evidence | Three DEX layers: **structure → method references → call sites**. "Code references it" is kept separate from "a string mentions it", and call sites can name the method and instruction offset |
+| Native library symbols | Reads ELF `.dynsym` and Mach-O `LC_SYMTAB`, matching imported system capabilities by **exact symbol name** (`system` / `dlopen` / `ptrace` / `socket` …) |
 | Data transmission analysis | Detects network libraries, upload endpoints and domains/IPs, labelled **confirmed / suspected / capability only** |
 | Privacy manifests | On iOS, checks `Info.plist` usage descriptions and `PrivacyInfo.xcprivacy` declarations |
+| Analysis coverage | Per-dimension status: covered / partially covered / not covered / not applicable. The UI, Markdown and JSON all read the same data |
 | Risk grading | P0–P3 / INFO / **UNKNOWN** — "cannot determine" is kept strictly separate from "low risk", so limited coverage is never shown as green |
 
 ### Interface
