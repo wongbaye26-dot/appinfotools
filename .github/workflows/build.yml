@@ -105,7 +105,9 @@ jobs:
       - name: Install Dependencies
         run: |
           flutter pub get --enforce-lockfile
-          dart run build_runner build
+          # 与 quality job 保持一致：不带 --delete-conflicting-outputs 时，
+          # 一旦存在冲突产物 build_runner 会直接失败。
+          dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Windows
         run: flutter build windows --release
@@ -267,12 +269,16 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update
+          # GitHub runner 的 apt 镜像源偶发 503。这一步失败会让整个 job 挂掉，
+          # 而它跟构建本身毫无关系 —— 加重试，别让基础设施抖动浪费一次发布。
+          sudo apt-get -o Acquire::Retries=3 update
           # sudo apt-get install -y cmake clang
-          sudo apt-get install -y ninja-build libgtk-3-dev
+          sudo apt-get -o Acquire::Retries=3 install -y ninja-build libgtk-3-dev
 
           flutter pub get --enforce-lockfile
-          dart run build_runner build
+          # 与 quality job 保持一致：不带 --delete-conflicting-outputs 时，
+          # 一旦存在冲突产物 build_runner 会直接失败。
+          dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Linux
         run: flutter build linux --release
