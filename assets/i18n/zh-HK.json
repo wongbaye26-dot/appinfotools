@@ -114,7 +114,8 @@
     "parser_engine": "解析引擎",
     "parser_engine_aapt2": "aapt2 (外部工具, 相容性好)",
     "parser_engine_builtin": "內置 (Dart, 速度快)",
-    "enable_security_audit": "啟用安全檢測"
+    "enable_security_audit": "啟用安全檢測",
+    "title_width_sample": "這是一段範例內容，用於預覽標題寬度，可能會很長……"
   },
   "signature": {
     "status_verified": "簽名驗證通過",
@@ -208,7 +209,8 @@
     "export_failed": "匯出失敗: {error}",
     "bitmap_label": "{format} ({dpi})",
     "vector_label": "XML 矢量圖 ({dpi})",
-    "loading": "加載中..."
+    "loading": "加載中...",
+    "error_svg_conversion": "SVG 轉換失敗"
   },
   "rename": {
     "rename_file": "重命名文件",
@@ -364,7 +366,8 @@
     "security_only": "僅安全檢測",
     "exporting": "正在匯出…",
     "file_name": "檔案名稱",
-    "security_not_performed": "該檔案未執行安全檢測。"
+    "security_not_performed": "該檔案未執行安全檢測。",
+    "limitation_security": "未對該應用程式套件執行安全檢測。"
   },
   "about": {
     "features": {

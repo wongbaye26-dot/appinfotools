@@ -114,7 +114,8 @@
     "parser_engine": "파서 엔진",
     "parser_engine_aapt2": "aapt2 (외부 도구, 호환성 우수)",
     "parser_engine_builtin": "내장 (Dart, 빠름)",
-    "enable_security_audit": "보안 감사 활성화"
+    "enable_security_audit": "보안 감사 활성화",
+    "title_width_sample": "제목 너비 미리보기용 예시 문구입니다. 길어질 수 있습니다…"
   },
   "signature": {
     "status_verified": "서명이 검증되었습니다",
@@ -208,7 +209,8 @@
     "export_failed": "내보내기 실패: {error}",
     "bitmap_label": "{format} ({dpi})",
     "vector_label": "XML 벡터 ({dpi})",
-    "loading": "로딩 중..."
+    "loading": "로딩 중...",
+    "error_svg_conversion": "SVG 변환 실패"
   },
   "rename": {
     "rename_file": "파일 이름 바꾸기",
@@ -280,7 +282,8 @@
     "security_only": "보안만",
     "exporting": "내보내는 중…",
     "file_name": "파일 이름",
-    "security_not_performed": "이 파일에서는 보안 감사가 수행되지 않았습니다."
+    "security_not_performed": "이 파일에서는 보안 감사가 수행되지 않았습니다.",
+    "limitation_security": "이 패키지에서는 보안 감사가 수행되지 않았습니다."
   },
   "detail_tab": {
     "overview": "개요",

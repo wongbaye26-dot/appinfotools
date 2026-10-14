@@ -91,10 +91,8 @@ class _TitleWidthSettingState extends ConsumerState<TitleWidthSetting> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    const Expanded(
-                      child: SelectableText(
-                        'This is a sample content text that can be very long...',
-                      ),
+                    Expanded(
+                      child: SelectableText(t.settings.title_width_sample),
                     ),
                   ],
                 ),

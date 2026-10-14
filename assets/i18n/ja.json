@@ -114,7 +114,8 @@
     "parser_engine": "解析エンジン",
     "parser_engine_aapt2": "aapt2 (外部ツール, 互換性良好)",
     "parser_engine_builtin": "内蔵 (Dart, 高速)",
-    "enable_security_audit": "セキュリティ監査を有効にする"
+    "enable_security_audit": "セキュリティ監査を有効にする",
+    "title_width_sample": "これはタイトル幅のプレビュー用サンプルです。長くなる場合があります……"
   },
   "signature": {
     "status_verified": "署名を検証しました",
@@ -208,7 +209,8 @@
     "export_failed": "書き出し失敗: {error}",
     "bitmap_label": "{format} ({dpi})",
     "vector_label": "XMLベクター ({dpi})",
-    "loading": "読み込み中..."
+    "loading": "読み込み中...",
+    "error_svg_conversion": "SVG への変換に失敗しました"
   },
   "rename": {
     "rename_file": "ファイル名を変更",
@@ -280,7 +282,8 @@
     "security_only": "セキュリティのみ",
     "exporting": "エクスポート中…",
     "file_name": "ファイル名",
-    "security_not_performed": "このファイルではセキュリティ監査は実行されませんでした。"
+    "security_not_performed": "このファイルではセキュリティ監査は実行されませんでした。",
+    "limitation_security": "このパッケージではセキュリティ監査は実行されませんでした。"
   },
   "detail_tab": {
     "overview": "概要",

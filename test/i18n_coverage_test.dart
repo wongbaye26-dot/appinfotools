@@ -59,6 +59,27 @@ void main() {
       expect(t.security.confidence_capability, '仅具备能力');
     });
 
+    test('报告里的「未执行安全检测」与图标导出错误', () async {
+      await _use('en');
+      expect(
+        t.report.limitation_security,
+        'Security audit was not performed for this package.',
+      );
+      expect(t.icon.error_svg_conversion, 'SVG conversion failed');
+
+      await _use('zh-CN');
+      expect(t.report.limitation_security, '未对该应用包执行安全检测。');
+      expect(t.icon.error_svg_conversion, 'SVG 转换失败');
+    });
+
+    test('设置页的标题宽度示例文案', () async {
+      await _use('en');
+      expect(t.settings.title_width_sample, contains('sample'));
+
+      await _use('zh-CN');
+      expect(t.settings.title_width_sample, contains('示例'));
+    });
+
     test('带占位符的文案两种语言都能取到', () async {
       await _use('en');
       expect(

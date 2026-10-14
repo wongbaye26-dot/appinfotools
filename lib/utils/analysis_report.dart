@@ -377,7 +377,7 @@ class AnalysisReport {
     }
 
     if (result.security == null) {
-      items.add('Security audit was not performed for this package.');
+      items.add(t.report.limitation_security);
     }
 
     if (result.platform == PackagePlatform.ios) {

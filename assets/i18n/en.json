@@ -107,7 +107,8 @@
     "parser_engine": "Parser Engine",
     "parser_engine_aapt2": "aapt2 (External, Better Compatibility)",
     "parser_engine_builtin": "Built-in (Dart, Faster)",
-    "enable_security_audit": "Enable Security Audit"
+    "enable_security_audit": "Enable Security Audit",
+    "title_width_sample": "This is a sample content text that can be very long…"
   },
   "signature": {
     "status_verified": "Signature verified",
@@ -208,7 +209,8 @@
     "export_failed": "Export failed: {error}",
     "bitmap_label": "{format} ({dpi})",
     "vector_label": "XML Vector ({dpi})",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "error_svg_conversion": "SVG conversion failed"
   },
   "rename": {
     "rename_file": "Rename File",
@@ -365,7 +367,8 @@
     "security_only": "Security Only",
     "exporting": "Exporting…",
     "file_name": "File name",
-    "security_not_performed": "Security audit was not performed for this file."
+    "security_not_performed": "Security audit was not performed for this file.",
+    "limitation_security": "Security audit was not performed for this package."
   },
   "about": {
     "features": {

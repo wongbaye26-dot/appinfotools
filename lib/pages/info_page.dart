@@ -1807,8 +1807,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content:
-                    Text(t.icon.export_failed(error: 'SVG conversion failed'))),
+                content: Text(
+                    t.icon.export_failed(error: t.icon.error_svg_conversion))),
           );
         }
         return;
