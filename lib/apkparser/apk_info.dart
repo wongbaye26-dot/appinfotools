@@ -15,7 +15,11 @@ import 'package:analysis_model/analysis_model.dart'
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
 import 'package:apk_parser/apk_parser.dart'
-    show ApkParseStage, HardeningObservation, ManifestParser;
+    show
+        ApkParseStage,
+        HardeningObservation,
+        ManifestParser,
+        ReferenceCycleReport;
 import 'package:path/path.dart' as path;
 import 'aapt2_task.dart';
 import 'parse_task.dart';
@@ -803,6 +807,7 @@ Future<ApkInfo?> _getApkInfoBuiltin(
   apkInfo.manifestSource = FieldSource.builtinParser;
   apkInfo.hardeningObservations = data.hardeningObservations;
   apkInfo.structure = data.structure;
+  apkInfo.resourceReferenceCycles = data.referenceCycles;
   apkInfo.originalText = _generateTextInfo(data.meta);
   apkInfo.securityResult = data.security;
 
@@ -1068,6 +1073,17 @@ class ApkInfo {
   /// 只有内置解析器会填。
   List<String> uiModeTypes = [];
 
+  /// 资源引用图的环检测结果；`null` 表示**没查**（内置引擎之外没有资源表）。
+  ///
+  /// `null` 与「查了、没有环」必须分开：前者是我们没查，后者是查过没问题。
+  ReferenceCycleReport? resourceReferenceCycles;
+
+  /// 图标渲染过程中遇到的、需要向用户解释的问题（如资源引用成环）。
+  ///
+  /// 存在的理由：图标渲染失败时会回退到「没有图标」，而**回退必须能解释** ——
+  /// 否则用户看到的是一个空白，分不清「这个包没有图标」与「我们没画出来」。
+  List<String> iconResolutionNotes = [];
+
   List<String> others = [];
 
   // 文件哈希值
@@ -1145,6 +1161,39 @@ class ApkInfo {
           source: FieldSource.builtinParser,
         ));
       }
+    }
+
+    // 资源引用环。`aapt2` 产出的表里不可能有环，因此「有环」是一条实打实的
+    // 结构异常 —— 但那不等于「恶意」，措辞上只说事实与影响。
+    final cycles = resourceReferenceCycles;
+    if (cycles != null && cycles.cycles.isNotEmpty) {
+      for (final cycle in cycles.cycles) {
+        out.add(AnalysisDiagnostic.warning(
+          'android.resource_reference_cycle',
+          '资源引用成环：${cycle.description}。'
+              '成环的资源互相定义、谁也没有真正的值，涉及它们的图标 / 颜色'
+              '可能无法解析。',
+          source: FieldSource.builtinParser,
+        ));
+      }
+      if (cycles.truncated) {
+        out.add(AnalysisDiagnostic.info(
+          'android.resource_reference_cycle_truncated',
+          '资源引用环只列出前 ${cycles.cycles.length} 个，'
+              '表中可能还有更多。',
+          source: FieldSource.builtinParser,
+        ));
+      }
+    }
+
+    // 图标渲染过程中的说明。放在诊断里而不是只写日志：渲染失败会回退到
+    // 「没有图标」，而回退必须能解释。
+    for (final note in iconResolutionNotes) {
+      out.add(AnalysisDiagnostic.warning(
+        'android.icon_resolution',
+        note,
+        source: FieldSource.builtinParser,
+      ));
     }
 
     return out;
@@ -1557,10 +1606,18 @@ class ApkInfo {
       }
 
       if (_isXmlPath(iconPath)) {
-        if (aaptPath != null && aaptPath.isNotEmpty) {
+        // 渲染器**不依赖 aapt2**：`loadIcon` 已经把内置解析器的资源表给了
+        // `sharedRenderer`（见那里的注释「当有 arsc 数据时，即使没有 aapt2
+        // 也能创建渲染器」）。
+        //
+        // 这里原先只判断 `aaptPath` 非空，于是那条能力被这道门挡死了 ——
+        // 没装 aapt2 的机器上 XML 图标一律画不出来，**而且不留任何说明**。
+        // 现在只要调用方备好了资源表（`sharedRenderer != null`）就放行。
+        final aaptAvailable = aaptPath != null && aaptPath.isNotEmpty;
+        if (aaptAvailable || sharedRenderer != null) {
           adaptiveIconRenderer ??= AdaptiveIconRenderer(
             apkPath: apkPath,
-            aaptPath: aaptPath,
+            aaptPath: aaptPath ?? '',
             zip: zip,
           );
           final image = await adaptiveIconRenderer.render(iconPath);
@@ -1644,7 +1701,14 @@ class ApkInfo {
       log.fine('loadIcon: 所有候选图标渲染失败');
       return null;
     } finally {
-      sharedRenderer?.dispose();
+      final renderer = sharedRenderer;
+      if (renderer != null) {
+        // 图标渲染失败会回退到「没有图标」，而**回退必须能解释** ——
+        // 把渲染器记下的说明（引用成环、深度触顶）带到 ApkInfo 上，
+        // 最终进「解析诊断」卡片。此前这些情况只写进日志，界面上是空白。
+        iconResolutionNotes = List.of(renderer.resolutionNotes);
+        renderer.dispose();
+      }
       zip.close();
     }
   }

@@ -3,6 +3,7 @@ import 'byte_data_reader.dart';
 import 'arsc/string_pool.dart';
 import 'arsc/resource_value.dart';
 import 'arsc/type_spec.dart';
+import 'arsc/reference_graph.dart';
 import 'models.dart';
 
 /// resources.arsc 完整解析器
@@ -261,6 +262,26 @@ class ArscParser {
     }
     return results;
   }
+
+  /// 在资源引用图里查找环。
+  ///
+  /// **为什么要查**：环上那几个资源互相定义、谁也没有真正的值，涉及它们的
+  /// 取值在运行时会失败。这是一条实打实的缺陷信号。
+  ///
+  /// **但环不等于篡改**（实测结论）：`aapt2 link` 会接受环状的颜色别名并
+  /// 原样写进资源表 —— 夹具 `cyclic-color-alias.apk` 就是 `aapt2` 产出的。
+  /// 所以只能据此说「这些资源解析不了」，不能说「这个包被动过手脚」。
+  ///
+  /// 与图标渲染器的深度上限（`_kMaxDepth`）是两件事：那个上限只是防无限递归，
+  /// 对所有深度超限一视同仁、也**不留说明**；这里把环本身找出来并描述清楚，
+  /// 让「图标为什么画不出来」有据可查。
+  ///
+  /// 覆盖局限（经由 style / array 的间接引用查不到）见
+  /// `ResourceReferenceGraph.findCycles` 的文档。
+  ///
+  /// 惰性调用：它要遍历整张表，因此不放进 `parse` 的热路径，由调用方按需触发。
+  ReferenceCycleReport findReferenceCycles() =>
+      ResourceReferenceGraph.findCycles(getAllResources());
 
   /// 跳过混淆器注入的非 StringPool chunk（如 type=0x0000 NULL chunk），
   /// 直到找到 StringPool (type=0x0001) 或到达边界。

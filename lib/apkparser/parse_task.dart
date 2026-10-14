@@ -75,12 +75,19 @@ class ParsedApkData {
   /// `null` 表示 worker 未执行安全分析（例如 aapt2 路径）。
   final SecurityAnalysisResult? security;
 
+  /// 资源引用图的环检测结果。
+  ///
+  /// 在 worker 里顺带算出来，因为 [arscResources] 已经在这里了 ——
+  /// 环检测的输入正是它，不需要为了这项检查再遍历一遍整张资源表。
+  final ReferenceCycleReport referenceCycles;
+
   const ParsedApkData({
     required this.meta,
     required this.arscResources,
     this.hardeningObservations = const [],
     this.structure = const ContainerStructure(),
     this.security,
+    this.referenceCycles = const ReferenceCycleReport(),
   });
 }
 
@@ -223,6 +230,9 @@ void _parseEntryPoint(_ParseRequest request) async {
       for (final name in reader.listFiles(extension: '.dex'))
         if (reader.readFile(name) case final bytes?) DexBytes(name, bytes),
     ];
+    // 资源表只遍历一次：环检测与图标渲染器都用这一份。
+    final arscResources =
+        reader.arscParser?.getAllResources() ?? const <int, ResourceInfo>{};
     final security = AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
@@ -236,10 +246,13 @@ void _parseEntryPoint(_ParseRequest request) async {
 
     request.reply.send(ParseSucceeded(ParsedApkData(
       meta: meta,
-      arscResources: reader.arscParser?.getAllResources() ?? const {},
+      arscResources: arscResources,
       hardeningObservations: reader.scanHardeningSignals(),
       structure: reader.collectStructure(),
       security: security,
+      // 环检测的输入就是 arscResources，顺手算掉 —— 不为了这项检查再遍历
+      // 一遍整张资源表。
+      referenceCycles: ResourceReferenceGraph.findCycles(arscResources),
     )));
   } catch (e) {
     log.warning('ApkParseTask: worker failed: $e');

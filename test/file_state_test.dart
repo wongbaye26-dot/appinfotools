@@ -9,6 +9,8 @@ import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
+import 'package:apk_parser/apk_parser.dart'
+    show ReferenceCycle, ReferenceCycleReport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IpaContainer;
 
@@ -168,6 +170,36 @@ void main() {
       final state = FileState(filePath: 'Example.apk', apkInfo: ApkInfo());
 
       expect(state.analysis!.diagnostics, isEmpty);
+    });
+
+    test('Android 的资源引用环会出现在统一结果里', () {
+      final info = ApkInfo()
+        ..resourceReferenceCycles = const ReferenceCycleReport(
+          cycles: [
+            ReferenceCycle([0x7f010000, 0x7f010001]),
+          ],
+        );
+      final state = FileState(filePath: 'Example.apk', apkInfo: info);
+
+      final diagnostics = state.analysis!.diagnostics;
+      expect(
+        diagnostics.map((d) => d.code),
+        contains('android.resource_reference_cycle'),
+      );
+      // 描述必须能看出「回到起点」，否则读者不知道它是个环。
+      expect(diagnostics.first.message, contains('0x7f010000'));
+      expect(diagnostics.first.message, contains('0x7f010001'));
+    });
+
+    test('图标渲染的说明会进诊断，不只在日志里', () {
+      final info = ApkInfo()
+        ..iconResolutionNotes = ['color reference cycle: @a -> @b -> @a'];
+      final state = FileState(filePath: 'Example.apk', apkInfo: info);
+
+      expect(
+        state.analysis!.diagnostics.map((d) => d.code),
+        contains('android.icon_resolution'),
+      );
     });
   });
 }

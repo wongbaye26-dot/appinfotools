@@ -55,6 +55,30 @@ class AdaptiveIconRenderer {
     _failedBitmapPath.clear();
   }
 
+  /// 解析过程中遇到的、需要向用户解释的问题。
+  ///
+  /// 例如资源引用成环、解析深度触顶。这些情况下图标会**回退**到默认值或干脆
+  /// 画不出来，而「回退了」必须能解释 —— 否则用户看到的是一个空白，分不清
+  /// 「这个包没有图标」与「我们没画出来」。
+  ///
+  /// 由调用方（`ApkInfo.loadIcon`）取走并并入「解析诊断」。
+  final List<String> resolutionNotes = [];
+
+  /// [resolutionNotes] 的条数上限。
+  ///
+  /// 一张畸形的资源表可以让同一条说明出现成千上万次（每个图标候选都会走一遍
+  /// 同样的链）。只留前几条：用户需要知道「有问题」以及一两个可核对的例子，
+  /// 不需要一份完整清单。
+  static const int _kMaxResolutionNotes = 8;
+
+  /// 记下一条解析说明。去重 + 限量。
+  void _noteResolutionProblem(String note) {
+    if (resolutionNotes.contains(note)) return;
+    if (resolutionNotes.length >= _kMaxResolutionNotes) return;
+    resolutionNotes.add(note);
+    _debug('resolution problem: $note');
+  }
+
   /// 从 ArscParser 数据预加载资源表，替代 aapt2 dump resources
   void preloadResourceTableFromArsc(
       Map<int, apk_parser.ResourceInfo> resources) {
@@ -759,7 +783,12 @@ class AdaptiveIconRenderer {
   }
 
   Future<String?> _resolveDrawableToPath(String value, int depth) async {
-    if (depth > _kMaxDepth) return null;
+    if (depth > _kMaxDepth) {
+      _noteResolutionProblem(
+        'drawable reference depth limit ($_kMaxDepth) reached at $value',
+      );
+      return null;
+    }
     final trimmed = value.trim();
     if (trimmed.isEmpty) return null;
     if (_looksLikeZipPath(trimmed)) {
@@ -1304,7 +1333,20 @@ class AdaptiveIconRenderer {
     return Gradient.linear(start, end, colors, normalizedOffsets, tileMode);
   }
 
-  Future<Color?> _resolveColorRef(String? value, int depth) async {
+  /// 解析颜色引用。
+  ///
+  /// [chain] 是**当前这一条解析链**上已经见过的引用。引用环（A → B → A）在
+  /// 正常的资源表里不可能出现；一旦出现，只靠 `depth` 上限要空转 16 层才停、
+  /// 而且不留任何说明。带上 [chain] 就能在第二次遇到同一个引用时立刻停下，
+  /// 并记下是哪条链成环。
+  ///
+  /// 顶层调用不传 [chain]（`null`），链在方法内部按需创建 —— 因此那十几个
+  /// 外部调用点一行都不用改。
+  Future<Color?> _resolveColorRef(
+    String? value,
+    int depth, [
+    Set<String>? chain,
+  ]) async {
     if (value == null || value.isEmpty) return null;
     final trimmed = value.trim();
     // 颜色字面量不需要递归解析，无视 depth 限制
@@ -1316,9 +1358,24 @@ class AdaptiveIconRenderer {
       return parsed;
     }
 
-    // 仅在需要递归解析资源引用时检查 depth
-    if (depth > _kMaxDepth) return null;
     if (!trimmed.startsWith('@')) return null;
+
+    final seen = chain ?? <String>{};
+    if (!seen.add(trimmed)) {
+      _noteResolutionProblem(
+        'color reference cycle: ${[...seen, trimmed].join(' -> ')}',
+      );
+      return null;
+    }
+
+    // 仅在需要递归解析资源引用时检查 depth
+    if (depth > _kMaxDepth) {
+      _noteResolutionProblem(
+        'color reference depth limit ($_kMaxDepth) reached at $trimmed',
+      );
+      return null;
+    }
+
     final resolved = await _resolveResourceReference(trimmed, depth + 1);
     if (resolved == null || resolved == trimmed) return null;
     if (resolved.toLowerCase().endsWith('.xml')) {
@@ -1327,11 +1384,16 @@ class AdaptiveIconRenderer {
         return xmlColor;
       }
     }
-    return _resolveColorRef(resolved, depth + 1);
+    return _resolveColorRef(resolved, depth + 1, seen);
   }
 
   Future<String?> _resolveResourceReference(String reference, int depth) async {
-    if (depth > _kMaxDepth) return null;
+    if (depth > _kMaxDepth) {
+      _noteResolutionProblem(
+        'resource reference depth limit ($_kMaxDepth) reached at $reference',
+      );
+      return null;
+    }
     final trimmed = reference.trim();
     if (trimmed.isEmpty) return null;
     if (_isColorLiteral(trimmed) || _looksLikeZipPath(trimmed)) return trimmed;

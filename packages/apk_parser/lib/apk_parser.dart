@@ -6,6 +6,7 @@ export 'src/arsc_parser.dart';
 export 'src/arsc/string_pool.dart';
 export 'src/arsc/resource_value.dart';
 export 'src/arsc/type_spec.dart';
+export 'src/arsc/reference_graph.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';

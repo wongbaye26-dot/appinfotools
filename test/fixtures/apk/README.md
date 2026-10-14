@@ -89,3 +89,56 @@ $AAPT2 dump configurations no-night-mode-resources.apk
 
 两个都要留：只留带夜间资源的那个，`hasNightModeResources` 直接
 `return true` 也能通过。
+
+## cyclic-color-alias.apk / cyclic-color-icon.apk
+
+一对**含真实资源引用环**的 APK，同样由 `aapt2 link` 产出。
+
+它们纠正了一个我原先写错的判断：我以为「`aapt2` 不可能产出引用环」，于是把
+「表里有环」当成了篡改的证据。实测 `aapt2 link` 对
+`<color name="a">@color/b</color>` + `<color name="b">@color/a</color>`
+**照单全收**，并原样写进资源表。所以发现环时只能说「这些资源解析不了」，
+**不能说**「这个包被人动过手脚」。
+
+| 夹具 | 内容 |
+|---|---|
+| `cyclic-color-alias.apk` | `color/a → @color/b`、`color/b → @color/a` |
+| `cyclic-color-icon.apk` | 同上，外加 `color/icon_fill → @color/a` 和一个用 `@color/icon_fill` 作 `fillColor` 的矢量图标 |
+
+生成命令与上面一致（同一个 `aapt2 compile` + `aapt2 link` 流程），只是
+`res/values/values.xml` 与 `res/drawable/ic_launcher.xml` 的内容不同：
+
+```xml
+<!-- cyclic-color-alias.apk 的 res/values/values.xml -->
+<resources>
+  <string name="app_name">Cycle</string>
+  <color name="a">@color/b</color>
+  <color name="b">@color/a</color>
+</resources>
+```
+
+```xml
+<!-- cyclic-color-icon.apk 额外有的 res/drawable/ic_launcher.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+  <path android:fillColor="@color/icon_fill"
+      android:pathData="M0,0 L24,0 L24,24 L0,24 Z" />
+</vector>
+```
+
+### 期望值（用 aapt2 独立核对）
+
+```sh
+$AAPT2 dump resources cyclic-color-alias.apk | grep -E 'resource 0x|@color'
+    resource 0x7f010000 color/a
+      () @color/b
+    resource 0x7f010000 … color/b
+      () @color/a
+```
+
+用途：
+- `cyclic-color-alias.apk` 钉住 `ResourceReferenceGraph.findCycles` 在**真实表**
+  上确实能检出环（否则那组纯函数测试可能只是自证）。
+- `cyclic-color-icon.apk` 钉住「图标渲染遇到环时必须留下说明」——
+  这个夹具的图标填充色指向环，渲染会失败，而失败**必须能解释**。
