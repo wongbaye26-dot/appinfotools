@@ -130,8 +130,8 @@ void main() {
       );
       expect(http.callSiteCount, 2);
       expect(
-        http.callSiteSamples.any(
-            (s) => s.contains('getInputStream') && s.contains('NetProbe;.open')),
+        http.callSiteSamples.any((s) =>
+            s.contains('getInputStream') && s.contains('NetProbe;.open')),
         isTrue,
         reason: '证据要能回答「在哪个方法里」：${http.callSiteSamples}',
       );
