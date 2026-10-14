@@ -1,6 +1,5 @@
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
-import 'package:apk_info_tool/pages/setting_page.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/ui/shell/app_shell.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -73,11 +72,15 @@ void main(List<String> arguments) async {
     onDetach: () => Config.flushAll(),
   );
 
+  // 语言包是 **deferred（懒加载）** 的：`setLocaleRawSync` 会因为
+  // 「Deferred library l_zh_CN was not loaded」直接抛异常。必须走异步版本
+  // 并 **await** —— 不 await 的话 `runApp` 先跑，首帧用的是 base locale，
+  // 等语言包加载完再切回来，表现为启动瞬间语言闪一下。
   final lang = Config.language.value;
   if (lang.isEmpty || lang == Config.kLanguageAuto) {
-    LocaleSettings.useDeviceLocale();
+    await LocaleSettings.useDeviceLocale();
   } else {
-    LocaleSettings.setLocaleRaw(lang);
+    await LocaleSettings.setLocaleRaw(lang);
   }
   runApp(ProviderScope(child: TranslationProvider(child: const MyApp())));
 }
@@ -131,9 +134,10 @@ class MyApp extends ConsumerWidget {
       theme: themeManager.lightTheme,
       darkTheme: themeManager.darkTheme,
       themeMode: themeManager.mode,
+      // 设置页由侧边栏承载，不再是一条独立路由 —— 早先分析页顶栏还有一个
+      // 设置按钮 push 到这里，与侧边栏重复，已去掉。
       routes: {
         "/": (context) => const AppShell(),
-        "setting": (context) => const SettingPage(),
       },
       builder: (context, child) {
         return _GlobalShortcuts(child: child!);

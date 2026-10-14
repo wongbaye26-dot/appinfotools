@@ -515,8 +515,6 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   Widget _buildAppearanceSection() {
     final themeColor =
         ref.watch(themeManagerProvider.select((value) => value.themeColor));
-    final iconRowSpan =
-        ref.watch(uiConfigStateProvider.select((value) => value.iconRowSpan));
     final themeMode =
         ref.watch(settingStateProvider.select((value) => value.themeMode));
 
@@ -631,26 +629,6 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                     }
                   },
                 ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Expanded(child: Text(t.settings.icon_row_span)),
-              SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 2, label: Text('2')),
-                  ButtonSegment(value: 3, label: Text('3')),
-                ],
-                selected: {iconRowSpan},
-                onSelectionChanged: (Set<int> value) {
-                  ref
-                      .read(uiConfigStateProvider.notifier)
-                      .updateIconRowSpan(value.first);
-                },
               ),
             ],
           ),

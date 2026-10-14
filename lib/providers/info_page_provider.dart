@@ -324,3 +324,29 @@ class CurrentFileState extends _$CurrentFileState {
     state = state.copyWith(fileSize: fileSize);
   }
 }
+
+/// 跨页面的「打开这个文件」请求。
+///
+/// 概览页（拖放 / 选择文件 / 最近文件）与分析页位于不同的 widget 子树，
+/// 而真正触发解析的 `openApk` 是 `APKInfoPage` 的内部方法 —— 概览页够不到。
+///
+/// 这里用一次性请求做桥：发起方写入路径并导航到分析页，分析页在
+/// `ref.listen` 里收到后调用自己的 `openApk`，随后立刻清空。
+///
+/// **刻意不在概览页复制一份解析逻辑**：任务句柄、阶段回调、取消、
+/// 代际计数（`_loadGeneration`）这些状态只存在于分析页，复制一份出来
+/// 迟早会对不上 —— 那正是「导入后没反应」这个 bug 的成因。
+@Riverpod(keepAlive: true)
+class PendingOpenRequest extends _$PendingOpenRequest {
+  @override
+  String? build() => null;
+
+  void request(String filePath) => state = filePath;
+
+  /// 取走请求并清空，避免同一次请求被重复触发。
+  String? consume() {
+    final path = state;
+    state = null;
+    return path;
+  }
+}

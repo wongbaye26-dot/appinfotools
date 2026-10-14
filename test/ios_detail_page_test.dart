@@ -294,13 +294,14 @@ void main() {
   });
 
   group('IPA 详情页 — 图标', () {
-    testWidgets('图标缩略图出现在 Hero 卡片和版本栏中', (tester) async {
+    testWidgets('图标只在 Hero 卡片里出现一次', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
-      // 页面上有两个图标：Hero 卡片一个，版本栏一个
-      expect(find.byType(IosIconThumbnail), findsNWidgets(2));
+      // 图标**只出现一次**：Hero 卡片。早先版本栏右侧还挂着一张独立的
+      // 图标卡，与 Hero 是同一个图标 —— 那是重复，已去掉。
+      expect(find.byType(IosIconThumbnail), findsOneWidget);
 
-      // Hero 卡片中有图标
+      // 且那一个确实在 Hero 卡片里
       final hero = find.byType(IosHeroCard);
       expect(hero, findsOneWidget);
       expect(

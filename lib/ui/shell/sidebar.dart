@@ -1,6 +1,7 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/ui/shell/navigation_item.dart';
+import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
 
 /// 应用侧边栏导航组件。
@@ -132,25 +133,12 @@ class _ExpandedSidebar extends StatelessWidget {
 
   Widget _buildExpandedLogo(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 16, 8),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.inventory_2,
-              size: 20,
-              color: colorScheme.onPrimaryContainer,
-            ),
-          ),
+          const AppLogo(size: 36),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -167,7 +155,7 @@ class _ExpandedSidebar extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Package Inspector',
+                  t.base.app_subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.hintColor,
                     fontSize: 11,
@@ -213,21 +201,9 @@ class _CompactSidebar extends StatelessWidget {
       child: Column(
         children: [
           // 简化 Logo（仅图标）
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 24, 14, 16),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.inventory_2,
-                size: 20,
-                color: colorScheme.onPrimaryContainer,
-              ),
-            ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(14, 24, 14, 16),
+            child: AppLogo(size: 36),
           ),
           // 导航项
           Expanded(

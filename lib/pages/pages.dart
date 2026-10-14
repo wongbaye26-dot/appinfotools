@@ -2,7 +2,6 @@ enum Pages {
   home,
   info,
   setting,
-  install,
 }
 
 abstract class PageBase {

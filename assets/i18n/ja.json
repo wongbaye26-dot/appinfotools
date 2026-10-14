@@ -6,22 +6,41 @@
     "cancel": "キャンセル",
     "close": "閉じる",
     "reset": "リセット",
-    "ok": "OK"
+    "ok": "OK",
+    "app_subtitle": "パッケージインスペクター"
   },
   "nav": {
     "overview": "概要",
     "analysis": "分析",
-    "install": "インストール",
     "settings": "設定"
+  },
+  "overview": {
+    "subtitle": "Android と iOS のアプリケーションパッケージを解析し、セキュリティの洞察を提供します",
+    "statistics": "統計",
+    "stat_analyzed": "分析済み",
+    "stat_package": "パッケージ",
+    "stat_packages": "パッケージ",
+    "last_analyzed": "最近の分析：{name}",
+    "quick_actions": "クイック操作",
+    "open_file": "ファイルを開く",
+    "open_file_desc": "パッケージを選択",
+    "go_to_analysis": "分析へ移動",
+    "go_to_analysis_desc": "分析ビューに切り替え",
+    "recent_files": "最近のファイル",
+    "clear": "クリア",
+    "no_recent_files": "最近のファイルはありません",
+    "recent_files_hint": "分析したパッケージがここに表示されます",
+    "release_to_analyze": "離して分析",
+    "drop_hint": "パッケージをここにドロップ",
+    "drop_zone_title": "パッケージをここにドラッグ＆ドロップ",
+    "drop_zone_hint": "APK、XAPK、APKM、APKS、IPA に対応",
+    "feature_security": "セキュリティ検出"
   },
   "home": {
     "copy_file_path": "ファイルパスをコピー",
-    "copy_content": "内容をコピー",
-    "copied_content": "コピーしました: {content}",
-    "more_actions": "その他の操作",
-    "info_page": "情報ページ",
-    "install_page": "インストールページ",
-    "page_in_development": "開発中のページ"
+    "copy_content": "値をコピー",
+    "copied_content": "コピーしました：{content}",
+    "more_actions": "その他の操作"
   },
   "open": {
     "open_apk": "APK/XAPK/APKM/APKS/IPAを開く",
@@ -85,14 +104,13 @@
     "open_debug_log": "デバッグログを開く",
     "open_debug_directory": "デバッグディレクトリを開く",
     "theme_color": "テーマカラー",
-    "max_lines": "リストの最大行数",
+    "max_lines": "最大行数",
     "cannot_open_settings": "システム設定を開けません。現在のシステムバージョンではサポートされていない可能性があります",
     "title_width": "タイトル幅",
     "title_width_preview": "プレビュー",
     "reset": "リセット",
     "language": "言語",
     "language_auto": "自動 (システムに従う)",
-    "icon_row_span": "アイコン表示行数",
     "parser_engine": "解析エンジン",
     "parser_engine_aapt2": "aapt2 (外部ツール, 互換性良好)",
     "parser_engine_builtin": "内蔵 (Dart, 高速)",
@@ -117,10 +135,10 @@
   "parse": {
     "signature_verify_failed": "署名検証失敗",
     "please_set_path": "{name}のパスを先に設定してください",
-    "parse_apk": "APK情報を解析",
+    "parse_apk": "再解析",
     "parsing": "解析中...",
     "parse_timeout": "解析タイムアウト、ファイルが大きすぎる可能性があります",
-    "parse_apk_info_fail": "APK情報の解析に失敗しました!",
+    "parse_apk_info_fail": "解析に失敗しました",
     "open_failure_not_archive": "有効なアーカイブファイルではありません",
     "open_failure_corrupt": "アーカイブが破損しているため読み取れません",
     "open_failure_budget": "安全な解凍上限を超えるため開くことを拒否しました",
@@ -138,7 +156,7 @@
     "platform": "プラットフォーム",
     "platform_android": "Android",
     "platform_ios": "iOS",
-    "sha1": "SHA1",
+    "sha1": "SHA-1",
     "sha256": "SHA-256",
     "size": "サイズ"
   },
@@ -248,9 +266,28 @@
     "no_findings": "セキュリティ問題は検出されませんでした",
     "risk_overview": "リスク概要",
     "limitations": "カバレッジの不足",
-    "coverage_incomplete": "分析カバレッジは不完全です。結果は参考程度です"
+    "coverage_incomplete": "分析カバレッジは不完全です。結果は参考程度です",
+    "confidence_confirmed": "確認済み",
+    "confidence_suspected": "推定",
+    "confidence_capability": "能力のみ",
+    "confidence_unknown": "不明"
   },
   "report": {
-    "export_json_action": "JSON セキュリティレポートをエクスポート"
+    "export_json_action": "JSON セキュリティレポートをエクスポート",
+    "format": "形式",
+    "scope": "範囲",
+    "full_report": "完全なレポート",
+    "security_only": "セキュリティのみ",
+    "exporting": "エクスポート中…",
+    "file_name": "ファイル名",
+    "security_not_performed": "このファイルではセキュリティ監査は実行されませんでした。"
+  },
+  "detail_tab": {
+    "overview": "概要",
+    "application": "アプリ",
+    "permissions": "権限",
+    "structure": "構造",
+    "signature": "署名",
+    "security": "セキュリティ"
   }
 }

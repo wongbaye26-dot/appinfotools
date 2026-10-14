@@ -6,22 +6,41 @@
     "cancel": "Cancel",
     "close": "Close",
     "reset": "Reset",
-    "ok": "OK"
+    "ok": "OK",
+    "app_subtitle": "Package Inspector"
   },
   "nav": {
     "overview": "Overview",
     "analysis": "Analysis",
-    "install": "Install",
     "settings": "Settings"
+  },
+  "overview": {
+    "subtitle": "Analyze Android and iOS packages with security insights",
+    "statistics": "Statistics",
+    "stat_analyzed": "Analyzed",
+    "stat_package": "package",
+    "stat_packages": "packages",
+    "last_analyzed": "Last analyzed: {name}",
+    "quick_actions": "Quick Actions",
+    "open_file": "Open File",
+    "open_file_desc": "Browse for a package",
+    "go_to_analysis": "Go to Analysis",
+    "go_to_analysis_desc": "Switch to analysis view",
+    "recent_files": "Recent Files",
+    "clear": "Clear",
+    "no_recent_files": "No recent files",
+    "recent_files_hint": "Analyzed packages will appear here",
+    "release_to_analyze": "Release to Analyze",
+    "drop_hint": "Drop the package file here",
+    "drop_zone_title": "Drag & Drop a Package Here",
+    "drop_zone_hint": "Supports APK, XAPK, APKM, APKS, and IPA files",
+    "feature_security": "Security Audit"
   },
   "home": {
     "copy_file_path": "Copy file path",
-    "copy_content": "Copy content",
-    "copied_content": "Copied content: {content}",
-    "more_actions": "More Actions",
-    "info_page": "Info Page",
-    "install_page": "Install Page",
-    "page_in_development": "Page in development"
+    "copy_content": "Copy value",
+    "copied_content": "Copied: {content}",
+    "more_actions": "More Actions"
   },
   "settings": {
     "title": "Settings",
@@ -78,14 +97,13 @@
     "open_debug_log": "Open Debug Log",
     "open_debug_directory": "Open Debug Directory",
     "theme_color": "Theme Color",
-    "max_lines": "Max Lines in Lists",
+    "max_lines": "Max Lines",
     "cannot_open_settings": "Unable to open system settings, possibly due to unsupported system version",
     "title_width": "Title Width",
     "title_width_preview": "Preview",
     "reset": "Reset",
     "language": "Language",
     "language_auto": "Auto (System)",
-    "icon_row_span": "Icon Row Span",
     "parser_engine": "Parser Engine",
     "parser_engine_aapt2": "aapt2 (External, Better Compatibility)",
     "parser_engine_builtin": "Built-in (Dart, Faster)",
@@ -111,9 +129,9 @@
     "signature_verify_failed": "Signature verification failed",
     "please_set_path": "Please set the {name} path first",
     "parsing": "Parsing...",
-    "parse_apk": "Parse APK Info",
+    "parse_apk": "Re-parse Package",
     "parse_timeout": "Parse timeout, file may be too large",
-    "parse_apk_info_fail": "Failed to parse APK information!",
+    "parse_apk_info_fail": "Failed to parse the package",
     "open_failure_not_archive": "Not a valid archive file",
     "open_failure_corrupt": "The archive is damaged and cannot be read",
     "open_failure_budget": "Refused to open: the archive exceeds the safe decompression limit",
@@ -138,7 +156,7 @@
     "platform": "Platform",
     "platform_android": "Android",
     "platform_ios": "iOS",
-    "sha1": "SHA1",
+    "sha1": "SHA-1",
     "sha256": "SHA-256",
     "size": "Size"
   },
@@ -340,7 +358,14 @@
     "platform": "Platform",
     "size": "Size",
     "title": "Package analysis report",
-    "export_json_action": "Export JSON security report"
+    "export_json_action": "Export JSON security report",
+    "format": "Format",
+    "scope": "Scope",
+    "full_report": "Full Report",
+    "security_only": "Security Only",
+    "exporting": "Exporting…",
+    "file_name": "File name",
+    "security_not_performed": "Security audit was not performed for this file."
   },
   "about": {
     "features": {
@@ -358,6 +383,18 @@
     "no_findings": "No security findings detected",
     "risk_overview": "Risk Overview",
     "limitations": "Coverage Limitations",
-    "coverage_incomplete": "Analysis coverage is incomplete; results are indicative only"
+    "coverage_incomplete": "Analysis coverage is incomplete; results are indicative only",
+    "confidence_confirmed": "Confirmed",
+    "confidence_suspected": "Suspected",
+    "confidence_capability": "Capability only",
+    "confidence_unknown": "Unknown"
+  },
+  "detail_tab": {
+    "overview": "Overview",
+    "application": "Application",
+    "permissions": "Permissions",
+    "structure": "Structure",
+    "signature": "Signature",
+    "security": "Security"
   }
 }

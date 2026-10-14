@@ -6,22 +6,41 @@
     "cancel": "取消",
     "close": "关闭",
     "reset": "重置",
-    "ok": "确定"
+    "ok": "确定",
+    "app_subtitle": "应用包分析工具"
   },
   "nav": {
     "overview": "概览",
     "analysis": "分析",
-    "install": "安装",
     "settings": "设置"
+  },
+  "overview": {
+    "subtitle": "解析 Android 与 iOS 应用包，并给出安全洞察",
+    "statistics": "统计",
+    "stat_analyzed": "已分析",
+    "stat_package": "个包",
+    "stat_packages": "个包",
+    "last_analyzed": "最近分析：{name}",
+    "quick_actions": "快捷操作",
+    "open_file": "打开文件",
+    "open_file_desc": "浏览并选择一个应用包",
+    "go_to_analysis": "前往分析",
+    "go_to_analysis_desc": "切换到分析视图",
+    "recent_files": "最近文件",
+    "clear": "清空",
+    "no_recent_files": "暂无最近文件",
+    "recent_files_hint": "分析过的应用包会出现在这里",
+    "release_to_analyze": "松开以分析",
+    "drop_hint": "把应用包拖到这里",
+    "drop_zone_title": "拖放应用包到这里",
+    "drop_zone_hint": "支持 APK、XAPK、APKM、APKS 与 IPA 文件",
+    "feature_security": "安全检测"
   },
   "home": {
     "copy_file_path": "复制文件路径",
-    "copy_content": "复制内容",
-    "copied_content": "已复制内容: {content}",
-    "more_actions": "更多操作",
-    "info_page": "信息页面",
-    "install_page": "安装页面",
-    "page_in_development": "页面开发中"
+    "copy_content": "复制值",
+    "copied_content": "已复制：{content}",
+    "more_actions": "更多操作"
   },
   "open": {
     "open_apk": "打开 APK/XAPK/APKM/APKS/IPA",
@@ -85,14 +104,13 @@
     "open_debug_log": "打开调试日志",
     "open_debug_directory": "打开调试目录",
     "theme_color": "主题颜色",
-    "max_lines": "列表最大行数",
+    "max_lines": "最大行数",
     "cannot_open_settings": "无法打开系统设置, 可能是当前系统版本不支持",
     "title_width": "标题宽度",
     "title_width_preview": "预览",
     "reset": "重置",
     "language": "语言",
     "language_auto": "自动 (跟随系统)",
-    "icon_row_span": "图标显示行数",
     "parser_engine": "解析引擎",
     "parser_engine_aapt2": "aapt2 (外部工具, 兼容性好)",
     "parser_engine_builtin": "内置 (Dart, 速度快)",
@@ -117,10 +135,10 @@
   "parse": {
     "signature_verify_failed": "签名验证失败",
     "please_set_path": "请先设置 {name} 路径",
-    "parse_apk": "解析APK信息",
+    "parse_apk": "重新解析",
     "parsing": "正在解析中...",
     "parse_timeout": "解析超时,文件可能过大",
-    "parse_apk_info_fail": "解析APK信息失败!",
+    "parse_apk_info_fail": "解析失败",
     "open_failure_not_archive": "不是有效的归档文件",
     "open_failure_corrupt": "归档已损坏，无法读取",
     "open_failure_budget": "已拒绝打开：归档超出安全解压上限",
@@ -138,7 +156,7 @@
     "platform": "平台",
     "platform_android": "Android",
     "platform_ios": "iOS",
-    "sha1": "SHA1",
+    "sha1": "SHA-1",
     "sha256": "SHA-256",
     "size": "大小"
   },
@@ -339,7 +357,14 @@
     "platform": "平台",
     "size": "大小",
     "title": "应用包解析报告",
-    "export_json_action": "导出 JSON 安全报告"
+    "export_json_action": "导出 JSON 安全报告",
+    "format": "格式",
+    "scope": "范围",
+    "full_report": "完整报告",
+    "security_only": "仅安全检测",
+    "exporting": "正在导出…",
+    "file_name": "文件名",
+    "security_not_performed": "该文件未执行安全检测。"
   },
   "about": {
     "features": {
@@ -357,6 +382,18 @@
     "no_findings": "未检测到安全问题",
     "risk_overview": "风险总览",
     "limitations": "覆盖不足",
-    "coverage_incomplete": "分析覆盖不完整，结果仅供参考"
+    "coverage_incomplete": "分析覆盖不完整，结果仅供参考",
+    "confidence_confirmed": "已确认",
+    "confidence_suspected": "疑似",
+    "confidence_capability": "仅具备能力",
+    "confidence_unknown": "未知"
+  },
+  "detail_tab": {
+    "overview": "概览",
+    "application": "应用",
+    "permissions": "权限",
+    "structure": "结构",
+    "signature": "签名",
+    "security": "安全"
   }
 }

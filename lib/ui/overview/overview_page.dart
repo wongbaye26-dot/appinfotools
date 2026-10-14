@@ -5,6 +5,7 @@ import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
+import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -43,15 +44,12 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   }
 
   void _openFile(String filePath) {
-    final file = File(filePath);
-    if (!file.existsSync()) return;
+    if (!File(filePath).existsSync()) return;
 
-    final fileSize = file.lengthSync();
-    ref.read(currentFileStateProvider.notifier).update(
-          FileState(filePath: filePath, fileSize: fileSize),
-        );
-
-    // 自动切换到分析页
+    // 交给分析页去解析：解析流水线（任务句柄、阶段回调、取消、代际计数）
+    // 只存在于那里。概览页只负责发起请求并把用户带过去 —— 早先这里自己
+    // 写了一份 FileState，看起来「打开了」，实际没有任何解析发生。
+    ref.read(pendingOpenRequestProvider.notifier).request(filePath);
     ref.read(shellNavigationProvider.notifier).navigate('analysis');
   }
 
@@ -163,18 +161,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.inventory_2,
-                  size: 32,
-                  color: colorScheme.primary,
-                ),
-              ),
+              const AppLogo(size: 56),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -189,7 +176,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Analyze Android and iOS packages with security insights',
+                      t.overview.subtitle,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.hintColor,
                       ),
@@ -216,7 +203,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               ),
               _FeatureChip(
                 icon: Icons.security,
-                label: 'Security Audit',
+                label: t.overview.feature_security,
                 color: Colors.orange,
               ),
             ],
@@ -245,7 +232,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Statistics',
+          t.overview.statistics,
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -256,9 +243,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             Expanded(
               child: _StatCard(
                 icon: Icons.analytics_outlined,
-                label: 'Analyzed',
+                label: t.overview.stat_analyzed,
                 value: '$total',
-                sublabel: total == 1 ? 'package' : 'packages',
+                sublabel: total == 1
+                    ? t.overview.stat_package
+                    : t.overview.stat_packages,
                 color: colorScheme.primary,
               ),
             ),
@@ -308,7 +297,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Last analyzed: ${lastAnalyzed.fileName}',
+                  t.overview.last_analyzed(name: lastAnalyzed.fileName),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.hintColor,
                   ),
@@ -337,7 +326,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Quick Actions',
+          t.overview.quick_actions,
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -348,8 +337,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             Expanded(
               child: _ActionCard(
                 icon: Icons.folder_open,
-                label: 'Open File',
-                description: 'Browse for a package',
+                label: t.overview.open_file,
+                description: t.overview.open_file_desc,
                 onTap: _pickFile,
                 color: colorScheme.primary,
               ),
@@ -358,8 +347,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             Expanded(
               child: _ActionCard(
                 icon: Icons.analytics,
-                label: 'Go to Analysis',
-                description: 'Switch to analysis view',
+                label: t.overview.go_to_analysis,
+                description: t.overview.go_to_analysis_desc,
                 onTap: () {
                   ref
                       .read(shellNavigationProvider.notifier)
@@ -384,7 +373,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         Row(
           children: [
             Text(
-              'Recent Files',
+              t.overview.recent_files,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -396,7 +385,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   await RecentFilesManager.clear();
                   setState(() {});
                 },
-                child: const Text('Clear'),
+                child: Text(t.overview.clear),
               ),
           ],
         ),
@@ -423,14 +412,14 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'No recent files',
+                  t.overview.no_recent_files,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.hintColor.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Analyzed packages will appear here',
+                  t.overview.recent_files_hint,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.hintColor.withValues(alpha: 0.4),
                   ),
@@ -477,7 +466,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Release to Analyze',
+              t.overview.release_to_analyze,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: colorScheme.primary,
@@ -485,7 +474,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Drop the package file here',
+              t.overview.drop_hint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.hintColor,
               ),
@@ -518,14 +507,14 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Drag & Drop a Package Here',
+            t.overview.drop_zone_title,
             style: theme.textTheme.titleMedium?.copyWith(
               color: theme.hintColor.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Supports APK, XAPK, APKM, APKS, and IPA files',
+            t.overview.drop_zone_hint,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.hintColor.withValues(alpha: 0.5),
             ),

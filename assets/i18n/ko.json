@@ -6,22 +6,41 @@
     "cancel": "취소",
     "close": "닫기",
     "reset": "초기화",
-    "ok": "확인"
+    "ok": "확인",
+    "app_subtitle": "패키지 검사기"
   },
   "nav": {
     "overview": "개요",
     "analysis": "분석",
-    "install": "설치",
     "settings": "설정"
+  },
+  "overview": {
+    "subtitle": "Android 및 iOS 앱 패키지를 분석하고 보안 인사이트를 제공합니다",
+    "statistics": "통계",
+    "stat_analyzed": "분석됨",
+    "stat_package": "개 패키지",
+    "stat_packages": "개 패키지",
+    "last_analyzed": "최근 분석: {name}",
+    "quick_actions": "빠른 작업",
+    "open_file": "파일 열기",
+    "open_file_desc": "패키지 찾아보기",
+    "go_to_analysis": "분석으로 이동",
+    "go_to_analysis_desc": "분석 보기로 전환",
+    "recent_files": "최근 파일",
+    "clear": "지우기",
+    "no_recent_files": "최근 파일 없음",
+    "recent_files_hint": "분석한 패키지가 여기에 표시됩니다",
+    "release_to_analyze": "놓아서 분석",
+    "drop_hint": "패키지를 여기에 놓으세요",
+    "drop_zone_title": "패키지를 여기로 끌어다 놓으세요",
+    "drop_zone_hint": "APK, XAPK, APKM, APKS, IPA 지원",
+    "feature_security": "보안 탐지"
   },
   "home": {
     "copy_file_path": "파일 경로 복사",
-    "copy_content": "내용 복사",
+    "copy_content": "값 복사",
     "copied_content": "복사됨: {content}",
-    "more_actions": "더 많은 작업",
-    "info_page": "정보 페이지",
-    "install_page": "설치 페이지",
-    "page_in_development": "개발 중인 페이지"
+    "more_actions": "더 많은 작업"
   },
   "open": {
     "open_apk": "APK/XAPK/APKM/APKS/IPA 열기",
@@ -85,14 +104,13 @@
     "open_debug_log": "디버그 로그 열기",
     "open_debug_directory": "디버그 디렉토리 열기",
     "theme_color": "테마 색상",
-    "max_lines": "목록 최대 행 수",
+    "max_lines": "최대 줄 수",
     "cannot_open_settings": "시스템 설정을 열 수 없습니다. 현재 시스템 버전에서 지원되지 않을 수 있습니다",
     "title_width": "제목 너비",
     "title_width_preview": "미리보기",
     "reset": "초기화",
     "language": "언어",
     "language_auto": "자동 (시스템 따라)",
-    "icon_row_span": "아이콘 표시 행 수",
     "parser_engine": "파서 엔진",
     "parser_engine_aapt2": "aapt2 (외부 도구, 호환성 우수)",
     "parser_engine_builtin": "내장 (Dart, 빠름)",
@@ -117,10 +135,10 @@
   "parse": {
     "signature_verify_failed": "서명 확인 실패",
     "please_set_path": "{name} 경로를 먼저 설정하세요",
-    "parse_apk": "APK 정보 분석",
+    "parse_apk": "다시 분석",
     "parsing": "분석 중...",
     "parse_timeout": "분석 시간 초과, 파일이 너무 클 수 있습니다",
-    "parse_apk_info_fail": "APK 정보 분석 실패!",
+    "parse_apk_info_fail": "분석에 실패했습니다",
     "open_failure_not_archive": "유효한 압축 파일이 아닙니다",
     "open_failure_corrupt": "압축 파일이 손상되어 읽을 수 없습니다",
     "open_failure_budget": "안전한 압축 해제 한도를 초과하여 열기를 거부했습니다",
@@ -138,7 +156,7 @@
     "platform": "플랫폼",
     "platform_android": "Android",
     "platform_ios": "iOS",
-    "sha1": "SHA1",
+    "sha1": "SHA-1",
     "sha256": "SHA-256",
     "size": "크기"
   },
@@ -248,9 +266,28 @@
     "no_findings": "보안 문제가 탐지되지 않았습니다",
     "risk_overview": "위험 개요",
     "limitations": "커버리지 부족",
-    "coverage_incomplete": "분석 커버리지가 불완전합니다. 결과는 참고용입니다"
+    "coverage_incomplete": "분석 커버리지가 불완전합니다. 결과는 참고용입니다",
+    "confidence_confirmed": "확인됨",
+    "confidence_suspected": "의심",
+    "confidence_capability": "능력만 있음",
+    "confidence_unknown": "알 수 없음"
   },
   "report": {
-    "export_json_action": "JSON 보안 보고서 낳출"
+    "export_json_action": "JSON 보안 보고서 낳출",
+    "format": "형식",
+    "scope": "범위",
+    "full_report": "전체 보고서",
+    "security_only": "보안만",
+    "exporting": "내보내는 중…",
+    "file_name": "파일 이름",
+    "security_not_performed": "이 파일에서는 보안 감사가 수행되지 않았습니다."
+  },
+  "detail_tab": {
+    "overview": "개요",
+    "application": "앱",
+    "permissions": "권한",
+    "structure": "구조",
+    "signature": "서명",
+    "security": "보안"
   }
 }

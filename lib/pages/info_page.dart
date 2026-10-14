@@ -30,13 +30,11 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
-import 'package:ipa_parser/ipa_parser.dart'
-    show IosBundle, IosIconResolution, IosPrivacyAudit;
+import 'package:ipa_parser/ipa_parser.dart' show IosBundle, IosPrivacyAudit;
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
-import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/security_finding_card.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -480,8 +478,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 看起来像。
     final enableHash =
         ref.watch(settingStateProvider.select((value) => value.enableHash));
-    final iconRowSpan =
-        ref.watch(uiConfigStateProvider.select((value) => value.iconRowSpan));
 
     Widget card(String title, String value,
             {Widget? end, bool selectable = false}) =>
@@ -551,26 +547,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ));
     }
 
-    // 版本与图标栏：与 Android 侧对位，图标在右侧
-    cards.add(Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            children: [
-              card(t.apk_info.version_name, field(ios.shortVersion)),
-              card(t.apk_info.version_code, field(ios.buildNumber)),
-              if (iconRowSpan >= 3)
-                card(t.ios_info.minimum_os, field(ios.minimumOSVersion)),
-            ],
-          ),
-        ),
-        _buildIosIconWidget(ios.icon, iconRowSpan),
-      ],
-    ));
-    if (iconRowSpan < 3) {
-      cards.add(card(t.ios_info.minimum_os, field(ios.minimumOSVersion)));
-    }
+    // 版本栏。图标只在 Hero 卡片里出现一次 —— 早先这里右侧还挂着
+    // 一张独立的图标卡，与 Hero 卡片是同一个图标，纯属重复。
+    cards.add(card(t.apk_info.version_name, field(ios.shortVersion)));
+    cards.add(card(t.apk_info.version_code, field(ios.buildNumber)));
+    cards.add(card(t.ios_info.minimum_os, field(ios.minimumOSVersion)));
 
     cards.add(card(
         t.ios_info.device_family,
@@ -887,27 +868,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
-  /// iOS 图标槽位。
-  ///
-  /// 与 Android 的 [_buildIconWidget] 同一个尺寸公式，好让两页的图标看起来
-  /// 一样大。区别只有一处：iOS 没有候选切换（见 `IosIconThumbnail` 的说明），
-  /// 因此没有右键菜单。
-  Widget _buildIosIconWidget(IosIconResolution? icon, int iconRowSpan) {
-    final iconSize = iconRowSpan * 44.0;
-    final radius = iconSize * 0.22;
-    return SizedBox(
-      width: iconSize,
-      height: iconSize,
-      child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radius),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: IosIconThumbnail(resolution: icon, size: iconSize),
-      ),
-    );
-  }
-
   Future<void> _initPlatformState() async {
     log.info("_initPlatformState: start");
     String? initialFilePath;
@@ -985,12 +945,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   );
                 }),
       _buildMoreMenuButton(context),
-      IconButton(
-          icon: const Icon(Icons.settings),
-          tooltip: t.settings.open_settings,
-          onPressed: () {
-            Navigator.pushNamed(context, 'setting');
-          }),
     ];
   }
 
@@ -1214,6 +1168,18 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ref.listen(currentPageProvider, (_, __) => _scheduleUpdateActions());
     ref.listen(currentFileStateProvider, (_, __) => _scheduleUpdateActions());
     ref.listen(currentApkInfoProvider, (_, __) => _scheduleUpdateActions());
+    // 概览页发起的「打开这个文件」请求。
+    //
+    // 必须由本页处理而不是概览页自己解析：任务句柄、阶段回调、取消、
+    // 代际计数（`_loadGeneration`）这些状态都只存在于本页，别处再走一遍
+    // 解析就等于把流水线的状态复制成了两份。
+    ref.listen(pendingOpenRequestProvider, (_, next) {
+      if (next == null) return;
+      final path = ref.read(pendingOpenRequestProvider.notifier).consume();
+      if (path != null && path.isNotEmpty) {
+        openApk(path);
+      }
+    });
     final apkInfo = ref.watch(currentApkInfoProvider);
     final fileState = ref.watch(currentFileStateProvider);
     final isParsing = ref.watch(isParsingProvider);
@@ -1234,13 +1200,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ref.watch(settingStateProvider.select((value) => value.enableHash));
     final textMaxLines =
         ref.watch(uiConfigStateProvider.select((value) => value.textMaxLines));
-    final iconRowSpan =
-        ref.watch(uiConfigStateProvider.select((value) => value.iconRowSpan));
 
     final cards = fileState.platform == PackagePlatform.ios
         ? _buildIosCards(fileState)
         : _buildAndroidCards(fileState, apkInfo, analysisNotes, structureText,
-            enableSignature, enableHash, textMaxLines, iconRowSpan);
+            enableSignature, enableHash, textMaxLines);
     final tabContent = _groupCardsByTab(cards);
 
     return DropTarget(
@@ -1281,7 +1245,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     bool enableSignature,
     bool enableHash,
     int textMaxLines,
-    int iconRowSpan,
   ) {
     return [
       // 平台标识同样放在最前：两页版式一致，这一行是用户
@@ -1307,6 +1270,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         versionName: apkInfo?.versionName ?? '',
         versionCode: '${apkInfo?.versionCode ?? ''}',
         icon: apkInfo?.mainIconImage,
+        // 候选图标切换与图标导出原先挂在版本栏那张独立图标卡上。
+        // 图标去重后只剩 Hero 卡片这一处，能力因此挪到这里。
+        onIconSecondaryTapUp: apkInfo == null
+            ? null
+            : (position) => _showIconContextMenu(context, position, apkInfo),
       ),
       // 复制按钮单独放在包名下方
       if (apkInfo?.packageName != null)
@@ -1326,47 +1294,27 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             child: _buildLabelLocaleMenu(apkInfo),
           ),
         ),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-              child: Column(
-            children: [
-              Card(
-                  child: TitleValueLayout(
-                title: t.apk_info.version_code,
-                value: "${apkInfo?.versionCode ?? ""}",
-              )),
-              Card(
-                  child: TitleValueLayout(
-                title: t.apk_info.version_name,
-                value: apkInfo?.versionName ?? "",
-              )),
-              if (iconRowSpan >= 3)
-                Card(
-                  child: TitleValueLayout(
-                    title: t.apk_info.min_sdk,
-                    value: getSdkVersionText(apkInfo?.sdkVersion),
-                  ),
-                ),
-              if (apkInfo?.isXapk ?? false)
-                Card(
-                    child: TitleValueLayout(
-                  title: t.apk_info.archive_type,
-                  value: apkInfo?.archiveType ?? "",
-                )),
-            ],
-          )),
-          _buildIconWidget(apkInfo, iconRowSpan),
-        ],
-      ),
-      if (iconRowSpan < 3)
-        Card(
+      Card(
           child: TitleValueLayout(
-            title: t.apk_info.min_sdk,
-            value: getSdkVersionText(apkInfo?.sdkVersion),
-          ),
-        ),
+        title: t.apk_info.version_code,
+        value: "${apkInfo?.versionCode ?? ""}",
+      )),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.version_name,
+        value: apkInfo?.versionName ?? "",
+      )),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.min_sdk,
+        value: getSdkVersionText(apkInfo?.sdkVersion),
+      )),
+      if (apkInfo?.isXapk ?? false)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.archive_type,
+          value: apkInfo?.archiveType ?? "",
+        )),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.target_sdk,
@@ -1700,32 +1648,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           .read(pageActionsProvider.notifier)
           .setActions(_buildActions(fileState));
     }
-  }
-
-  Widget _buildIconWidget(ApkInfo? apkInfo, int iconRowSpan) {
-    final iconSize = iconRowSpan * 44.0;
-    final radius = iconSize * 0.22;
-    return GestureDetector(
-      onSecondaryTapUp: (details) {
-        if (apkInfo != null) {
-          _showIconContextMenu(context, details.globalPosition, apkInfo);
-        }
-      },
-      child: SizedBox(
-        width: iconSize,
-        height: iconSize,
-        child: Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radius),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: RawImage(
-            image: apkInfo?.mainIconImage,
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
-    );
   }
 
   void _showIconContextMenu(

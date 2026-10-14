@@ -1,5 +1,4 @@
 import 'package:apk_info_tool/pages/home_page.dart';
-import 'package:apk_info_tool/pages/install_page.dart';
 import 'package:apk_info_tool/pages/setting_page.dart';
 import 'package:apk_info_tool/ui/overview/overview_page.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
@@ -28,9 +27,14 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  String _selectedNavId = 'analysis';
+  // 落地页是「概览」：它承担引导职责（Hero 横幅、快捷操作、拖放区、
+  // 最近文件）。早先默认停在「分析」页，用户打开应用看到的是一张空表格。
+  String _selectedNavId = 'overview';
 
-  static const _pageKeys = ['overview', 'analysis', 'install', 'settings'];
+  // 「安装」原先在这里占了一个导航项，但对应的 `APKInstallPage` 只是一个
+  // 「开发中」占位，点进去什么也做不了 —— 用户要求把没有的功能去掉，
+  // 因此连同页面一起移除。真正的安装入口在分析页顶栏（`InstallDialog`）。
+  static const _pageKeys = ['overview', 'analysis', 'settings'];
 
   late final List<Widget> _pages;
 
@@ -40,7 +44,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     _pages = [
       const OverviewPage(),
       const HomePage(),
-      const APKInstallPage(),
       const SettingPage(),
     ];
   }

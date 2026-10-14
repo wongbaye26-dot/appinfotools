@@ -34,6 +34,12 @@ class AndroidHeroCard extends StatelessWidget {
   final String versionCode;
   final ui.Image? icon;
 
+  /// 图标区域的右键回调。
+  ///
+  /// 候选图标切换与图标导出原先挂在「版本栏那张独立图标卡」上；图标去重后
+  /// 只剩 Hero 卡片这一处，能力因此挪到这里，避免去重的同时丢功能。
+  final void Function(Offset globalPosition)? onIconSecondaryTapUp;
+
   const AndroidHeroCard({
     super.key,
     required this.appName,
@@ -41,6 +47,7 @@ class AndroidHeroCard extends StatelessWidget {
     required this.versionName,
     required this.versionCode,
     this.icon,
+    this.onIconSecondaryTapUp,
   });
 
   @override
@@ -64,30 +71,35 @@ class AndroidHeroCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 大图标
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: icon != null
-                  ? RawImage(image: icon, fit: BoxFit.contain)
-                  : Center(
-                      child: Icon(
-                        Icons.android,
-                        size: 32,
-                        color: theme.hintColor.withValues(alpha: 0.4),
-                      ),
+            GestureDetector(
+              onSecondaryTapUp: onIconSecondaryTapUp == null
+                  ? null
+                  : (details) => onIconSecondaryTapUp!(details.globalPosition),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: icon != null
+                    ? RawImage(image: icon, fit: BoxFit.contain)
+                    : Center(
+                        child: Icon(
+                          Icons.android,
+                          size: 32,
+                          color: theme.hintColor.withValues(alpha: 0.4),
+                        ),
+                      ),
+              ),
             ),
             const SizedBox(width: 16),
             // 应用信息

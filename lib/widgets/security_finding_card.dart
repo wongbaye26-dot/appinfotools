@@ -1,4 +1,5 @@
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:flutter/material.dart';
 
 /// 单条安全发现项的展示卡片。
@@ -60,10 +61,11 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
       };
 
   String get _confidenceLabel => switch (widget.finding.confidence) {
-        SecurityConfidence.confirmed => 'Confirmed',
-        SecurityConfidence.suspected => 'Suspected',
-        SecurityConfidence.independentCapability => 'Capability',
-        SecurityConfidence.unknown => 'Unknown',
+        SecurityConfidence.confirmed => t.security.confidence_confirmed,
+        SecurityConfidence.suspected => t.security.confidence_suspected,
+        SecurityConfidence.independentCapability =>
+          t.security.confidence_capability,
+        SecurityConfidence.unknown => t.security.confidence_unknown,
       };
 
   @override

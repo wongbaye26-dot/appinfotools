@@ -10,7 +10,6 @@ abstract class UiConfig with _$UiConfig {
   const factory UiConfig({
     required int textMaxLines,
     required double titleWidth,
-    required int iconRowSpan,
   }) = _UiConfig;
 }
 
@@ -21,7 +20,6 @@ class UiConfigState extends _$UiConfigState {
     return UiConfig(
       textMaxLines: Config.maxLines.value,
       titleWidth: Config.titleWidth.value,
-      iconRowSpan: Config.iconRowSpan.value,
     );
   }
 
@@ -33,10 +31,5 @@ class UiConfigState extends _$UiConfigState {
   void updateTextMaxLines(int value) {
     state = state.copyWith(textMaxLines: value);
     Config.maxLines.updateValue(value);
-  }
-
-  void updateIconRowSpan(int value) {
-    state = state.copyWith(iconRowSpan: value);
-    Config.iconRowSpan.updateValue(value);
   }
 }

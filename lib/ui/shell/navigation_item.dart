@@ -42,13 +42,6 @@ class AppNavigation {
         selectedIcon: Icons.analytics,
       );
 
-  static NavigationItem install() => NavigationItem(
-        id: 'install',
-        label: t.nav.install,
-        icon: Icons.system_update_outlined,
-        selectedIcon: Icons.system_update,
-      );
-
   static NavigationItem settings() => NavigationItem(
         id: 'settings',
         label: t.nav.settings,
@@ -59,7 +52,6 @@ class AppNavigation {
   static List<NavigationItem> items() => [
         overview(),
         analysis(),
-        install(),
         settings(),
       ];
 }

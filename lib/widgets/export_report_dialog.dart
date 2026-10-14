@@ -113,7 +113,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                   const CircularProgressIndicator(),
                   const SizedBox(height: 16),
                   Text(
-                    'Exporting...',
+                    t.report.exporting,
                     style: theme.textTheme.bodyMedium,
                   ),
                 ],
@@ -124,7 +124,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                 children: [
                   // 格式选择
                   Text(
-                    'Format',
+                    t.report.format,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -153,7 +153,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                   const SizedBox(height: 24),
                   // 范围选择
                   Text(
-                    'Scope',
+                    t.report.scope,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -161,14 +161,14 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                   const SizedBox(height: 8),
                   SegmentedButton<ExportScope>(
                     segments: [
-                      const ButtonSegment(
+                      ButtonSegment(
                         value: ExportScope.full,
-                        label: Text('Full Report'),
-                        icon: Icon(Icons.article),
+                        label: Text(t.report.full_report),
+                        icon: const Icon(Icons.article),
                       ),
                       ButtonSegment(
                         value: ExportScope.securityOnly,
-                        label: const Text('Security Only'),
+                        label: Text(t.report.security_only),
                         icon: const Icon(Icons.security),
                         enabled: hasSecurity,
                       ),
@@ -183,7 +183,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                   if (!hasSecurity) ...[
                     const SizedBox(height: 8),
                     Text(
-                      'Security audit was not performed for this file.',
+                      t.report.security_not_performed,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.hintColor,
                       ),
@@ -206,7 +206,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'File name',
+                          t.report.file_name,
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.hintColor,
                           ),

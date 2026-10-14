@@ -2,6 +2,9 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:flutter/material.dart';
 
 /// 详情页 Tab 配置。
+///
+/// 标签刻意**不放在 enum 上**：enum 的 getter 是纯 Dart，拿不到
+/// `Translations`，写死英文会让中文界面下出现英文 Tab 名。
 enum DetailTab {
   overview(Icons.info_outline),
   application(Icons.apps),
@@ -12,16 +15,17 @@ enum DetailTab {
 
   final IconData icon;
   const DetailTab(this.icon);
-
-  String get label => switch (this) {
-        DetailTab.overview => 'Overview',
-        DetailTab.application => 'Application',
-        DetailTab.permissions => 'Permissions',
-        DetailTab.structure => 'Structure',
-        DetailTab.signature => 'Signature',
-        DetailTab.security => 'Security',
-      };
 }
+
+/// 取 Tab 的本地化标签。
+String detailTabLabel(DetailTab tab, Translations t) => switch (tab) {
+      DetailTab.overview => t.detail_tab.overview,
+      DetailTab.application => t.detail_tab.application,
+      DetailTab.permissions => t.detail_tab.permissions,
+      DetailTab.structure => t.detail_tab.structure,
+      DetailTab.signature => t.detail_tab.signature,
+      DetailTab.security => t.detail_tab.security,
+    };
 
 /// 详情页 Tab 视图。
 ///
@@ -144,7 +148,7 @@ class _DetailTabViewState extends State<DetailTabView>
               ),
               const SizedBox(width: 8),
               Text(
-                entry.key.label,
+                detailTabLabel(entry.key, t),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -197,7 +201,7 @@ class _DetailTabViewState extends State<DetailTabView>
             tabs: tabs
                 .map((e) => Tab(
                       icon: Icon(e.key.icon, size: 18),
-                      text: e.key.label,
+                      text: detailTabLabel(e.key, t),
                     ))
                 .toList(),
           ),

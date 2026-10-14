@@ -107,7 +107,6 @@ class Config {
   static final themeColor = ConfigItem("theme_color", Colors.blue.toARGB32());
   static final titleWidth = ConfigItem("title_width", 100.0);
   static final language = ConfigItem("language", kLanguageAuto);
-  static final iconRowSpan = ConfigItem("icon_row_span", 2);
 
   // 主题模式：light / dark / system（默认跟随系统）
   static const kThemeModeLight = "light";
@@ -134,7 +133,6 @@ class Config {
     themeColor,
     titleWidth,
     language,
-    iconRowSpan,
     parserEngine,
     themeMode,
     recentFiles,
