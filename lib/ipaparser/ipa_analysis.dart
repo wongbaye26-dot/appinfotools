@@ -121,13 +121,32 @@ class IosNestedBinary {
   /// 无法解析的原因。
   final String? failure;
 
+  /// 可执行文件的字节，供安全扫描做字符串线索检查。
+  ///
+  /// `null` 有两种可能，**必须分开**：字节没保留下来（超出
+  /// [IpaAnalysisReader.maxNestedRetainedBytes] 总预算），或条目本身读不到
+  /// （见 [failure]）。原因见 [bytesFailure]。
+  ///
+  /// 保留字节是**额外**的内存开销：Mach-O 解析本身只需要一次性读完，而
+  /// 安全扫描要在解析之后再做，所以必须把字节留住。因此有总预算，
+  /// 超出的如实记为未覆盖，而不是悄悄丢掉。
+  final Uint8List? bytes;
+
+  /// 字节没能保留的原因；保留成功时为 `null`。
+  final String? bytesFailure;
+
   const IosNestedBinary({
     required this.bundlePath,
     required this.kind,
     required this.path,
     this.macho,
     this.failure,
+    this.bytes,
+    this.bytesFailure,
   });
+
+  /// 该可执行文件是否**参与安全扫描**（字节在手上）。
+  bool get isScannable => bytes != null && bytes!.isNotEmpty;
 
   /// 全部架构名。
   List<String> get architectures => [
@@ -154,6 +173,13 @@ class IpaAnalysisReader {
   /// 只影响展示用的清单；超过之后不再解析并记一条诊断，而不是把整个解析
   /// 拖成几十秒。
   static const int maxNestedBinaries = 24;
+
+  /// 嵌套可执行文件**保留字节**的总预算（32 MiB）。
+  ///
+  /// Mach-O 解析只需要一次性读完就能丢掉字节；但安全扫描发生在解析之后，
+  /// 因此必须把字节留住。多 ABI 的应用里同一个框架会有几份，
+  /// 不留上限会吃掉可观内存。超出预算的如实记为未覆盖。
+  static const int maxNestedRetainedBytes = 32 * 1024 * 1024;
 
   /// 单个 Mach-O 的体积上限（64 MiB）。
   ///
@@ -318,6 +344,8 @@ class IpaAnalysisReader {
         .toList();
 
     final result = <IosNestedBinary>[];
+    var retainedBytes = 0;
+    var droppedForBudget = 0;
     for (final bundle in candidates) {
       if (result.length >= maxNestedBinaries) {
         // **不许静默截断。** 用户看到一份 24 条的清单，会以为这个包只有
@@ -358,6 +386,14 @@ class IpaAnalysisReader {
       }
 
       final macho = MachOParser.parse(bytes);
+      // 字节是否**保留下来**供安全扫描用，与「能不能解析」是两件事：
+      // 解析只需要读一次，扫描要在之后做，因此要把字节留住 —— 但受总预算约束。
+      final retain = retainedBytes + bytes.length <= maxNestedRetainedBytes;
+      if (retain) {
+        retainedBytes += bytes.length;
+      } else {
+        droppedForBudget++;
+      }
       result.add(IosNestedBinary(
         bundlePath: bundle.path,
         kind: bundle.kind,
@@ -368,8 +404,26 @@ class IpaAnalysisReader {
             : (macho.diagnostics.isEmpty
                 ? 'not a Mach-O'
                 : macho.diagnostics.first.message),
+        bytes: retain ? bytes : null,
+        bytesFailure: retain
+            ? null
+            : 'bytes not retained (nested budget of '
+                '${maxNestedRetainedBytes ~/ (1024 * 1024)} MiB reached)',
       ));
     }
+    if (droppedForBudget > 0) {
+      // **不许静默丢字节。** 丢了就意味着这些可执行文件不参与安全扫描，
+      // 报告里的覆盖率必须反映出来。
+      diagnostics.add(AnalysisDiagnostic.info(
+        'ios.nested.bytes_dropped',
+        '$droppedForBudget nested executables were parsed but their bytes '
+            'were not retained (nested budget of '
+            '${maxNestedRetainedBytes ~/ (1024 * 1024)} MiB reached): they are '
+            'not covered by the API-usage scan',
+        source: FieldSource.zipDirectory,
+      ));
+    }
+
     return result;
   }
 

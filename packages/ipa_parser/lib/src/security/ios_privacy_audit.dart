@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 
+import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
 import 'ios_native_symbol_audit.dart';
 
@@ -21,7 +22,41 @@ class _MachOClue {
   final String description;
   final List<String> samples;
 
-  const _MachOClue(this.markerId, this.description, this.samples);
+  /// 命中出现在**哪些可执行文件**里（归档内路径）。
+  ///
+  /// 阶段 5b 起扫描范围包含嵌套 bundle，因此同一个标记可能来自多个文件 ——
+  /// 报告里要能指出是哪一个，否则「扩展里有 OCR」这种结论无从核对。
+  final List<String> sources;
+
+  const _MachOClue(this.markerId, this.description, this.samples,
+      {this.sources = const []});
+}
+
+/// 一个参与安全扫描的嵌套可执行文件。
+///
+/// 与 [IosNestedBinary]（解析层）分开：那一层关心「能不能解析」，
+/// 这一层关心「有没有字节可以扫」。
+class IosNestedExecutableInput {
+  /// 可执行文件在归档中的路径（证据位置）。
+  final String path;
+
+  /// 所属 bundle 的路径。
+  final String bundlePath;
+
+  final IosBundleKind kind;
+
+  /// 字节；`null` 表示没保留下来或读不到（原因见 [failure]）。
+  final Uint8List? bytes;
+
+  final String? failure;
+
+  const IosNestedExecutableInput({
+    required this.path,
+    required this.bundlePath,
+    required this.kind,
+    this.bytes,
+    this.failure,
+  });
 }
 
 /// iOS 侧隐私审计。
@@ -75,6 +110,12 @@ class IosPrivacyAudit {
     required IpaInfoPlist infoPlist,
     Uint8List? executableBytes,
     String? executablePath,
+
+    /// 嵌套 bundle 的可执行文件（扩展 / Watch / 框架）。
+    ///
+    /// 阶段 5b 起扫描范围不再只有主应用：App Extension 里的代码同样是这个
+    /// 应用的一部分，而且扩展常常**正是**处理照片与 OCR 的地方。
+    List<IosNestedExecutableInput> nestedExecutables = const [],
   }) {
     final findings = <SecurityFinding>[];
     final limitations = <String>[];
@@ -138,50 +179,128 @@ class IosPrivacyAudit {
           '注册的 URL scheme 未覆盖。');
     }
 
-    // ---- Mach-O 符号线索 ----
+    // ---- Mach-O 符号线索（主可执行文件 + 嵌套 bundle）----
+    //
+    // 阶段 5b：不再只扫主应用。App Extension 里的代码同样是这个应用的一部分，
+    // 而且扩展常常**正是**处理照片与 OCR 的地方。
+    final mainPath = executablePath ?? 'main executable';
+    final targets =
+        <({String path, String bundlePath, Uint8List? bytes, String? failure})>[
+      (
+        path: mainPath,
+        bundlePath: infoPlist.bundle.path,
+        bytes: executableBytes,
+        failure: (executableBytes == null || executableBytes.isEmpty)
+            ? 'entry missing or empty'
+            : null,
+      ),
+      for (final nested in nestedExecutables)
+        (
+          path: nested.path.isEmpty ? nested.bundlePath : nested.path,
+          bundlePath: nested.bundlePath,
+          bytes: nested.bytes,
+          failure: nested.failure,
+        ),
+    ];
+
     final clues = <String, _MachOClue>{};
+    final byMarker = <String, List<String>>{};
+    final sourcesByMarker = <String, Set<String>>{};
+    final scannedPaths = <String>[];
+    final unscanned = <String>[];
     var scanned = 0;
     var truncated = false;
-    if (executableBytes == null || executableBytes.isEmpty) {
-      limitations.add('未能读取主 Mach-O 可执行文件的内容'
-          '（${executablePath ?? '路径未知'}）：API 使用线索无法检查。'
-          '用途说明与隐私清单结论不受影响，但不构成完整分析。');
-    } else {
-      if (executableBytes.length > _Budget.maxBytes) {
+
+    for (final target in targets) {
+      final bytes = target.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        unscanned.add('${target.path}'
+            '${target.failure == null ? '' : '（${target.failure}）'}');
+        continue;
+      }
+      scannedPaths.add(target.path);
+
+      if (bytes.length > _Budget.maxBytes) {
         truncated = true;
-        limitations.add('主 Mach-O 文件 ${executableBytes.length} 字节，'
+        limitations.add('${target.path} 有 ${bytes.length} 字节，'
             '超过 ${_Budget.maxBytes} 字节扫描预算：'
             '只扫描了前 ${_Budget.maxBytes} 字节，未覆盖部分可能存在'
             '未被发现的线索。');
       }
-      final limit = executableBytes.length < _Budget.maxBytes
-          ? executableBytes.length
-          : _Budget.maxBytes;
-      scanned = limit;
-      final byMarker = <String, List<String>>{};
+      final limit =
+          bytes.length < _Budget.maxBytes ? bytes.length : _Budget.maxBytes;
+      scanned += limit;
+
       for (final str in AsciiStrings.extract(
-        executableBytes,
+        bytes,
         limit: limit,
         minLength: _Budget.minStringLength,
       )) {
         for (final (id, _, literal) in _markers) {
-          if (str.contains(literal)) {
-            (byMarker[id] ??= <String>[]).add(str);
-          }
+          if (!str.contains(literal)) continue;
+          (byMarker[id] ??= <String>[]).add(str);
+          (sourcesByMarker[id] ??= <String>{}).add(target.path);
         }
       }
-      for (final (id, description, _) in _markers) {
-        final samples = byMarker[id];
-        if (samples == null || samples.isEmpty) continue;
-        clues[id] = _MachOClue(
-          id,
-          description,
-          samples.toSet().take(_Budget.maxSamplesPerMarker).toList(),
-        );
+    }
+
+    for (final (id, description, _) in _markers) {
+      final samples = byMarker[id];
+      if (samples == null || samples.isEmpty) continue;
+      clues[id] = _MachOClue(
+        id,
+        description,
+        samples.toSet().take(_Budget.maxSamplesPerMarker).toList(),
+        sources: (sourcesByMarker[id] ?? const <String>{}).toList()..sort(),
+      );
+    }
+
+    // ---- 覆盖范围：按可执行文件统计 ----
+    //
+    // 审计报告明确要求覆盖率本身进报告：「本次覆盖了 N 个可执行文件中的 M 个」。
+    // 只报覆盖到的、不报没覆盖的，等于让读者以为结论是完整的。
+    if (scannedPaths.isEmpty) {
+      limitations.add('未能读取任何 Mach-O 可执行文件的内容：'
+          'API 使用线索无法检查。用途说明与隐私清单结论不受影响，'
+          '但不构成完整分析。');
+    } else {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-SCAN-COVERAGE',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'API 使用线索扫描覆盖了 ${targets.length} 个可执行文件中的 '
+            '${scannedPaths.length} 个，共 $scanned 字节。'
+            '${unscanned.isEmpty ? '全部可执行文件都已覆盖。' : '未覆盖 ${unscanned.length} 个。'}',
+        evidence: [
+          for (final path in scannedPaths)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.machoSymbol,
+              location: path,
+              detail: 'scanned',
+            ),
+          for (final entry in unscanned)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.machoSymbol,
+              location: entry,
+              detail: 'NOT scanned',
+            ),
+        ],
+        limitation: '扫描仅提取可打印 ASCII 字符串：'
+            'dyld 共享缓存里的系统框架符号、非 ASCII 字面量'
+            '以及被加密/加固的段都会漏掉。',
+        recommendation: '如需更完整的结论，请人工检查未覆盖的可执行文件。',
+      ));
+      if (unscanned.isNotEmpty) {
+        limitations.add('${unscanned.length} 个可执行文件未参与扫描'
+            '（${unscanned.take(4).join('、')}'
+            '${unscanned.length > 4 ? ' …' : ''}）：'
+            '这些文件上的「没发现线索」是「没查到」，不是「没有」。');
       }
-      limitations.add('Mach-O 扫描只覆盖主可执行文件、共 $scanned 字节，'
-          '且仅提取可打印 ASCII 字符串：Frameworks、动态库与 dyld 共享缓存'
-          '中的符号不在覆盖范围内，非 ASCII 字面量也会漏掉。');
+      limitations.add('Mach-O 扫描共 $scanned 字节，'
+          '且仅提取可打印 ASCII 字符串：dyld 共享缓存中的符号'
+          '不在覆盖范围内，非 ASCII 字面量也会漏掉。');
     }
 
     final hasPhotoLibrary = clues.containsKey('photo-full-library') ||
@@ -607,7 +726,9 @@ class IosPrivacyAudit {
       if (clue == null) continue;
       evidence.add(SecurityEvidence(
         source: SecurityEvidenceSource.machoSymbol,
-        location: 'main Mach-O executable strings',
+        location: clue.sources.isEmpty
+            ? 'Mach-O executable strings'
+            : clue.sources.join(', '),
         detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
       ));
     }

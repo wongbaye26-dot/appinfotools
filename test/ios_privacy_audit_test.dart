@@ -347,8 +347,10 @@ void main() {
 
       expect(result.hasCoverageGaps, isTrue);
       expect(
-        result.limitations.any((l) => l.contains('未能读取主 Mach-O')),
+        // 措辞在阶段 5b 改成「任何」—— 扫描范围不再只有主应用。
+        result.limitations.any((l) => l.contains('未能读取任何 Mach-O')),
         isTrue,
+        reason: '实际局限：${result.limitations}',
       );
       expect(
           _byId(result, 'IOS-RULE-F')!.confidence, SecurityConfidence.unknown);
@@ -552,6 +554,98 @@ void main() {
       );
 
       expect(_byId(result, 'IOS-RULE-E'), isNull);
+    });
+  });
+  // ---- 阶段 5b：按可执行文件的覆盖统计 ----
+  group('扫描覆盖率：覆盖了 N 个中的 M 个', () {
+    test('只有主可执行文件时覆盖率是 1/1', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes:
+            const Utf8Encoder().convert('PHPickerViewController\n'),
+        executablePath: 'Payload/Example.app/Example',
+      );
+
+      final coverage = _byId(result, 'IOS-SCAN-COVERAGE');
+      expect(coverage, isNotNull);
+      expect(coverage!.severity, SecuritySeverity.info);
+      expect(coverage.finding, contains('1 个可执行文件中的 1 个'));
+      expect(coverage.finding, contains('全部可执行文件都已覆盖'));
+    });
+
+    test('嵌套可执行文件的字节参与扫描，并成为线索来源', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert('nothing here\n'),
+        executablePath: 'Payload/Example.app/Example',
+        nestedExecutables: [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/PlugIns/Scan.appex/Scan',
+            bundlePath: 'Payload/Example.app/PlugIns/Scan.appex',
+            kind: IosBundleKind.appExtension,
+            bytes: const Utf8Encoder().convert(
+              'VNRecognizeTextRequest\nNSURLSession\nPHPickerViewController\n',
+            ),
+          ),
+        ],
+      );
+
+      final coverage = _byId(result, 'IOS-SCAN-COVERAGE')!;
+      expect(coverage.finding, contains('2 个可执行文件中的 2 个'));
+
+      // 线索要能指出**来自哪个文件** —— 否则「扩展里有 OCR」无从核对。
+      final ocr = _byId(result, 'IOS-OCR-CAPABILITY');
+      expect(ocr, isNotNull, reason: '扩展里的 OCR 线索应当被发现');
+      expect(
+        ocr!.evidence.any((e) => e.location.contains('Scan.appex')),
+        isTrue,
+        reason: '实际证据：${ocr.evidence.map((e) => e.location).toList()}',
+      );
+    });
+
+    test('拿不到字节的嵌套可执行文件计入「未覆盖」，不虚高覆盖率', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert('nothing\n'),
+        executablePath: 'Payload/Example.app/Example',
+        nestedExecutables: const [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/PlugIns/Big.appex/Big',
+            bundlePath: 'Payload/Example.app/PlugIns/Big.appex',
+            kind: IosBundleKind.appExtension,
+            failure: 'bytes not retained (nested budget reached)',
+          ),
+        ],
+      );
+
+      final coverage = _byId(result, 'IOS-SCAN-COVERAGE')!;
+      expect(coverage.finding, contains('2 个可执行文件中的 1 个'));
+      expect(coverage.finding, contains('未覆盖 1 个'));
+      expect(
+        coverage.evidence.any((e) => e.detail == 'NOT scanned'),
+        isTrue,
+        reason: '未覆盖的要逐条列出，不能只报覆盖到的',
+      );
+      expect(
+        result.limitations.any((l) => l.contains('未参与扫描')),
+        isTrue,
+      );
+      expect(
+        result.limitations.any((l) => l.contains('不是「没有」')),
+        isTrue,
+        reason: '「没查到」与「没有」结论相反',
+      );
+    });
+
+    test('一个可执行文件都读不到时不报覆盖率，只报覆盖不足', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(infoPlist: plist);
+
+      expect(_byId(result, 'IOS-SCAN-COVERAGE'), isNull);
+      expect(result.hasCoverageGaps, isTrue);
     });
   });
 }

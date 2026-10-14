@@ -29,7 +29,8 @@ import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
-import 'package:ipa_parser/ipa_parser.dart' show IosBundle, IosPrivacyAudit;
+import 'package:ipa_parser/ipa_parser.dart'
+    show IosBundle, IosNestedExecutableInput, IosPrivacyAudit;
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
@@ -395,6 +396,19 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           infoPlist: parsed.infoPlist!,
           executableBytes: parsed.executableBytes,
           executablePath: parsed.executablePath,
+          // 阶段 5b：嵌套 bundle 的可执行文件也参与扫描。
+          // 只传**真的拿到了字节**的那些；没拿到的一并传过去（`bytes` 为
+          // null），让审计把它们算进「未覆盖」—— 静默省略会让覆盖率虚高。
+          nestedExecutables: [
+            for (final nested in parsed.nestedBinaries)
+              IosNestedExecutableInput(
+                path: nested.path,
+                bundlePath: nested.bundlePath,
+                kind: nested.kind,
+                bytes: nested.bytes,
+                failure: nested.failure ?? nested.bytesFailure,
+              ),
+          ],
         );
       }
       final currentState = ref.read(currentFileStateProvider);
