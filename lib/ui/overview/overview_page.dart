@@ -55,13 +55,21 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     }
   }
 
-  void _openFile(String filePath) {
+  /// 打开一个文件。
+  ///
+  /// [navigate] 决定是否跳到分析页：
+  /// - **拖放**进来时不跳 —— 用户还在概览页，Hero 区会就地显示解析进度与
+  ///   状态卡片，想看细节再点「查看详情」；
+  /// - 点「打开文件」或最近文件时跳 —— 那是用户明确的「我要看这个」。
+  void _openFile(String filePath, {bool navigate = true}) {
     if (!File(filePath).existsSync()) return;
 
     // 交给分析页去解析：解析流水线（任务句柄、阶段回调、取消、代际计数）
-    // 只存在于那里。概览页只负责发起请求并把用户带过去。
+    // 只存在于那里。概览页只负责发起请求。
     ref.read(pendingOpenRequestProvider.notifier).request(filePath);
-    ref.read(shellNavigationProvider.notifier).navigate('analysis');
+    if (navigate) {
+      ref.read(shellNavigationProvider.notifier).navigate('analysis');
+    }
   }
 
   bool _isSupported(String filePath) => isSupportedPackagePath(filePath);
@@ -85,7 +93,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         if (files.isEmpty) return;
         final filePath = files.first.path;
         if (_isSupported(filePath)) {
-          _openFile(filePath);
+          // 拖入不跳转：留在概览页看状态卡片。
+          _openFile(filePath, navigate: false);
         } else {
           _showInvalidFileSnack(filePath);
         }
@@ -471,22 +480,27 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               Positioned(
                 right: 3,
                 bottom: 3,
-                child: Material(
-                  color: colorScheme.surface.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(7),
-                  child: InkWell(
+                child: Builder(
+                  // 用 `Builder` 拿到**按钮自己**的 context：早先传的是整个
+                  // 图标区域的 context，锚点算出来在图标左下角，菜单弹得
+                  // 离按钮很远。
+                  builder: (btnContext) => Material(
+                    color: colorScheme.surface.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(7),
-                    onTap: () => _showIconExportMenu(
-                      context,
-                      _iconMenuAnchor(context),
-                      apkInfo,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(3),
-                      child: Icon(
-                        Icons.download,
-                        size: 12,
-                        color: colorScheme.primary,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(7),
+                      onTap: () => _showIconExportMenu(
+                        context,
+                        _anchorOf(btnContext),
+                        apkInfo,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: Icon(
+                          Icons.download,
+                          size: 12,
+                          color: colorScheme.primary,
+                        ),
                       ),
                     ),
                   ),
@@ -498,11 +512,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
   }
 
-  /// 图标菜单的锚点（图标左下角）。
-  Offset _iconMenuAnchor(BuildContext context) {
+  /// 取某个 widget 左上角在屏幕上的坐标，用作菜单锚点。
+  Offset _anchorOf(BuildContext context) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return Offset.zero;
-    return box.localToGlobal(Offset(0, box.size.height));
+    return box.localToGlobal(Offset.zero);
   }
 
   Widget _buildStatusCards(
