@@ -1,11 +1,16 @@
 import 'dart:io';
 
+import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
+import 'package:apk_info_tool/widgets/export_report_dialog.dart';
+import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +66,13 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // 概览页常驻在 IndexedStack 里，切回来时不会重建 —— 订阅这两个
+    // provider 才能在「分析完成」「切换文件」时刷新统计与 Hero 面板。
+    ref.watch(recentFilesRevisionProvider);
+    final fileState = ref.watch(currentFileStateProvider);
+    final apkInfo = ref.watch(currentApkInfoProvider);
+    final isParsing = ref.watch(isParsingProvider);
+
     return DropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
       onDragExited: (_) => setState(() => _dragging = false),
@@ -85,8 +97,12 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Hero 横幅
-              _buildHeroBanner(context),
+              // Hero 区：已导入文件时显示「当前文件状态面板」，
+              // 否则显示引导横幅。两者占据同一位置（设计稿的红框）。
+              if (fileState.filePath == null)
+                _buildHeroBanner(context)
+              else
+                _buildCurrentFilePanel(context, fileState, apkInfo, isParsing),
               const SizedBox(height: 32),
               // 统计指标
               _buildStatsPanel(context),
@@ -132,6 +148,291 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  /// 当前文件状态面板（设计稿红框区）。
+  ///
+  /// 展示刚导入 / 正在分析的那个包：图标、名称、标识符、版本，外加四个
+  /// 状态卡片（平台 / 大小 / 签名 / 安全）与操作按钮。
+  ///
+  /// 未导入任何文件时这个面板不出现 —— 那时显示 [_buildHeroBanner] 的引导。
+  Widget _buildCurrentFilePanel(
+    BuildContext context,
+    FileState fileState,
+    ApkInfo? apkInfo,
+    bool isParsing,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final analysis = fileState.analysis;
+    final isIos = fileState.platform == PackagePlatform.ios;
+
+    // 名称 / 标识符 / 版本：两个平台的取值位置完全不同。
+    final String appName;
+    final String identifier;
+    final String version;
+    if (isIos) {
+      final ios = analysis?.ios;
+      appName = ios?.preferredName.value ?? '';
+      identifier = ios?.bundleIdentifier.value ?? '';
+      version = ios?.shortVersion.value ?? '';
+    } else {
+      appName = apkInfo?.label ?? '';
+      identifier = apkInfo?.packageName ?? '';
+      version = apkInfo?.versionName ?? '';
+    }
+
+    // 四个状态卡片的数据源。
+    final sizeText = RecentFilesManager.formatSize(fileState.fileSize ?? 0);
+
+    final (String signatureText, Color signatureColor) = _signatureStatus(
+      fileState,
+      analysis,
+      isIos,
+    );
+    final (String securityText, Color securityColor) = _securityStatus(
+      analysis?.security,
+      isParsing,
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.primaryContainer.withValues(alpha: 0.55),
+            colorScheme.secondaryContainer.withValues(alpha: 0.35),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 应用图标
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: isIos
+                    ? IosIconThumbnail(
+                        resolution: analysis?.ios?.icon, size: 56)
+                    : (apkInfo?.mainIconImage != null
+                        ? RawImage(
+                            image: apkInfo!.mainIconImage,
+                            fit: BoxFit.contain,
+                          )
+                        : Center(
+                            child: Icon(
+                              Icons.android,
+                              size: 26,
+                              color: theme.hintColor.withValues(alpha: 0.4),
+                            ),
+                          )),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          isIos ? Icons.apple : Icons.android,
+                          size: 14,
+                          color: isIos ? Colors.grey : Colors.green,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          t.overview.current_file,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.hintColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      appName.isNotEmpty ? appName : t.overview.no_file,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      identifier.isNotEmpty ? identifier : '-',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.hintColor,
+                        fontFamily: 'monospace',
+                        fontFamilyFallback: const ['Menlo', 'Courier'],
+                      ),
+                    ),
+                    if (version.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'v$version',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // 操作按钮
+              Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => ref
+                        .read(shellNavigationProvider.notifier)
+                        .navigate('analysis'),
+                    icon: const Icon(Icons.analytics_outlined, size: 16),
+                    label: Text(t.overview.view_details),
+                  ),
+                  FilledButton.icon(
+                    onPressed: fileState.analysis == null
+                        ? null
+                        : () => _exportReport(fileState),
+                    icon: const Icon(Icons.description_outlined, size: 16),
+                    label: Text(t.overview.export_report),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // 四个状态卡片
+          Row(
+            children: [
+              Expanded(
+                child: _StatusCard(
+                  icon: isIos ? Icons.apple : Icons.android,
+                  label: t.overview.status_platform,
+                  value: isIos ? 'iOS' : 'Android',
+                  color: isIos ? Colors.grey : Colors.green,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatusCard(
+                  icon: Icons.sd_storage_outlined,
+                  label: t.overview.status_size,
+                  value: sizeText,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatusCard(
+                  icon: Icons.verified_outlined,
+                  label: t.overview.status_signature,
+                  value: signatureText,
+                  color: signatureColor,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatusCard(
+                  icon: Icons.security,
+                  label: t.overview.status_security,
+                  value: securityText,
+                  color: securityColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 签名状态：Android 读 `signature`，iOS 读 codesign 结果。
+  ///
+  /// 四种状态必须分开显示 —— 把「工具不可用」说成「验证失败」会把没装
+  /// 工具的机器误报成恶意应用，反过来则是更危险的方向。
+  (String, Color) _signatureStatus(
+    FileState fileState,
+    PackageAnalysisResult? analysis,
+    bool isIos,
+  ) {
+    final status =
+        isIos ? analysis?.ios?.codeSign?.status : fileState.signature?.status;
+    return switch (status) {
+      SignatureStatus.verified => (t.overview.sig_verified, Colors.green),
+      SignatureStatus.verificationFailed => (t.overview.sig_failed, Colors.red),
+      SignatureStatus.unknown => (t.overview.sig_unknown, Colors.orange),
+      _ => (t.overview.sig_none, Colors.grey),
+    };
+  }
+
+  /// 安全状态：未开启审计 / 未跑完 / 有发现 / 无发现。
+  (String, Color) _securityStatus(
+    SecurityAnalysisResult? security,
+    bool isParsing,
+  ) {
+    if (isParsing) return (t.overview.status_parsing, Colors.blue);
+    if (security == null) return (t.overview.security_not_run, Colors.grey);
+    final count = security.findings.length;
+    if (count == 0) return (t.overview.security_clean, Colors.green);
+    // 有 P0/P1 就用红色，否则橙色 —— 与安全卡片的风险配色一致。
+    final severe = security.findings.any(
+      (f) =>
+          f.severity == SecuritySeverity.p0 ||
+          f.severity == SecuritySeverity.p1,
+    );
+    return (
+      t.overview.security_findings(count: count),
+      severe ? Colors.red : Colors.orange
+    );
+  }
+
+  /// 从 Hero 面板直接导出报告。
+  ///
+  /// 刻意不接收 `BuildContext` 参数：跨 `await` 之后必须用 `State.context`
+  /// 才能被 `mounted` 正确守护，传入的 context 无法判断是否仍然有效。
+  Future<void> _exportReport(FileState fileState) async {
+    final analysis = fileState.analysis;
+    if (analysis == null) return;
+    final result = await showDialog(
+      context: context,
+      builder: (_) => ExportReportDialog(analysis: analysis),
+    );
+    if (!mounted) return;
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.report.export_success)),
+      );
+    } else if (result != null && result != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.report.export_failed(error: '$result'))),
+      );
+    }
   }
 
   Widget _buildHeroBanner(BuildContext context) {
@@ -735,6 +1036,71 @@ class _RecentFileTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 状态卡片。
+///
+/// 左侧图标 + 上方标签 + 下方数值，用在 Hero 面板的四个状态位。
+class _StatusCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatusCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

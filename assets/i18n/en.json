@@ -34,7 +34,23 @@
     "drop_hint": "Drop the package file here",
     "drop_zone_title": "Drag & Drop a Package Here",
     "drop_zone_hint": "Supports APK, XAPK, APKM, APKS, and IPA files",
-    "feature_security": "Security Audit"
+    "feature_security": "Security Audit",
+    "current_file": "Current file",
+    "no_file": "No file loaded",
+    "status_platform": "Platform",
+    "status_size": "Size",
+    "status_signature": "Signature",
+    "status_security": "Security",
+    "view_details": "View details",
+    "export_report": "Export report",
+    "security_findings": "{count} findings",
+    "security_clean": "No findings",
+    "security_not_run": "Not scanned",
+    "status_parsing": "Analyzing…",
+    "sig_verified": "Verified",
+    "sig_failed": "Failed",
+    "sig_unknown": "Unknown",
+    "sig_none": "Not verified"
   },
   "home": {
     "copy_file_path": "Copy file path",
@@ -221,7 +237,8 @@
     "new_file_name": "New File Name",
     "name_cannot_be_empty": "File name cannot be empty",
     "must_end_with_apk": "File name must end with .apk/.xapk/.apkm/.apks/.ipa",
-    "default_name": "Default Name"
+    "default_name": "Default Name",
+    "not_ready": "Wait for the analysis to finish before renaming"
   },
   "install": {
     "apk": "Install",

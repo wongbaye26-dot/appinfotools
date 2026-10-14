@@ -247,12 +247,14 @@ void main() {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
       final text = _visibleText(tester);
+      // 注意：`t.apk_info.permissions` 不在此列 —— 两个平台的详情页现在
+      // 都有「权限」Tab（Tab 统一规范），那是 Tab 名而非 Android 字段。
       for (final androidOnly in [
         t.apk_info.package_name,
         t.apk_info.min_sdk,
         t.apk_info.target_sdk,
+        t.apk_info.max_sdk,
         t.apk_info.abi,
-        t.apk_info.permissions,
         t.apk_info.components,
       ]) {
         expect(text, isNot(contains(androidOnly)),

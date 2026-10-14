@@ -34,7 +34,23 @@
     "drop_hint": "把应用包拖到这里",
     "drop_zone_title": "拖放应用包到这里",
     "drop_zone_hint": "支持 APK、XAPK、APKM、APKS 与 IPA 文件",
-    "feature_security": "安全检测"
+    "feature_security": "安全检测",
+    "current_file": "当前文件",
+    "no_file": "尚未导入文件",
+    "status_platform": "平台",
+    "status_size": "大小",
+    "status_signature": "签名",
+    "status_security": "安全",
+    "view_details": "查看详情",
+    "export_report": "导出报告",
+    "security_findings": "{count} 项发现",
+    "security_clean": "未发现风险",
+    "security_not_run": "未检测",
+    "status_parsing": "解析中…",
+    "sig_verified": "已验证",
+    "sig_failed": "验证失败",
+    "sig_unknown": "结果未知",
+    "sig_none": "未验证"
   },
   "home": {
     "copy_file_path": "复制文件路径",
@@ -221,7 +237,8 @@
     "new_file_name": "新文件名",
     "name_cannot_be_empty": "文件名不能为空",
     "must_end_with_apk": "文件名必须以 .apk/.xapk/.apkm/.apks/.ipa 结尾",
-    "default_name": "默认名称"
+    "default_name": "默认名称",
+    "not_ready": "请等待解析完成后再重命名"
   },
   "install": {
     "apk": "安装",

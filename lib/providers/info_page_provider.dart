@@ -325,6 +325,21 @@ class CurrentFileState extends _$CurrentFileState {
   }
 }
 
+/// 最近文件列表的版本号。
+///
+/// 概览页在 `AppShell` 的 `IndexedStack` 里常驻，从分析页切回来时**不会重建**
+/// —— 而它的「最近文件」「统计」是直接读 `Config.recentFiles` 的，于是永远
+/// 停在第一次构建时的快照上（表现为「分析完了但概览页还是空」）。
+///
+/// 解析完成后自增这个值，概览页 `ref.watch` 它即可拿到最新数据。
+@Riverpod(keepAlive: true)
+class RecentFilesRevision extends _$RecentFilesRevision {
+  @override
+  int build() => 0;
+
+  void bump() => state = state + 1;
+}
+
 /// 跨页面的「打开这个文件」请求。
 ///
 /// 概览页（拖放 / 选择文件 / 最近文件）与分析页位于不同的 widget 子树，

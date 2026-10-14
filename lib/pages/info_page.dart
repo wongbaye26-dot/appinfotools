@@ -229,12 +229,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           fileState.update(currentState.copyWith(
             apkInfo: apkInfo,
           ));
-          // 追加到最近文件列表
+          // 追加到最近文件列表，并通知概览页刷新。
+          // 概览页常驻在 IndexedStack 里不会自己重建，必须显式通知。
           unawaited(RecentFilesManager.add(
             currentState.filePath ?? '',
             currentState.fileSize ?? 0,
             platform: 'android',
-          ));
+          ).then((_) {
+            ref.read(recentFilesRevisionProvider.notifier).bump();
+          }));
         }
       }
     } on ApkParseCancelledException {
@@ -384,12 +387,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ipaAnalysis: parsed,
         securityResult: security,
       ));
-      // 追加到最近文件列表
+      // 追加到最近文件列表，并通知概览页刷新。
       unawaited(RecentFilesManager.add(
         currentState.filePath ?? '',
         currentState.fileSize ?? 0,
         platform: 'ios',
-      ));
+      ).then((_) {
+        ref.read(recentFilesRevisionProvider.notifier).bump();
+      }));
       isParsingState.update(false);
       iosStageState.update(null);
 
@@ -523,9 +528,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       cards.add(card(t.ios_info.unavailable, t.ios_info.no_main_app));
     }
 
-    // ===== 应用信息 =====
-    cards.add(_SectionHeader(
-        title: t.ios_info.group_app, tab: DetailTab.application));
+    // ===== 应用信息（归入「概览」，与 Android 侧对齐）=====
+    cards.add(
+        _SectionHeader(title: t.ios_info.group_app, tab: DetailTab.overview));
 
     // Hero 卡片：大图标 + 应用名 + Bundle ID + 版本
     cards.add(IosHeroCard(
@@ -547,6 +552,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ));
     }
 
+    // ===== 应用详情（归入「应用」Tab，与 Android 侧对齐）=====
+    cards.add(_SectionHeader(
+        title: t.detail_tab.application, tab: DetailTab.application));
+
     // 版本栏。图标只在 Hero 卡片里出现一次 —— 早先这里右侧还挂着
     // 一张独立的图标卡，与 Hero 卡片是同一个图标，纯属重复。
     cards.add(card(t.apk_info.version_name, field(ios.shortVersion)));
@@ -564,6 +573,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       isIdentifier: true,
     ));
 
+    // ===== 能力声明（归入「权限」Tab，与 Android 侧的权限/组件对位）=====
+    if (ios.queriesSchemes.hasValue ||
+        ios.requiredDeviceCapabilities.hasValue ||
+        ios.hasMultipleMainApps) {
+      cards.add(_SectionHeader(
+          title: t.detail_tab.permissions, tab: DetailTab.permissions));
+    }
     if (ios.queriesSchemes.hasValue) {
       cards.add(card(
         t.ios_info.queries_schemes,
@@ -1294,6 +1310,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             child: _buildLabelLocaleMenu(apkInfo),
           ),
         ),
+      // ===== 应用详情（归入「应用」Tab，与 iOS 侧对齐）=====
+      _SectionHeader(
+          title: t.detail_tab.application, tab: DetailTab.application),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.version_code,
@@ -1488,6 +1507,17 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   // - Windows 上文件被占用时 `renameSync` 会抛异常；
   // - macOS 上跨文件系统（如从 /tmp 到 ~/Desktop）时 `renameSync` 会失败。
   // `File.rename()` 在跨文件系统时会自动回退到复制+删除。
+  /// 重命名还没就绪时的提示。
+  ///
+  /// 解析未完成或失败时 `apkInfo` / `ipaAnalysis` 都还是空的，这时不能
+  /// 悄悄什么都不做 —— 用户会以为按钮坏了。
+  void _toastRenameNotReady() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(t.rename.not_ready)),
+    );
+  }
+
   void _showRenameDialog() {
     final state = ref.read(currentFileStateProvider);
     final filePath = state.filePath;
@@ -1497,16 +1527,25 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final isApk = !isIpa;
 
     // 从 APK 或 IPA 解析结果中提取应用名与版本号。
+    //
+    // 拿不到结果时**必须给出提示**：早先这里直接 `return`，用户看到的是
+    // 「点了没反应」—— 解析还没跑完、或解析失败时都会命中这条路径。
     final String displayName;
     final String versionName;
     if (isApk) {
       final apkInfo = ref.read(currentApkInfoProvider);
-      if (apkInfo == null) return;
+      if (apkInfo == null) {
+        _toastRenameNotReady();
+        return;
+      }
       displayName = _getDisplayLabel(apkInfo);
       versionName = apkInfo.versionName ?? '';
     } else {
       final ipa = state.ipaAnalysis;
-      if (ipa == null) return;
+      if (ipa == null) {
+        _toastRenameNotReady();
+        return;
+      }
       displayName = ipa.infoPlist?.preferredName.value ??
           ipa.infoPlist?.bundleIdentifier.value ??
           '';

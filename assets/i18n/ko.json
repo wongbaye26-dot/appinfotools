@@ -34,7 +34,23 @@
     "drop_hint": "패키지를 여기에 놓으세요",
     "drop_zone_title": "패키지를 여기로 끌어다 놓으세요",
     "drop_zone_hint": "APK, XAPK, APKM, APKS, IPA 지원",
-    "feature_security": "보안 탐지"
+    "feature_security": "보안 탐지",
+    "current_file": "현재 파일",
+    "no_file": "불러온 파일 없음",
+    "status_platform": "플랫폼",
+    "status_size": "크기",
+    "status_signature": "서명",
+    "status_security": "보안",
+    "view_details": "자세히 보기",
+    "export_report": "보고서 내보내기",
+    "security_findings": "{count}건 발견",
+    "security_clean": "발견 없음",
+    "security_not_run": "검사 안 함",
+    "status_parsing": "분석 중…",
+    "sig_verified": "검증됨",
+    "sig_failed": "검증 실패",
+    "sig_unknown": "알 수 없음",
+    "sig_none": "미검증"
   },
   "home": {
     "copy_file_path": "파일 경로 복사",
@@ -221,7 +237,8 @@
     "new_file_name": "새 파일 이름",
     "name_cannot_be_empty": "파일 이름은 비워둘 수 없습니다",
     "must_end_with_apk": "파일 이름은 .apk/.xapk/.apkm/.apks/.ipa로 끝나야 합니다",
-    "default_name": "기본 이름"
+    "default_name": "기본 이름",
+    "not_ready": "분석이 끝난 후에 이름을 바꿔 주세요"
   },
   "install": {
     "apk": "설치",

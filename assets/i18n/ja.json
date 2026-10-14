@@ -34,7 +34,23 @@
     "drop_hint": "パッケージをここにドロップ",
     "drop_zone_title": "パッケージをここにドラッグ＆ドロップ",
     "drop_zone_hint": "APK、XAPK、APKM、APKS、IPA に対応",
-    "feature_security": "セキュリティ検出"
+    "feature_security": "セキュリティ検出",
+    "current_file": "現在のファイル",
+    "no_file": "ファイルが読み込まれていません",
+    "status_platform": "プラットフォーム",
+    "status_size": "サイズ",
+    "status_signature": "署名",
+    "status_security": "セキュリティ",
+    "view_details": "詳細を表示",
+    "export_report": "レポートを書き出す",
+    "security_findings": "{count} 件の検出",
+    "security_clean": "検出なし",
+    "security_not_run": "未スキャン",
+    "status_parsing": "解析中…",
+    "sig_verified": "検証済み",
+    "sig_failed": "検証失敗",
+    "sig_unknown": "不明",
+    "sig_none": "未検証"
   },
   "home": {
     "copy_file_path": "ファイルパスをコピー",
@@ -221,7 +237,8 @@
     "new_file_name": "新しいファイル名",
     "name_cannot_be_empty": "ファイル名は空にできません",
     "must_end_with_apk": "ファイル名は .apk/.xapk/.apkm/.apks/.ipa で終わる必要があります",
-    "default_name": "デフォルト名"
+    "default_name": "デフォルト名",
+    "not_ready": "解析が完了してから名前を変更してください"
   },
   "install": {
     "apk": "インストール",

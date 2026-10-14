@@ -34,7 +34,23 @@
     "drop_hint": "將套件拖曳到這裡",
     "drop_zone_title": "拖放應用程式套件到這裡",
     "drop_zone_hint": "支援 APK、XAPK、APKM、APKS 與 IPA 檔案",
-    "feature_security": "安全檢測"
+    "feature_security": "安全檢測",
+    "current_file": "目前檔案",
+    "no_file": "尚未匯入檔案",
+    "status_platform": "平台",
+    "status_size": "大小",
+    "status_signature": "簽章",
+    "status_security": "安全",
+    "view_details": "查看詳情",
+    "export_report": "匯出報告",
+    "security_findings": "{count} 項發現",
+    "security_clean": "未發現風險",
+    "security_not_run": "未檢測",
+    "status_parsing": "解析中…",
+    "sig_verified": "已驗證",
+    "sig_failed": "驗證失敗",
+    "sig_unknown": "結果未知",
+    "sig_none": "未驗證"
   },
   "home": {
     "copy_file_path": "複製檔案路徑",
@@ -221,7 +237,8 @@
     "new_file_name": "新文件名",
     "name_cannot_be_empty": "文件名不能為空",
     "must_end_with_apk": "檔案名稱必須以 .apk/.xapk/.apkm/.apks/.ipa 結尾",
-    "default_name": "預設名稱"
+    "default_name": "預設名稱",
+    "not_ready": "請等待解析完成後再重新命名"
   },
   "install": {
     "apk": "安裝",
