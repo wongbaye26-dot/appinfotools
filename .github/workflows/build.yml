@@ -441,13 +441,17 @@ jobs:
         # 安装说明放在仓库里（`docs/release-install-notes.md`），而不是塞进
         # 工作流的 `body:` —— 那样一来看不见版本变化，二来 YAML 里的
         # `${{ }}` 插值的收尾换行处理很脆。用 `body_path` 读文件最稳。
+        #
+        # `{版本}` 是文档里的占位符（仓库里那份要让各个版本都能看），
+        # 在这里替换成 tag 的真实版本 —— 否则发布页上会明晃晃写着 `{版本}`。
         id: body
         run: |
           set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
           {
             cat changelog.md
             printf '\n---\n\n'
-            cat docs/release-install-notes.md
+            sed "s/{版本}/${VERSION}/g" docs/release-install-notes.md
           } > release-body.md
           {
             echo 'body_path<<EOF'
@@ -455,6 +459,12 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
           cp release-body.md "$GITHUB_STEP_SUMMARY"
+          echo "发布正文版本号：${VERSION}"
+          # 占位符必须全部替换掉；漏一个说明文档又加了新写法。
+          if grep -q '{版本}' release-body.md; then
+            echo "::error::发布正文里还有未替换的 {版本}"
+            exit 1
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
