@@ -50,7 +50,17 @@
     "sig_verified": "已驗證",
     "sig_failed": "驗證失敗",
     "sig_unknown": "結果未知",
-    "sig_none": "未驗證"
+    "sig_none": "未驗證",
+    "field_file_name": "檔案名稱",
+    "field_file_path": "檔案路徑",
+    "field_version": "版本",
+    "field_build": "組建編號",
+    "field_min_os": "最低系統",
+    "field_min_sdk": "最低 SDK",
+    "field_target_sdk": "目標 SDK",
+    "field_executable": "可執行檔",
+    "copy_field": "複製{label}",
+    "field_details": "詳細資料"
   },
   "home": {
     "copy_file_path": "複製檔案路徑",

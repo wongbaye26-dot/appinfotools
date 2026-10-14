@@ -349,7 +349,7 @@ class RecentFiles extends _$RecentFiles {
 
   Future<void> clear() async {
     await RecentFilesManager.clear();
-    state = const [];
+    state = <RecentFileEntry>[];
   }
 }
 

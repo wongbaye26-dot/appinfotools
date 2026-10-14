@@ -33,6 +33,7 @@ import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart'
     show IosBundle, IosNestedExecutableInput, IosPrivacyAudit;
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
+import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
@@ -200,6 +201,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       });
     }
 
+    // 这一次运行自己的任务句柄。`_currentTask` 是给「取消按钮」用的共享
+    // 槽位，切文件后会被新一次运行占走；要取消**这一次**的任务得单独留一份。
+    CancellableParseTask? taskForThisRun;
     try {
       final apkInfo = await getApkInfo(
         filePath,
@@ -209,6 +213,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         },
         // 拿到可取消的任务句柄后，取消按钮才可用。
         onTaskStarted: (task) {
+          taskForThisRun = task;
           if (_loadGeneration == gen) _currentTask = task;
         },
       );
@@ -250,11 +255,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           ));
           // 追加到最近文件列表。走 provider 而不是直接写 Config ——
           // 概览页常驻 IndexedStack，只有 provider 变化才会让它重建。
-          unawaited(ref.read(recentFilesProvider.notifier).add(
+          //
+          // **必须接住异常**：这里原先只写 `unawaited(...)`，于是
+          // `RecentFilesManager.add` 抛出的 `UnsupportedError`（空列表返回
+          // `const []` 导致 `removeWhere` 失败）被彻底吞掉，用户看到的是
+          // 「最近文件永远为空」而日志里什么都没有。失败至少要说出来。
+          unawaited(ref
+              .read(recentFilesProvider.notifier)
+              .add(
                 currentState.filePath ?? '',
                 currentState.fileSize ?? 0,
                 platform: 'android',
-              ));
+              )
+              .catchError((Object e) {
+            log.warning('loadApkInfo: failed to record recent file: $e');
+          }));
         }
       }
     } on ApkParseCancelledException {
@@ -274,6 +289,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         isParsingState.update(false);
         parseStageState.update(null);
         _currentTask = null;
+      } else {
+        // 用户又切了文件：这次解析的结果已经没人要了，但任务还在跑。
+        // 必须显式取消，否则一个 worker isolate（XAPK 路径上还有 aapt2
+        // 子进程）会白跑到底，而结果只会被丢掉。
+        taskForThisRun?.cancel();
       }
     }
   }
@@ -387,7 +407,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       }
     }
 
-    if (_loadGeneration != gen) return;
+    if (_loadGeneration != gen) {
+      // 用户在这段时间里又切了文件：这次的结果已经没人要了，但任务还在跑。
+      // 必须显式取消 —— `break` 只是不再读事件流，worker isolate 会继续把
+      // 整个解析做完（真样本上是几秒的 CPU 与几十 MB 内存），而结果只会被
+      // 丢掉。连续拖入两个文件时，这就是两条流水线同时在跑。
+      task.cancel();
+      return;
+    }
 
     if (parsed != null) {
       // iOS 安全分析是同步的，在更新状态前完成。
@@ -418,11 +445,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         securityResult: security,
       ));
       // 追加到最近文件列表（走 provider，见 Android 侧的说明）。
-      unawaited(ref.read(recentFilesProvider.notifier).add(
+      unawaited(ref
+          .read(recentFilesProvider.notifier)
+          .add(
             currentState.filePath ?? '',
             currentState.fileSize ?? 0,
             platform: 'ios',
-          ));
+          )
+          .catchError((Object e) {
+        log.warning('_loadIpaInfo: failed to record recent file: $e');
+      }));
       isParsingState.update(false);
       iosStageState.update(null);
 
@@ -568,24 +600,20 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         _SectionHeader(title: t.ios_info.group_app, tab: DetailTab.overview));
 
     // Hero 卡片：大图标 + 应用名 + Bundle ID + 版本
+    //
+    // 复制按钮**放进卡片里**（`trailing`）。早先它被 `Align` 贴在卡片下面，
+    // 于是界面上是一个孤零零的复制图标飘在空白处，看不出属于哪一项。
     cards.add(IosHeroCard(
       appName: field(ios.preferredName),
       bundleId: field(ios.bundleIdentifier),
       version: ios.shortVersion.hasValue ? '${ios.shortVersion.value}' : '',
       buildNumber: ios.buildNumber.hasValue ? '${ios.buildNumber.value}' : '',
       icon: ios.icon,
+      trailing: CopyIconButton(
+        text: ios.bundleIdentifier.value ?? '',
+        iconSize: 16,
+      ),
     ));
-
-    // 复制按钮单独放在 Bundle ID 下方
-    if (ios.bundleIdentifier.hasValue) {
-      cards.add(Align(
-        alignment: Alignment.centerRight,
-        child: Padding(
-          padding: const EdgeInsets.only(right: 4, bottom: 4),
-          child: _buildCopyButton(ios.bundleIdentifier.value, true),
-        ),
-      ));
-    }
 
     // ===== 应用详情（归入「应用」Tab，与 Android 侧对齐）=====
     cards.add(_SectionHeader(
@@ -709,18 +737,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     if (enableHash) {
       cards.add(_SectionHeader(
           title: t.ios_info.group_integrity, tab: DetailTab.signature));
-      cards.add(card(t.file_info.md5, fileState.md5Hash ?? '',
-          end: _buildCopyButton(fileState.md5Hash, fileState.md5Hash != null)));
-      cards.add(card(t.file_info.sha1, fileState.sha1Hash ?? '',
-          end: _buildCopyButton(
-              fileState.sha1Hash, fileState.sha1Hash != null)));
+      // 复制按钮由 `TitleValueLayout` 统一提供（默认就有），这里不再各挂一个
+      // —— 否则同一张卡片上会出现两个一模一样的复制图标。
+      cards.add(card(t.file_info.md5, fileState.md5Hash ?? ''));
+      cards.add(card(t.file_info.sha1, fileState.sha1Hash ?? ''));
       cards.add(card(
         t.file_info.sha256,
         fileState.isComputingHash
             ? t.file_info.computing_hash
             : (fileState.sha256Hash ?? ''),
-        end: _buildCopyButton(
-            fileState.sha256Hash, fileState.sha256Hash != null),
       ));
     }
 
@@ -1099,43 +1124,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
-  // 构建复制按钮
-  Widget _buildCopyButton(String? text, bool enable) {
-    return Tooltip(
-      message: t.home.copy_content,
-      waitDuration: const Duration(seconds: 1),
-      textStyle: TextStyle(
-        color: Colors.white,
-        fontSize: 12,
-      ),
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(
-          minWidth: 32,
-          minHeight: 32,
-        ),
-        icon: Icon(
-          Icons.content_copy,
-          size: 16,
-          color: enable ? null : Theme.of(context).disabledColor,
-        ),
-        onPressed: enable
-            ? () async {
-                await Clipboard.setData(ClipboardData(text: text ?? ''));
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(t.home.copied_content(content: text ?? '')),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              }
-            : null,
-      ),
-    );
-  }
-
   /// 获取当前显示的应用名称（根据用户选择的语言）
   String _getDisplayLabel(ApkInfo? apkInfo) {
     if (apkInfo == null) return "";
@@ -1254,6 +1242,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   }
 
   /// 把卡片列表按 [_SectionHeader.tab] 切分为 Tab 内容。
+  ///
+  /// 切完之后会**丢掉每个 Tab 开头那个与 Tab 同名的分组标题**：Tab 栏本身
+  /// 已经写着「应用」「权限」，内容里再来一行一模一样的字纯属噪音 ——
+  /// 「界面上不该出现两行同样的字」是这个页面的既有约定。
+  ///
+  /// 去重放在这里而不是各调用点：两页（Android / iOS）都有这种标题，
+  /// 靠人手记住哪几个要去掉迟早会漏。
   Map<DetailTab, List<Widget>> _groupCardsByTab(List<Widget> cards) {
     final tabs = <DetailTab, List<Widget>>{};
     var currentTab = DetailTab.overview;
@@ -1266,6 +1261,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         }
       }
       tabs.putIfAbsent(currentTab, () => []).add(widget);
+    }
+
+    for (final entry in tabs.entries) {
+      final list = entry.value;
+      if (list.isEmpty) continue;
+      final first = list.first;
+      if (first is _SectionHeader &&
+          first.title == detailTabLabel(entry.key, t)) {
+        list.removeAt(0);
+      }
     }
 
     return tabs;
@@ -1318,6 +1323,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final tabContent = _groupCardsByTab(cards);
 
     return DropTarget(
+      // 只有当前可见时才接收拖放。三个页面同时活在 `IndexedStack` 里、
+      // 布局尺寸完全重叠，而拖放事件是全局扇出的 —— 不关掉这一层，
+      // 在概览页拖一个文件会**同时**触发本页的 `openApk` 和概览页发出的
+      // `pendingOpenRequest`，同一个文件被解析两遍。
+      enable: Visibility.of(context),
       onDragDone: (details) {
         // 只处理第一个文件
         if (details.files.isNotEmpty) {
@@ -1410,16 +1420,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         onIconSecondaryTapUp: apkInfo == null
             ? null
             : (position) => _showIconContextMenu(context, position, apkInfo),
-      ),
-      // 复制按钮单独放在包名下方
-      if (apkInfo?.packageName != null)
-        Align(
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 4, bottom: 4),
-            child: _buildCopyButton(apkInfo?.packageName, true),
-          ),
+        // 复制按钮**放进卡片里**（`trailing`）。早先它被 `Align` 贴在卡片
+        // 下面，于是界面上是一个孤零零的复制图标飘在空白处，看不出属于
+        // 哪一项；而且 32×32 的最小尺寸还会把那一行撑高。
+        trailing: CopyIconButton(
+          text: apkInfo?.packageName ?? '',
+          iconSize: 16,
         ),
+      ),
       // 语言切换菜单
       if (apkInfo != null && apkInfo.labels.isNotEmpty)
         Align(
@@ -1571,8 +1579,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
               : (fileState.md5Hash ?? ""),
-          end: _buildCopyButton(fileState.md5Hash,
-              fileState.md5Hash != null && !fileState.isComputingHash),
         )),
       // SHA1 哈希值
       if (enableHash)
@@ -1582,8 +1588,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
               : (fileState.sha1Hash ?? ""),
-          end: _buildCopyButton(fileState.sha1Hash,
-              fileState.sha1Hash != null && !fileState.isComputingHash),
         )),
       // SHA-256 哈希值（规范 4.1 要求）
       if (enableHash)
@@ -1593,8 +1597,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
               : (fileState.sha256Hash ?? ""),
-          end: _buildCopyButton(fileState.sha256Hash,
-              fileState.sha256Hash != null && !fileState.isComputingHash),
         )),
       if (enableSignature && !(apkInfo?.isXapk ?? false))
         Card(

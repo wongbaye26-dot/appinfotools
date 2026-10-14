@@ -1,4 +1,5 @@
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
+import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,6 +29,15 @@ class TitleValueLayout extends ConsumerWidget {
 
   final bool singleLine;
 
+  /// 是否在值后面给一个复制按钮。默认给。
+  ///
+  /// **默认值必须是 true**：项目约定是「每个字段都能快捷复制」，逐个调用点
+  /// 去传 `copyable: true` 迟早会漏掉几张卡片 —— 而漏掉的那张在界面上完全
+  /// 看不出来，只有用户想复制时才发现。值为空时按钮不渲染（点了也没用）。
+  ///
+  /// 显式传 `false` 的场景：值本身不是「可复制的事实」，例如一句解释性文案。
+  final bool copyable;
+
   /// 标题与值的样式覆盖。
   ///
   /// iOS 详情页要换一套排版（标题更小更淡、标识符用等宽字体），但**行结构
@@ -46,6 +56,7 @@ class TitleValueLayout extends ConsumerWidget {
     this.titleWidth,
     this.selectable = false,
     this.singleLine = false,
+    this.copyable = true,
     this.titleStyle,
     this.valueStyle,
   });
@@ -108,6 +119,7 @@ class TitleValueLayout extends ConsumerWidget {
                     maxLines: maxLines,
                   ),
           ),
+          if (copyable && value.isNotEmpty) CopyIconButton(text: value),
           if (end != null) ...[
             const SizedBox(width: 8),
             end!,

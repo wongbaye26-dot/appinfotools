@@ -50,7 +50,17 @@
     "sig_verified": "已验证",
     "sig_failed": "验证失败",
     "sig_unknown": "结果未知",
-    "sig_none": "未验证"
+    "sig_none": "未验证",
+    "field_file_name": "文件名",
+    "field_file_path": "文件路径",
+    "field_version": "版本",
+    "field_build": "构建号",
+    "field_min_os": "最低系统",
+    "field_min_sdk": "最低 SDK",
+    "field_target_sdk": "目标 SDK",
+    "field_executable": "可执行文件",
+    "copy_field": "复制{label}",
+    "field_details": "详细信息"
   },
   "home": {
     "copy_file_path": "复制文件路径",

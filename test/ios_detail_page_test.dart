@@ -16,6 +16,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/pages/info_page.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
+import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
@@ -232,14 +233,76 @@ void main() {
     testWidgets('复制入口与 APK 页一样留在值旁边', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
-      // 三个哈希都要能一键复制。Bundle ID 的复制在 Hero 卡片外部。
+      // 三个哈希都要能一键复制。
+      //
+      // 复制按钮现在由 `TitleValueLayout` 统一提供（`copyable` 默认为 true），
+      // 不再由各调用点用 `end:` 各挂一个 —— 那样同一张卡片上会出现两个
+      // 一模一样的复制图标（这次改造前就是这样）。
       for (final title in [
         t.file_info.md5,
         t.file_info.sha1,
         t.file_info.sha256,
       ]) {
-        expect(_layoutTitled(tester, title).end, isNotNull,
-            reason: '「$title」缺少复制入口');
+        final layout = _layoutTitled(tester, title);
+        expect(layout.copyable, isTrue, reason: '「$title」缺少复制入口');
+        expect(
+          find.descendant(
+            of: find.byWidget(layout),
+            matching: find.byType(CopyIconButton),
+          ),
+          findsOneWidget,
+          reason: '「$title」的复制按钮必须真的渲染出来，而不只是开关是开的',
+        );
+      }
+
+      // Bundle ID 的复制在 Hero 卡片**内部**（`trailing`）—— 早先它被贴在
+      // 卡片下方，界面上是一个孤零零的图标飘在空白里，看不出属于哪一项。
+      final hero = tester.widget<IosHeroCard>(find.byType(IosHeroCard));
+      expect(hero.trailing, isNotNull, reason: 'Hero 卡片应自带复制入口');
+    });
+
+    testWidgets('每张字段卡片只有一个复制入口', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      // 复制按钮统一由 `TitleValueLayout` 提供。如果某个调用点又用 `end:`
+      // 挂一个，同一张卡片上就会出现两个一模一样的图标 —— 那正是这次改造
+      // 之前的实际状态（哈希卡片、Platform、File 都是两个）。
+      for (final layout in _layouts(tester)) {
+        final copies = find
+            .descendant(
+              of: find.byWidget(layout),
+              matching: find.byType(CopyIconButton),
+            )
+            .evaluate()
+            .length;
+        expect(
+          copies,
+          lessThanOrEqualTo(1),
+          reason: '「${layout.title}」有 $copies 个复制按钮，只应有一个',
+        );
+      }
+    });
+
+    testWidgets('分组标题不与 Tab 名重复', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      // Tab 栏已经写着「应用」「权限」，内容里再来一行一模一样的字纯属噪音。
+      // 测试视图会把 Tab 名渲染成一个小标题，因此每个名字只应出现一次。
+      final lines = _visibleText(tester)
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .toList();
+      for (final label in [
+        t.detail_tab.application,
+        t.detail_tab.permissions,
+        t.detail_tab.overview,
+      ]) {
+        expect(
+          lines.where((line) => line == label).length,
+          lessThanOrEqualTo(1),
+          reason: '「$label」在页面上出现了多次（Tab 名与分组标题重复）',
+        );
       }
     });
 

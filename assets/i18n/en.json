@@ -50,7 +50,17 @@
     "sig_verified": "Verified",
     "sig_failed": "Failed",
     "sig_unknown": "Unknown",
-    "sig_none": "Not verified"
+    "sig_none": "Not verified",
+    "field_file_name": "File name",
+    "field_file_path": "File path",
+    "field_version": "Version",
+    "field_build": "Build",
+    "field_min_os": "Minimum OS",
+    "field_min_sdk": "Min SDK",
+    "field_target_sdk": "Target SDK",
+    "field_executable": "Executable",
+    "copy_field": "Copy {label}",
+    "field_details": "Details"
   },
   "home": {
     "copy_file_path": "Copy file path",

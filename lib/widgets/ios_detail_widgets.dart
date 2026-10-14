@@ -34,6 +34,12 @@ class IosHeroCard extends StatelessWidget {
   final String buildNumber;
   final IosIconResolution? icon;
 
+  /// 卡片右侧的附加内容（当前用来放复制 Bundle ID 的按钮）。
+  ///
+  /// 做成一等参数而不是让调用方在卡片下面再贴一个 `Align` —— 那样复制按钮
+  /// 会飘在卡片外的空白里，看起来和这张卡片没关系。
+  final Widget? trailing;
+
   const IosHeroCard({
     super.key,
     required this.appName,
@@ -41,6 +47,7 @@ class IosHeroCard extends StatelessWidget {
     required this.version,
     required this.buildNumber,
     this.icon,
+    this.trailing,
   });
 
   @override
@@ -178,6 +185,10 @@ class IosHeroCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ],
           ],
         ),
       ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -11,12 +12,12 @@ import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
+import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
@@ -39,8 +40,78 @@ class OverviewPage extends ConsumerStatefulWidget {
 class _OverviewPageState extends ConsumerState<OverviewPage> {
   bool _dragging = false;
 
+  /// 拖拽高亮的看门狗。
+  ///
+  /// 高亮的熄灭原本只依赖 `onDragExited`，但 `desktop_drop` 并不保证这个
+  /// 回调一定送达 —— 拖放被系统取消、或拖拽影像在应用卡顿时被丢弃，都可能
+  /// 让 `_dragging` 永远停在 `true`，界面上就是一层擦不掉的浮层。
+  ///
+  /// 这里用「拖拽期间的事件流」当心跳：只要还在窗口上方，macOS 会持续发
+  /// `draggingUpdated`；安静超过 [_dragWatchdogTimeout] 就说明拖拽已经结束。
+  ///
+  /// **它只是安全网，不是信号源。** 清早了也没有副作用：高亮是纯装饰，
+  /// `onDragDone` 是否触发由 `desktop_drop` 自己的状态机决定，与这里无关。
+  Timer? _dragWatchdog;
+
+  static const Duration _dragWatchdogTimeout = Duration(seconds: 5);
+
   /// 窄窗口阈值：低于它时收紧间距、状态卡片两列排布。
   static const _compactWidth = 900.0;
+
+  /// 详细信息网格之外的部分（头部 + 状态卡片 + 统计 + 间距 + 内边距）
+  /// 大约占的高度。
+  ///
+  /// 页面是**固定一屏**布局，Hero 长高了就必须有东西让位，否则底部会被
+  /// 直接裁掉 —— 用户看到的是一个残缺的界面，而不是「内容有点多」。
+  ///
+  /// 630 是在两档真实尺寸上量出来的（内容区 = 窗口宽 − 侧栏 240 − 内边距）：
+  /// - 1280×800（默认窗口，内容区 1040×800）→ 网格 170px，正好三行铺满 iOS
+  ///   的全部字段；
+  /// - 900×600（允许的最小窗口，内容区 660×600）→ 减去后为负，网格收起，
+  ///   统计与最近文件都放得下。
+  ///
+  /// 用估算值而不是精确测量：精确测量要在布局前拿到子项高度，只能靠
+  /// `IntrinsicHeight`，而它和内部的 `ListView` 不兼容（debug 下会断言失败）。
+  /// `test/overview_layout_test.dart` 用真实渲染钉住这个常量。
+  static const _chromeHeightEstimate = 620.0;
+
+  /// 网格能占的最大高度。放不下时网格自身滚动，而不是把最近文件挤没。
+  static const _detailGridMaxHeight = 180.0;
+
+  @override
+  void dispose() {
+    _dragWatchdog?.cancel();
+    super.dispose();
+  }
+
+  /// 进入拖拽态，并开始心跳。
+  void _beginDrag() {
+    if (!_dragging) setState(() => _dragging = true);
+    _restartDragWatchdog();
+  }
+
+  /// 拖拽期间有事件到达 —— 推迟看门狗。
+  void _touchDrag() {
+    if (!_dragging) return;
+    _restartDragWatchdog();
+  }
+
+  /// 退出拖拽态。
+  void _endDrag() {
+    _dragWatchdog?.cancel();
+    _dragWatchdog = null;
+    if (_dragging) setState(() => _dragging = false);
+  }
+
+  void _restartDragWatchdog() {
+    _dragWatchdog?.cancel();
+    _dragWatchdog = Timer(_dragWatchdogTimeout, () {
+      _dragWatchdog = null;
+      if (!mounted) return;
+      log.fine('overview: 拖拽事件流已停止，主动熄灭高亮');
+      _endDrag();
+    });
+  }
 
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
@@ -84,11 +155,25 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final isParsing = ref.watch(isParsingProvider);
     final recentFiles = ref.watch(recentFilesProvider);
 
+    // 只有**当前可见**的那一页才接收拖放。
+    //
+    // `AppShell` 用 `IndexedStack` 承载三个页面，它们同时在树里、并且
+    // **布局尺寸完全重叠**。而 `desktop_drop` 的通道是全局的：一次拖放会
+    // 扇出给所有已注册的 `DropTarget`，每个再各自按自己的渲染盒判「是否
+    // 在界内」—— 重叠的盒子全都判定为在界内，于是**一次拖放会触发两次
+    // `openApk`**（概览页发请求、分析页自己再开一次），两条解析流水线同时
+    // 跑同一个文件。`desktop_drop` 的文档也明确要求「被挡住时把 target
+    // 关掉」。`IndexedStack` 通过 `Visibility.of` 告诉子页自己可不可见。
+    final visible = Visibility.of(context);
+
     return DropTarget(
-      onDragEntered: (_) => setState(() => _dragging = true),
-      onDragExited: (_) => setState(() => _dragging = false),
+      enable: visible,
+      onDragEntered: (_) => _beginDrag(),
+      // `onDragUpdated` 是拖拽期间的心跳，用来喂看门狗。
+      onDragUpdated: (_) => _touchDrag(),
+      onDragExited: (_) => _endDrag(),
       onDragDone: (details) {
-        setState(() => _dragging = false);
+        _endDrag();
         final files = details.files;
         if (files.isEmpty) return;
         final filePath = files.first.path;
@@ -108,6 +193,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             final compact = constraints.maxWidth < _compactWidth;
             final gap = compact ? 14.0 : 20.0;
             final pad = compact ? 16.0 : 24.0;
+            // 网格能吃多少高度，由窗口高度决定（见 _chromeHeightEstimate）。
+            final gridHeight = (constraints.maxHeight - _chromeHeightEstimate)
+                .clamp(0.0, _detailGridMaxHeight);
 
             return Padding(
               padding: EdgeInsets.all(pad),
@@ -118,8 +206,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   if (fileState.filePath == null)
                     _buildWelcomeHero(context, compact)
                   else
-                    _buildCurrentFilePanel(
-                        context, fileState, apkInfo, isParsing, compact),
+                    _buildCurrentFilePanel(context, fileState, apkInfo,
+                        isParsing, compact, gridHeight),
                   SizedBox(height: gap),
                   // 统计
                   _buildStatsPanel(context, recentFiles),
@@ -258,25 +346,48 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     ApkInfo? apkInfo,
     bool isParsing,
     bool compact,
+    double gridHeight,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final analysis = fileState.analysis;
-    final isIos = fileState.platform == PackagePlatform.ios;
+    final platform = fileState.platform;
+    final isIos = platform == PackagePlatform.ios;
+
+    final filePath = fileState.filePath ?? '';
+    final fileName = filePath.isEmpty ? '' : p.basename(filePath);
 
     final String appName;
     final String identifier;
     final String version;
+    final String build;
+    final String minSystem;
+    final String targetSdk;
+    final String executable;
     if (isIos) {
       final ios = analysis?.ios;
       appName = ios?.preferredName.value ?? '';
       identifier = ios?.bundleIdentifier.value ?? '';
       version = ios?.shortVersion.value ?? '';
+      build = ios?.buildNumber.value ?? '';
+      minSystem = ios?.minimumOSVersion.value ?? '';
+      targetSdk = '';
+      executable = ios?.executableName.value ?? '';
     } else {
       appName = apkInfo?.label ?? '';
       identifier = apkInfo?.packageName ?? '';
       version = apkInfo?.versionName ?? '';
+      build = apkInfo?.versionCode?.toString() ?? '';
+      minSystem = apkInfo?.sdkVersion?.toString() ?? '';
+      targetSdk = apkInfo?.targetSdkVersion?.toString() ?? '';
+      executable = '';
     }
+
+    // 标题优先用解析出来的应用名；还没解析出结果时退回**文件名**。
+    //
+    // 文件名是事实（用户拖进来的就是它），不是猜测。此前这里在解析期间显示
+    // 「未加载文件」，等于把「正在读」说成了「什么都没有」。
+    final title = appName.isNotEmpty ? appName : fileName;
 
     final (String signatureText, Color signatureColor) =
         _signatureStatus(fileState, analysis, isIos);
@@ -338,29 +449,31 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      // 第 2 行：应用名
-                      Text(
-                        appName.isNotEmpty ? appName : t.overview.no_file,
+                      // 第 2 行：应用名（可复制）
+                      _CopyableLine(
+                        text: title,
+                        placeholder: t.overview.no_file,
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.3,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       // 第 3 行：标识符（可复制）
                       _CopyableLine(text: identifier, monospace: true),
                       const SizedBox(height: 2),
-                      // 第 4 行：版本
-                      Text(
-                        version.isNotEmpty ? 'v$version' : '-',
+                      // 第 4 行：版本（可复制）
+                      _CopyableLine(
+                        text: version.isEmpty
+                            ? ''
+                            : (build.isEmpty
+                                ? 'v$version'
+                                : 'v$version ($build)'),
+                        placeholder: '-',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -392,16 +505,37 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             ),
           ),
           SizedBox(height: compact ? 14 : 18),
-          // 下半：四个状态卡片
+          // 下半：四个状态卡片（值都可复制）
           _buildStatusCards(
             context,
             compact,
             isIos: isIos,
+            platformKnown: platform != PackagePlatform.unknown,
             sizeText: RecentFilesManager.formatSize(fileState.fileSize ?? 0),
             signatureText: signatureText,
             signatureColor: signatureColor,
             securityText: securityText,
             securityColor: securityColor,
+          ),
+          SizedBox(height: compact ? 12 : 14),
+          // 详细信息：每一项都带复制入口。
+          //
+          // 之前 Hero 区只有「应用名 / 标识符 / 版本」三行，而用户最常拿去
+          // 搜索、比对、贴给别人看的恰恰是哈希、构建号、最低系统这些 ——
+          // 它们只能去分析页翻。这里补齐，并保证**每个值都能一键复制**。
+          _buildDetailGrid(
+            context,
+            fileState: fileState,
+            fileName: fileName,
+            filePath: filePath,
+            version: version,
+            build: build,
+            minSystem: minSystem,
+            targetSdk: targetSdk,
+            executable: executable,
+            minSystemLabel:
+                isIos ? t.overview.field_min_os : t.overview.field_min_sdk,
+            maxHeight: gridHeight,
           ),
           const SizedBox(height: 10),
           // 拖放提示：原先底部有一张占满宽度的大卡片，去掉后收成这里一行。
@@ -523,6 +657,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     BuildContext context,
     bool compact, {
     required bool isIos,
+    required bool platformKnown,
     required String sizeText,
     required String signatureText,
     required Color signatureColor,
@@ -531,12 +666,23 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    // 解析还没出结果时**不能**把平台写成 Android。
+    //
+    // `FileState.platform` 是由已到位的解析结果派生的，未知就是未知。此前
+    // 这里对未知一律渲染成「Android」—— 拖入一个 IPA 的头几秒里，界面会
+    // 明确告诉你这是个 Android 包。
+    final platformText = isIos ? 'iOS' : (platformKnown ? 'Android' : '—');
+
     final cards = [
       _StatusCard(
-        icon: isIos ? Icons.apple : Icons.android,
+        icon: isIos
+            ? Icons.apple
+            : (platformKnown ? Icons.android : Icons.help_outline),
         label: t.overview.status_platform,
-        value: isIos ? 'iOS' : 'Android',
-        color: isIos ? Colors.grey : Colors.green,
+        value: platformText,
+        color: isIos
+            ? Colors.grey
+            : (platformKnown ? Colors.green : colorScheme.onSurfaceVariant),
       ),
       _StatusCard(
         icon: Icons.sd_storage_outlined,
@@ -582,6 +728,152 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           if (i > 0) const SizedBox(width: 12),
           Expanded(child: cards[i]),
         ],
+      ],
+    );
+  }
+
+  /// 详细信息网格 —— 每个值都能一键复制。
+  ///
+  /// 用 `Wrap` 而不是手算列数：单元的最小宽度不同（哈希比构建号长得多），
+  /// 交给 `Wrap` 决定一行放几个，比在代码里按窗口宽度分支更不容易出错。
+  ///
+  /// **取不到的字段直接不出现**，不渲染成空串。空串会被读成「这个包没有」，
+  /// 而真相是「我们还没读到」—— 那两件事的结论相反。
+  ///
+  /// [maxHeight] 是这块内容能占的高度。页面是固定一屏的，窗口矮的时候
+  /// 网格不能把底部的「最近文件」挤出去 —— 放不下就让网格自己滚动，
+  /// 再放不下就整块收起（宁可少显示，也不要显示一半被裁掉）。
+  Widget _buildDetailGrid(
+    BuildContext context, {
+    required FileState fileState,
+    required String fileName,
+    required String filePath,
+    required String version,
+    required String build,
+    required String minSystem,
+    required String targetSdk,
+    required String executable,
+    required String minSystemLabel,
+    required double maxHeight,
+  }) {
+    final theme = Theme.of(context);
+
+    // 「详细信息」这行小标题 + 间距本身就要 26px 左右，留不出这些就别显示了。
+    if (maxHeight < 90) return const SizedBox.shrink();
+
+    final hashPlaceholder =
+        fileState.isComputingHash ? t.file_info.computing_hash : '';
+
+    final cells = <Widget>[
+      if (fileName.isNotEmpty)
+        _CopyField(
+          label: t.overview.field_file_name,
+          value: fileName,
+        ),
+      if (filePath.isNotEmpty)
+        _CopyField(
+          label: t.overview.field_file_path,
+          value: filePath,
+        ),
+      if (version.isNotEmpty)
+        _CopyField(
+          label: t.overview.field_version,
+          value: version,
+        ),
+      if (build.isNotEmpty)
+        _CopyField(
+          label: t.overview.field_build,
+          value: build,
+        ),
+      if (minSystem.isNotEmpty)
+        _CopyField(
+          label: minSystemLabel,
+          value: minSystem,
+        ),
+      if (targetSdk.isNotEmpty)
+        _CopyField(
+          label: t.overview.field_target_sdk,
+          value: targetSdk,
+        ),
+      if (executable.isNotEmpty)
+        _CopyField(
+          label: t.overview.field_executable,
+          value: executable,
+        ),
+      // 哈希：最常被拿去比对的一项，也是最需要「不用手划选」的一项。
+      if (fileState.sha256Hash != null)
+        _CopyField(
+          label: t.file_info.sha256,
+          value: fileState.sha256Hash!,
+          monospace: true,
+        )
+      else if (hashPlaceholder.isNotEmpty)
+        _CopyField(
+          label: t.file_info.sha256,
+          value: hashPlaceholder,
+        ),
+      if (fileState.sha1Hash != null)
+        _CopyField(
+          label: t.file_info.sha1,
+          value: fileState.sha1Hash!,
+          monospace: true,
+        ),
+      if (fileState.md5Hash != null)
+        _CopyField(
+          label: t.file_info.md5,
+          value: fileState.md5Hash!,
+          monospace: true,
+        ),
+    ];
+
+    if (cells.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.info_outline, size: 12, color: theme.hintColor),
+            const SizedBox(width: 5),
+            Text(
+              t.overview.field_details,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.hintColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        // 高度受限 + 内部滚动：窗口够高时它就是完整的一屏内容，
+        // 窗口矮时用户仍能滚到每一项，而不是被裁掉。
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight - 26),
+          child: SingleChildScrollView(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // **单元格等宽，列数由可用宽度决定。**
+                //
+                // 早先给每个单元一个 `maxWidth`，`Wrap` 会把单元撑到那个
+                // 上限，于是在 1000px 宽的内容区里一行只放得下一个 ——
+                // 十来个字段排成一条竖线，把 Hero 顶到两倍高。
+                const spacing = 8.0;
+                final width = constraints.maxWidth;
+                final columns = width >= 900 ? 3 : (width >= 560 ? 2 : 1);
+                final cellWidth = (width - (columns - 1) * spacing) / columns;
+
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    for (final cell in cells)
+                      SizedBox(width: cellWidth, child: cell),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -859,29 +1151,43 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           color: theme.dividerColor.withValues(alpha: 0.12),
         ),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.history,
-            size: 28,
-            color: theme.hintColor.withValues(alpha: 0.35),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            t.overview.no_recent_files,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.hintColor.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            t.overview.recent_files_hint,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.hintColor.withValues(alpha: 0.5),
-            ),
-          ),
-        ],
+      // 页面是固定一屏的：窗口矮的时候这块会被压到几十像素。图标 + 两行字
+      // 大约要 70px，压过头就会在框里溢出（渲染成一条黄黑警示带）。
+      // 按可用高度决定画多少，而不是硬撑着画。
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showIcon = constraints.maxHeight >= 96;
+          final showHint = constraints.maxHeight >= 72;
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showIcon) ...[
+                Icon(
+                  Icons.history,
+                  size: 28,
+                  color: theme.hintColor.withValues(alpha: 0.35),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Text(
+                t.overview.no_recent_files,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor.withValues(alpha: 0.7),
+                ),
+              ),
+              if (showHint) ...[
+                const SizedBox(height: 2),
+                Text(
+                  t.overview.recent_files_hint,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -906,56 +1212,133 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-/// 可复制的单行文本（标识符）。
+/// 可复制的单行文本。
 ///
-/// 包名 / Bundle ID 是用户最常拿去搜索或比对的字段，值得给一个显式的
-/// 复制入口，而不是让用户手动划选。
+/// 包名 / Bundle ID / 应用名 / 版本号都是用户最常拿去搜索或比对的字段，
+/// 值得给一个显式的复制入口，而不是让用户手动划选。
 class _CopyableLine extends StatelessWidget {
   final String text;
+
+  /// 文本为空时显示的占位符。
+  final String placeholder;
+
+  /// 文本样式。为空时用 `bodySmall`。
+  final TextStyle? style;
+
   final bool monospace;
 
-  const _CopyableLine({required this.text, this.monospace = false});
+  const _CopyableLine({
+    required this.text,
+    this.placeholder = '-',
+    this.style,
+    this.monospace = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = monospace
-        ? theme.textTheme.bodySmall?.copyWith(
+    final base = style ?? theme.textTheme.bodySmall;
+    final effective = monospace
+        ? base?.copyWith(
             color: theme.hintColor,
             fontFamily: 'monospace',
             fontFamilyFallback: const ['Menlo', 'Courier'],
           )
-        : theme.textTheme.bodySmall;
+        : base;
 
     return Row(
       children: [
         Flexible(
           child: SelectableText(
-            text.isNotEmpty ? text : '-',
-            style: style,
+            text.isNotEmpty ? text : placeholder,
+            style: effective,
             maxLines: 1,
           ),
         ),
-        if (text.isNotEmpty)
-          IconButton(
-            iconSize: 14,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.only(left: 4),
-            constraints: const BoxConstraints(),
-            tooltip: t.home.copy_content,
-            icon: Icon(Icons.content_copy, color: theme.hintColor),
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: text));
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(t.home.copied_content(content: text)),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
-          ),
+        CopyIconButton(text: text),
       ],
+    );
+  }
+}
+
+/// 详细信息网格里的一个字段：标签 + 值 + 复制按钮。
+///
+/// 值一律用 `SelectableText`（可以手动划选）**并且**给一个复制按钮 ——
+/// 哈希这种长串靠划选几乎不可能选全。
+///
+/// 宽度由调用方决定（`_buildDetailGrid` 按可用宽度等分列），这里不做任何
+/// 宽度约束 —— 有约束就会把 `Wrap` 的排布带偏。
+class _CopyField extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool monospace;
+
+  const _CopyField({
+    required this.label,
+    required this.value,
+    this.monospace = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final valueStyle = monospace
+        ? theme.textTheme.bodySmall?.copyWith(
+            fontFamily: 'monospace',
+            fontFamilyFallback: const ['Menlo', 'Courier'],
+            color: colorScheme.onSurfaceVariant,
+          )
+        : theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.hintColor,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 1),
+          Row(
+            children: [
+              Expanded(
+                child: SelectableText(
+                  value,
+                  style: valueStyle,
+                  maxLines: 1,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // tooltip 直接显示完整值：单元宽度有限，哈希会被截断，
+              // 而截断后的哈希没有任何用。
+              CopyIconButton(
+                text: value,
+                tooltip: value,
+                iconSize: 13,
+                color: colorScheme.primary,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -992,6 +1375,9 @@ class _DropHint extends StatelessWidget {
 }
 
 /// 状态卡片。
+///
+/// 值同样可复制：窗口矮的时候详细信息网格会收起（页面是固定一屏的），
+/// 那几项就不能只剩「看得见、拿不走」。
 class _StatusCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1039,14 +1425,26 @@ class _StatusCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 5),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  value,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 2),
+              CopyIconButton(
+                text: value,
+                iconSize: 11,
+                color: theme.hintColor.withValues(alpha: 0.7),
+              ),
+            ],
           ),
         ],
       ),

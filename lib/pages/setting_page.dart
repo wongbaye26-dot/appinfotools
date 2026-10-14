@@ -289,26 +289,40 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     setState(() {});
   }
 
+  /// 设置页的分组卡片。
+  ///
+  /// 版式与另外两页对齐：
+  /// - 圆角用 12（`Card` 的 M3 默认值），此前写死 8，比别处的卡片更方；
+  /// - 分组标题用 `titleSmall` + w600，与概览页的 `_SectionLabel`、详情页的
+  ///   `_SectionHeader` 同一套字号与字重 —— 三页的「分组」看起来才是同一件事；
+  /// - 前置图标缩到 18 并统一用主色，默认的 24 号灰色图标会把标题压得很小。
   Widget _buildSettingCard({
     required String title,
     required List<Widget> children,
     required IconData icon,
     bool initiallyExpanded = false,
   }) {
+    final theme = Theme.of(context);
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+          color: theme.dividerColor.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
       child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          leading: Icon(icon),
-          title: Text(title),
+          leading: Icon(icon, size: 18, color: theme.colorScheme.primary),
+          title: Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.2,
+            ),
+          ),
           initiallyExpanded: initiallyExpanded,
           children: children,
         ),
@@ -890,10 +904,23 @@ class _SettingPageState extends ConsumerState<SettingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(t.settings.title),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(
+          t.settings.title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        // 与侧边栏、分析页顶栏同一套表面色，去掉 M3 默认的着色。
+        //
+        // 此前这里用的是 `colorScheme.inversePrimary`（一块明显的紫色），
+        // 于是「设置」页的顶栏和另外两页完全不是一块界面。
+        backgroundColor: theme.colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),

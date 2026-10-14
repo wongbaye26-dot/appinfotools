@@ -57,17 +57,23 @@ class RecentFilesManager {
   static const int _maxCount = 10;
 
   /// 读取当前列表。
+  ///
+  /// **返回值一定是可变列表。** [add] 会就地对它 `removeWhere` 去重，而
+  /// `const []` 是不可变的 —— 早先这里在空列表时返回 `const []`，于是
+  /// **全新安装后的第一次分析必然抛 `UnsupportedError`**，调用方又是
+  /// `unawaited(...)`，异常被静默吞掉：表现为「最近文件永远是空的、
+  /// 统计永远是 0」。空集合在这里是正常状态，不是常量。
   static List<RecentFileEntry> load() {
     try {
       final jsonStr = Config.recentFiles.value;
-      if (jsonStr.isEmpty || jsonStr == '[]') return const [];
+      if (jsonStr.isEmpty || jsonStr == '[]') return <RecentFileEntry>[];
       final list = jsonDecode(jsonStr) as List<dynamic>;
       return list
           .map((e) => RecentFileEntry.fromJson(e as Map<String, dynamic>))
           .toList();
     } catch (e) {
       log.warning('failed to parse recent files: $e');
-      return const [];
+      return <RecentFileEntry>[];
     }
   }
 

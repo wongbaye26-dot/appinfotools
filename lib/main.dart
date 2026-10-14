@@ -26,6 +26,29 @@ bool get isDesktop {
   ].contains(defaultTargetPlatform);
 }
 
+/// 让框架层与异步未捕获的错误**留下痕迹**。
+///
+/// 不接管渲染（不动 `ErrorWidget.builder`），只加一层日志 —— 默认行为原样
+/// 保留，因此不会改变用户看到的东西。
+///
+/// 为什么需要它：`unawaited(future)` 里抛出的异常会变成「未捕获的异步错误」，
+/// 既不会让界面报错，也不会中断流程。最近文件那个 BUG 就是这么活了很久 ——
+/// `RecentFilesManager.add` 抛 `UnsupportedError`，界面上表现为「统计永远是 0」，
+/// 而日志里一行都没有，只能靠一行行读代码才找得到。
+void _installErrorLogging() {
+  final previousFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    log.warning('FlutterError: ${details.exceptionAsString()}');
+    previousFlutterError?.call(details);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    log.warning('uncaught async error: $error');
+    // 返回 false 表示「没处理」—— 交回默认处理，保持既有行为不变。
+    return false;
+  };
+}
+
 void main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -36,6 +59,7 @@ void main(List<String> arguments) async {
   packageInfo = await PackageInfo.fromPlatform();
 
   await LoggerInit.instance.init();
+  _installErrorLogging();
 
   log.info("main: arguments=$arguments");
   if (arguments.isNotEmpty) {

@@ -40,6 +40,12 @@ class AndroidHeroCard extends StatelessWidget {
   /// 只剩 Hero 卡片这一处，能力因此挪到这里，避免去重的同时丢功能。
   final void Function(Offset globalPosition)? onIconSecondaryTapUp;
 
+  /// 卡片右侧的附加内容（当前用来放复制包名的按钮）。
+  ///
+  /// 做成一等参数而不是让调用方在卡片下面再贴一个 `Align` —— 那样复制按钮
+  /// 会飘在卡片外的空白里，看起来和这张卡片没关系。
+  final Widget? trailing;
+
   const AndroidHeroCard({
     super.key,
     required this.appName,
@@ -48,6 +54,7 @@ class AndroidHeroCard extends StatelessWidget {
     required this.versionCode,
     this.icon,
     this.onIconSecondaryTapUp,
+    this.trailing,
   });
 
   @override
@@ -190,6 +197,10 @@ class AndroidHeroCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ],
           ],
         ),
       ),
