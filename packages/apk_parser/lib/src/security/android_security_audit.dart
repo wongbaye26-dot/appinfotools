@@ -1,5 +1,6 @@
 import 'package:analysis_model/analysis_model.dart';
 
+import '../dex/dex_structure.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'permission_catalog.dart';
@@ -56,6 +57,38 @@ class AndroidSecurityAudit {
           '共 ${scan.scannedBytes} 字节，且仅提取可打印 ASCII 字符串：'
           '非 ASCII 字面量、原生库（lib/**.so）、资源文件与加固壳内的代码'
           '均不在覆盖范围内。');
+    }
+
+    // ---- DEX 结构（第二层取证：先看结构是否可信）----
+    //
+    // 顺序很关键：**先看结构，再信内容**。一个 file_size 与段表对不上的 DEX，
+    // 它上面的字符串线索不能当作完整结论 —— 没扫到的地方可能是结构本身
+    // 就没覆盖到，而不是「确实没有」。
+    final structures = [
+      for (final entry in dexEntries)
+        DexStructure.read(entry.name, entry.bytes),
+    ];
+    for (final structure in structures) {
+      for (final anomaly in structure.anomalies) {
+        limitations.add(
+          '${structure.name} 结构异常（${anomaly.code}）：${anomaly.message}',
+        );
+      }
+      if (!structure.checksumVerified) {
+        limitations.add('${structure.name} 超过 '
+            '${kDexMaxChecksumBytes ~/ (1024 * 1024)} MiB，'
+            '本次**未验证**校验和 —— 不要把「没报校验和异常」读成「校验和正确」。');
+      }
+    }
+    final untraversable = [
+      for (final s in structures)
+        if (!s.isTraversable) s,
+    ];
+    if (untraversable.isNotEmpty) {
+      limitations.add('${untraversable.length} 个 DEX 的结构不可信'
+          '（${untraversable.map((s) => s.name).join('、')}）：'
+          '这些文件上的字符串线索**不构成完整结论**，'
+          '未覆盖的字节中可能存在未被发现的线索。');
     }
 
     // 加固特征直接转化为覆盖不足说明（HardeningScanner 的输出）。

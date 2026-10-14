@@ -7,6 +7,10 @@ export 'src/arsc/string_pool.dart';
 export 'src/arsc/resource_value.dart';
 export 'src/arsc/type_spec.dart';
 export 'src/arsc/reference_graph.dart';
+
+// DEX 结构级解析（安全分析的第二层）。与 `security/dex_clue_scanner.dart` 的
+// 字符串扫描分开：那个回答「出现了哪些字面量」，这个回答「文件结构长什么样」。
+export 'src/dex/dex_structure.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';

@@ -445,4 +445,77 @@ void main() {
       );
     });
   });
+
+  // DEX 结构是**第二层取证**：先看结构是否可信，再信它上面的字符串线索。
+  //
+  // 样本用 javac + d8 真实产出的 DEX 与它的手工畸变体
+  // （见 test/fixtures/dex/README.md，期望值来自 dexdump）。
+  group('DEX 结构异常进入覆盖说明', () {
+    Uint8List fixture(String name) =>
+        File('test/fixtures/dex/$name').readAsBytesSync();
+
+    test('结构正常的 DEX 不产生结构相关说明', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('real-netprobe.dex'))],
+      );
+
+      expect(
+        result.limitations.any((l) => l.contains('结构异常')),
+        isFalse,
+        reason: '实际说明：${result.limitations}',
+      );
+      expect(result.limitations.any((l) => l.contains('结构不可信')), isFalse);
+    });
+
+    test('结构畸形的 DEX 会写明是哪一项对不上', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('truncated.dex'))],
+      );
+
+      expect(
+        result.limitations.any((l) =>
+            l.contains('classes.dex') && l.contains('dex.file_size_mismatch')),
+        isTrue,
+        reason: '实际说明：${result.limitations}',
+      );
+      expect(
+        result.limitations.any((l) => l.contains('1624') && l.contains('800')),
+        isTrue,
+        reason: '要说清声明与实际各是多少，否则无从排查',
+      );
+    });
+
+    test('结构不可信时明确说「字符串线索不构成完整结论」', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [DexBytes('classes.dex', fixture('bad-magic.dex'))],
+      );
+
+      expect(result.hasCoverageGaps, isTrue);
+      expect(
+        result.limitations.any((l) => l.contains('结构不可信')),
+        isTrue,
+        reason: '「没扫到」与「没有」结论相反，必须说清是前者：'
+            '${result.limitations}',
+      );
+    });
+
+    test('一个文件坏了不影响另一个文件被正常扫描', () {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(),
+        dexEntries: [
+          DexBytes('classes.dex', fixture('real-netprobe.dex')),
+          DexBytes('classes2.dex', fixture('bad-magic.dex')),
+        ],
+      );
+
+      // 只有坏的那个进「结构不可信」名单。
+      final summary = result.limitations
+          .firstWhere((l) => l.contains('结构不可信'), orElse: () => '');
+      expect(summary, contains('classes2.dex'));
+      expect(summary, isNot(contains('classes.dex 的结构')));
+    });
+  });
 }
