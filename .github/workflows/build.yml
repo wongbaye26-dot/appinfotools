@@ -79,6 +79,13 @@ jobs:
           cache: true
 
       - name: Sync pubspec version from tag
+        # 只在打 tag 时运行。
+        #
+        # main 分支推送时 `GITHUB_REF_NAME` 是 "main"，去掉前缀 v 之后仍然是
+        # "main"，于是 pubspec 的 version 被改写成 `version: main` —— 非法版本号，
+        # 三个平台的构建会全部失败（macOS 报 exit code 65，Linux / Windows
+        # 卡在 pub get）。这正是 v2.0.0 之后连续两次构建失败的根因。
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
@@ -160,6 +167,13 @@ jobs:
           cache: true
 
       - name: Sync pubspec version from tag
+        # 只在打 tag 时运行。
+        #
+        # main 分支推送时 `GITHUB_REF_NAME` 是 "main"，去掉前缀 v 之后仍然是
+        # "main"，于是 pubspec 的 version 被改写成 `version: main` —— 非法版本号，
+        # 三个平台的构建会全部失败（macOS 报 exit code 65，Linux / Windows
+        # 卡在 pub get）。这正是 v2.0.0 之后连续两次构建失败的根因。
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
@@ -245,6 +259,13 @@ jobs:
           cache: true
 
       - name: Sync pubspec version from tag
+        # 只在打 tag 时运行。
+        #
+        # main 分支推送时 `GITHUB_REF_NAME` 是 "main"，去掉前缀 v 之后仍然是
+        # "main"，于是 pubspec 的 version 被改写成 `version: main` —— 非法版本号，
+        # 三个平台的构建会全部失败（macOS 报 exit code 65，Linux / Windows
+        # 卡在 pub get）。这正是 v2.0.0 之后连续两次构建失败的根因。
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
