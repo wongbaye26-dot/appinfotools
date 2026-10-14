@@ -112,10 +112,23 @@ class AndroidSecurityAudit {
           'method_ids 条目解析不出来（索引越界或字符串读不出来），'
           '这些条目里的引用未被看到。');
     }
+    if (methodScan.desyncedBodies.isNotEmpty) {
+      limitations.add('有 ${methodScan.desyncedBodies.length} 个方法体的指令'
+          '遍历没有正好走到末尾（${methodScan.desyncedBodies.take(3).join('、')}'
+          '${methodScan.desyncedBodies.length > 3 ? ' …' : ''}）：'
+          '这些方法体上的**调用点不可信**，宽度表或载荷长度可能与该文件的'
+          '实际形态不符。');
+    }
     if (dexEntries.isNotEmpty && methodScan.scannedDexCount > 0) {
-      limitations.add('方法引用来自 method_ids：它证明代码**引用**了这些方法，'
-          '不证明它们在运行时被调用 —— 本次未遍历 code_item 里的指令，'
-          '因此没有调用点、调用次数与调用者的信息。');
+      limitations.add('方法引用来自 method_ids（证明代码**引用**了这些方法），'
+          '调用点来自 code_item 里的 invoke 指令（证明**存在调用指令**）。'
+          '两者都**不证明运行时执行过** —— 本次没有数据流分析，'
+          '因此不知道参数与返回值是怎么传递的。');
+    }
+    if (methodScan.invokeCustomCount > 0) {
+      limitations.add('有 ${methodScan.invokeCustomCount} 条 invoke-custom 指令：'
+          '它们引用 call_site_ids 而不是 method_ids，本次未解析，'
+          '因此这些调用**不在**调用点覆盖范围内。');
     }
 
     // 加固特征直接转化为覆盖不足说明（HardeningScanner 的输出）。
@@ -491,7 +504,9 @@ class AndroidSecurityAudit {
         ],
         dataSource: '照片/媒体文件与其中的识别文本',
         dataSink: '上传请求（multipart / upload API）',
-        relationship: '读取照片 → 图像文字识别 → 构建上传请求：三段分别有证据，'
+        relationship:
+            '${_coOccurrenceNote(methodScan, ocrCodeRefs, uploadCodeRefs)}'
+            '读取照片 → 图像文字识别 → 构建上传请求：三段分别有证据，'
             '但「同一代码路径上的数据流」未被证实 —— 未证实的环节是'
             '识别结果进入上传请求这一跳。',
         limitation: '关联来自多标记同现，不是调用图分析；反射、动态加载与'
@@ -672,20 +687,59 @@ class AndroidSecurityAudit {
     );
   }
 
+  /// 描述「识别与上传的调用指令是否位于同一个方法体内」。
+  ///
+  /// 这是调用点分析带来的新信息：字符串同现只能说「两个词都出现在这个包里」。
+  /// 但措辞必须守住界线 —— **同一个方法里既有识别又有上传，不等于识别结果被
+  /// 送进了上传请求**，那要看寄存器与参数传递，属于数据流分析。
+  static String _coOccurrenceNote(
+    DexMethodScanResult scan,
+    List<CodeReference> ocrReferences,
+    List<CodeReference> uploadReferences,
+  ) {
+    final occurrence = scan.firstCoOccurrenceAcross(
+      ocrReferences.map((r) => r.markerId),
+      uploadReferences.map((r) => r.markerId),
+    );
+    if (occurrence == null) {
+      return '文字识别与上传的调用指令**不在同一个方法体内**'
+          '（同现发生在整个包的层面）。';
+    }
+    return '文字识别与上传的调用指令出现在**同一个方法体内**'
+        '（${occurrence.callerDisplayName}）；'
+        '但同一方法内共现不等于数据流：识别结果是否被送进上传请求'
+        '未被证实。';
+  }
+
   /// 把方法引用转成证据条目。
   ///
-  /// 单独成一个方法是为了让**证据来源**一眼可见：`dexMethodReference` 与
-  /// `dexString` 不是同一档证据，UI 与报告据此分开渲染。
+  /// **引用与调用点分成两条证据**，因为它们回答的不是同一个问题：
+  /// - 「引用」来自 `method_ids`，只说明字节码引用过这个方法（也可能只是
+  ///   方法签名）；
+  /// - 「调用点」来自 `code_item` 的 `invoke-*` 指令，能落到具体方法名与
+  ///   指令偏移。
+  ///
+  /// 合成一条会丢掉「是引用还是真的有一条调用指令」这个区别。
   static List<SecurityEvidence> _referenceEvidence(
     List<CodeReference> references,
   ) {
     return [
-      for (final reference in references)
-        SecurityEvidence(
-          source: SecurityEvidenceSource.dexMethodReference,
-          location: reference.dexNames.join(', '),
-          detail: '${reference.markerId}: ${reference.samples.join(' | ')}',
-        ),
+      for (final reference in references) ...[
+        if (reference.samples.isNotEmpty)
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexMethodReference,
+            location: reference.dexNames.join(', '),
+            detail: '${reference.markerId}（引用）: '
+                '${reference.samples.join(' | ')}',
+          ),
+        if (reference.callSiteSamples.isNotEmpty)
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexMethodReference,
+            location: reference.dexNames.join(', '),
+            detail: '${reference.markerId}（调用点）: '
+                '${reference.callSiteSamples.join(' | ')}',
+          ),
+      ],
     ];
   }
 

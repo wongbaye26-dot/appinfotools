@@ -593,11 +593,16 @@ void main() {
         dexEntries: [DexBytes('classes.dex', fixture('real-netprobe.dex'))],
       );
 
+      // 措辞要同时覆盖两层：method_ids 的「引用」与 code_item 的「调用点」，
+      // 两者都不等于「运行时执行过」。
+      final note = result.limitations
+          .firstWhere((l) => l.contains('method_ids'), orElse: () => '');
+      expect(note, isNotEmpty, reason: '实际局限：${result.limitations}');
+      expect(note, contains('invoke'));
       expect(
-        result.limitations
-            .any((l) => l.contains('method_ids') && l.contains('不证明它们在运行时被调用')),
-        isTrue,
-        reason: '实际局限：${result.limitations}',
+        note,
+        contains('不证明运行时执行过'),
+        reason: '不能只说「引用」，也不能让读者以为调用点等于执行',
       );
     });
 
@@ -612,6 +617,88 @@ void main() {
             .any((l) => l.contains('未做方法引用分析') && l.contains('classes.dex')),
         isTrue,
         reason: '「没查到」与「没有」结论相反，必须说清：${result.limitations}',
+      );
+    });
+  });
+  // 第三层：调用点。规则 C 的关联强度因此有了一个**可核对**的说法 ——
+  // 识别与上传的调用指令是否位于同一个方法体内。
+  group('调用点：同方法内同现进入规则 C 的说明', () {
+    Uint8List fixture(String name) =>
+        File('test/fixtures/dex/$name').readAsBytesSync();
+
+    SecurityAnalysisResult ruleCFor(String fixtureName) {
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(
+          targetSdk: 34,
+          permissions: [_perm('android.permission.READ_MEDIA_IMAGES')],
+        ),
+        dexEntries: [DexBytes('classes.dex', fixture(fixtureName))],
+      );
+      final ruleC = _byId(result, 'ANDROID-RULE-C');
+      expect(
+        ruleC,
+        isNotNull,
+        reason: '$fixtureName 应当触发规则 C；实际发现项：'
+            '${result.findings.map((f) => f.ruleId).toList()}',
+      );
+      return result;
+    }
+
+    test('识别与上传在同一个方法体内时，说明里点出这个方法', () {
+      final result = ruleCFor('real-cooccurrence.dex');
+      final ruleC = _byId(result, 'ANDROID-RULE-C')!;
+
+      expect(
+        ruleC.relationship,
+        contains('同一个方法体内'),
+        reason: 'dexdump -d 显示 recognizeText 在 0x254、uploadImage 在 0x25a，'
+            '相邻且同属 Pipeline.run。实际说明：${ruleC.relationship}',
+      );
+      expect(ruleC.relationship, contains('run'));
+      // 但必须同时说清「共现 ≠ 数据流」。
+      expect(ruleC.relationship, contains('未被证实'));
+    });
+
+    test('识别与上传在不同方法里时，明确说「不在同一个方法体内」', () {
+      final result = ruleCFor('real-separate.dex');
+      final ruleC = _byId(result, 'ANDROID-RULE-C')!;
+
+      expect(
+        ruleC.relationship,
+        contains('不在同一个方法体内'),
+        reason: 'dexdump -d 显示两者分别在 Separate.doOcr 与 Separate.doUpload。'
+            '实际说明：${ruleC.relationship}',
+      );
+    });
+
+    test('更强的证据**不**抬高置信度：仍然不是「已证实关联」', () {
+      // 同一方法内共现是比「多标记同现」更强的证据，但它仍然没有证明
+      // 「识别结果被送进了上传请求」—— 那要看寄存器与参数传递。
+      // 因此等级与置信度都不能动。
+      for (final name in const ['real-cooccurrence.dex', 'real-separate.dex']) {
+        final ruleC = _byId(ruleCFor(name), 'ANDROID-RULE-C')!;
+        expect(ruleC.severity, SecuritySeverity.p1, reason: name);
+        expect(
+          ruleC.confidence,
+          SecurityConfidence.suspected,
+          reason: '$name：共现不是数据流，不能升到 confirmed',
+        );
+      }
+    });
+
+    test('调用点写进证据链（可以核对到指令偏移）', () {
+      final result = ruleCFor('real-cooccurrence.dex');
+      final ruleC = _byId(result, 'ANDROID-RULE-C')!;
+
+      final callSiteEvidence = ruleC.evidence.where(
+        (e) => e.source == SecurityEvidenceSource.dexMethodReference,
+      );
+      expect(callSiteEvidence, isNotEmpty);
+      expect(
+        callSiteEvidence.any((e) => e.detail.contains('+0x')),
+        isTrue,
+        reason: '证据要能落到具体偏移：'
+            '${callSiteEvidence.map((e) => e.detail).toList()}',
       );
     });
   });

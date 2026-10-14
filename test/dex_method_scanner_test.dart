@@ -113,6 +113,125 @@ void main() {
     });
   });
 
+  // 第三层：调用点。`method_ids` 只说「引用存在」，`code_item` 里的 invoke
+  // 指令才说明「真的有一条调用指令，在哪个方法的哪个偏移上」。
+  group('调用点（第三层）', () {
+    test('HttpURLConnection 的两条调用指令都被找到，并带上调用者', () {
+      final result = _scan('real-netprobe.dex');
+
+      final http = result.reference('httpurlconnection');
+      expect(http, isNotNull);
+      expect(
+        http!.hasCallSite,
+        isTrue,
+        reason:
+            'dexdump -d 里 NetProbe.open 有 setRequestMethod 与 getInputStream '
+            '两条 invoke-virtual',
+      );
+      expect(http.callSiteCount, 2);
+      expect(
+        http.callSiteSamples.any(
+            (s) => s.contains('getInputStream') && s.contains('NetProbe;.open')),
+        isTrue,
+        reason: '证据要能回答「在哪个方法里」：${http.callSiteSamples}',
+      );
+      expect(
+        http.callSiteSamples.any((s) => s.contains('+0x10')),
+        isTrue,
+        reason: '还要能回答「在什么偏移上」',
+      );
+    });
+
+    test('总调用指令数与 dexdump -d 一致（7 条）', () {
+      final result = _scan('real-netprobe.dex');
+
+      expect(result.callSiteCount, 7);
+      expect(result.invokeCustomCount, 0);
+      expect(result.walkedDexCount, 1);
+    });
+
+    test('遍历全部同步，没有方法体错位', () {
+      for (final name in const [
+        'real-netprobe.dex',
+        'real-opcodes.dex',
+        'real-cooccurrence.dex',
+      ]) {
+        final result = _scan(name);
+        expect(
+          result.desyncedBodies,
+          isEmpty,
+          reason: '$name 的方法体应当都能正好走到末尾：${result.desyncedBodies}',
+        );
+      }
+    });
+
+    test('invoke-custom 单独计数，不算进调用点', () {
+      // 三个真实夹具里都没有 invoke-custom。
+      for (final name in const [
+        'real-netprobe.dex',
+        'real-opcodes.dex',
+        'real-cooccurrence.dex',
+      ]) {
+        final result = _scan(name);
+        expect(result.invokeCustomCount, 0, reason: name);
+      }
+    });
+  });
+
+  group('同方法内同现', () {
+    test('Pipeline.run 里同时出现识别与上传的调用', () {
+      final result = _scan('real-cooccurrence.dex');
+
+      final occurrence = result.firstCoOccurrenceAcross(
+        ['ocr-recognizetext'],
+        ['uploadimage'],
+      );
+      expect(
+        occurrence,
+        isNotNull,
+        reason: 'dexdump -d 显示 recognizeText 在 0x254、uploadImage 在 0x25a，'
+            '相邻且同属 Pipeline.run。实际同现：${result.coOccurrences}',
+      );
+      expect(occurrence!.callerDisplayName, contains('Pipeline'));
+      expect(occurrence.callerDisplayName, contains('run'));
+      expect(occurrence.markerIds,
+          containsAll(['ocr-recognizetext', 'uploadimage']));
+    });
+
+    test('只有识别、没有上传的方法不会被报成同现', () {
+      final result = _scan('real-cooccurrence.dex');
+
+      expect(
+        result.coOccurrences
+            .any((c) => c.callerDisplayName.contains('onlyOcr')),
+        isFalse,
+        reason: '只命中一个标记的方法不是同现：${result.coOccurrences}',
+      );
+    });
+
+    test('同现记录只保留命中两个以上标记的方法', () {
+      final result = _scan('real-cooccurrence.dex');
+
+      for (final occurrence in result.coOccurrences) {
+        expect(
+          occurrence.markerIds.length,
+          greaterThanOrEqualTo(2),
+          reason: '单个标记不是同现',
+        );
+      }
+    });
+
+    test('没有同现时查询返回 null，而不是抛异常', () {
+      final result = _scan('real-netprobe.dex');
+
+      expect(
+        result.firstCoOccurrenceAcross(['ocr-recognizetext'], ['uploadimage']),
+        isNull,
+      );
+      expect(result.coOccurInSameMethod(['ocr-recognizetext']), isFalse);
+    });
+  });
+
   group('匹配规则', () {
     test('标记表与字符串扫描器共用同一份（不会两边漂移）', () {
       // 同一个标记 id 在两个扫描器里必须指向同一类别与同一说明。

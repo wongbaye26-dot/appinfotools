@@ -12,6 +12,8 @@ export 'src/arsc/reference_graph.dart';
 // 字符串扫描分开：那个回答「出现了哪些字面量」，这个回答「文件结构长什么样」。
 export 'src/dex/dex_structure.dart';
 export 'src/dex/dex_method_table.dart';
+export 'src/dex/dex_instruction.dart';
+export 'src/dex/dex_method_bodies.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';

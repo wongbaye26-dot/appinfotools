@@ -155,3 +155,89 @@ class_defs_size     : 2     class_defs_off  : 464  (0x0001d0)
 **`okhttp3` 不在这张表里** —— 它只出现在 `string_ids` 的
 `string[000024]`。这一条正是「字符串提到了」与「代码引用了」的分界，也是
 `test/dex_method_scanner_test.dart` 要钉住的东西。
+
+## real-opcodes.dex
+
+由 `javac` + `d8` 产出的**指令格式覆盖样本**（1920 字节，8 个方法体、
+101 条指令、53 种助记符），专门用来验证指令宽度表。
+
+```java
+package com.example.fixture;
+
+public class Opcodes {
+    static int[] arr = new int[8];
+    static long counter = 7L;
+    int field;
+
+    public static int arith(int a, int b) { /* 各类算术、位运算、类型转换 */ }
+    public int fields(int x) { /* iget/iput、sget/sput、aget */ }
+    public String switchOn(int x) { /* sparse-switch + 载荷 */ }
+    public String loop(int n) { /* StringBuilder、循环、if */ }
+    public int caught(int x) { /* try/catch/finally */ }
+    public int cast(Object o) { /* instance-of、check-cast */ }
+}
+```
+
+（完整源码见提交历史；要点是它覆盖了 1/2/3/4/5 个代码单元的各类格式，
+并且**含一个 `sparse-switch-data` 载荷**。）
+
+### 为什么需要它
+
+指令长度是 1–5 个 16 位代码单元，宽度表错一格就会在指令中间错位，把别的指令
+的操作数当成方法索引 —— 结果看起来完全正常，却是错的。所以要有一个能把
+「每一步落在哪」逐条核对出来的样本。
+
+### 期望值（`dexdump -d` 的 `|XXXX:` 列，十六进制转十进制，共 101 条）
+
+```
+0,2,4,6,8,10, 0,3, 0,2,3,4,6,8,10,12,14,16,18,20,22,23,28,29,30,32,34,35,36,37,38,39,40,41,
+0,2,4,6,9,10,11,12, 0,2,3,5,7,9,10,11,13,15,17,18,19,20,22,24,26,27,
+0,2,4,5,6,8,10,12,14,16,17, 0,2,5,6,8,10,12,15,16,18,21,23,24,27,28,
+0,3,5,6,8,9,11,12,14,15,17,18,20,21,22
+```
+
+（这些值原样内嵌在 `test/dex_instruction_test.dart` 的 `_dexdumpOpcodeOffsets`
+里 —— CI 上跑不了 `dexdump`，所以基准必须内嵌。）
+
+## real-cooccurrence.dex / real-separate.dex
+
+一对用来验证**「调用点是否在同一个方法体内」**的样本。
+
+```java
+// 两个类的方法名刻意带上标记字面量
+public class FakeOcr    { public static void recognizeText(String s) {...} }
+public class FakeUpload { public static void uploadImage(String path) {...} }
+
+// real-cooccurrence.dex：同一个方法里既有识别又有上传
+public class Pipeline {
+    public static void run(String path) {
+        FakeOcr.recognizeText(path);
+        FakeUpload.uploadImage(path);
+    }
+    public static void onlyOcr(String path) { FakeOcr.recognizeText(path); }
+}
+
+// real-separate.dex：识别与上传在不同方法里
+public class Separate {
+    public static void doOcr(String path)    { FakeOcr.recognizeText(path); }
+    public static void doUpload(String path) { FakeUpload.uploadImage(path); }
+}
+```
+
+### 期望值（`dexdump -d`）
+
+```
+real-cooccurrence.dex
+  00023c: invoke-static {v0}, Lcom/example/fixture/FakeOcr;.recognizeText:(Ljava/lang/String;)V
+  000254: invoke-static {v0}, Lcom/example/fixture/FakeOcr;.recognizeText:(Ljava/lang/String;)V
+  00025a: invoke-static {v0}, Lcom/example/fixture/FakeUpload;.uploadImage:(Ljava/lang/String;)V
+  → 0x254 与 0x25a 相邻，同属 Pipeline.run → **同现**
+  → 0x23c 单独属于 Pipeline.onlyOcr → **不同现**
+
+real-separate.dex
+  00023c: invoke-static {v0}, Lcom/example/fixture/FakeOcr;.recognizeText:(Ljava/lang/String;)V
+  000254: invoke-static {v0}, Lcom/example/fixture/FakeUpload;.uploadImage:(Ljava/lang/String;)V
+  → 分别在 Separate.doOcr 与 Separate.doUpload → **不同现**
+```
+
+两个都要留：只留同现的那个，「同现检测」直接 `return true` 也能通过。
