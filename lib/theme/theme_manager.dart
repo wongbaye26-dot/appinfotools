@@ -20,13 +20,40 @@ String? getFontFamily() {
   }
 }
 
+/// 解析持久化字符串为 [ThemeMode]。
+ThemeMode _parseThemeMode(String value) => switch (value) {
+      Config.kThemeModeLight => ThemeMode.light,
+      Config.kThemeModeDark => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+
+/// 主题状态。
+///
+/// 同时持有种子色与明暗模式，为 [MaterialApp] 提供：
+/// - [lightTheme] / [darkTheme]：按种子色生成的完整主题
+/// - [mode]：当前明暗模式策略（system / light / dark）
 class ThemeState {
   final int themeColor;
+  final ThemeMode mode;
 
-  const ThemeState({required this.themeColor});
+  const ThemeState({required this.themeColor, required this.mode});
 
-  ThemeData get themeData => ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Color(themeColor)),
+  Color get _seed => Color(themeColor);
+
+  ThemeData get lightTheme => ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _seed,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+        fontFamily: getFontFamily(),
+      );
+
+  ThemeData get darkTheme => ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _seed,
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
         fontFamily: getFontFamily(),
       );
@@ -34,13 +61,25 @@ class ThemeState {
 
 class ThemeManager extends Notifier<ThemeState> {
   @override
-  ThemeState build() => ThemeState(themeColor: Config.themeColor.value);
+  ThemeState build() => ThemeState(
+        themeColor: Config.themeColor.value,
+        mode: _parseThemeMode(Config.themeMode.value),
+      );
 
   void updateThemeColor(Color color) {
-    // `Color.value` 已废弃（Flutter 3.27+），`toARGB32()` 返回等值的 int。
     final argb = color.toARGB32();
-    state = ThemeState(themeColor: argb);
+    state = ThemeState(themeColor: argb, mode: state.mode);
     Config.themeColor.updateValue(argb);
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    final value = switch (mode) {
+      ThemeMode.light => Config.kThemeModeLight,
+      ThemeMode.dark => Config.kThemeModeDark,
+      ThemeMode.system => Config.kThemeModeSystem,
+    };
+    state = ThemeState(themeColor: state.themeColor, mode: mode);
+    Config.themeMode.updateValue(value);
   }
 }
 

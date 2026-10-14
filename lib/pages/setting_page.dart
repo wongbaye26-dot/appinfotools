@@ -517,6 +517,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ref.watch(themeManagerProvider.select((value) => value.themeColor));
     final iconRowSpan =
         ref.watch(uiConfigStateProvider.select((value) => value.iconRowSpan));
+    final themeMode =
+        ref.watch(settingStateProvider.select((value) => value.themeMode));
+
     return _buildSettingCard(
       title: t.settings.appearance,
       icon: Icons.palette,
@@ -545,6 +548,47 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                 ref.read(settingStateProvider.notifier).setLanguage(value);
               }
             },
+          ),
+        ),
+        // 主题模式切换
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(child: Text(t.settings.theme_mode)),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: Config.kThemeModeLight,
+                    label: Text('Light'),
+                    icon: Icon(Icons.light_mode, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: Config.kThemeModeDark,
+                    label: Text('Dark'),
+                    icon: Icon(Icons.dark_mode, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: Config.kThemeModeSystem,
+                    label: Text('Auto'),
+                    icon: Icon(Icons.brightness_auto, size: 16),
+                  ),
+                ],
+                selected: {themeMode},
+                onSelectionChanged: (Set<String> value) {
+                  final selected = value.first;
+                  ref
+                      .read(settingStateProvider.notifier)
+                      .setThemeMode(selected);
+                  final mode = switch (selected) {
+                    Config.kThemeModeLight => ThemeMode.light,
+                    Config.kThemeModeDark => ThemeMode.dark,
+                    _ => ThemeMode.system,
+                  };
+                  ref.read(themeManagerProvider.notifier).setThemeMode(mode);
+                },
+              ),
+            ],
           ),
         ),
         ListTile(

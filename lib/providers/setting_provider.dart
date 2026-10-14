@@ -22,6 +22,7 @@ abstract class Settings with _$Settings {
     required bool enableDebug,
     required String language,
     required String parserEngine,
+    required String themeMode,
   }) = _Settings;
 }
 
@@ -42,6 +43,7 @@ class SettingState extends _$SettingState {
         enableDebug: Config.enableDebug.value,
         language: Config.language.value,
         parserEngine: Config.parserEngine.value,
+        themeMode: Config.themeMode.value,
       );
 
   void setAapt2Path(String value) {
@@ -112,5 +114,10 @@ class SettingState extends _$SettingState {
     } else {
       LocaleSettings.setLocaleRaw(value);
     }
+  }
+
+  void setThemeMode(String value) {
+    state = state.copyWith(themeMode: value);
+    Config.themeMode.updateValue(value);
   }
 }

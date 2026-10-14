@@ -1,0 +1,111 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:apk_info_tool/config.dart';
+import 'package:apk_info_tool/utils/logger.dart';
+
+/// 最近分析文件的单条记录。
+class RecentFileEntry {
+  final String path;
+  final int size;
+  final DateTime analyzedAt;
+  final String? platform; // 'android' | 'ios' | null
+
+  const RecentFileEntry({
+    required this.path,
+    required this.size,
+    required this.analyzedAt,
+    this.platform,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'path': path,
+        'size': size,
+        'analyzedAt': analyzedAt.millisecondsSinceEpoch,
+        if (platform != null) 'platform': platform,
+      };
+
+  factory RecentFileEntry.fromJson(Map<String, dynamic> json) =>
+      RecentFileEntry(
+        path: json['path'] as String,
+        size: json['size'] as int? ?? 0,
+        analyzedAt: DateTime.fromMillisecondsSinceEpoch(
+          json['analyzedAt'] as int? ?? 0,
+        ),
+        platform: json['platform'] as String?,
+      );
+
+  /// 文件名（不含路径）。
+  String get fileName => path.split(Platform.pathSeparator).last;
+
+  /// 格式化的分析时间（相对时间）。
+  String timeAgo() {
+    final now = DateTime.now();
+    final diff = now.difference(analyzedAt);
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${analyzedAt.year}-${analyzedAt.month.toString().padLeft(2, '0')}-${analyzedAt.day.toString().padLeft(2, '0')}';
+  }
+}
+
+/// 最近分析文件管理器。
+///
+/// 最多保留 10 条记录，新记录插入到头部，重复路径去重。
+class RecentFilesManager {
+  static const int _maxCount = 10;
+
+  /// 读取当前列表。
+  static List<RecentFileEntry> load() {
+    try {
+      final jsonStr = Config.recentFiles.value;
+      if (jsonStr.isEmpty || jsonStr == '[]') return const [];
+      final list = jsonDecode(jsonStr) as List<dynamic>;
+      return list
+          .map((e) => RecentFileEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      log.warning('failed to parse recent files: $e');
+      return const [];
+    }
+  }
+
+  /// 添加一条记录（去重后插入头部，超出 _maxCount 时截断尾部）。
+  static Future<void> add(String path, int size, {String? platform}) async {
+    final entries = load();
+    // 去重：移除已存在的同路径记录
+    entries.removeWhere((e) => e.path == path);
+    // 插入头部
+    entries.insert(
+      0,
+      RecentFileEntry(
+        path: path,
+        size: size,
+        analyzedAt: DateTime.now(),
+        platform: platform,
+      ),
+    );
+    // 截断
+    final trimmed =
+        entries.length > _maxCount ? entries.sublist(0, _maxCount) : entries;
+    // 持久化
+    final jsonStr = jsonEncode(trimmed.map((e) => e.toJson()).toList());
+    await Config.recentFiles.updateValue(jsonStr);
+  }
+
+  /// 清空列表。
+  static Future<void> clear() async {
+    await Config.recentFiles.updateValue('[]');
+  }
+
+  /// 格式化文件大小。
+  static String formatSize(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB';
+  }
+}

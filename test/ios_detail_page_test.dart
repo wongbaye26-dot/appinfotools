@@ -16,6 +16,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/pages/info_page.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
+import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:flutter/material.dart';
@@ -186,7 +187,7 @@ TitleValueLayout _layoutTitled(WidgetTester tester, String title) =>
 
 void main() {
   group('IPA 详情页 — 与 APK 页同一套版式', () {
-    testWidgets('每张卡片都是 Card + TitleValueLayout，没有 iOS 专属卡片壳', (tester) async {
+    testWidgets('核心卡片仍是 Card + TitleValueLayout，允许 iOS 专属视觉卡片', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
       expect(tester.takeException(), isNull);
 
@@ -194,15 +195,17 @@ void main() {
       expect(layouts, findsWidgets);
 
       // 每个 TitleValueLayout 的直接祖先都必须是一张 Card。
-      // 出现别的壳（自定义内边距、Hero 卡片、分组标题…）就说明两页又分叉了。
       final wrapped = find.ancestor(of: layouts, matching: find.byType(Card));
       expect(
         tester.widgetList<Card>(wrapped).length,
         tester.widgetList<TitleValueLayout>(layouts).length,
       );
+
+      // iOS 专属视觉组件存在
+      expect(find.byType(IosHeroCard), findsOneWidget);
     });
 
-    testWidgets('卡片顺序与 APK 页一致：文件 → 平台 → 标识 → 版本 …', (tester) async {
+    testWidgets('卡片顺序与 APK 页一致：文件 → 平台 → 版本 → 容器 …', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
       final titles = _cardTitles(tester);
 
@@ -216,23 +219,21 @@ void main() {
 
       // 平台标识刻意排在最前 —— 它是两页唯一的分辨依据，应该第一眼看到。
       before(t.file_info.platform, t.file_info.file);
-      before(t.file_info.file, t.apk_info.app_name);
-      before(t.apk_info.app_name, t.ios_info.bundle_id);
-      before(t.ios_info.bundle_id, t.apk_info.version_name);
+      before(t.file_info.file, t.apk_info.version_name);
       before(t.apk_info.version_name, t.ios_info.minimum_os);
-      before(t.ios_info.minimum_os, t.file_info.md5);
+      before(t.ios_info.minimum_os, t.ios_info.container_section);
+      before(t.ios_info.container_section, t.ios_info.signature_section);
+      before(t.ios_info.signature_section, t.ios_info.codesign_section);
+      before(t.ios_info.codesign_section, t.file_info.md5);
       before(t.file_info.md5, t.file_info.sha256);
       before(t.file_info.sha256, t.apk_info.diagnostics);
-      before(t.apk_info.diagnostics, t.ios_info.container_section);
-      before(t.ios_info.container_section, t.apk_info.signature_info);
     });
 
     testWidgets('复制入口与 APK 页一样留在值旁边', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
-      // Bundle ID 与三个哈希都要能一键复制。
+      // 三个哈希都要能一键复制。Bundle ID 的复制在 Hero 卡片外部。
       for (final title in [
-        t.ios_info.bundle_id,
         t.file_info.md5,
         t.file_info.sha1,
         t.file_info.sha256,
@@ -293,20 +294,18 @@ void main() {
   });
 
   group('IPA 详情页 — 图标', () {
-    testWidgets('图标缩略图与版本卡片同处一栏，和 APK 页一样在右侧', (tester) async {
+    testWidgets('图标缩略图出现在 Hero 卡片和版本栏中', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
 
-      expect(find.byType(IosIconThumbnail), findsOneWidget);
+      // 页面上有两个图标：Hero 卡片一个，版本栏一个
+      expect(find.byType(IosIconThumbnail), findsNWidgets(2));
 
-      final row = find.ancestor(
-        of: find.byType(IosIconThumbnail),
-        matching: find.byType(Row),
-      );
-      expect(row, findsWidgets);
-      // 同一个 Row 里必须有版本名卡片 —— 那正是 APK 页放图标的位置。
+      // Hero 卡片中有图标
+      final hero = find.byType(IosHeroCard);
+      expect(hero, findsOneWidget);
       expect(
         find.descendant(
-            of: row.first, matching: find.text(t.apk_info.version_name)),
+            of: hero.first, matching: find.byType(IosIconThumbnail)),
         findsOneWidget,
       );
     });

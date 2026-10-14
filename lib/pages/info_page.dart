@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -17,7 +18,6 @@ import 'package:apk_info_tool/providers/home_page_provider.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
-import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
@@ -27,11 +27,17 @@ import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/platform.dart';
+import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart'
     show IosBundle, IosIconResolution, IosPrivacyAudit;
+import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
+import 'package:apk_info_tool/widgets/detail_tab_view.dart';
+import 'package:apk_info_tool/widgets/export_report_dialog.dart';
+import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
+import 'package:apk_info_tool/widgets/security_finding_card.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -225,6 +231,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           fileState.update(currentState.copyWith(
             apkInfo: apkInfo,
           ));
+          // 追加到最近文件列表
+          unawaited(RecentFilesManager.add(
+            currentState.filePath ?? '',
+            currentState.fileSize ?? 0,
+            platform: 'android',
+          ));
         }
       }
     } on ApkParseCancelledException {
@@ -369,10 +381,17 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           executablePath: parsed.executablePath,
         );
       }
-      fileState.update(ref.read(currentFileStateProvider).copyWith(
-            ipaAnalysis: parsed,
-            securityResult: security,
-          ));
+      final currentState = ref.read(currentFileStateProvider);
+      fileState.update(currentState.copyWith(
+        ipaAnalysis: parsed,
+        securityResult: security,
+      ));
+      // 追加到最近文件列表
+      unawaited(RecentFilesManager.add(
+        currentState.filePath ?? '',
+        currentState.fileSize ?? 0,
+        platform: 'ios',
+      ));
       isParsingState.update(false);
       iosStageState.update(null);
 
@@ -461,31 +480,23 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 看起来像。
     final enableHash =
         ref.watch(settingStateProvider.select((value) => value.enableHash));
-    final textMaxLines =
-        ref.watch(uiConfigStateProvider.select((value) => value.textMaxLines));
     final iconRowSpan =
         ref.watch(uiConfigStateProvider.select((value) => value.iconRowSpan));
 
     Widget card(String title, String value,
-            {Widget? end, int? maxLines, bool selectable = false}) =>
+            {Widget? end, bool selectable = false}) =>
         Card(
           child: TitleValueLayout(
             title: title,
             value: value,
             end: end,
-            maxLines: maxLines,
             selectable: selectable,
           ),
         );
 
     /// 把一个 [FieldValue] 渲染成「值」或「为什么没有值」。
-    ///
-    /// 关键在于**不把「读不到」渲染成空串**：`absent` 与 `failed` 对用户的
-    /// 含义完全不同，前者是「文件里没有」，后者是「我们没读出来」。
     String field(FieldValue<Object?> value) {
       if (value.hasValue) return '${value.value}';
-      // `absent` 显示为「-」：文件里确实没有这一项，空着是准确的。
-      // 其余状态一律**带上状态名与原因** —— 它们意味着「我们没读到」。
       if (value.status == FieldStatus.absent) return '-';
       final reason = value.diagnostic;
       return reason == null
@@ -493,9 +504,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           : '[${value.status.name}] $reason';
     }
 
-    // 平台标识放在最前 —— 两页版式相同，这是第一眼能分辨的地方。
+    // ===== 文件信息 =====
+    cards.add(
+        _SectionHeader(title: t.ios_info.group_file, tab: DetailTab.overview));
     cards.add(_buildPlatformRow(fileState));
-
     cards.add(card(t.file_info.file, fileState.filePath ?? "",
         end: _buildFileActionMenu()));
     cards.add(card(
@@ -506,25 +518,40 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ));
 
     if (parsed == null || result == null || ios == null) {
-      // 解析还没完成或整体失败：只说明原因，不渲染一堆空卡片 ——
-      // 一排空值会被读成「这个包什么都没有」。
       cards.add(card(t.ios_info.section, t.ios_info.unavailable));
       return cards;
     }
 
-    // 容器里没有 `Payload/*.app` 时，后面每一项都会是「-」，而「-」的含义是
-    // 「文件里没有这一项」—— 与「我们没找到应用」是两件事。先说清楚原因，
-    // 而不是让用户对着一页短横线猜。
+    // 容器里没有 `Payload/*.app` 时，后面每一项都会是「-」
     if (ios.mainApp == null) {
       cards.add(card(t.ios_info.unavailable, t.ios_info.no_main_app));
     }
 
-    cards.add(card(t.apk_info.app_name, field(ios.preferredName)));
-    cards.add(card(t.ios_info.bundle_id, field(ios.bundleIdentifier),
-        end: _buildCopyButton(
-            ios.bundleIdentifier.value, ios.bundleIdentifier.hasValue)));
+    // ===== 应用信息 =====
+    cards.add(_SectionHeader(
+        title: t.ios_info.group_app, tab: DetailTab.application));
 
-    // 与 Android 的「版本号 / 版本名 + 图标」一栏对位：图标固定放在右侧。
+    // Hero 卡片：大图标 + 应用名 + Bundle ID + 版本
+    cards.add(IosHeroCard(
+      appName: field(ios.preferredName),
+      bundleId: field(ios.bundleIdentifier),
+      version: ios.shortVersion.hasValue ? '${ios.shortVersion.value}' : '',
+      buildNumber: ios.buildNumber.hasValue ? '${ios.buildNumber.value}' : '',
+      icon: ios.icon,
+    ));
+
+    // 复制按钮单独放在 Bundle ID 下方
+    if (ios.bundleIdentifier.hasValue) {
+      cards.add(Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 4, bottom: 4),
+          child: _buildCopyButton(ios.bundleIdentifier.value, true),
+        ),
+      ));
+    }
+
+    // 版本与图标栏：与 Android 侧对位，图标在右侧
     cards.add(Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -533,7 +560,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             children: [
               card(t.apk_info.version_name, field(ios.shortVersion)),
               card(t.apk_info.version_code, field(ios.buildNumber)),
-              // Android 在图标占三行以上时把 minSdk 收进这一栏；这里照做。
               if (iconRowSpan >= 3)
                 card(t.ios_info.minimum_os, field(ios.minimumOSVersion)),
             ],
@@ -551,13 +577,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ios.deviceFamily.hasValue
             ? DetailRenderer.deviceFamily(ios.deviceFamily.value, t)
             : field(ios.deviceFamily)));
-    cards.add(card(t.ios_info.executable, field(ios.executableName)));
+    cards.add(IosInfoCard(
+      title: t.ios_info.executable,
+      value: field(ios.executableName),
+      isIdentifier: true,
+    ));
 
     if (ios.queriesSchemes.hasValue) {
       cards.add(card(
         t.ios_info.queries_schemes,
         ios.queriesSchemes.value!.join('\n'),
-        maxLines: textMaxLines,
         selectable: true,
       ));
     }
@@ -565,7 +594,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       cards.add(card(
         t.ios_info.required_capabilities,
         ios.requiredDeviceCapabilities.value!.join('\n'),
-        maxLines: textMaxLines,
         selectable: true,
       ));
     }
@@ -575,21 +603,61 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         '${ios.container.payloadApps.length} '
         '${t.ios_info.bundle_kind_main_app}: '
         '${ios.container.payloadApps.map((b) => b.path).join(', ')}',
-        maxLines: textMaxLines,
         selectable: true,
       ));
     }
 
-    // 图标清单。Android 把候选放在图标的右键菜单里，iOS 没有那个入口，
-    // 因此把同样的信息直接列出来 —— 包括「哪些取不到、为什么」。
+    // 图标清单
     cards.add(card(
       t.ios_info.icon_section,
       DetailRenderer.iosIcon(ios.icon, t),
-      maxLines: textMaxLines,
       selectable: true,
     ));
 
+    // ===== 容器与二进制 =====
+    cards.add(_SectionHeader(
+        title: t.ios_info.group_container, tab: DetailTab.structure));
+    final container = DetailRenderer.iosContainer(ios.container, t);
+    if (container.isNotEmpty) {
+      cards
+          .add(card(t.ios_info.container_section, container, selectable: true));
+    }
+    final executable = DetailRenderer.iosExecutable(ios.executable, t);
+    if (executable.isNotEmpty) {
+      cards.add(card(t.ios_info.binary_section, executable, selectable: true));
+    }
+    final nested = DetailRenderer.iosNestedBinaries(ios.nestedBinaries, t);
+    if (nested.isNotEmpty) {
+      cards.add(card(t.ios_info.nested_binaries, nested, selectable: true));
+    }
+
+    // ===== 签名与授权（拆成两张卡片）=====
+    cards.add(_SectionHeader(
+        title: t.ios_info.group_signature, tab: DetailTab.signature));
+    // 1. 静态签名材料（始终显示，哪怕没有材料也明确说明）
+    final signatureBody = DetailRenderer.iosSignature(ios, t);
+    cards.add(card(
+      t.ios_info.signature_section,
+      signatureBody.isNotEmpty ? signatureBody : '-',
+      selectable: true,
+    ));
+    // 2. codesign 验证结果 + 状态徽章
+    final codeSignBody = DetailRenderer.iosCodeSignBody(ios.codeSign, t);
+    final codeSignStatus = ios.codeSign?.status;
+    final bool? verified = codeSignStatus == null
+        ? null
+        : (codeSignStatus == SignatureStatus.verified);
+    cards.add(card(
+      t.ios_info.codesign_section,
+      codeSignBody,
+      selectable: true,
+      end: IosSignatureBadge(verified: verified),
+    ));
+
+    // ===== 文件校验 =====
     if (enableHash) {
+      cards.add(_SectionHeader(
+          title: t.ios_info.group_integrity, tab: DetailTab.signature));
       cards.add(card(t.file_info.md5, fileState.md5Hash ?? '',
           end: _buildCopyButton(fileState.md5Hash, fileState.md5Hash != null)));
       cards.add(card(t.file_info.sha1, fileState.sha1Hash ?? '',
@@ -605,50 +673,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ));
     }
 
+    // ===== 解析诊断 =====
     final diagnostics = DetailRenderer.diagnostics(result.diagnostics, t);
     if (diagnostics.isNotEmpty) {
-      cards.add(card(t.apk_info.diagnostics, diagnostics,
-          maxLines: textMaxLines, selectable: true));
+      cards.add(_SectionHeader(
+          title: t.apk_info.diagnostics, tab: DetailTab.security));
+      cards.add(card(t.apk_info.diagnostics, diagnostics, selectable: true));
     }
 
-    // 结构：Android 是「文件结构」（DEX / 原生库 / 顶层目录），iOS 对位的是
-    // 容器 + 可执行文件（Mach-O）+ 嵌套二进制。
-    final container = DetailRenderer.iosContainer(ios.container, t);
-    if (container.isNotEmpty) {
-      cards.add(card(t.ios_info.container_section, container,
-          maxLines: textMaxLines, selectable: true));
-    }
-    final executable = DetailRenderer.iosExecutable(ios.executable, t);
-    if (executable.isNotEmpty) {
-      cards.add(card(t.ios_info.binary_section, executable,
-          maxLines: textMaxLines, selectable: true));
-    }
-    final nested = DetailRenderer.iosNestedBinaries(ios.nestedBinaries, t);
-    if (nested.isNotEmpty) {
-      cards.add(card(t.ios_info.nested_binaries, nested,
-          maxLines: textMaxLines, selectable: true));
-    }
-
-    // 签名与授权。
-    //
-    // 与 Android 的差别是**平台本身带来的**，不是版式差别：Android 的签名
-    // 信息全部来自 `apksigner`，工具不跑就什么都没有，所以那张卡片整张隐藏；
-    // iOS 的签名材料与授权比对来自静态解析，一直都有。因此这里始终显示
-    // 「有什么」，`codesign` 那一段由「验证签名」开关决定**跑不跑**，
-    // 没跑就如实说「未执行」—— 而不是把整张卡片藏起来，让用户以为这个包
-    // 没有签名信息。
-    final signatureParts = <String>[
-      DetailRenderer.signatureVerdictLabel(result.signatureVerdict, t),
-      DetailRenderer.iosSignature(ios, t),
-      DetailRenderer.iosCodeSign(ios.codeSign, t),
-    ].where((part) => part.isNotEmpty);
-    cards.add(card(
-      t.apk_info.signature_info,
-      signatureParts.join('\n\n'),
-      maxLines: textMaxLines,
-      selectable: true,
-    ));
-
+    // ===== 安全检测 =====
     cards.addAll(_buildSecurityCards(result.security));
 
     return cards;
@@ -658,46 +691,180 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   ///
   /// 与平台无关：Android 与 iOS 共用同一套呈现逻辑，差异只来自
   /// [SecurityAnalysisResult] 本身的数据。
+  ///
+  /// 呈现分三层：
+  /// 1. 总览卡片：发现数量与覆盖状态摘要
+  /// 2. 发现卡片列表：每条发现独立成卡，含风险徽章、可展开证据
+  /// 3. 局限卡片：引擎覆盖不足的说明
   List<Widget> _buildSecurityCards(SecurityAnalysisResult? security) {
     if (security == null) return const [];
 
-    final textMaxLines =
-        ref.watch(uiConfigStateProvider.select((value) => value.textMaxLines));
     final findings = security.findings;
     final hasCoverageGaps = security.hasCoverageGaps;
 
-    // 风险总览文本。
-    final overviewLines = <String>[
-      if (findings.isEmpty) t.security.no_findings,
-      for (final finding in findings)
-        '[${finding.severity.name}] ${finding.finding}',
-    ];
-
     final cards = <Widget>[
-      Card(
-        child: TitleValueLayout(
-          title: t.security.title,
-          value: overviewLines.join('\n'),
-          minLines: 1,
-          maxLines: textMaxLines,
-          selectable: true,
-        ),
-      ),
+      _SectionHeader(title: t.security.title, tab: DetailTab.security),
+      // 总览摘要卡片
+      _buildSecurityOverviewCard(findings, hasCoverageGaps),
     ];
 
+    // 按严重程度排序的发现卡片（P0 在前，INFO 在后）
+    final sortedFindings = List<SecurityFinding>.from(findings)
+      ..sort((a, b) => a.severity.index.compareTo(b.severity.index));
+
+    for (final finding in sortedFindings) {
+      cards.add(SecurityFindingCard(finding: finding));
+    }
+
+    // 覆盖局限卡片
     if (hasCoverageGaps) {
       cards.add(Card(
-        child: TitleValueLayout(
-          title: t.security.limitations,
-          value: security.limitations.join('\n'),
-          minLines: 1,
-          maxLines: textMaxLines,
-          selectable: true,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_outlined,
+                    size: 16,
+                    color: Theme.of(context).hintColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    t.security.limitations,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...security.limitations.map(
+                (l) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('·  ', style: Theme.of(context).textTheme.bodySmall),
+                      Expanded(
+                        child: Text(
+                          l,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ));
     }
 
     return cards;
+  }
+
+  /// 安全检测总览摘要卡片。
+  Widget _buildSecurityOverviewCard(
+    List<SecurityFinding> findings,
+    bool hasCoverageGaps,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final severityCounts = <SecuritySeverity, int>{};
+    for (final f in findings) {
+      severityCounts[f.severity] = (severityCounts[f.severity] ?? 0) + 1;
+    }
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.primary.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.security,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  t.security.title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                if (findings.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          colorScheme.primaryContainer.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${findings.length} ${findings.length == 1 ? 'finding' : 'findings'}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            if (findings.isEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                t.security.no_findings,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.hintColor,
+                ),
+              ),
+            ],
+            if (severityCounts.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final entry in severityCounts.entries)
+                    _SeverityCountChip(
+                      severity: entry.key,
+                      count: entry.value,
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   /// 平台标识行。
@@ -1022,6 +1189,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
+  /// 把卡片列表按 [_SectionHeader.tab] 切分为 Tab 内容。
+  Map<DetailTab, List<Widget>> _groupCardsByTab(List<Widget> cards) {
+    final tabs = <DetailTab, List<Widget>>{};
+    var currentTab = DetailTab.overview;
+
+    for (final widget in cards) {
+      if (widget is _SectionHeader) {
+        final tab = widget.tab;
+        if (tab != null) {
+          currentTab = tab;
+        }
+      }
+      tabs.putIfAbsent(currentTab, () => []).add(widget);
+    }
+
+    return tabs;
+  }
+
   @override
   Widget build(BuildContext context) {
     // 在当前页/文件/APK信息变化时需要更新Actions, 因为Actions的变化会修改按钮的使能状态
@@ -1052,311 +1237,273 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final iconRowSpan =
         ref.watch(uiConfigStateProvider.select((value) => value.iconRowSpan));
 
-    return Stack(
-      children: [
-        DropTarget(
-          onDragDone: (details) {
-            // 只处理第一个文件
-            if (details.files.isNotEmpty) {
-              final file = details.files.first;
-              // 判定抽到 `isSupportedPackagePath` —— 原先这串 `endsWith` 埋在
-              // 这个闭包里，只能靠真的拖一个文件进去才碰得到。
-              if (isSupportedPackagePath(file.path)) {
-                openApk(file.path);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(t.open.invalid_file_type),
-                  ),
-                );
-              }
-            }
-          },
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    children: [
-                      // 平台分支：IPA 走自己的一组卡片。
-                      //
-                      // 不复用 Android 那组再逐张判空 —— 那些卡片读的是
-                      // `apkInfo?.x`，在 iOS 上会渲染成一排空值卡片，
-                      // 看起来像「这个包什么都没有」，而不是「这里不适用」。
-                      if (fileState.platform == PackagePlatform.ios) ...[
-                        ..._buildIosCards(fileState),
-                      ] else ...[
-                        // 平台标识同样放在最前：两页版式一致，这一行是用户
-                        // 分辨自己在看哪个平台的第一眼依据。
-                        _buildPlatformRow(fileState),
-                        Card(
-                            child: TitleValueLayout(
-                                title: t.file_info.file,
-                                value: fileState.filePath ?? "",
-                                end: _buildFileActionMenu())),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.file_info.size,
-                          value: fileState.fileSize != null
-                              ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
-                              : "",
-                        )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.app_name,
-                          value: _getDisplayLabel(apkInfo),
-                          end: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildLabelLocaleMenu(apkInfo),
-                              _buildCopyButton(_getDisplayLabel(apkInfo),
-                                  apkInfo?.label != null),
-                            ],
-                          ),
-                        )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.package_name,
-                          value: apkInfo?.packageName ?? "",
-                          end: _buildCopyButton(apkInfo?.packageName,
-                              apkInfo?.packageName != null),
-                        )),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                                child: Column(
-                              children: [
-                                Card(
-                                    child: TitleValueLayout(
-                                  title: t.apk_info.version_code,
-                                  value: "${apkInfo?.versionCode ?? ""}",
-                                )),
-                                Card(
-                                    child: TitleValueLayout(
-                                  title: t.apk_info.version_name,
-                                  value: apkInfo?.versionName ?? "",
-                                )),
-                                if (iconRowSpan >= 3)
-                                  Card(
-                                    child: TitleValueLayout(
-                                      title: t.apk_info.min_sdk,
-                                      value: getSdkVersionText(
-                                          apkInfo?.sdkVersion),
-                                    ),
-                                  ),
-                                if (apkInfo?.isXapk ?? false)
-                                  Card(
-                                      child: TitleValueLayout(
-                                    title: t.apk_info.archive_type,
-                                    value: apkInfo?.archiveType ?? "",
-                                  )),
-                              ],
-                            )),
-                            _buildIconWidget(apkInfo, iconRowSpan),
-                          ],
-                        ),
-                        if (iconRowSpan < 3)
-                          Card(
-                            child: TitleValueLayout(
-                              title: t.apk_info.min_sdk,
-                              value: getSdkVersionText(apkInfo?.sdkVersion),
-                            ),
-                          ),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.target_sdk,
-                          value: getSdkVersionText(apkInfo?.targetSdkVersion),
-                        )),
-                        if (apkInfo?.isXapk ?? false)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.split_apks,
-                            value: apkInfo?.splitApks.join("\n") ?? "",
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: true,
-                          )),
-                        if ((apkInfo?.obbFiles.isNotEmpty ?? false))
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.obb_files,
-                            value: apkInfo?.obbFiles.join("\n") ?? "",
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: true,
-                          )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.screen_size,
-                          value: apkInfo?.supportsScreens.join(" ") ?? "",
-                        )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.screen_density,
-                          value: apkInfo?.densities.join(" ") ?? "",
-                        )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.abi,
-                          value: apkInfo?.nativeCodes.join(" ") ?? "",
-                        )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.languages,
-                          value: apkInfo?.locales.join(" ") ?? "",
-                        )),
-                        Card(
-                            child: TitleValueLayout(
-                          title: t.apk_info.permissions,
-                          value: apkInfo?.usesPermissions.join("\n") ?? "",
-                          minLines: 1,
-                          maxLines: textMaxLines,
-                          selectable: true,
-                        )),
-                        if (apkInfo?.maxSdkVersion != null)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.max_sdk,
-                            value: getSdkVersionText(apkInfo?.maxSdkVersion),
-                          )),
-                        if (apkInfo?.components.isNotEmpty ?? false)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.components,
-                            value: DetailRenderer.components(apkInfo, t),
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: true,
-                          )),
-                        // MD5 哈希值
-                        if (enableHash)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.file_info.md5,
-                            value: fileState.isComputingHash
-                                ? t.file_info.computing_hash
-                                : (fileState.md5Hash ?? ""),
-                            end: _buildCopyButton(
-                                fileState.md5Hash,
-                                fileState.md5Hash != null &&
-                                    !fileState.isComputingHash),
-                          )),
-                        // SHA1 哈希值
-                        if (enableHash)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.file_info.sha1,
-                            value: fileState.isComputingHash
-                                ? t.file_info.computing_hash
-                                : (fileState.sha1Hash ?? ""),
-                            end: _buildCopyButton(
-                                fileState.sha1Hash,
-                                fileState.sha1Hash != null &&
-                                    !fileState.isComputingHash),
-                          )),
-                        // SHA-256 哈希值（规范 4.1 要求）
-                        if (enableHash)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.file_info.sha256,
-                            value: fileState.isComputingHash
-                                ? t.file_info.computing_hash
-                                : (fileState.sha256Hash ?? ""),
-                            end: _buildCopyButton(
-                                fileState.sha256Hash,
-                                fileState.sha256Hash != null &&
-                                    !fileState.isComputingHash),
-                          )),
-                        // 解析诊断：加固线索 + 诊断记录
-                        if (analysisNotes.isNotEmpty)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.diagnostics,
-                            value: analysisNotes,
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: true,
-                          )),
-                        // 文件结构：DEX / 原生库 / ABI / 顶层目录
-                        if (structureText.isNotEmpty)
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.structure,
-                            value: structureText,
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: true,
-                          )),
-                        if (enableSignature && !(apkInfo?.isXapk ?? false))
-                          Card(
-                              child: TitleValueLayout(
-                            title: t.apk_info.signature_info,
-                            value: fileState.isComputingSignature
-                                ? t.file_info.computing_hash
-                                : DetailRenderer.signature(
-                                    fileState.signature, t),
-                            minLines: 1,
-                            maxLines: textMaxLines,
-                            selectable: !fileState.isComputingSignature,
-                          )),
-                        ..._buildSecurityCards(fileState.analysis?.security),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    final cards = fileState.platform == PackagePlatform.ios
+        ? _buildIosCards(fileState)
+        : _buildAndroidCards(fileState, apkInfo, analysisNotes, structureText,
+            enableSignature, enableHash, textMaxLines, iconRowSpan);
+    final tabContent = _groupCardsByTab(cards);
+
+    return DropTarget(
+      onDragDone: (details) {
+        // 只处理第一个文件
+        if (details.files.isNotEmpty) {
+          final file = details.files.first;
+          // 判定抽到 `isSupportedPackagePath` —— 原先这串 `endsWith` 埋在
+          // 这个闭包里，只能靠真的拖一个文件进去才碰得到。
+          if (isSupportedPackagePath(file.path)) {
+            openApk(file.path);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(t.open.invalid_file_type),
+              ),
+            );
+          }
+        }
+      },
+      child: DetailTabView(
+        tabs: tabContent,
+        isParsing: isParsing,
+        parseStageLabel: parseStageLabel,
+        onCancelParse: _currentTask != null && !_currentTask!.isFinished
+            ? _cancelParse
+            : null,
+      ),
+    );
+  }
+
+  /// Android 详情卡片。
+  List<Widget> _buildAndroidCards(
+    FileState fileState,
+    ApkInfo? apkInfo,
+    String analysisNotes,
+    String structureText,
+    bool enableSignature,
+    bool enableHash,
+    int textMaxLines,
+    int iconRowSpan,
+  ) {
+    return [
+      // 平台标识同样放在最前：两页版式一致，这一行是用户
+      // 分辨自己在看哪个平台的第一眼依据。
+      _buildPlatformRow(fileState),
+      Card(
+          child: TitleValueLayout(
+              title: t.file_info.file,
+              value: fileState.filePath ?? "",
+              end: _buildFileActionMenu())),
+      Card(
+          child: TitleValueLayout(
+        title: t.file_info.size,
+        value: fileState.fileSize != null
+            ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
+            : "",
+      )),
+      // ===== 应用信息 =====
+      _SectionHeader(title: t.apk_info.group_app, tab: DetailTab.overview),
+      AndroidHeroCard(
+        appName: _getDisplayLabel(apkInfo),
+        packageName: apkInfo?.packageName ?? '',
+        versionName: apkInfo?.versionName ?? '',
+        versionCode: '${apkInfo?.versionCode ?? ''}',
+        icon: apkInfo?.mainIconImage,
+      ),
+      // 复制按钮单独放在包名下方
+      if (apkInfo?.packageName != null)
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 4, bottom: 4),
+            child: _buildCopyButton(apkInfo?.packageName, true),
           ),
         ),
-        // 解析状态指示器
-        if (isParsing)
-          Positioned(
-            top: 10,
-            right: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(parseStageLabel),
-                  // 只有真的拿到可取消的任务时才显示取消按钮：
-                  // XAPK/APKM/APKS 路径仍走 aapt2 子进程，暂不可取消，
-                  // 在那里显示一个按不动的按钮属于伪可用。
-                  if (_currentTask != null && !_currentTask!.isFinished) ...[
-                    const SizedBox(width: 4),
-                    Tooltip(
-                      message: t.parse.cancel_parse,
-                      child: InkWell(
-                        onTap: _cancelParse,
-                        borderRadius: BorderRadius.circular(12),
-                        child: const Padding(
-                          padding: EdgeInsets.all(2),
-                          child: Icon(Icons.close, size: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+      // 语言切换菜单
+      if (apkInfo != null && apkInfo.labels.isNotEmpty)
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 4, bottom: 4),
+            child: _buildLabelLocaleMenu(apkInfo),
           ),
-      ],
-    );
+        ),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+              child: Column(
+            children: [
+              Card(
+                  child: TitleValueLayout(
+                title: t.apk_info.version_code,
+                value: "${apkInfo?.versionCode ?? ""}",
+              )),
+              Card(
+                  child: TitleValueLayout(
+                title: t.apk_info.version_name,
+                value: apkInfo?.versionName ?? "",
+              )),
+              if (iconRowSpan >= 3)
+                Card(
+                  child: TitleValueLayout(
+                    title: t.apk_info.min_sdk,
+                    value: getSdkVersionText(apkInfo?.sdkVersion),
+                  ),
+                ),
+              if (apkInfo?.isXapk ?? false)
+                Card(
+                    child: TitleValueLayout(
+                  title: t.apk_info.archive_type,
+                  value: apkInfo?.archiveType ?? "",
+                )),
+            ],
+          )),
+          _buildIconWidget(apkInfo, iconRowSpan),
+        ],
+      ),
+      if (iconRowSpan < 3)
+        Card(
+          child: TitleValueLayout(
+            title: t.apk_info.min_sdk,
+            value: getSdkVersionText(apkInfo?.sdkVersion),
+          ),
+        ),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.target_sdk,
+        value: getSdkVersionText(apkInfo?.targetSdkVersion),
+      )),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.screen_size,
+        value: apkInfo?.supportsScreens.join(" ") ?? "",
+      )),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.screen_density,
+        value: apkInfo?.densities.join(" ") ?? "",
+      )),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.abi,
+        value: apkInfo?.nativeCodes.join(" ") ?? "",
+      )),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.languages,
+        value: apkInfo?.locales.join(" ") ?? "",
+      )),
+      _SectionHeader(title: t.apk_info.permissions, tab: DetailTab.permissions),
+      Card(
+          child: TitleValueLayout(
+        title: t.apk_info.permissions,
+        value: apkInfo?.usesPermissions.join("\n") ?? "",
+        minLines: 1,
+        maxLines: textMaxLines,
+        selectable: true,
+      )),
+      if (apkInfo?.maxSdkVersion != null)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.max_sdk,
+          value: getSdkVersionText(apkInfo?.maxSdkVersion),
+        )),
+      if (apkInfo?.components.isNotEmpty ?? false)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.components,
+          value: DetailRenderer.components(apkInfo, t),
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        )),
+      _SectionHeader(title: t.apk_info.structure, tab: DetailTab.structure),
+      // XAPK / OBB / 结构
+      if (apkInfo?.isXapk ?? false)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.split_apks,
+          value: apkInfo?.splitApks.join("\n") ?? "",
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        )),
+      if ((apkInfo?.obbFiles.isNotEmpty ?? false))
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.obb_files,
+          value: apkInfo?.obbFiles.join("\n") ?? "",
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        )),
+      if (structureText.isNotEmpty)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.structure,
+          value: structureText,
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        )),
+      _SectionHeader(
+          title: t.apk_info.signature_info, tab: DetailTab.signature),
+      // MD5 哈希值
+      if (enableHash)
+        Card(
+            child: TitleValueLayout(
+          title: t.file_info.md5,
+          value: fileState.isComputingHash
+              ? t.file_info.computing_hash
+              : (fileState.md5Hash ?? ""),
+          end: _buildCopyButton(fileState.md5Hash,
+              fileState.md5Hash != null && !fileState.isComputingHash),
+        )),
+      // SHA1 哈希值
+      if (enableHash)
+        Card(
+            child: TitleValueLayout(
+          title: t.file_info.sha1,
+          value: fileState.isComputingHash
+              ? t.file_info.computing_hash
+              : (fileState.sha1Hash ?? ""),
+          end: _buildCopyButton(fileState.sha1Hash,
+              fileState.sha1Hash != null && !fileState.isComputingHash),
+        )),
+      // SHA-256 哈希值（规范 4.1 要求）
+      if (enableHash)
+        Card(
+            child: TitleValueLayout(
+          title: t.file_info.sha256,
+          value: fileState.isComputingHash
+              ? t.file_info.computing_hash
+              : (fileState.sha256Hash ?? ""),
+          end: _buildCopyButton(fileState.sha256Hash,
+              fileState.sha256Hash != null && !fileState.isComputingHash),
+        )),
+      if (enableSignature && !(apkInfo?.isXapk ?? false))
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.signature_info,
+          value: fileState.isComputingSignature
+              ? t.file_info.computing_hash
+              : DetailRenderer.signature(fileState.signature, t),
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: !fileState.isComputingSignature,
+        )),
+      _SectionHeader(title: t.apk_info.diagnostics, tab: DetailTab.security),
+      // 解析诊断：加固线索 + 诊断记录
+      if (analysisNotes.isNotEmpty)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.diagnostics,
+          value: analysisNotes,
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        )),
+      ..._buildSecurityCards(fileState.analysis?.security),
+    ];
   }
 
   PopupMenuButton<String> _buildMoreMenuButton(BuildContext context) {
@@ -1375,97 +1522,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             enabled: state.filePath != null),
         _buildMenuItem('text_info', Icons.text_snippet, t.apk_info.text_info,
             enabled: state.filePath != null && apkInfo != null),
-        // 只有真的拿到了分析结果才让点 —— 未实现/无数据的功能不得出现
-        // 伪可用按钮。
+        // 只有真的拿到了分析结果才让点。
         _buildMenuItem(
             'export_report', Icons.description_outlined, t.report.export_action,
             enabled: state.analysis != null),
-        _buildMenuItem(
-            'export_json_report', Icons.code, t.report.export_json_action,
-            enabled:
-                state.analysis != null && state.analysis!.security != null),
         _buildMenuItem('close_file', Icons.close, t.open.close_file,
             enabled: state.filePath != null),
       ],
       onSelected: onMenuActionSelected,
     );
-  }
-
-  /// 导出解析报告。
-  ///
-  /// 报告里带**字段状态与来源**，以及「哪些检查没做」—— 那是它与界面截图的
-  /// 区别所在：截图看不出某个空白是「文件里没有」还是「我们没读出来」。
-  Future<void> _exportAnalysisReport() async {
-    final state = ref.read(currentFileStateProvider);
-    final analysis = state.analysis;
-    if (analysis == null) return;
-
-    try {
-      final now = DateTime.now();
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: t.report.export_action,
-        fileName: AnalysisReport.suggestedFileName(analysis, now),
-        type: FileType.custom,
-        allowedExtensions: ['md'],
-        lockParentWindow: true,
-      );
-      // 用户取消保存 —— 不是错误，不提示。
-      if (savePath == null) return;
-
-      await File(savePath).writeAsString(
-        AnalysisReport.render(analysis, t, generatedAt: now),
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t.report.export_success)),
-        );
-      }
-    } catch (e) {
-      log.warning('_exportAnalysisReport: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t.report.export_failed(error: '$e'))),
-        );
-      }
-    }
-  }
-
-  /// 导出 JSON 安全报告。
-  Future<void> _exportJsonReport() async {
-    final state = ref.read(currentFileStateProvider);
-    final analysis = state.analysis;
-    if (analysis == null || analysis.security == null) return;
-
-    try {
-      final now = DateTime.now();
-      final base = analysis.fileName.value ?? 'package';
-      final stem = path.basenameWithoutExtension(base);
-      final fileName = '${stem}_${analysis.platform.name}_security.json';
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: t.report.export_json_action,
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        lockParentWindow: true,
-      );
-      if (savePath == null) return;
-
-      await File(savePath).writeAsString(
-        AnalysisReport.renderJson(analysis, generatedAt: now),
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t.report.export_success)),
-        );
-      }
-    } catch (e) {
-      log.warning('_exportJsonReport: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t.report.export_failed(error: '$e'))),
-        );
-      }
-    }
   }
 
   // 显示重命名对话框。
@@ -1932,10 +1997,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         }
         break;
       case 'export_report':
-        await _exportAnalysisReport();
-        break;
-      case 'export_json_report':
-        await _exportJsonReport();
+        final analysis = ref.read(currentFileStateProvider).analysis;
+        if (analysis != null && mounted) {
+          final result = await showDialog(
+            context: context,
+            builder: (_) => ExportReportDialog(analysis: analysis),
+          );
+          if (result == true && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(t.report.export_success)),
+            );
+          } else if (result != null && result != true && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(t.report.export_failed(error: '$result')),
+              ),
+            );
+          }
+        }
         break;
       case 'open_directory':
         final fileState = ref.read(currentFileStateProvider);
@@ -1955,5 +2034,135 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         }
         break;
     }
+  }
+}
+
+/// 风险等级计数徽章。
+///
+/// 用于安全总览卡片，展示各等级的发现数量。
+class _SeverityCountChip extends StatelessWidget {
+  final SecuritySeverity severity;
+  final int count;
+
+  const _SeverityCountChip({required this.severity, required this.count});
+
+  Color _color(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    return switch (severity) {
+      SecuritySeverity.p0 =>
+        isDark ? const Color(0xFFEF5350) : const Color(0xFFD32F2F),
+      SecuritySeverity.p1 =>
+        isDark ? const Color(0xFFFF7043) : const Color(0xFFE64A19),
+      SecuritySeverity.p2 =>
+        isDark ? const Color(0xFFFFCA28) : const Color(0xFFFBC02D),
+      SecuritySeverity.p3 =>
+        isDark ? const Color(0xFF90A4AE) : const Color(0xFF607D8B),
+      SecuritySeverity.info =>
+        isDark ? const Color(0xFF4DB6AC) : const Color(0xFF00897B),
+      SecuritySeverity.unknown =>
+        isDark ? const Color(0xFFB0BEC5) : const Color(0xFF78909C),
+    };
+  }
+
+  String get _label => switch (severity) {
+        SecuritySeverity.p0 => 'P0',
+        SecuritySeverity.p1 => 'P1',
+        SecuritySeverity.p2 => 'P2',
+        SecuritySeverity.p3 => 'P3',
+        SecuritySeverity.info => 'INFO',
+        SecuritySeverity.unknown => '?',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _color(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$count',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color.withValues(alpha: 0.9),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 分组标题分隔组件。
+///
+/// 用于 iOS 详情页将卡片组织成逻辑组：文件信息、应用信息、容器与二进制、
+/// 签名与授权、文件校验、解析诊断。
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final DetailTab? tab;
+
+  const _SectionHeader({required this.title, this.tab});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(
+              color: colorScheme.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.primary,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    colorScheme.primary.withValues(alpha: 0.2),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

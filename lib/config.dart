@@ -109,6 +109,15 @@ class Config {
   static final language = ConfigItem("language", kLanguageAuto);
   static final iconRowSpan = ConfigItem("icon_row_span", 2);
 
+  // 主题模式：light / dark / system（默认跟随系统）
+  static const kThemeModeLight = "light";
+  static const kThemeModeDark = "dark";
+  static const kThemeModeSystem = "system";
+  static final themeMode = ConfigItem("theme_mode", kThemeModeSystem);
+
+  /// 最近分析过的文件列表，JSON 数组字符串。
+  static final recentFiles = ConfigItem("recent_files", "[]");
+
   static final List<ConfigItem> _globalItems = [
     aapt2Path,
     apksignerPath,
@@ -127,6 +136,8 @@ class Config {
     language,
     iconRowSpan,
     parserEngine,
+    themeMode,
+    recentFiles,
   ];
 
   static Future<void> init() async {
