@@ -258,6 +258,37 @@ class SecurityFinding {
     required this.recommendation,
   });
 
+  /// 去掉**本 finding 内**完全相同的证据条目，返回新的 finding。
+  ///
+  /// 判重键是「来源 + 位置 + 摘要」三元组 —— 三者相同才算重复。
+  ///
+  /// **跨 finding 的重复刻意保留**：规则 A 与规则 B 都引用「相册权限」是
+  /// 合理的，它们本就都基于这条证据。强行跨 finding 去重会让读者无法从
+  /// 单条发现看出完整依据，反而更难复核。
+  SecurityFinding withDedupedEvidence() {
+    final seen = <String>{};
+    final unique = <SecurityEvidence>[];
+    for (final e in evidence) {
+      final key = '${e.source.name}\u0000${e.location}\u0000${e.detail}';
+      if (seen.add(key)) unique.add(e);
+    }
+    if (unique.length == evidence.length) return this;
+    return SecurityFinding(
+      ruleId: ruleId,
+      platform: platform,
+      category: category,
+      severity: severity,
+      confidence: confidence,
+      finding: finding,
+      evidence: unique,
+      dataSource: dataSource,
+      dataSink: dataSink,
+      relationship: relationship,
+      limitation: limitation,
+      recommendation: recommendation,
+    );
+  }
+
   @override
   String toString() => 'SecurityFinding($ruleId, ${severity.name}/'
       '${confidence.name}${category.name}: $finding)';
@@ -300,6 +331,21 @@ class SecurityAnalysisResult {
       counts[finding.severity] = (counts[finding.severity] ?? 0) + 1;
     }
     return counts;
+  }
+
+  /// 追加一条覆盖不足说明，返回新的结果。
+  ///
+  /// 用于「审计本身跑完了，但调用方知道还有没覆盖到的范围」—— 例如分包
+  /// 安装包只审计了 base APK。**不能直接改 `limitations` 列表**：它是
+  /// `const` 默认值，共享实例被就地修改会污染其他结果。
+  SecurityAnalysisResult withLimitation(String limitation) {
+    return SecurityAnalysisResult(
+      engineVersion: engineVersion,
+      rulesVersion: rulesVersion,
+      findings: findings,
+      limitations: [...limitations, limitation],
+      includesRuntimeEvidence: includesRuntimeEvidence,
+    );
   }
 
   /// 最严重的**风险档**发现；没有 P0–P3 发现时返回 `null`。

@@ -135,4 +135,73 @@ void main() {
       expect(result.includesRuntimeEvidence, isFalse);
     });
   });
+
+  group('SecurityFinding.withDedupedEvidence（缺陷 D9）', () {
+    SecurityFinding findingWith(List<SecurityEvidence> evidence) =>
+        SecurityFinding(
+          ruleId: 'TEST-RULE',
+          platform: SecurityPlatform.android,
+          category: SecurityCategory.photoAccess,
+          severity: SecuritySeverity.p2,
+          confidence: SecurityConfidence.suspected,
+          finding: '测试',
+          evidence: evidence,
+          recommendation: '复核',
+        );
+
+    test('去掉完全相同的证据条目', () {
+      const dup = SecurityEvidence(
+        source: SecurityEvidenceSource.manifest,
+        location: 'AndroidManifest.xml:12',
+        detail: 'READ_MEDIA_IMAGES',
+      );
+      final f = findingWith(const [dup, dup]);
+
+      final deduped = f.withDedupedEvidence();
+      expect(deduped.evidence, hasLength(1));
+      // 原对象不受影响。
+      expect(f.evidence, hasLength(2));
+    });
+
+    test('三元组任一项不同就不算重复', () {
+      final f = findingWith(const [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'A:1',
+          detail: 'X',
+        ),
+        // 位置不同
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'A:2',
+          detail: 'X',
+        ),
+        // 来源不同
+        SecurityEvidence(
+          source: SecurityEvidenceSource.dexString,
+          location: 'A:1',
+          detail: 'X',
+        ),
+        // 摘要不同
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'A:1',
+          detail: 'Y',
+        ),
+      ]);
+
+      expect(f.withDedupedEvidence().evidence, hasLength(4));
+    });
+
+    test('没有重复时返回同一个对象（避免无谓重建）', () {
+      final f = findingWith(const [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'A:1',
+          detail: 'X',
+        ),
+      ]);
+      expect(identical(f.withDedupedEvidence(), f), isTrue);
+    });
+  });
 }

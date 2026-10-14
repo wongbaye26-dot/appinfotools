@@ -371,6 +371,15 @@ Future<ApkInfo?> getApkInfo(
         final extracted = await zip.extractFile(baseEntry, baseApkPath);
         extractMs = extractSw.elapsedMilliseconds;
         if (extracted) {
+          // 安全审计：分包安装包此前**完全没有审计** ——
+          // `AndroidSecurityAudit` 的唯一生产调用点在只被内置引擎使用的
+          // worker 里，而这条路径走 aapt2，其输出喂不了审计（审计要的是
+          // `ApkMeta` + DEX 字节）。这里对刚提取出的 base APK 单独跑一次
+          // 内置解析器把审计补上。
+          //
+          // **放在 aapt2 之前**：审计用内置解析器，不依赖 aapt2；放在后面
+          // 会让「没装 aapt2」连带把审计也吞掉 —— 那正是本次要修的缺口。
+          apkInfo.securityResult = await _auditExtractedBaseApk(baseApkPath);
           try {
             final aaptPath = CommandTools.findAapt2Path();
             if (aaptPath == null || aaptPath.isEmpty) {
@@ -559,6 +568,58 @@ Future<ApkInfo?> getApkInfo(
 /// 这些是同步 CPU 密集计算，跑在主 isolate 上会让大 APK 冻住界面，而且
 /// 无法取消。图标渲染必须留在主 isolate —— `ApkInfo` 持有 `dart:ui` 的
 /// `Image`，不能跨 isolate 传递。
+/// 对已提取到磁盘的 base APK 单独跑一次安全审计。
+///
+/// 分包安装包（XAPK / APKM / APKS）此前**完全不跑安全审计**：审计的唯一
+/// 生产调用点在只被内置引擎使用的 worker 里，而这条路径走 aapt2，其输出
+/// 喂不了审计（审计要 `ApkMeta` + DEX 字节）。
+///
+/// 覆盖范围**仅限 base APK** —— 各分包自己的 DEX 与资源不参与分析。
+/// 这一点会作为 limitation 写进结果，避免把部分覆盖说成完整结论。
+///
+/// 失败时返回 `null` 而非抛异常：审计拿不到结果不该让整个解析失败，
+/// 上层会把 `null` 呈现为「未执行」。
+Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
+  String baseApkPath,
+) async {
+  final reader = apk_parser.ApkReader();
+  try {
+    final openResult = await reader.open(baseApkPath);
+    if (!openResult.isOk) {
+      log.warning(
+          '_auditExtractedBaseApk: 打不开 base APK：${openResult.description}');
+      return null;
+    }
+    final meta = await reader.parse();
+    if (meta == null) {
+      log.warning('_auditExtractedBaseApk: base APK 的 Manifest 未能解析');
+      return null;
+    }
+    final dexEntries = <apk_parser.DexBytes>[
+      for (final name in reader.listFiles(extension: '.dex'))
+        if (reader.readFile(name) case final bytes?)
+          apk_parser.DexBytes(name, bytes),
+    ];
+    final result = apk_parser.AndroidSecurityAudit.audit(
+      meta: meta,
+      dexEntries: dexEntries,
+      containerAnomalies: [
+        for (final obs in reader.scanHardeningSignals()) obs.evidence,
+      ],
+    );
+    return result.withLimitation(
+      '这是分包安装包，安全审计**仅覆盖 base APK**；'
+      '各分包（语言 / 密度 / ABI）携带的 DEX 与资源未参与分析，'
+      '因此本结果不代表整个安装集合。',
+    );
+  } catch (e) {
+    log.warning('_auditExtractedBaseApk failed: $e');
+    return null;
+  } finally {
+    reader.close();
+  }
+}
+
 Future<ApkInfo?> _getApkInfoBuiltin(
   String apk,
   ApkInfo apkInfo, {
@@ -572,6 +633,11 @@ Future<ApkInfo?> _getApkInfoBuiltin(
 
   ParsedApkData? parsed;
   var cancelled = false;
+  // Manifest 读不出来时，worker 仍会回传一个只含局限说明的审计结果。
+  // 这两个变量负责把它接住 —— 早先这里直接 `return null`，于是「审计跑了
+  // 但什么都查不到」这件事在界面上完全不可见。
+  String? parseFailureReason;
+  SecurityAnalysisResult? failedSecurity;
 
   await for (final event in task.events) {
     switch (event) {
@@ -581,9 +647,10 @@ Future<ApkInfo?> _getApkInfoBuiltin(
         log.warning(
             "_getApkInfoBuiltin: failed to open APK: ${result.description}");
         throw ApkOpenException(result, apk);
-      case ParseFailed(:final reason):
+      case ParseFailed(:final reason, :final security):
         log.warning("_getApkInfoBuiltin: parse failed: $reason");
-        return null;
+        parseFailureReason = reason;
+        failedSecurity = security;
       case ParseSucceeded(:final data):
         parsed = data;
       case ParseCancelled():
@@ -598,6 +665,14 @@ Future<ApkInfo?> _getApkInfoBuiltin(
 
   final data = parsed;
   if (data == null) {
+    if (parseFailureReason != null) {
+      // Manifest 没读出来。**不返回 null** —— 那样调用方连「审计没跑成」
+      // 都看不到，界面上安全 Tab 会是空白。改为把局限说明挂上后返回，
+      // 由上层检查 `parseFailureReason` 决定呈现方式（仍显示解析失败）。
+      apkInfo.parseFailureReason = parseFailureReason;
+      apkInfo.securityResult = failedSecurity;
+      return apkInfo;
+    }
     log.warning("_getApkInfoBuiltin: worker produced no result");
     return null;
   }
@@ -867,6 +942,15 @@ class ApkInfo {
   /// `null` 表示未启用，或当前解析路径未产出安全分析
   ///（例如 aapt2 路径信息不完整）。
   SecurityAnalysisResult? securityResult;
+
+  /// Manifest 解析失败的原因；成功时为 `null`。
+  ///
+  /// 与 `securityResult == null` 是**两件事**：
+  /// - 本字段非 `null` → Manifest 没读出来，安全审计跑了但只能给局限说明；
+  /// - `securityResult == null` → 审计压根没跑（未启用 / 该路径不产出）。
+  ///
+  /// 分开是因为界面上必须能区分「没查到」与「没查」。
+  String? parseFailureReason;
 
   (String, String) parseToKeyValue(String line, String separator) {
     final pos = line.indexOf(separator);

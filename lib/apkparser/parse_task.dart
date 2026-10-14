@@ -29,10 +29,18 @@ class ParseOpenFailed extends ParseEvent {
 }
 
 /// 解析失败，[reason] 面向诊断（英文，直接进日志）。
+/// 解析失败。
+///
+/// [security] 是 **Manifest 读不出来时仍然产出的审计结果** —— 里面只有
+/// 局限说明（「Manifest 未解析，权限与组件审计无法进行」），没有发现项。
+///
+/// 带上它是为了让界面能区分「没查到」与「没查」：不带的话安全 Tab 一片
+/// 空白，用户会以为这个包没有问题 —— 而实际情况是根本没审。
 class ParseFailed extends ParseEvent {
   final String reason;
+  final SecurityAnalysisResult? security;
 
-  const ParseFailed(this.reason);
+  const ParseFailed(this.reason, {this.security});
 }
 
 /// 解析成功。
@@ -188,8 +196,22 @@ void _parseEntryPoint(_ParseRequest request) async {
       onStage: (stage) => request.reply.send(ParseStageReached(stage)),
     );
     if (meta == null) {
-      request.reply
-          .send(const ParseFailed('AndroidManifest.xml missing or unreadable'));
+      // Manifest 读不出来时**仍然跑一次审计**，把「没查」明确说出来。
+      // 早先这里只回一个 reason，界面上安全 Tab 就是一片空白 —— 用户分不清
+      // 「没查到问题」与「根本没审」，而这两件事的结论完全相反。
+      final failedSecurity = AndroidSecurityAudit.audit(
+        meta: ApkMeta(),
+        dexEntries: const [],
+        manifestParsed: false,
+        manifestFailureReason: 'AndroidManifest.xml missing or unreadable',
+        containerAnomalies: [
+          for (final obs in reader.scanHardeningSignals()) obs.evidence,
+        ],
+      );
+      request.reply.send(ParseFailed(
+        'AndroidManifest.xml missing or unreadable',
+        security: failedSecurity,
+      ));
       return;
     }
 

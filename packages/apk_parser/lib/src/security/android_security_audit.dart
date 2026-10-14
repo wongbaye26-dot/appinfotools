@@ -466,7 +466,10 @@ class AndroidSecurityAudit {
     return SecurityAnalysisResult(
       engineVersion: engineVersion,
       rulesVersion: rulesVersion,
-      findings: findings,
+      // 逐条去掉 finding **内部**完全相同的证据（缺陷 D9：同一份 DEX 标记
+      // 可能被同一规则重复收集）。跨 finding 的重复保留，理由见
+      // `SecurityFinding.withDedupedEvidence` 的注释。
+      findings: [for (final f in findings) f.withDedupedEvidence()],
       limitations: limitations,
     );
   }

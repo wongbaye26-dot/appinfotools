@@ -225,11 +225,23 @@ void main() {
         ),
       );
 
-      final json = AnalysisReport.renderJson(result, generatedAt: _at);
+      final json = AnalysisReport.renderJson(result, generatedAt: _at, t: t);
 
+      // 报告 schema 化（缺陷 D3）：结构版本、报告 ID、输入文件身份、
+      // 引擎与规则版本都要在 —— 否则脚本无法判断能不能解析这份报告、
+      // 也无法追溯它是用哪套规则跑出来的。
+      expect(json, contains('"reportSchemaVersion": 1'));
+      expect(json, contains('"reportId"'));
       expect(json, contains('"generatedAt": "2026-10-14T12:00:00.000Z"'));
+      expect(json, contains('"inputArtifact"'));
       expect(json, contains('"fileName": "test.ipa"'));
+      expect(json, contains('"application"'));
       expect(json, contains('"platform": "ios"'));
+      expect(json, contains('"signatureSummary"'));
+      expect(json, contains('"securitySummary"'));
+      expect(json, contains('"engineVersions"'));
+      expect(json, contains('"rulesVersions"'));
+      expect(json, contains('"coverage"'));
       expect(json, contains('"ruleId": "IOS-RULE-A"'));
       expect(json, contains('"severity": "p2"'));
       expect(json, contains('"detail": "PHPhotoLibrary"'));
@@ -242,9 +254,38 @@ void main() {
             source: FieldSource.fileSystem),
       );
 
-      final json = AnalysisReport.renderJson(result, generatedAt: _at);
+      final json = AnalysisReport.renderJson(result, generatedAt: _at, t: t);
 
-      expect(json, contains('"security": null'));
+      expect(json, contains('"securitySummary": null'));
+      expect(json, contains('"findings": []'));
+      // 没跑安全审计时 coverage 必须是「有缺口」，不能默认成没问题。
+      expect(json, contains('"hasGaps": true'));
+    });
+
+    test('securityOnly 范围只输出安全相关内容', () {
+      const result = PackageAnalysisResult(
+        fileName: FieldValue<String>.extracted('test.apk',
+            source: FieldSource.fileSystem),
+        platform: PackagePlatform.android,
+      );
+
+      final full = AnalysisReport.renderJson(result, generatedAt: _at, t: t);
+      final only = AnalysisReport.renderJson(
+        result,
+        generatedAt: _at,
+        t: t,
+        securityOnly: true,
+      );
+
+      // 完整报告有 application / signatureSummary，仅安全版没有。
+      expect(full, contains('"application"'));
+      expect(full, contains('"signatureSummary"'));
+      expect(only, isNot(contains('"application"')));
+      expect(only, isNot(contains('"signatureSummary"')));
+
+      // 但两者都必须保留文件身份 —— 否则这份安全报告对不上是哪份文件。
+      expect(only, contains('"inputArtifact"'));
+      expect(only, contains('"reportSchemaVersion"'));
     });
   });
 }

@@ -28,27 +28,34 @@ class AnalysisReport {
   /// 渲染报告正文。
   ///
   /// [generatedAt] 由调用方给出，不读系统时钟 —— 测试才能固定输出。
+  ///
+  /// [securityOnly] 为 `true` 时只输出安全章节（供导出对话框的
+  /// 「仅安全检测」范围使用）。文件与平台信息仍会保留 —— 没有它们，
+  /// 这份安全报告对不上是哪份文件。
   static String render(
     PackageAnalysisResult result,
     Translations t, {
     required DateTime generatedAt,
+    bool securityOnly = false,
   }) {
     final sb = StringBuffer();
 
     _header(sb, result, t, generatedAt);
-    _basicInfo(sb, result, t);
-    _conclusion(sb, result, t);
-    switch (result.platform) {
-      case PackagePlatform.android:
-        _androidSection(sb, result, t);
-      case PackagePlatform.ios:
-        _iosSection(sb, result, t);
-      case PackagePlatform.unknown:
-        break;
+    if (!securityOnly) {
+      _basicInfo(sb, result, t);
+      _conclusion(sb, result, t);
+      switch (result.platform) {
+        case PackagePlatform.android:
+          _androidSection(sb, result, t);
+        case PackagePlatform.ios:
+          _iosSection(sb, result, t);
+        case PackagePlatform.unknown:
+          break;
+      }
     }
     _securitySection(sb, result, t);
     _limitations(sb, result, t);
-    _diagnostics(sb, result, t);
+    if (!securityOnly) _diagnostics(sb, result, t);
 
     return '${sb.toString().trimRight()}\n';
   }
@@ -365,6 +372,31 @@ class AnalysisReport {
     PackageAnalysisResult result,
     Translations t,
   ) {
+    final items = reportLimitations(result, t);
+    if (items.isEmpty) return;
+
+    sb
+      ..writeln('## ${t.report.limitations}')
+      ..writeln();
+    for (final item in items) {
+      sb.writeln('- $item');
+    }
+    sb.writeln();
+  }
+
+  /// 报告级的「未执行 / 无法确认」清单。
+  ///
+  /// 从 Markdown 章节里抽出来，供 Markdown 与 JSON **共用** —— 两边各写
+  /// 一套判定迟早会漂移成两种说法，而这一节的价值恰恰是「同一份分析结果
+  /// 在哪儿看都一样」。
+  ///
+  /// 注意它与 `SecurityAnalysisResult.limitations` 不是一回事：
+  /// 这里说的是「哈希没算」「签名没验」「iOS 分析没跑」这类**整块缺失**，
+  /// 安全引擎的 limitations 说的是引擎内部的覆盖不足。
+  static List<String> reportLimitations(
+    PackageAnalysisResult result,
+    Translations t,
+  ) {
     final items = <String>[];
 
     if (!result.sha256.hasValue) {
@@ -391,15 +423,7 @@ class AnalysisReport {
       }
     }
 
-    if (items.isEmpty) return;
-
-    sb
-      ..writeln('## ${t.report.limitations}')
-      ..writeln();
-    for (final item in items) {
-      sb.writeln('- $item');
-    }
-    sb.writeln();
+    return items;
   }
 
   static void _diagnostics(
@@ -480,9 +504,19 @@ class AnalysisReport {
   /// 渲染 JSON 格式的安全报告。
   ///
   /// 结构化输出，便于后续自动化处理或归档。
+  /// 报告 schema 版本。
+  ///
+  /// 只要**字段结构**有增删改就 +1 —— 脚本靠它判断能否解析这份报告。
+  /// 与 `engineVersion` / `rulesVersion` 是三件不同的事：
+  /// - 本字段变 → 报告结构变了，解析脚本要跟着改；
+  /// - 引擎 / 规则版本变 → 结论可能变，但结构没变。
+  static const int reportSchemaVersion = 1;
+
   static String renderJson(
     PackageAnalysisResult result, {
     required DateTime generatedAt,
+    required Translations t,
+    bool securityOnly = false,
   }) {
     final security = result.security;
     final findings = <Map<String, dynamic>>[
@@ -511,23 +545,100 @@ class AnalysisReport {
           },
     ];
 
+    final counts = <String, int>{};
+    if (security != null) {
+      for (final entry in security.countBySeverity().entries) {
+        counts[entry.key.name] = entry.value;
+      }
+    }
+    final worst = security?.highestRiskFinding;
+
     final map = <String, dynamic>{
+      'reportSchemaVersion': reportSchemaVersion,
+      // 报告标识：便于跨版本比对时把「同一份文件、同一次分析」的两份报告
+      // 对齐。用文件 SHA-256 前 16 位 + 生成时间戳。
+      'reportId': _reportId(result, generatedAt),
       'generatedAt': generatedAt.toUtc().toIso8601String(),
-      'fileName': result.fileName.value,
-      'platform': result.platform.name,
-      'packageId': result.packageId.value,
-      'version': result.version.value,
-      'security': security == null
+
+      // 输入文件身份。SHA-256 缺失时是 null 而不是空串 —— 空串会被读成
+      // 「哈希就是空的」。
+      'inputArtifact': {
+        'fileName': result.fileName.value,
+        'sizeBytes': result.fileSize.value,
+        'sha256': result.sha256.value,
+      },
+
+      // 「仅安全检测」范围下，这些与安全无关的块整体不输出 ——
+      // 保留了就不是「仅安全」了。
+      if (!securityOnly) ...{
+        'application': {
+          'platform': result.platform.name,
+          'appName': result.appName.value,
+          'packageId': result.packageId.value,
+          'version': result.version.value,
+          'buildNumber': result.buildNumber.value,
+        },
+
+        // 签名只给**结论**：平台特有的细节（方案、指纹、退出码）留在各自的
+        // 平台信息里。`conclusive` 单列，免得消费者把 inconclusive 读成通过。
+        'signatureSummary': {
+          'verdict': result.signatureVerdict.name,
+          'conclusive': result.signatureVerdict.isConclusive,
+        },
+      },
+
+      'securitySummary': security == null
           ? null
           : {
+              'engineVersion': security.engineVersion,
+              'rulesVersion': security.rulesVersion,
               'hasCoverageGaps': security.hasCoverageGaps,
-              'findings': findings,
-              'limitations': security.limitations,
+              'includesRuntimeEvidence': security.includesRuntimeEvidence,
+              'counts': counts,
+              'highestRiskRuleId': worst?.ruleId,
+              'highestRiskSeverity': worst?.severity.name,
             },
+
+      'findings': findings,
+
+      // 安全引擎视角的覆盖情况（引擎内部的截断、加固、预算不足）。
+      'coverage': {
+        'hasGaps': security?.hasCoverageGaps ?? true,
+        'limitations': security?.limitations ?? const <String>[],
+      },
+
+      if (!securityOnly)
+        'diagnostics': [
+          for (final d in result.diagnostics)
+            {
+              'severity': d.severity.name,
+              'code': d.code,
+              'message': d.message,
+              'source': d.source?.name,
+            },
+        ],
+
+      // 引擎与规则版本单列成一级字段，方便脚本在不解析 findings 的情况下
+      // 判断「这份报告是用哪套规则跑出来的」。
+      'engineVersions': {
+        if (security != null) 'security': security.engineVersion,
+      },
+      'rulesVersions': {
+        if (security != null) 'security': security.rulesVersion,
+      },
+
+      // 报告级的「未执行 / 无法确认」，与上面的 coverage 不是一回事。
+      if (!securityOnly) 'limitations': reportLimitations(result, t),
     };
 
     const encoder = JsonEncoder.withIndent('  ');
     return '${encoder.convert(map)}\n';
+  }
+
+  static String _reportId(PackageAnalysisResult result, DateTime at) {
+    final sha = result.sha256.value ?? '';
+    final short = sha.length >= 16 ? sha.substring(0, 16) : sha;
+    return '$short-${at.toUtc().millisecondsSinceEpoch}';
   }
 
   static String _platformLabel(

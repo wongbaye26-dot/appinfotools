@@ -66,15 +66,21 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
       }
 
       final now = DateTime.now();
+      // 范围选择必须真的生效：早先 `_scope` 只影响了建议文件名，
+      // 用户选「仅安全检测」仍然会导出一整份报告。
+      final securityOnly = _scope == ExportScope.securityOnly;
       final content = switch (_format) {
         ExportFormat.markdown => AnalysisReport.render(
             widget.analysis,
             t,
             generatedAt: now,
+            securityOnly: securityOnly,
           ),
         ExportFormat.json => AnalysisReport.renderJson(
             widget.analysis,
             generatedAt: now,
+            t: t,
+            securityOnly: securityOnly,
           ),
       };
 

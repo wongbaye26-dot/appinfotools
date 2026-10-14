@@ -216,6 +216,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             SnackBar(content: Text(t.parse.parse_apk_info_fail)),
           );
         }
+      } else if (apkInfo.parseFailureReason != null) {
+        // Manifest 没读出来。审计结论（只有局限说明，没有发现项）仍然有效，
+        // 挂上去让用户看到**为什么**没有结果，而不是安全 Tab 一片空白 ——
+        // 「没查到」与「没查」的结论完全相反，不能长得一样。
+        if (_loadGeneration == gen) {
+          if (!enableSecurityAudit) {
+            apkInfo.securityResult = null;
+          }
+          apkInfoState.update(apkInfo);
+          fileState.update(
+            ref.read(currentFileStateProvider).copyWith(apkInfo: apkInfo),
+          );
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(t.parse.parse_apk_info_fail)),
+          );
+        }
       } else {
         if (_loadGeneration == gen) {
           // 安全检测开关：关闭时清空 worker 产出的结果。
@@ -439,9 +457,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
   /// 取消当前解析。
   ///
-  /// 只在真的拿到可取消的任务时才有意义 —— XAPK/APKM/APKS 路径仍走 aapt2
-  /// 子进程，暂不可取消，因此 UI 在该路径下不显示取消按钮（未实现的功能不得
-  /// 出现伪可用按钮）。
+  /// UI 依据 `_currentTask` 是否就绪决定显不显示取消按钮 —— 不显示伪可用按钮。
+  ///
+  /// 各路径的取消能力**并不相同**（见 `CancellableParseTask`）：
+  /// - 内置解析器与 iOS 静态解析：`Isolate.immediate` 强杀 worker；
+  /// - aapt2 子进程：`SIGKILL`；XAPK 路径已把句柄回调出来，因此**可取消**
+  ///   （早先这里的注释说「暂不可取消」，那条已经过时）；
+  /// - iOS 解包 + codesign：协作式标志 —— 它要写临时目录，不能被强杀。
+  ///
+  /// 已知缺口：XAPK 路径中 aapt2 **之前**的 ZIP 打开与解包是同步 IO，
+  /// 不可中断。
   void _cancelParse() {
     // 解包 + codesign 那一步用协作式标志：它要写临时目录，不能被强杀。
     _iosCodeSignCancelled = true;
