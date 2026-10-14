@@ -16,6 +16,7 @@
 library;
 
 import 'analysis_coverage.dart';
+import 'network_facts.dart';
 
 /// 平台。
 enum SecurityPlatform {
@@ -347,6 +348,14 @@ class SecurityAnalysisResult {
   /// 默认空表示「本引擎没有产出结构化覆盖」—— 那是「没报」，不是「全覆盖」。
   final AnalysisCoverage coverage;
 
+  /// 静态提取到的网络端点。
+  ///
+  /// 单列成一级字段，而不是只藏在发现项的证据里：报告要能回答「包里写了哪些
+  /// 域名」，而这个问题的答案不该要求消费者去解析证据文本。
+  ///
+  /// **空表示本次没有提取到（或没有做这一步）**，不表示「没有网络行为」。
+  final NetworkFacts network;
+
   const SecurityAnalysisResult({
     required this.engineVersion,
     required this.rulesVersion,
@@ -354,6 +363,7 @@ class SecurityAnalysisResult {
     this.limitations = const [],
     this.includesRuntimeEvidence = false,
     this.coverage = const AnalysisCoverage(),
+    this.network = const NetworkFacts(),
   });
 
   /// 各等级发现数量。
@@ -378,6 +388,7 @@ class SecurityAnalysisResult {
       limitations: [...limitations, limitation],
       includesRuntimeEvidence: includesRuntimeEvidence,
       coverage: coverage,
+      network: network,
     );
   }
 

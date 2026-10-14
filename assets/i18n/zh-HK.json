@@ -391,7 +391,11 @@
     "exporting": "正在匯出…",
     "file_name": "檔案名稱",
     "security_not_performed": "該檔案未執行安全檢測。",
-    "limitation_security": "未對該應用程式套件執行安全檢測。"
+    "limitation_security": "未對該應用程式套件執行安全檢測。",
+    "network_section": "網絡端點",
+    "network_domains": "域名",
+    "network_ips": "IP 位址",
+    "network_hint": "靜態提取不等於運行時實際訪問過 —— 域名可能來自設定項、SDK 位址或從未連接的備用端點。"
   },
   "about": {
     "features": {

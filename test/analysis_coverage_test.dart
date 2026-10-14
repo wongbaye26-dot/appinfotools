@@ -189,6 +189,26 @@ void main() {
       );
     });
 
+    test('网络端点从 DEX 字符串里提取出来并单列成一级字段', () {
+      final blob = Uint8List.fromList(
+        'https://api.example.com/upload\n203.0.113.9\n'.codeUnits,
+      );
+      final result = auditWith(dexEntries: [DexBytes('classes.dex', blob)]);
+
+      expect(
+        result.network.domains,
+        contains('api.example.com'),
+        reason: '网络端点要单列，不该只藏在发现项的证据文本里',
+      );
+      expect(result.network.ips, contains('203.0.113.9'));
+    });
+
+    test('没有网络线索时 network 为空（不是「没有网络行为」）', () {
+      final result = auditWith(dexEntries: const []);
+
+      expect(result.network.isEmpty, isTrue);
+    });
+
     test('DEX 结构不可信时结构维度降级为 partial，不是 covered', () {
       final result = auditWith(
         dexEntries: [

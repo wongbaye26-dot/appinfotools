@@ -54,6 +54,9 @@ class AnalysisReport {
       }
     }
     _securitySection(sb, result, t);
+    // 「网络」是报告八部分里独立的一部分：从发现项的证据里也能看到域名，
+    // 但那是「顺带看到」，不是「有一节专门回答包里写了哪些域名」。
+    _networkSection(sb, result, t);
     // 覆盖放在「未覆盖范围」之前：先逐维度说清覆盖到哪，再说报告级的未执行项。
     _coverage(sb, result, t);
     _limitations(sb, result, t);
@@ -428,6 +431,46 @@ class AnalysisReport {
     return items;
   }
 
+  /// 静态提取到的网络端点。
+  ///
+  /// 没有端点时**整节不出现**（而不是留一节空白）：空一节会被读成
+  /// 「这一节没内容」，而真实含义是「本次没有提取到」—— 后者由覆盖一节
+  /// 与未覆盖范围说明负责。
+  static void _networkSection(
+    StringBuffer sb,
+    PackageAnalysisResult result,
+    Translations t,
+  ) {
+    final network = result.security?.network;
+    if (network == null || network.isEmpty) return;
+
+    sb
+      ..writeln('## ${t.report.network_section}')
+      ..writeln();
+    if (network.domains.isNotEmpty) {
+      sb
+        ..writeln('### ${t.report.network_domains} '
+            '(${network.domains.length})')
+        ..writeln();
+      for (final domain in network.domains) {
+        sb.writeln('- ${_escape(domain)}');
+      }
+      sb.writeln();
+    }
+    if (network.ips.isNotEmpty) {
+      sb
+        ..writeln('### ${t.report.network_ips} (${network.ips.length})')
+        ..writeln();
+      for (final ip in network.ips) {
+        sb.writeln('- ${_escape(ip)}');
+      }
+      sb.writeln();
+    }
+    sb
+      ..writeln(t.report.network_hint)
+      ..writeln();
+  }
+
   /// **逐维度**的分析覆盖。
   ///
   /// 与 [_limitations] 分开：那是「报告级的未执行说明」（一句一句的话），
@@ -578,7 +621,9 @@ class AnalysisReport {
   /// 引擎换了但结构没变，消费者不需要改代码。
   ///
   /// v2：`coverage` 从「只有 hasGaps + limitations」扩成含结构化 `entries`。
-  static const int reportSchemaVersion = 2;
+  /// v3：补 `application.permissions`、`signatureSummary` 的平台详情、
+  ///     以及一级字段 `network`。
+  static const int reportSchemaVersion = 3;
 
   static String renderJson(
     PackageAnalysisResult result, {
@@ -645,6 +690,10 @@ class AnalysisReport {
           'packageId': result.packageId.value,
           'version': result.version.value,
           'buildNumber': result.buildNumber.value,
+          // 权限是「应用声明了什么能力」的一等事实，单列成数组。
+          // 此前它只散落在逐权限的发现项里，消费者要拿这份清单
+          // 得先解析 findings —— 那是把结构化数据当文本用。
+          'permissions': result.android?.permissions ?? const <String>[],
         },
 
         // 签名只给**结论**：平台特有的细节（方案、指纹、退出码）留在各自的
@@ -652,6 +701,30 @@ class AnalysisReport {
         'signatureSummary': {
           'verdict': result.signatureVerdict.name,
           'conclusive': result.signatureVerdict.isConclusive,
+          // 平台特有的**详情**（方案、签名者、工具结论）此前只在 Markdown 的
+          // 平台小节里，JSON 消费者看不到。这里补上，但**不**放指纹之外的
+          // 原始输出 —— 那是「技术摘要」的事。
+          if (result.android?.signature case final s?) ...{
+            'schemes': s.verifiedSchemes.toList()..sort(),
+            'signers': [
+              for (final signer in s.signers)
+                {
+                  'index': signer.index,
+                  'subjectDn': signer.subjectDn,
+                  'sha256': signer.sha256Digest,
+                  'sha1': signer.sha1Digest,
+                  'keyAlgorithm': signer.keyAlgorithm,
+                  'keySizeBits': signer.keySizeBits,
+                },
+            ],
+            'toolExecuted': s.toolExecuted,
+            'exitCode': s.exitCode,
+          },
+          if (result.ios?.codeSign case final c?) ...{
+            'codesignStatus': c.status.name,
+            'toolExecuted': c.toolExecuted,
+            'exitCode': c.exitCode,
+          },
         },
       },
 
@@ -666,6 +739,13 @@ class AnalysisReport {
               'highestRiskRuleId': worst?.ruleId,
               'highestRiskSeverity': worst?.severity.name,
             },
+
+      // 网络端点：静态提取到的主机名与 IP。空表示本次没提取到（或没做），
+      // 不表示「没有网络行为」。
+      'network': {
+        'domains': security?.network.domains ?? const <String>[],
+        'ips': security?.network.ips ?? const <String>[],
+      },
 
       'findings': findings,
 

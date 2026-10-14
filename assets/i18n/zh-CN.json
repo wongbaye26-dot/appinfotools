@@ -391,7 +391,11 @@
     "exporting": "正在导出…",
     "file_name": "文件名",
     "security_not_performed": "该文件未执行安全检测。",
-    "limitation_security": "未对该应用包执行安全检测。"
+    "limitation_security": "未对该应用包执行安全检测。",
+    "network_section": "网络端点",
+    "network_domains": "域名",
+    "network_ips": "IP 地址",
+    "network_hint": "静态提取不等于运行时实际访问过 —— 域名可能来自配置项、SDK 地址或从未连接的备用端点。"
   },
   "about": {
     "features": {

@@ -392,7 +392,11 @@
     "exporting": "Exporting…",
     "file_name": "File name",
     "security_not_performed": "Security audit was not performed for this file.",
-    "limitation_security": "Security audit was not performed for this package."
+    "limitation_security": "Security audit was not performed for this package.",
+    "network_section": "Network endpoints",
+    "network_domains": "Domains",
+    "network_ips": "IP addresses",
+    "network_hint": "Static extraction does not mean these endpoints were actually contacted at runtime."
   },
   "about": {
     "features": {

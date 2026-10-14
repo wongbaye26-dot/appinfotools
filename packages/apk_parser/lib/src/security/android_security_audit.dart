@@ -840,6 +840,9 @@ class AndroidSecurityAudit {
       findings: [for (final f in findings) f.withDedupedEvidence()],
       limitations: limitations,
       coverage: coverage,
+      // 网络端点单列成一级字段：报告要能回答「包里写了哪些域名」，
+      // 而不要求消费者去解析发现项的证据文本。
+      network: NetworkFacts(domains: scan.domains, ips: scan.ips),
     );
   }
 

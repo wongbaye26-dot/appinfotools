@@ -517,14 +517,14 @@ void main() {
       expect(json, contains('"limitations"'));
     });
 
-    test('schema 版本随结构变化递增（v2）', () {
+    test('schema 版本随结构变化递增（v3）', () {
       final json = AnalysisReport.renderJson(
         _android(security: security),
         generatedAt: _at,
         t: t,
       );
 
-      expect(json, contains('"reportSchemaVersion": 2'));
+      expect(json, contains('"reportSchemaVersion": 3'));
     });
 
     test('没有 coverage 时不出现覆盖一节，也不崩', () {
@@ -546,6 +546,102 @@ void main() {
         contains('## ${t.coverage.title}'),
         reason: '覆盖是安全结论可信度的一部分，不该被「仅安全」裁掉',
       );
+    });
+  });
+  // ---- 阶段 6b：报告八部分里的「网络」与 JSON 平台事实 ----
+  group('AnalysisReport — 网络一节与 JSON 平台事实', () {
+    const network = SecurityAnalysisResult(
+      engineVersion: 'e',
+      rulesVersion: 'r',
+      network: NetworkFacts(
+        domains: ['api.example.com', 'cdn.example.net'],
+        ips: ['203.0.113.7'],
+      ),
+    );
+    const emptyNetwork = SecurityAnalysisResult(
+      engineVersion: 'e',
+      rulesVersion: 'r',
+    );
+
+    test('有端点时 Markdown 有独立一节，域名与 IP 分开列出', () {
+      final report = AnalysisReport.render(
+        _android(security: network),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(report, contains('## ${t.report.network_section}'));
+      expect(report, contains('### ${t.report.network_domains} (2)'));
+      expect(report, contains('api.example.com'));
+      expect(report, contains('cdn.example.net'));
+      expect(report, contains('### ${t.report.network_ips} (1)'));
+      expect(report, contains('203.0.113.7'));
+      expect(
+        report,
+        contains(t.report.network_hint),
+        reason: '「静态提取 ≠ 实际访问过」必须写在旁边',
+      );
+    });
+
+    test('没有端点时整节不出现，而不是留一节空白', () {
+      final report = AnalysisReport.render(
+        _android(security: emptyNetwork),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(report, isNot(contains('## ${t.report.network_section}')));
+    });
+
+    test('JSON 有 network 一级字段', () {
+      final json = AnalysisReport.renderJson(
+        _android(security: network),
+        generatedAt: _at,
+        t: t,
+      );
+
+      expect(json, contains('"network"'));
+      expect(json, contains('"api.example.com"'));
+      expect(json, contains('"203.0.113.7"'));
+    });
+
+    test('JSON 的 application 带权限数组', () {
+      final json = AnalysisReport.renderJson(
+        _android(),
+        generatedAt: _at,
+        t: t,
+      );
+
+      expect(json, contains('"permissions"'));
+      expect(
+        json,
+        contains('"android.permission.INTERNET"'),
+        reason: '权限是「声明了什么能力」的一等事实，'
+            '不该要求消费者去解析 findings',
+      );
+    });
+
+    test('JSON 的 signatureSummary 带平台详情（不只是结论）', () {
+      const signature = SignatureAnalysis(
+        status: SignatureStatus.verified,
+        toolExecuted: true,
+        exitCode: 0,
+        verifiedSchemes: {'v2'},
+      );
+      final json = AnalysisReport.renderJson(
+        _android(signature: signature),
+        generatedAt: _at,
+        t: t,
+      );
+
+      expect(json, contains('"signatureSummary"'));
+      expect(json, contains('"verdict"'));
+      expect(
+        json,
+        contains('"v2"'),
+        reason: '只给结论不给详情时，JSON 消费者看不到用的是哪个签名方案',
+      );
+      expect(json, contains('"toolExecuted"'));
     });
   });
 }
