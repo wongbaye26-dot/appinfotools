@@ -68,6 +68,80 @@ class MachOSegment {
       '$sectionCount sections)';
 }
 
+/// 一个 Mach-O 符号（`nlist` / `nlist_64`）。
+///
+/// 名字是**原样**的符号名（C 符号带前导下划线，如 `_system`）。
+/// 用 [cName] 取去掉前导下划线后的名字 —— 标记匹配要用它。
+class MachOSymbol {
+  /// 原样符号名，例如 `_system`、`_exported_helper`。
+  final String name;
+
+  /// `n_type`。
+  final int type;
+
+  /// `n_sect`。
+  final int sectionIndex;
+
+  /// `n_value`。
+  final int value;
+
+  const MachOSymbol({
+    required this.name,
+    required this.type,
+    required this.sectionIndex,
+    required this.value,
+  });
+
+  /// 调试符号（`N_STAB` 位）。它们不是链接符号，不计入导入/导出。
+  bool get isDebug => (type & 0xe0) != 0;
+
+  /// 外部符号（`N_EXT` 位）。
+  bool get isExternal => (type & 0x01) != 0;
+
+  /// `n_type` 的类型字段（`N_TYPE` 掩码 0x0e）。
+  int get typeField => type & 0x0e;
+
+  /// **未定义**（导入）：`N_UNDF | N_EXT`。
+  bool get isUndefined => typeField == 0x0 && isExternal;
+
+  /// **定义的**外部符号（导出）：`N_SECT | N_EXT`。
+  bool get isDefinedExternal => typeField == 0xe && isExternal;
+
+  /// 去掉 Mach-O 的 C 符号前导下划线（`_system` → `system`）。
+  ///
+  /// **只去一个**：`___cxa_atexit` 是 C++ 运行时的 `__cxa_atexit`，
+  /// 去掉两个就认不出来了。
+  String get cName => name.startsWith('_') ? name.substring(1) : name;
+
+  @override
+  String toString() => 'MachOSymbol($name, type=0x${type.toRadixString(16)}, '
+      'sect=$sectionIndex, value=0x${value.toRadixString(16)})';
+}
+
+/// `LC_SYMTAB` 的内容。
+///
+/// **两个偏移都是相对「本切片起始」的**，不是相对整个文件 —— fat 二进制里
+/// 每个切片都是一份完整的 Mach-O，链接器写进去的是切片内偏移。
+/// 实测：`libnative-fixture-arm64.dylib` 与 fat 里的 arm64 切片都报
+/// `symoff 33112`，而后者在文件里的起点是 4096 之后。
+class MachOSymtab {
+  final int symbolOffset;
+  final int symbolCount;
+  final int stringOffset;
+  final int stringSize;
+
+  const MachOSymtab({
+    required this.symbolOffset,
+    required this.symbolCount,
+    required this.stringOffset,
+    required this.stringSize,
+  });
+
+  @override
+  String toString() => 'MachOSymtab(symoff=$symbolOffset, nsyms=$symbolCount, '
+      'stroff=$stringOffset, strsize=$stringSize)';
+}
+
 /// 一个 Mach-O 镜像：fat 里的一个切片，或整个 thin 文件。
 class MachOImage {
   /// 该切片在所属文件中的起始偏移（thin 文件为 0）。
@@ -112,6 +186,20 @@ class MachOImage {
   /// `LC_MAIN` 的入口偏移（可执行文件才有）。
   final int? entryOffset;
 
+  /// `LC_SYMTAB`；没有该命令时为 `null`。
+  final MachOSymtab? symtab;
+
+  /// 从 `LC_SYMTAB` 读出的符号（已过滤调试符号）。
+  ///
+  /// 为空有两种可能，**必须分开**：没有 `LC_SYMTAB`（[symtab] 为 `null`），
+  /// 或符号表存在但读不出条目（见 `MachOFile.diagnostics`）。
+  final List<MachOSymbol> symbols;
+
+  /// 本次是否**真的读取**过符号表。
+  ///
+  /// 为 `false` 时，「没有导入符号」不能读成「没有能力」—— 那是「没查」。
+  final bool symbolsRead;
+
   const MachOImage({
     required this.offset,
     required this.size,
@@ -132,7 +220,22 @@ class MachOImage {
     this.rpaths = const [],
     this.segments = const [],
     this.entryOffset,
+    this.symtab,
+    this.symbols = const [],
+    this.symbolsRead = false,
   });
+
+  /// **导入**的符号（`N_UNDF | N_EXT`）：这个镜像从外部拿到的能力。
+  List<MachOSymbol> get importedSymbols => [
+        for (final s in symbols)
+          if (s.isUndefined) s
+      ];
+
+  /// **导出**的符号（`N_SECT | N_EXT`）：这个镜像对外提供的接口。
+  List<MachOSymbol> get exportedSymbols => [
+        for (final s in symbols)
+          if (s.isDefinedExternal) s
+      ];
 
   /// 架构名，例如 `arm64`、`x86_64`。
   String get cpuTypeName => machOCpuTypeName(cpuType);
@@ -261,6 +364,7 @@ class MachOParser {
   static const int _fatCigam64 = 0xBFBAFECA;
 
   // Load command
+  static const int _lcSymtab = 0x2;
   static const int _lcSegment = 0x1;
   static const int _lcSegment64 = 0x19;
   static const int _lcUuid = 0x1B;
@@ -277,6 +381,13 @@ class MachOParser {
   static const int _lcVersionMinIphoneos = 0x25;
   static const int _lcVersionMinTvos = 0x2F;
   static const int _lcVersionMinWatchos = 0x30;
+
+  /// `nlist_64` / `nlist` 的字节数。
+  static const int _nlist64Size = 16;
+  static const int _nlist32Size = 12;
+
+  /// 单个镜像最多读多少条符号。兜住畸形文件，截断时记诊断。
+  static const int maxSymbolsPerImage = 200000;
 
   static const int _headerSize32 = 28;
   static const int _headerSize64 = 32;
@@ -536,6 +647,7 @@ class MachOParser {
     final rpaths = <String>[];
     final segments = <MachOSegment>[];
     int? entryOffset;
+    MachOSymtab? symtab;
 
     final commandsEnd = base + headerSize + sizeofcmds;
     var cursor = base + headerSize;
@@ -570,6 +682,25 @@ class MachOParser {
               label: label,
               diagnostics: diagnostics);
           if (segment != null) segments.add(segment);
+        case _lcSymtab:
+          // symtab_command: cmd + cmdsize + symoff + nsyms + stroff + strsize
+          if (cmdsize >= 24) {
+            final symoff = _readUint32(data, cursor + 8, byteOrder);
+            final nsyms = _readUint32(data, cursor + 12, byteOrder);
+            final stroff = _readUint32(data, cursor + 16, byteOrder);
+            final strsize = _readUint32(data, cursor + 20, byteOrder);
+            if (symoff != null &&
+                nsyms != null &&
+                stroff != null &&
+                strsize != null) {
+              symtab = MachOSymtab(
+                symbolOffset: symoff,
+                symbolCount: nsyms,
+                stringOffset: stroff,
+                stringSize: strsize,
+              );
+            }
+          }
         case _lcUuid:
           if (cmdsize >= 24) {
             final bytes = data.sublist(cursor + 8, cursor + 24);
@@ -610,6 +741,25 @@ class MachOParser {
       cursor += cmdsize;
     }
 
+    // 读符号表。**偏移是相对本切片起始的** —— fat 里每个切片都是一份完整的
+    // Mach-O，链接器写进去的是切片内偏移，因此要加 base。
+    var symbols = const <MachOSymbol>[];
+    var symbolsRead = false;
+    if (symtab != null) {
+      final result = _readSymbols(
+        data,
+        base: base,
+        available: available,
+        is64: is64,
+        byteOrder: byteOrder,
+        symtab: symtab,
+        label: label,
+        diagnostics: diagnostics,
+      );
+      symbols = result.symbols;
+      symbolsRead = result.read;
+    }
+
     return MachOImage(
       offset: base,
       size: available,
@@ -630,7 +780,117 @@ class MachOParser {
       rpaths: rpaths,
       segments: segments,
       entryOffset: entryOffset,
+      symtab: symtab,
+      symbols: symbols,
+      symbolsRead: symbolsRead,
     );
+  }
+
+  /// 读 `LC_SYMTAB` 指向的符号表与字符串表。
+  ///
+  /// 返回的 `read` 表示**是否真的读了**：表越界时为 `false`，此时
+  /// 「没有导入符号」不能读成「没有能力」—— 那是「没查」。
+  static ({List<MachOSymbol> symbols, bool read}) _readSymbols(
+    Uint8List data, {
+    required int base,
+    required int available,
+    required bool is64,
+    required MachOByteOrder byteOrder,
+    required MachOSymtab symtab,
+    required String label,
+    required List<AnalysisDiagnostic> diagnostics,
+  }) {
+    final entrySize = is64 ? _nlist64Size : _nlist32Size;
+    final sliceEnd = base + available;
+
+    // 先验边界：symoff / nsyms / stroff / strsize 都是文件里声明的任意值。
+    final symbolsStart = base + symtab.symbolOffset;
+    final symbolsEnd = symbolsStart + symtab.symbolCount * entrySize;
+    final stringsStart = base + symtab.stringOffset;
+    final stringsEnd = stringsStart + symtab.stringSize;
+
+    if (symbolsStart < 0 ||
+        symbolsStart > sliceEnd ||
+        symbolsEnd > sliceEnd ||
+        stringsStart < 0 ||
+        stringsStart > sliceEnd ||
+        stringsEnd > sliceEnd) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.macho.symtab_out_of_bounds',
+        '$label declares a symbol table at ${symtab.symbolOffset} '
+            '(${symtab.symbolCount} entries) and strings at '
+            '${symtab.stringOffset} (${symtab.stringSize} bytes), '
+            'beyond the $available byte slice',
+      ));
+      return (symbols: const <MachOSymbol>[], read: false);
+    }
+
+    final limit = symtab.symbolCount < maxSymbolsPerImage
+        ? symtab.symbolCount
+        : maxSymbolsPerImage;
+    if (limit < symtab.symbolCount) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.macho.symtab_truncated',
+        '$label has ${symtab.symbolCount} symbols; only the first $limit '
+            'were read',
+      ));
+    }
+
+    final symbols = <MachOSymbol>[];
+    var skipped = 0;
+    for (var i = 0; i < limit; i++) {
+      final entry = symbolsStart + i * entrySize;
+      final nameOffset = _readUint32(data, entry, byteOrder);
+      if (nameOffset == null) {
+        skipped++;
+        continue;
+      }
+      final type = data[entry + 4];
+      final sectionIndex = data[entry + 5];
+      final value = is64
+          ? _readUint64(data, entry + 8, byteOrder)
+          : _readUint32(data, entry + 8, byteOrder);
+      if (value == null) {
+        skipped++;
+        continue;
+      }
+
+      final name = _stringAt(data, stringsStart + nameOffset, stringsEnd);
+      if (name == null) {
+        // 名字越界：不猜，跳过并计数。
+        skipped++;
+        continue;
+      }
+
+      symbols.add(MachOSymbol(
+        name: name,
+        type: type,
+        sectionIndex: sectionIndex,
+        value: value,
+      ));
+    }
+
+    if (skipped > 0) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.macho.symtab_entries_skipped',
+        '$label: $skipped of ${symtab.symbolCount} symbol entries could not '
+            'be read (name out of range or entry truncated); they are not '
+            'covered by the result',
+      ));
+    }
+
+    return (symbols: symbols, read: true);
+  }
+
+  /// 从 `[offset, end)` 里读一个 NUL 结尾的字符串；越界返回 `null`。
+  static String? _stringAt(Uint8List data, int offset, int end) {
+    if (offset < 0 || offset >= end || end > data.length) return null;
+    var cursor = offset;
+    while (cursor < end && data[cursor] != 0) {
+      cursor++;
+    }
+    if (cursor >= end) return null;
+    return _cString(data.sublist(offset, cursor));
   }
 
   static MachOSegment? _readSegment(

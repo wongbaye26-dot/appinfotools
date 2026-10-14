@@ -75,6 +75,8 @@ lib/gen
 # 别人临时丢进来的大样本也一起放行。
 !test/fixtures/apk/*.apk
 !test/fixtures/dex/*.dex
+!test/fixtures/elf/*.so
+!test/fixtures/macho/*.dylib
 
 # WorkBuddy 的内部工作笔记（项目约定 / 审计记录 / 每日日志）。
 # 只对本机的工作流有意义，不是项目交付物，不随仓库发布。

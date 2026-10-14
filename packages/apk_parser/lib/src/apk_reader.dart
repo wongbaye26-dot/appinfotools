@@ -268,6 +268,22 @@ class ApkReader {
         .toList();
   }
 
+  /// 列出匹配扩展名的条目及其**声明的**解压后尺寸。
+  ///
+  /// 存在的理由是**预算必须在读取之前判定** —— 读进来才知道大小就已经晚了，
+  /// 那正是「先分配再检查」的老问题。尺寸取自 ZIP 头部（`ZipFile.size`），
+  /// 因此是**声明值**：少报时无法阻止分配，只能读完复核（与归档层的取舍一致）。
+  List<({String name, int size})> listFilesWithSize({String? extension}) {
+    final files = _archive?.files ?? [];
+    final lowerExt = extension?.toLowerCase();
+    return [
+      for (final file in files)
+        if (file.isFile &&
+            (lowerExt == null || file.name.toLowerCase().endsWith(lowerExt)))
+          (name: file.name, size: file.size),
+    ];
+  }
+
   void _resolveLabel(ApkMeta meta) {
     final parser = _arscParser;
     if (parser == null) return;

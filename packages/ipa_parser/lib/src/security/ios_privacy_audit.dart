@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 
 import '../ipa_info_plist.dart';
+import 'ios_native_symbol_audit.dart';
 
 /// Mach-O 可执行文件的字符串线索扫描预算。
 ///
@@ -413,6 +414,21 @@ class IosPrivacyAudit {
       // 已在上面记录具体截断信息，这里只做归类提示。
       limitations.add('存在因预算被截断的扫描范围，结论完整性受影响。');
     }
+
+    // ---- 原生符号（Mach-O 的 LC_SYMTAB）----
+    //
+    // 与 Android 侧读 ELF `.dynsym` 对应：C/C++ 代码不经过 Objective-C /
+    // Swift 运行时，字符串扫描看不到它导入了哪些系统能力。
+    final nativeResult = IosNativeSymbolAudit.scan(
+      executableBytes: executableBytes,
+      executablePath: executablePath,
+    );
+    final nativeReport = IosNativeSymbolAudit.report(
+      result: nativeResult,
+      executablePath: executablePath,
+    );
+    findings.addAll(nativeReport.findings);
+    limitations.addAll(nativeReport.limitations);
 
     return SecurityAnalysisResult(
       engineVersion: engineVersion,

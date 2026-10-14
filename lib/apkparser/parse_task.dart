@@ -81,6 +81,12 @@ class ParsedApkData {
   /// 环检测的输入正是它，不需要为了这项检查再遍历一遍整张资源表。
   final ReferenceCycleReport referenceCycles;
 
+  /// 参与符号分析的原生库（`lib/**.so`）名字与字节。
+  ///
+  /// 只包含**通过预算挑选**的那批（见 `NativeSymbolScanner.selectLibraries`）：
+  /// 同一个库只取一个 ABI，超限的库不读。因此这里的数量少于归档里的实际数量。
+  final List<NativeLibraryBytes> nativeLibraries;
+
   const ParsedApkData({
     required this.meta,
     required this.arscResources,
@@ -88,6 +94,7 @@ class ParsedApkData {
     this.structure = const ContainerStructure(),
     this.security,
     this.referenceCycles = const ReferenceCycleReport(),
+    this.nativeLibraries = const [],
   });
 }
 
@@ -233,6 +240,19 @@ void _parseEntryPoint(_ParseRequest request) async {
     // 资源表只遍历一次：环检测与图标渲染器都用这一份。
     final arscResources =
         reader.arscParser?.getAllResources() ?? const <int, ResourceInfo>{};
+
+    // 原生库：**先按声明尺寸挑，再读** —— 读进来才知道大小就已经晚了。
+    // `selectLibraries` 会按库名去重（同一个库只取一个 ABI）、跳过超大库、
+    // 并受数量与总体积上限约束；被跳过的都会记进覆盖范围说明。
+    final nativeSelection = NativeSymbolScanner.selectLibraries(
+      reader.listFilesWithSize(extension: '.so'),
+    );
+    final nativeLibraries = <NativeLibraryBytes>[
+      for (final name in nativeSelection.selected)
+        if (reader.readFile(name) case final bytes?)
+          NativeLibraryBytes(name, bytes),
+    ];
+
     final security = AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
@@ -242,6 +262,7 @@ void _parseEntryPoint(_ParseRequest request) async {
         // 「这个包的结构与声明对不上」直接影响本次结论的可信范围。
         if (reader.structureAnomaly case final anomaly?) anomaly,
       ],
+      nativeEntries: nativeLibraries,
     );
 
     request.reply.send(ParseSucceeded(ParsedApkData(
@@ -253,6 +274,7 @@ void _parseEntryPoint(_ParseRequest request) async {
       // 环检测的输入就是 arscResources，顺手算掉 —— 不为了这项检查再遍历
       // 一遍整张资源表。
       referenceCycles: ResourceReferenceGraph.findCycles(arscResources),
+      nativeLibraries: nativeLibraries,
     )));
   } catch (e) {
     log.warning('ApkParseTask: worker failed: $e');

@@ -162,6 +162,13 @@ enum SecurityEvidenceSource {
   /// Mach-O 符号 / 字符串。
   machoSymbol,
 
+  /// 原生库（ELF / Mach-O）的**符号表**条目。
+  ///
+  /// 与 [machoSymbol] 分开：那个目前用于 iOS 侧的符号/字符串线索，
+  /// 这个专指「从 ELF `.dynsym` 读出的导入/导出符号」—— 符号名是精确的
+  /// 标识符（`system`、`dlopen`、`ptrace`），比字符串命中确定得多。
+  nativeSymbol,
+
   /// 归档条目名或结构（ZIP 目录）。
   zipEntry,
 
@@ -181,6 +188,7 @@ enum SecurityEvidenceSource {
         SecurityEvidenceSource.dexString => 'DEX strings',
         SecurityEvidenceSource.dexMethodReference => 'DEX method references',
         SecurityEvidenceSource.machoSymbol => 'Mach-O symbols',
+        SecurityEvidenceSource.nativeSymbol => 'native library symbols',
         SecurityEvidenceSource.zipEntry => 'archive entry',
         SecurityEvidenceSource.provisioning => 'provisioning / entitlements',
         SecurityEvidenceSource.runtime => 'runtime observation',

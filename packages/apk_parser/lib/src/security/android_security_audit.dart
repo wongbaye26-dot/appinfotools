@@ -4,6 +4,7 @@ import '../dex/dex_structure.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
+import 'native_symbol_scanner.dart';
 import 'permission_catalog.dart';
 
 /// Android 侧的安全审计编排。
@@ -27,6 +28,9 @@ class AndroidSecurityAudit {
   static SecurityAnalysisResult audit({
     required ApkMeta meta,
     required List<DexBytes> dexEntries,
+
+    /// 原生库（`lib/**.so`）的名字与字节。空表示没有原生库或未提供。
+    List<NativeLibraryBytes> nativeEntries = const [],
     bool manifestParsed = true,
     String? manifestFailureReason,
     List<String> containerAnomalies = const [],
@@ -289,6 +293,99 @@ class AndroidSecurityAudit {
         evidence: [_manifestEvidence(request)],
         limitation: 'targetSdk 不能代替设备 API 级别：两者可能不同。',
         recommendation: '如需结论，请在目标系统版本的设备上验证。',
+      ));
+    }
+
+    // ---- 原生库符号（第四层取证：C/C++ 代码不经过 Java 层）----
+    //
+    // DEX 的 method_ids 里看不到原生代码调用了什么。ELF 的 `.dynsym` 能补上
+    // 这一块：导入的符号是精确的标识符，比字符串命中确定得多。
+    final nativeScan = NativeSymbolScanner.scan(nativeEntries);
+    for (final skipped in nativeScan.skippedForBudget) {
+      limitations.add('原生库扫描预算：$skipped —— 该库未参与分析。');
+    }
+    if (nativeScan.notTraversable.isNotEmpty) {
+      limitations.add('${nativeScan.notTraversable.length} 个原生库的结构不可信，'
+          '未读取符号表（${nativeScan.notTraversable.take(3).join('、')}'
+          '${nativeScan.notTraversable.length > 3 ? ' …' : ''}）：'
+          '这些库上的「没发现符号」是「没查到」，不是「没有」。');
+    }
+    if (nativeScan.skippedSymbols > 0) {
+      limitations.add('原生符号表里有 ${nativeScan.skippedSymbols} 个条目读不出来'
+          '（名字越界或条目跨出节外），这些条目里的符号未被看到。');
+    }
+    if (nativeScan.truncated) {
+      limitations.add('部分原生库的符号表读取达到预算上限，只分析了部分条目。');
+    }
+    if (nativeEntries.isNotEmpty) {
+      limitations.add('原生符号来自 ELF 的 `.dynsym` 节：它说明这个库**导入**'
+          '了哪些系统能力，**不说明**这些能力被调用过、更不说明调用的参数。'
+          '本次未反汇编原生代码。');
+    }
+    if (nativeScan.unstrippedLibraries.isNotEmpty) {
+      limitations.add('${nativeScan.unstrippedLibraries.length} 个原生库**没有剥离**'
+          '符号表（${nativeScan.unstrippedLibraries.take(3).map((l) => l.name).join('、')}'
+          '${nativeScan.unstrippedLibraries.length > 3 ? ' …' : ''}）：'
+          '能读到内部函数名。发布版本通常会剥离，这是一条事实，不是风险判定。');
+    }
+
+    // ---- 原生库导入的系统能力 ----
+    if (nativeScan.symbols.isNotEmpty) {
+      // 命令执行 / 动态加载 / 反调试归到一组：它们都是「这个库能做到什么」
+      // 的直接证据，值得比纯网络能力多看一眼，但**都不构成恶意判定**。
+      const elevated = {
+        'system',
+        'popen',
+        'execl',
+        'execlp',
+        'execle',
+        'execv',
+        'execvp',
+        'execvpe',
+        'fork',
+        'vfork',
+        'posix_spawn',
+        'dlopen',
+        'android_dlopen_ext',
+        'dlsym',
+        'dladdr',
+        'ptrace',
+      };
+      final elevatedHits =
+          nativeScan.symbols.where((s) => elevated.contains(s.symbol)).toList();
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-NATIVE-SYMBOLS',
+        platform: SecurityPlatform.android,
+        category: elevatedHits.isNotEmpty
+            ? SecurityCategory.backgroundTask
+            : SecurityCategory.network,
+        // p3 而不是 info：命令执行 / 动态加载 / 反调试是「库能做到什么」的
+        // 直接证据，值得人工看一眼；但它们同样**不是**恶意判定。
+        severity: elevatedHits.isNotEmpty
+            ? SecuritySeverity.p3
+            : SecuritySeverity.info,
+        confidence: SecurityConfidence.independentCapability,
+        finding: '原生库导入了 ${nativeScan.symbols.length} 项有具体含义的系统能力：'
+            '${nativeScan.symbols.map((s) => s.description).join('、')}。'
+            '只证明这些库**有能力**使用它们，不证明被调用过，'
+            '也不说明调用的参数。',
+        evidence: [
+          for (final hit in nativeScan.symbols)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.nativeSymbol,
+              location: hit.libraryNames.join(', '),
+              detail: '${hit.symbol}（导入）: ${hit.description}',
+            ),
+        ],
+        relationship: '符号来自 ELF `.dynsym` 的**未定义**（导入）条目 —— '
+            '它们由动态链接器在加载时解析。库自己定义一个同名函数不会被算进来。',
+        limitation: '导入不等于调用：未反汇编原生代码，'
+            '因此不知道这些函数在哪些代码路径上被调用。'
+            '使用 `syscall()` 直接发起系统调用、或经 libc 内部间接调用的'
+            '实现不会出现在符号表里。',
+        recommendation: '如需确认实际行为，请在隔离环境中动态分析'
+            '（`strace` / Frida 等）；仅凭导入 `system` / `dlopen` '
+            '不构成风险判定 —— 崩溃上报、热修复、插件化框架都会用到它们。',
       ));
     }
 

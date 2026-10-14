@@ -621,9 +621,19 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
         if (reader.readFile(name) case final bytes?)
           apk_parser.DexBytes(name, bytes),
     ];
+    // 原生库与 DEX 一样**先挑再读**（同一个库只取一个 ABI、超限不读）。
+    final nativeSelection = apk_parser.NativeSymbolScanner.selectLibraries(
+      reader.listFilesWithSize(extension: '.so'),
+    );
+    final nativeEntries = <apk_parser.NativeLibraryBytes>[
+      for (final name in nativeSelection.selected)
+        if (reader.readFile(name) case final bytes?)
+          apk_parser.NativeLibraryBytes(name, bytes),
+    ];
     final result = apk_parser.AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
+      nativeEntries: nativeEntries,
       containerAnomalies: [
         for (final obs in reader.scanHardeningSignals()) obs.evidence,
       ],
@@ -631,7 +641,8 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
     return result.withLimitation(
       '这是分包安装包，安全审计**仅覆盖 base APK**；'
       '各分包（语言 / 密度 / ABI）携带的 DEX 与资源未参与分析，'
-      '因此本结果不代表整个安装集合。',
+      '因此本结果不代表整个安装集合。'
+      '原生库尤其如此 —— ABI 分包里往往才是真正被加载的那份。',
     );
   } catch (e) {
     log.warning('_auditExtractedBaseApk failed: $e');

@@ -14,6 +14,10 @@ export 'src/dex/dex_structure.dart';
 export 'src/dex/dex_method_table.dart';
 export 'src/dex/dex_instruction.dart';
 export 'src/dex/dex_method_bodies.dart';
+
+// 原生库（`lib/**.so`）的 ELF 解析。与 DEX 一样是**静态**分析：
+// 只读结构、节表与符号表，不反汇编、不执行。
+export 'src/native/elf.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';
@@ -25,6 +29,7 @@ export 'src/security/android_security_audit.dart';
 export 'src/security/dex_clue_scanner.dart';
 export 'src/security/dex_method_scanner.dart';
 export 'src/security/code_markers.dart';
+export 'src/security/native_symbol_scanner.dart';
 export 'src/security/permission_catalog.dart';
 
 // ZIP 容器安全原语已下沉到 `archive_safety` —— 它们与「里面装的是 APK 还是
