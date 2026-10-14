@@ -88,7 +88,8 @@
     "icon_row_span": "アイコン表示行数",
     "parser_engine": "解析エンジン",
     "parser_engine_aapt2": "aapt2 (外部ツール, 互換性良好)",
-    "parser_engine_builtin": "内蔵 (Dart, 高速)"
+    "parser_engine_builtin": "内蔵 (Dart, 高速)",
+    "enable_security_audit": "セキュリティ監査を有効にする"
   },
   "signature": {
     "status_verified": "署名を検証しました",
@@ -229,7 +230,19 @@
       "ios": "iOS パッケージを解析：IPA",
       "details": "アイコン・基本情報・権限・コンポーネントを表示",
       "hash_signature": "ファイルハッシュ（MD5 / SHA-1 / SHA-256）の計算と署名検証",
-      "hardening_report": "加固の手がかりを検出し、解析レポートを書き出す"
+      "hardening_report": "加固の手がかりを検出し、解析レポートを書き出す",
+      "security_audit": "セキュリティ監査：権限、OCR、ネットワーク転送の検出"
     }
+  },
+  "security": {
+    "title": "セキュリティ検出",
+    "findings": "検出項目",
+    "no_findings": "セキュリティ問題は検出されませんでした",
+    "risk_overview": "リスク概要",
+    "limitations": "カバレッジの不足",
+    "coverage_incomplete": "分析カバレッジは不完全です。結果は参考程度です"
+  },
+  "report": {
+    "export_json_action": "JSON セキュリティレポートをエクスポート"
   }
 }

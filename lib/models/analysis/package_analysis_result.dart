@@ -267,6 +267,12 @@ class PackageAnalysisResult {
   final AndroidPackageInfo? android;
   final IosPackageInfo? ios;
 
+  /// 安全检测分析结果。
+  ///
+  /// `null` 表示未启用安全检测，或该解析路径尚未接入安全分析
+  ///（例如 aapt2 路径信息不完整）。
+  final SecurityAnalysisResult? security;
+
   const PackageAnalysisResult({
     this.platform = PackagePlatform.unknown,
     this.fileName = const FieldValue.absent(),
@@ -280,6 +286,7 @@ class PackageAnalysisResult {
     this.diagnostics = const [],
     this.android,
     this.ios,
+    this.security,
   });
 
   /// 把 Android 的签名状态折算成平台中立结论。

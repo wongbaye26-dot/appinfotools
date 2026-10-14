@@ -58,6 +58,11 @@ class IpaAnalysis {
   /// 主可执行文件在归档中的条目名；取不到时为 `null`。
   final String? executablePath;
 
+  /// 主可执行文件的原始字节（用于安全检测的字符串扫描）。
+  ///
+  /// `null` 表示文件不存在或超过体积上限（64 MiB）。
+  final Uint8List? executableBytes;
+
   /// 主应用的签名材料。
   final IosSignatureMaterials? signature;
 
@@ -79,6 +84,7 @@ class IpaAnalysis {
     this.icon,
     this.executable,
     this.executablePath,
+    this.executableBytes,
     this.signature,
     this.authorization,
     this.nestedBinaries = const [],
@@ -210,6 +216,7 @@ class IpaAnalysisReader {
     onStage?.call(IpaParseStage.macho);
     final executablePath = _executablePath(mainApp, infoPlist);
     MachOFile? executable;
+    Uint8List? executableBytes;
     if (executablePath == null) {
       diagnostics.add(
         AnalysisDiagnostic.warning(
@@ -220,6 +227,7 @@ class IpaAnalysisReader {
       );
     } else {
       final bytes = _readEntry(archive, executablePath, maxMachOBytes);
+      executableBytes = bytes;
       if (bytes == null) {
         diagnostics.add(
           AnalysisDiagnostic.warning(
@@ -270,6 +278,7 @@ class IpaAnalysisReader {
       icon: icon,
       executable: executable,
       executablePath: executablePath,
+      executableBytes: executableBytes,
       signature: signature,
       authorization: authorization,
       nestedBinaries: nestedBinaries,

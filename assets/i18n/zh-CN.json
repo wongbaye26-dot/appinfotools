@@ -88,7 +88,8 @@
     "icon_row_span": "图标显示行数",
     "parser_engine": "解析引擎",
     "parser_engine_aapt2": "aapt2 (外部工具, 兼容性好)",
-    "parser_engine_builtin": "内置 (Dart, 速度快)"
+    "parser_engine_builtin": "内置 (Dart, 速度快)",
+    "enable_security_audit": "启用安全检测"
   },
   "signature": {
     "status_verified": "签名验证通过",
@@ -329,7 +330,8 @@
     "package_id": "包标识",
     "platform": "平台",
     "size": "大小",
-    "title": "应用包解析报告"
+    "title": "应用包解析报告",
+    "export_json_action": "导出 JSON 安全报告"
   },
   "about": {
     "features": {
@@ -337,7 +339,16 @@
       "ios": "解析 iOS 安装包：IPA",
       "details": "查看图标、基本信息、权限与组件",
       "hash_signature": "计算文件哈希（MD5 / SHA-1 / SHA-256）并验证签名",
-      "hardening_report": "识别加固线索并导出分析报告"
+      "hardening_report": "识别加固线索并导出分析报告",
+      "security_audit": "安全审计：权限、OCR 与网络传输检测"
     }
+  },
+  "security": {
+    "title": "安全检测",
+    "findings": "发现项",
+    "no_findings": "未检测到安全问题",
+    "risk_overview": "风险总览",
+    "limitations": "覆盖不足",
+    "coverage_incomplete": "分析覆盖不完整，结果仅供参考"
   }
 }

@@ -32,6 +32,7 @@ PackageAnalysisResult _android({
   bool withHash = true,
   List<HardeningHint> hints = const [],
   List<AnalysisDiagnostic> diagnostics = const [],
+  SecurityAnalysisResult? security,
 }) =>
     PackageAnalysisResult(
       platform: PackagePlatform.android,
@@ -96,6 +97,7 @@ PackageAnalysisResult _android({
         hardeningHints: hints,
         structure: const ContainerStructure(fileEntryCount: 12),
       ),
+      security: security,
     );
 
 PackageAnalysisResult _ios({
@@ -256,7 +258,15 @@ void main() {
         exitCode: 0,
       );
       final report = AnalysisReport.render(
-        _android(signature: signature),
+        _android(
+          signature: signature,
+          security: const SecurityAnalysisResult(
+            engineVersion: 'test',
+            rulesVersion: 'test',
+            findings: [],
+            limitations: [],
+          ),
+        ),
         t,
         generatedAt: _at,
       );

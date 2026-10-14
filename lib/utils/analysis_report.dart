@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
@@ -44,6 +46,7 @@ class AnalysisReport {
       case PackagePlatform.unknown:
         break;
     }
+    _securitySection(sb, result, t);
     _limitations(sb, result, t);
     _diagnostics(sb, result, t);
 
@@ -305,6 +308,54 @@ class AnalysisReport {
       ..writeln();
   }
 
+  /// 安全检测章节。
+  static void _securitySection(
+    StringBuffer sb,
+    PackageAnalysisResult result,
+    Translations t,
+  ) {
+    final security = result.security;
+    if (security == null) return;
+
+    sb
+      ..writeln('## ${t.security.title}')
+      ..writeln();
+
+    if (security.findings.isEmpty) {
+      sb.writeln(t.security.no_findings);
+      sb.writeln();
+    }
+
+    for (final finding in security.findings) {
+      sb.writeln('### ${finding.ruleId} [${finding.severity.name}]');
+      sb.writeln();
+      sb.writeln('- **${t.security.findings}:** ${finding.finding}');
+      sb.writeln('- **Confidence:** ${finding.confidence.name}');
+      if (finding.evidence.isNotEmpty) {
+        sb.writeln('- **Evidence:**');
+        for (final ev in finding.evidence) {
+          sb.writeln('  - ${ev.source.name} (${ev.location}): ${ev.detail}');
+        }
+      }
+      if (finding.recommendation.isNotEmpty) {
+        sb.writeln('- **Recommendation:** ${finding.recommendation}');
+      }
+      if (finding.limitation != null && finding.limitation!.isNotEmpty) {
+        sb.writeln('- **Limitation:** ${finding.limitation}');
+      }
+      sb.writeln();
+    }
+
+    if (security.hasCoverageGaps) {
+      sb.writeln('### ${t.security.limitations}');
+      sb.writeln();
+      for (final limit in security.limitations) {
+        sb.writeln('- $limit');
+      }
+      sb.writeln();
+    }
+  }
+
   /// 明确列出**没做的检查**。
   ///
   /// 这一节存在的唯一理由：报告里出现空白时，读者必须能分辨那是「查了没有」
@@ -323,6 +374,10 @@ class AnalysisReport {
     if (result.platform == PackagePlatform.android &&
         result.android?.signature == null) {
       items.add(t.report.limitation_signature);
+    }
+
+    if (result.security == null) {
+      items.add('Security audit was not performed for this package.');
     }
 
     if (result.platform == PackagePlatform.ios) {
@@ -420,6 +475,59 @@ class AnalysisReport {
   static String _inline(String? value) {
     if (value == null) return '-';
     return '`${value.replaceAll('`', "'")}`';
+  }
+
+  /// 渲染 JSON 格式的安全报告。
+  ///
+  /// 结构化输出，便于后续自动化处理或归档。
+  static String renderJson(
+    PackageAnalysisResult result, {
+    required DateTime generatedAt,
+  }) {
+    final security = result.security;
+    final findings = <Map<String, dynamic>>[
+      if (security != null)
+        for (final f in security.findings)
+          {
+            'ruleId': f.ruleId,
+            'platform': f.platform.name,
+            'category': f.category.name,
+            'severity': f.severity.name,
+            'confidence': f.confidence.name,
+            'finding': f.finding,
+            'evidence': [
+              for (final e in f.evidence)
+                {
+                  'source': e.source.name,
+                  'location': e.location,
+                  'detail': e.detail
+                },
+            ],
+            'dataSource': f.dataSource,
+            'dataSink': f.dataSink,
+            'relationship': f.relationship,
+            'limitation': f.limitation,
+            'recommendation': f.recommendation,
+          },
+    ];
+
+    final map = <String, dynamic>{
+      'generatedAt': generatedAt.toUtc().toIso8601String(),
+      'fileName': result.fileName.value,
+      'platform': result.platform.name,
+      'packageId': result.packageId.value,
+      'version': result.version.value,
+      'security': security == null
+          ? null
+          : {
+              'hasCoverageGaps': security.hasCoverageGaps,
+              'findings': findings,
+              'limitations': security.limitations,
+            },
+    };
+
+    const encoder = JsonEncoder.withIndent('  ');
+    return '${encoder.convert(map)}\n';
   }
 
   static String _platformLabel(

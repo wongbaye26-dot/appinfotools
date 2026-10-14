@@ -81,7 +81,8 @@
     "icon_row_span": "Icon Row Span",
     "parser_engine": "Parser Engine",
     "parser_engine_aapt2": "aapt2 (External, Better Compatibility)",
-    "parser_engine_builtin": "Built-in (Dart, Faster)"
+    "parser_engine_builtin": "Built-in (Dart, Faster)",
+    "enable_security_audit": "Enable Security Audit"
   },
   "signature": {
     "status_verified": "Signature verified",
@@ -330,7 +331,8 @@
     "package_id": "Package identifier",
     "platform": "Platform",
     "size": "Size",
-    "title": "Package analysis report"
+    "title": "Package analysis report",
+    "export_json_action": "Export JSON security report"
   },
   "about": {
     "features": {
@@ -338,7 +340,16 @@
       "ios": "Parse iOS packages: IPA",
       "details": "Inspect the icon, basic fields, permissions and components",
       "hash_signature": "Compute file hashes (MD5 / SHA-1 / SHA-256) and verify signatures",
-      "hardening_report": "Surface hardening hints and export an analysis report"
+      "hardening_report": "Surface hardening hints and export an analysis report",
+      "security_audit": "Security audit: permission, OCR and network transmission detection"
     }
+  },
+  "security": {
+    "title": "Security Detection",
+    "findings": "Findings",
+    "no_findings": "No security findings detected",
+    "risk_overview": "Risk Overview",
+    "limitations": "Coverage Limitations",
+    "coverage_incomplete": "Analysis coverage is incomplete; results are indicative only"
   }
 }

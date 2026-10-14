@@ -107,6 +107,7 @@ class AnalysisBuilder {
     List<HardeningObservation> hardeningObservations = const [],
     ContainerStructure? structure,
     SignatureAnalysis? signature,
+    SecurityAnalysisResult? security,
     List<AnalysisDiagnostic> diagnostics = const [],
   }) {
     final hardeningHints = <HardeningHint>[
@@ -165,6 +166,7 @@ class AnalysisBuilder {
       signatureVerdict: PackageAnalysisResult.verdictFrom(signature),
       diagnostics: diagnostics,
       android: android,
+      security: security,
     );
   }
 
@@ -234,6 +236,7 @@ class AnalysisBuilder {
     FileHashes? hashes,
     IpaAnalysis? analysis,
     IosCodeSignResult? codeSign,
+    SecurityAnalysisResult? security,
     String? unavailableReason,
     List<AnalysisDiagnostic> diagnostics = const [],
   }) {
@@ -292,6 +295,7 @@ class AnalysisBuilder {
       signatureVerdict: PackageAnalysisResult.verdictFromIos(codeSign),
       diagnostics: diagnostics,
       ios: ios,
+      security: security,
     );
   }
 

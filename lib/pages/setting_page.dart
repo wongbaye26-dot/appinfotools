@@ -479,6 +479,16 @@ class _SettingPageState extends ConsumerState<SettingPage> {
             ref.read(settingStateProvider.notifier).setEnableHash(value);
           },
         ),
+        SwitchListTile(
+          title: Text(t.settings.enable_security_audit),
+          value: ref.watch(settingStateProvider
+              .select((value) => value.enableSecurityAudit)),
+          onChanged: (bool value) {
+            ref
+                .read(settingStateProvider.notifier)
+                .setEnableSecurityAudit(value);
+          },
+        ),
         if (FileAssociationManager.isSupported)
           ListTile(
             title: Text(t.settings.file_association),

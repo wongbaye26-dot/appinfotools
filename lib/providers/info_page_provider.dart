@@ -1,3 +1,4 @@
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
@@ -123,6 +124,11 @@ class FileState {
   final SignatureAnalysis? signature;
   final bool isComputingSignature;
 
+  /// 安全检测分析结果（V1.1）。
+  ///
+  /// `null` 表示未启用安全检测，或分析尚未完成。
+  final SecurityAnalysisResult? securityResult;
+
   const FileState({
     this.filePath,
     this.fileSize,
@@ -135,6 +141,7 @@ class FileState {
     this.isComputingHash = false,
     this.signature,
     this.isComputingSignature = false,
+    this.securityResult,
   });
 
   /// 当前文件的平台。
@@ -165,6 +172,7 @@ class FileState {
                 md5: md5Hash ?? '', sha1: sha1Hash ?? '', sha256: sha256),
         analysis: ios,
         codeSign: iosCodeSign,
+        security: securityResult,
         // 诊断必须传上来。此前漏了这一句，于是详情页的「解析诊断」卡片与
         // 导出的报告里**永远**是空的 —— 而 iOS 侧其实产出了几十条诊断
         // （Info.plist 解析、图标定位、Mach-O、描述文件…）。
@@ -201,6 +209,7 @@ class FileState {
       // 免得下游把「没数据」渲染成「有数据但全是 0」。
       structure: info.structure.fileEntryCount == 0 ? null : info.structure,
       signature: signature,
+      security: info.securityResult,
     );
   }
 
@@ -220,6 +229,7 @@ class FileState {
     Object? isComputingHash = _unset,
     Object? signature = _unset,
     Object? isComputingSignature = _unset,
+    Object? securityResult = _unset,
   }) {
     return FileState(
       filePath:
@@ -247,6 +257,9 @@ class FileState {
       isComputingSignature: identical(isComputingSignature, _unset)
           ? this.isComputingSignature
           : isComputingSignature as bool,
+      securityResult: identical(securityResult, _unset)
+          ? this.securityResult
+          : securityResult as SecurityAnalysisResult?,
     );
   }
 
@@ -272,7 +285,8 @@ class FileState {
           other.sha256Hash == sha256Hash &&
           other.isComputingHash == isComputingHash &&
           identical(other.signature, signature) &&
-          other.isComputingSignature == isComputingSignature;
+          other.isComputingSignature == isComputingSignature &&
+          identical(other.securityResult, securityResult);
 
   @override
   int get hashCode => Object.hash(
@@ -287,6 +301,7 @@ class FileState {
         isComputingHash,
         identityHashCode(signature),
         isComputingSignature,
+        identityHashCode(securityResult),
       );
 }
 

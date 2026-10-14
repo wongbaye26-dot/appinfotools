@@ -10,7 +10,8 @@ import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
-import 'package:analysis_model/analysis_model.dart' show FieldSource;
+import 'package:analysis_model/analysis_model.dart'
+    show FieldSource, SecurityAnalysisResult;
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
 import 'package:apk_parser/apk_parser.dart'
@@ -606,6 +607,7 @@ Future<ApkInfo?> _getApkInfoBuiltin(
   apkInfo.hardeningObservations = data.hardeningObservations;
   apkInfo.structure = data.structure;
   apkInfo.originalText = _generateTextInfo(data.meta);
+  apkInfo.securityResult = data.security;
 
   // 导出 arsc 资源表数据供图标渲染器使用（替代 aapt2 dump resources）。
   // 渲染完成后立即释放 —— 资源表在大 APK 上可能占用可观内存。
@@ -859,6 +861,12 @@ class ApkInfo {
 
   // 原始文本
   String originalText = "";
+
+  /// 安全检测分析结果（V1.1）。
+  ///
+  /// `null` 表示未启用，或当前解析路径未产出安全分析
+  ///（例如 aapt2 路径信息不完整）。
+  SecurityAnalysisResult? securityResult;
 
   (String, String) parseToKeyValue(String line, String separator) {
     final pos = line.indexOf(separator);
@@ -1529,6 +1537,7 @@ class ApkInfo {
     obbFiles.clear();
     totalSize = null;
     originalText = "";
+    securityResult = null;
   }
 }
 

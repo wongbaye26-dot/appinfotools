@@ -18,6 +18,7 @@ abstract class Settings with _$Settings {
     required String downloadDir,
     required bool enableSignature,
     required bool enableHash,
+    required bool enableSecurityAudit,
     required bool enableDebug,
     required String language,
     required String parserEngine,
@@ -37,6 +38,7 @@ class SettingState extends _$SettingState {
         downloadDir: Config.downloadDir.value,
         enableSignature: Config.enableSignature.value,
         enableHash: Config.enableHash.value,
+        enableSecurityAudit: Config.enableSecurityAudit.value,
         enableDebug: Config.enableDebug.value,
         language: Config.language.value,
         parserEngine: Config.parserEngine.value,
@@ -85,6 +87,11 @@ class SettingState extends _$SettingState {
   void setEnableHash(bool value) {
     state = state.copyWith(enableHash: value);
     Config.enableHash.updateValue(value);
+  }
+
+  void setEnableSecurityAudit(bool value) {
+    state = state.copyWith(enableSecurityAudit: value);
+    Config.enableSecurityAudit.updateValue(value);
   }
 
   void setEnableDebug(bool value) {

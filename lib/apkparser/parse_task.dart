@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_parser/apk_parser.dart';
@@ -61,11 +62,17 @@ class ParsedApkData {
   /// 容器结构概览（DEX / SO / ABI / 目录）。
   final ContainerStructure structure;
 
+  /// 安全检测分析结果（V1.1）。
+  ///
+  /// `null` 表示 worker 未执行安全分析（例如 aapt2 路径）。
+  final SecurityAnalysisResult? security;
+
   const ParsedApkData({
     required this.meta,
     required this.arscResources,
     this.hardeningObservations = const [],
     this.structure = const ContainerStructure(),
+    this.security,
   });
 }
 
@@ -186,11 +193,27 @@ void _parseEntryPoint(_ParseRequest request) async {
       return;
     }
 
+    // 安全分析：提取 DEX 字节并在 worker 中完成审计。
+    // 这里不创建临时文件，只读内存中的 ZIP 条目，因此即使
+    // [Isolate.immediate] 终止，也不会留下垃圾。
+    final dexEntries = <DexBytes>[
+      for (final name in reader.listFiles(extension: '.dex'))
+        if (reader.readFile(name) case final bytes?) DexBytes(name, bytes),
+    ];
+    final security = AndroidSecurityAudit.audit(
+      meta: meta,
+      dexEntries: dexEntries,
+      containerAnomalies: [
+        for (final obs in reader.scanHardeningSignals()) obs.evidence,
+      ],
+    );
+
     request.reply.send(ParseSucceeded(ParsedApkData(
       meta: meta,
       arscResources: reader.arscParser?.getAllResources() ?? const {},
       hardeningObservations: reader.scanHardeningSignals(),
       structure: reader.collectStructure(),
+      security: security,
     )));
   } catch (e) {
     log.warning('ApkParseTask: worker failed: $e');

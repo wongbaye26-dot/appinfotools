@@ -95,6 +95,7 @@ class Config {
   static final downloadDir = ConfigItem("download_dir", "");
   static final enableSignature = ConfigItem("enable_signature", false);
   static final enableHash = ConfigItem("enable_hash", true);
+  static final enableSecurityAudit = ConfigItem("enable_security_audit", true);
   static final enableDebug = ConfigItem("enable_debug", false);
 
   static const kParserBuiltin = "builtin";
@@ -118,6 +119,7 @@ class Config {
     downloadDir,
     enableSignature,
     enableHash,
+    enableSecurityAudit,
     enableDebug,
     maxLines,
     themeColor,

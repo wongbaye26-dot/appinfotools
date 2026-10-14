@@ -29,7 +29,8 @@ import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
-import 'package:ipa_parser/ipa_parser.dart' show IosBundle, IosIconResolution;
+import 'package:ipa_parser/ipa_parser.dart'
+    show IosBundle, IosIconResolution, IosPrivacyAudit;
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -129,6 +130,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ref.read(settingStateProvider.select((value) => value.enableSignature));
     final enableHash =
         ref.read(settingStateProvider.select((value) => value.enableHash));
+    final enableSecurityAudit = ref.read(
+        settingStateProvider.select((value) => value.enableSecurityAudit));
     apkInfoState.reset();
     ref.read(selectedIconIndexProvider.notifier).reset();
     ref.read(selectedLabelLocaleProvider.notifier).reset();
@@ -212,6 +215,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         }
       } else {
         if (_loadGeneration == gen) {
+          // 安全检测开关：关闭时清空 worker 产出的结果。
+          if (!enableSecurityAudit) {
+            apkInfo.securityResult = null;
+          }
           apkInfoState.update(apkInfo);
           // 更新 FileState 中的 apkInfo（保留哈希值）
           final currentState = ref.read(currentFileStateProvider);
@@ -262,6 +269,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ref.read(settingStateProvider.select((value) => value.enableSignature));
     final enableHash =
         ref.read(settingStateProvider.select((value) => value.enableHash));
+    final enableSecurityAudit = ref.read(
+        settingStateProvider.select((value) => value.enableSecurityAudit));
 
     // 切文件时先把上一个文件的状态清干净。用显式 null 而不是不传 ——
     // 不传会保留上一个文件的 ipaAnalysis，造成跨文件串数据。
@@ -351,8 +360,19 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     if (_loadGeneration != gen) return;
 
     if (parsed != null) {
-      fileState.update(
-          ref.read(currentFileStateProvider).copyWith(ipaAnalysis: parsed));
+      // iOS 安全分析是同步的，在更新状态前完成。
+      SecurityAnalysisResult? security;
+      if (enableSecurityAudit && parsed.infoPlist != null) {
+        security = IosPrivacyAudit.audit(
+          infoPlist: parsed.infoPlist!,
+          executableBytes: parsed.executableBytes,
+          executablePath: parsed.executablePath,
+        );
+      }
+      fileState.update(ref.read(currentFileStateProvider).copyWith(
+            ipaAnalysis: parsed,
+            securityResult: security,
+          ));
       isParsingState.update(false);
       iosStageState.update(null);
 
@@ -628,6 +648,54 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       maxLines: textMaxLines,
       selectable: true,
     ));
+
+    cards.addAll(_buildSecurityCards(result.security));
+
+    return cards;
+  }
+
+  /// 安全检测卡片组。
+  ///
+  /// 与平台无关：Android 与 iOS 共用同一套呈现逻辑，差异只来自
+  /// [SecurityAnalysisResult] 本身的数据。
+  List<Widget> _buildSecurityCards(SecurityAnalysisResult? security) {
+    if (security == null) return const [];
+
+    final textMaxLines =
+        ref.watch(uiConfigStateProvider.select((value) => value.textMaxLines));
+    final findings = security.findings;
+    final hasCoverageGaps = security.hasCoverageGaps;
+
+    // 风险总览文本。
+    final overviewLines = <String>[
+      if (findings.isEmpty) t.security.no_findings,
+      for (final finding in findings)
+        '[${finding.severity.name}] ${finding.finding}',
+    ];
+
+    final cards = <Widget>[
+      Card(
+        child: TitleValueLayout(
+          title: t.security.title,
+          value: overviewLines.join('\n'),
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        ),
+      ),
+    ];
+
+    if (hasCoverageGaps) {
+      cards.add(Card(
+        child: TitleValueLayout(
+          title: t.security.limitations,
+          value: security.limitations.join('\n'),
+          minLines: 1,
+          maxLines: textMaxLines,
+          selectable: true,
+        ),
+      ));
+    }
 
     return cards;
   }
@@ -1234,6 +1302,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                             maxLines: textMaxLines,
                             selectable: !fileState.isComputingSignature,
                           )),
+                        ..._buildSecurityCards(fileState.analysis?.security),
                       ],
                     ],
                   ),
@@ -1311,6 +1380,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         _buildMenuItem(
             'export_report', Icons.description_outlined, t.report.export_action,
             enabled: state.analysis != null),
+        _buildMenuItem(
+            'export_json_report', Icons.code, t.report.export_json_action,
+            enabled:
+                state.analysis != null && state.analysis!.security != null),
         _buildMenuItem('close_file', Icons.close, t.open.close_file,
             enabled: state.filePath != null),
       ],
@@ -1349,6 +1422,44 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       }
     } catch (e) {
       log.warning('_exportAnalysisReport: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t.report.export_failed(error: '$e'))),
+        );
+      }
+    }
+  }
+
+  /// 导出 JSON 安全报告。
+  Future<void> _exportJsonReport() async {
+    final state = ref.read(currentFileStateProvider);
+    final analysis = state.analysis;
+    if (analysis == null || analysis.security == null) return;
+
+    try {
+      final now = DateTime.now();
+      final base = analysis.fileName.value ?? 'package';
+      final stem = path.basenameWithoutExtension(base);
+      final fileName = '${stem}_${analysis.platform.name}_security.json';
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: t.report.export_json_action,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        lockParentWindow: true,
+      );
+      if (savePath == null) return;
+
+      await File(savePath).writeAsString(
+        AnalysisReport.renderJson(analysis, generatedAt: now),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t.report.export_success)),
+        );
+      }
+    } catch (e) {
+      log.warning('_exportJsonReport: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(t.report.export_failed(error: '$e'))),
@@ -1784,6 +1895,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         break;
       case 'export_report':
         await _exportAnalysisReport();
+        break;
+      case 'export_json_report':
+        await _exportJsonReport();
         break;
       case 'open_directory':
         final fileState = ref.read(currentFileStateProvider);
