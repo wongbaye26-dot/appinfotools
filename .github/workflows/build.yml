@@ -193,20 +193,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 挂载后卷标用中文（用户看到的名字），文件名用纯 ASCII。
+          # 应用名统一为 AppInfoTool，卷标、.app 名与文件名三者一致。
           # 构建产物是 universal（x86_64 + arm64），因此名字里写 universal
           # 而不是某个架构。
           V="${{ steps.version.outputs.version }}"
           create-dmg \
-            --volname "APP详情工具 ${V}" \
+            --volname "AppInfoTool ${V}" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
-            --icon "APP详情工具.app" 200 190 \
-            --hide-extension "APP详情工具.app" \
+            --icon "AppInfoTool.app" 200 190 \
+            --hide-extension "AppInfoTool.app" \
             --app-drop-link 600 185 \
             "build/macos/AppInfoTool-${V}-macOS-universal.dmg" \
-            "build/macos/Build/Products/Release/APP详情工具.app"
+            "build/macos/Build/Products/Release/AppInfoTool.app"
 
       - name: Verify DMG
         shell: bash
@@ -221,8 +221,8 @@ jobs:
             | plutil -extract system-entities xml1 -o - - \
             | grep -o '/Volumes/[^<]*' | head -n 1)
           ls -la "${MOUNT}/" | sed 's/^/  /'
-          test -d "${MOUNT}/APP详情工具.app"
-          codesign --verify --strict "${MOUNT}/APP详情工具.app"
+          test -d "${MOUNT}/AppInfoTool.app"
+          codesign --verify --strict "${MOUNT}/AppInfoTool.app"
           hdiutil detach -quiet "$MOUNT"
           echo "DMG 校验通过：$DMG"
 
@@ -304,7 +304,7 @@ jobs:
           # 创建 desktop 文件
           cat > AppDir/usr/share/applications/apk-info-tool.desktop << EOF
           [Desktop Entry]
-          Name=APP详情工具
+          Name=AppInfoTool
           Exec=AppRun
           Icon=apk_info_tool
           Type=Application

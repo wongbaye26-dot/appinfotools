@@ -1,10 +1,10 @@
 name: apk_info_tool
-description: APP详情工具 — 应用包详情查看工具。
+description: AppInfoTool — 应用包详情查看工具。
 homepage: https://feng.to
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
 # Git release 时会自动从tag同步
-version: 1.1.0
+version: 2.0.0
 
 environment:
   sdk: ">=3.0.6 <4.0.0"
@@ -25,6 +25,9 @@ dependencies:
   intl: ^0.20.3
   file_picker: ^10.3.8
   window_manager: ^0.5.1
+  # window_manager 不重新导出 screen_retriever，而初始窗口尺寸需要按
+  # 屏幕可用区域夹紧（1366×768 这类小屏放不下 1280×800），故显式声明。
+  screen_retriever: ^0.2.2
   shared_preferences: ^2.3.3
   flutter_colorpicker: ^1.0.3
   desktop_drop: ^0.7.0
@@ -72,9 +75,9 @@ inno_bundle:
   publisher: Feng
   # 同时决定：安装包文件名（<name>-<arch>-<version>-Installer.exe）、
   # 安装目录、开始菜单快捷方式名，以及「应用与功能」里的显示名。
-  # 与应用显示名「APP详情工具」刻意分开：产物名用纯 ASCII，
-  # 免得文件名和下载链接里带中文（URL 会被转义成 %，命令行下载很难用）。
-  # 应用内的显示名来自 assets/i18n 的 title，两处不是一回事。
+  # 与应用显示名保持一致（都是 AppInfoTool）：名字全 ASCII，文件名和
+  # 下载链接里不会出现 % 转义，命令行下载才好用。
+  # 应用内的显示名来自 assets/i18n 的 title，两处需要同步改。
   name: AppInfoTool
   languages:
     - english

@@ -60,7 +60,7 @@ tool/build_macos.sh --no-package   # 只构建与校验
 → **`codesign --verify --strict` 校验密封** → **打印签名种类**（ad-hoc 还是
 Developer ID）→ 打包（有 `create-dmg` 就出 DMG，否则用 `ditto` 出 zip）。
 
-产物：`build/macos/APKInfoTool-<版本>.dmg`，与 CI 的约定一致。
+产物：`build/macos/AppInfoTool-<版本>-macOS-universal.dmg`，与 CI 的约定一致。
 
 ## 4. 前置安装（一次性）
 
@@ -98,10 +98,11 @@ Flutter 的提示是「你的工程仍有 CocoaPods 集成，需要手工迁移�
 #### 两个容易踩的坑
 
 - **OpenStep plist 的非引号字符串不允许非 ASCII 字符。**
-  `path = apk_info_tool.app;` 合法，但 `path = APP详情工具.app;` 会让
+  `path = AppInfoTool.app;` 合法，但 `path = APP详情工具.app;` 会让
   `plutil -lint` 报 `Unexpected character` —— 必须写成
-  `path = "APP详情工具.app";`。所以改 `PRODUCT_NAME` 之后一定要
-  `plutil -lint macos/Runner.xcodeproj/project.pbxproj` 验一遍。
+  `path = "APP详情工具.app";`。应用名已统一为 ASCII 的 `AppInfoTool`，
+  当前不需要引号；但**如果以后把 `PRODUCT_NAME` 改回中文，引号必须一起加**，
+  并且改完一定要 `plutil -lint macos/Runner.xcodeproj/project.pbxproj` 验一遍。
 - 删对象时**引用与定义要一起删**。只删定义，数组里的引用就成了悬空引用。
 
 #### 什么时候才需要 CocoaPods
@@ -142,18 +143,18 @@ DEVELOPMENT_TEAM = <你的 10 位 Team ID>;
 
 ```sh
 # 用 app-specific password 或 API Key，不要用 Apple ID 密码
-xcrun notarytool submit build/macos/APKInfoTool-<版本>.dmg \
+xcrun notarytool submit build/macos/AppInfoTool-<版本>-macOS-universal.dmg \
   --apple-id <你的 Apple ID> --team-id <Team ID> --password <app-specific-password> \
   --wait
 
 # 公证通过后把票据装订到分发物上，别人离线也能验证
-xcrun stapler staple build/macos/APKInfoTool-<版本>.dmg
+xcrun stapler staple build/macos/AppInfoTool-<版本>-macOS-universal.dmg
 ```
 
 验证：
 
 ```sh
-spctl -a -vvv -t install build/macos/APKInfoTool-<版本>.dmg   # 应当 accepted / Notarized
+spctl -a -vvv -t install build/macos/AppInfoTool-<版本>-macOS-universal.dmg   # 应当 accepted / Notarized
 ```
 
 ### 5.4 CI 现状：**没有任何签名或公证步骤**

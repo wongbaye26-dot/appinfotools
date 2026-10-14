@@ -1,8 +1,8 @@
  <p align="center">
-  <img src="docs/assets/icon_512.png" width="120" alt="APP详情工具 Logo">
+  <img src="docs/assets/icon_512.png" width="120" alt="AppInfoTool Logo">
 </p>
 
-<h1 align="center">APP详情工具</h1>
+<h1 align="center">AppInfoTool</h1>
 
 <p align="center">
   <strong>跨平台移动应用包信息分析工具</strong><br>
@@ -33,7 +33,7 @@
 
 ## 📖 项目简介
 
-**APP详情工具（AppInfoTool）** 是一个基于 Flutter 开发的跨平台移动应用包信息查看工具，致力于让 Android 应用包的解析、信息查看、图标预览和安装辅助操作更加简单直观。
+**AppInfoTool** 是一个基于 Flutter 开发的跨平台移动应用包信息查看工具，致力于让 Android 应用包的解析、信息查看、图标预览和安装辅助操作更加简单直观。
 
 本项目基于开源项目 [ApkInfoTool](https://github.com/huanfeng/ApkInfoTool) 继续开发，在保留原有技术基础与功能方向的同时，持续进行产品品牌、用户界面、解析能力和跨平台体验方面的改进。
 
@@ -155,7 +155,7 @@ flutter build linux
 
 本项目特别感谢 **[huanfeng](https://github.com/huanfeng)** 开源的 [ApkInfoTool](https://github.com/huanfeng/ApkInfoTool)。
 
-原项目为 Android 应用包信息解析、图标渲染、分包处理和跨平台桌面应用开发提供了重要的技术基础。APP详情工具在此基础上继续探索产品体验、解析能力和跨平台应用信息分析方向。
+原项目为 Android 应用包信息解析、图标渲染、分包处理和跨平台桌面应用开发提供了重要的技术基础。AppInfoTool 在此基础上继续探索产品体验、解析能力和跨平台应用信息分析方向。
 
 我们尊重原作者的技术成果与开源贡献，并感谢原作者及开源社区对相关技术的持续投入。
 
@@ -179,7 +179,7 @@ flutter build linux
 ---
 
 <p align="center">
-  APP详情工具 · AppInfoTool
+  AppInfoTool
 </p>
 
 <p align="center">

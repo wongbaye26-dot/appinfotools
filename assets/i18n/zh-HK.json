@@ -1,5 +1,5 @@
 {
-  "title": "APP详情工具",
+  "title": "AppInfoTool",
   "base": {
     "select": "選擇",
     "confirm": "確定",
@@ -7,6 +7,12 @@
     "close": "關閉",
     "reset": "重置",
     "ok": "確定"
+  },
+  "nav": {
+    "overview": "概覽",
+    "analysis": "分析",
+    "install": "安裝",
+    "settings": "設定"
   },
   "home": {
     "copy_file_path": "複製檔案路徑",
@@ -70,6 +76,7 @@
     "features": "功能",
     "file_association": "文件關聯",
     "appearance": "外觀",
+    "theme_mode": "主題",
     "about": "關於",
     "debug": "調試",
     "enable_signature": "啟用簽名檢查",
@@ -137,6 +144,7 @@
   },
   "apk_info": {
     "archive_type": "文件類型",
+    "group_app": "應用資訊",
     "package_name": "包名",
     "app_name": "名稱",
     "switch_label_language": "切換應用名稱語言",

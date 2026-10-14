@@ -146,7 +146,7 @@ dart run build_runner build --delete-conflicting-outputs
 step "flutter build macos --release"
 flutter build macos --release
 
-APP_PATH="build/macos/Build/Products/Release/APP详情工具.app"
+APP_PATH="build/macos/Build/Products/Release/AppInfoTool.app"
 [ -d "$APP_PATH" ] || fail "构建产物不存在：$APP_PATH" "构建报告成功但没有产物，请检查上面的输出"
 ok "$APP_PATH"
 
@@ -199,18 +199,18 @@ fi
 # 清掉构建过程中可能带上的本地扩展属性，避免把本机状态打进分发物。
 xattr -cr "$APP_PATH" 2>/dev/null || true
 
-DMG_PATH="build/macos/APKInfoTool-${VERSION}.dmg"
+DMG_PATH="build/macos/AppInfoTool-${VERSION}-macOS-universal.dmg"
 rm -f "$DMG_PATH"
 
 if command -v create-dmg >/dev/null 2>&1; then
   step "打包 DMG（create-dmg，与 CI 一致）"
   create-dmg \
-    --volname "APP详情工具 ${VERSION}" \
+    --volname "AppInfoTool ${VERSION}" \
     --window-pos 200 120 \
     --window-size 800 400 \
     --icon-size 100 \
-    --icon "APP详情工具.app" 200 190 \
-    --hide-extension "APP详情工具.app" \
+    --icon "AppInfoTool.app" 200 190 \
+    --hide-extension "AppInfoTool.app" \
     --app-drop-link 600 185 \
     "$DMG_PATH" \
     "$APP_PATH"
@@ -219,7 +219,7 @@ else
   # 没有 create-dmg 就退回 zip。用 ditto 而不是 zip：
   # 它保留符号链接、权限与扩展属性，.app 打包必须这样。
   step "打包 zip（未安装 create-dmg，改用 ditto）"
-  ARTIFACT="build/macos/APKInfoTool-${VERSION}.zip"
+  ARTIFACT="build/macos/AppInfoTool-${VERSION}-macOS-universal.zip"
   rm -f "$ARTIFACT"
   ditto -c -k --keepParent "$APP_PATH" "$ARTIFACT"
 fi

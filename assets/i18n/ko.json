@@ -1,5 +1,5 @@
 {
-  "title": "APP详情工具",
+  "title": "AppInfoTool",
   "base": {
     "select": "선택",
     "confirm": "확인",
@@ -7,6 +7,12 @@
     "close": "닫기",
     "reset": "초기화",
     "ok": "확인"
+  },
+  "nav": {
+    "overview": "개요",
+    "analysis": "분석",
+    "install": "설치",
+    "settings": "설정"
   },
   "home": {
     "copy_file_path": "파일 경로 복사",
@@ -70,6 +76,7 @@
     "features": "기능",
     "file_association": "파일 연결",
     "appearance": "외관",
+    "theme_mode": "테마",
     "about": "정보",
     "debug": "디버그",
     "enable_signature": "서명 확인 활성화",
@@ -137,6 +144,7 @@
   },
   "apk_info": {
     "archive_type": "파일 유형",
+    "group_app": "앱 정보",
     "package_name": "패키지 이름",
     "app_name": "앱 이름",
     "switch_label_language": "앱 이름 언어 전환",

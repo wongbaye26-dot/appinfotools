@@ -1,5 +1,5 @@
 {
-  "title": "APP详情工具",
+  "title": "AppInfoTool",
   "base": {
     "select": "選択",
     "confirm": "確認",
@@ -7,6 +7,12 @@
     "close": "閉じる",
     "reset": "リセット",
     "ok": "OK"
+  },
+  "nav": {
+    "overview": "概要",
+    "analysis": "分析",
+    "install": "インストール",
+    "settings": "設定"
   },
   "home": {
     "copy_file_path": "ファイルパスをコピー",
@@ -70,6 +76,7 @@
     "features": "機能",
     "file_association": "ファイル関連付け",
     "appearance": "外観",
+    "theme_mode": "テーマ",
     "about": "このアプリについて",
     "debug": "デバッグ",
     "enable_signature": "署名チェックを有効にする",
@@ -137,6 +144,7 @@
   },
   "apk_info": {
     "archive_type": "ファイルタイプ",
+    "group_app": "アプリ情報",
     "package_name": "パッケージ名",
     "app_name": "アプリ名",
     "switch_label_language": "アプリ名の言語を切り替え",

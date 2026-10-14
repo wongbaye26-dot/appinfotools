@@ -56,7 +56,7 @@ void main() {
     // 生产入口在 `main()` 里调 `PackageInfo.fromPlatform()`；测试直接赋值，
     // 避免依赖平台通道。
     packageInfo = PackageInfo(
-      appName: 'APP详情工具',
+      appName: 'AppInfoTool',
       packageName: 'com.huanfeng.appinfotool',
       version: '2.0.0',
       buildNumber: '20',

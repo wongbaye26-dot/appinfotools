@@ -21,7 +21,7 @@ macOS 的 dmg 是 universal 包，同一份在 Intel 与 Apple Silicon 上都能
 - 或在终端执行：
 
   ```sh
-  xattr -dr com.apple.quarantine "/Applications/APP详情工具.app"
+  xattr -dr com.apple.quarantine "/Applications/AppInfoTool.app"
   ```
 
 系统要求：macOS 11 或更高。

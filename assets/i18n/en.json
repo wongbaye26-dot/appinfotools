@@ -1,5 +1,5 @@
 {
-  "title": "APP详情工具",
+  "title": "AppInfoTool",
   "base": {
     "select": "Select",
     "confirm": "Confirm",
@@ -7,6 +7,12 @@
     "close": "Close",
     "reset": "Reset",
     "ok": "OK"
+  },
+  "nav": {
+    "overview": "Overview",
+    "analysis": "Analysis",
+    "install": "Install",
+    "settings": "Settings"
   },
   "home": {
     "copy_file_path": "Copy file path",
@@ -63,6 +69,7 @@
     "features": "Features",
     "file_association": "File Association",
     "appearance": "Appearance",
+    "theme_mode": "Theme",
     "about": "About",
     "debug": "Debug",
     "enable_signature": "Enable Signature Check",
@@ -137,6 +144,7 @@
   },
   "apk_info": {
     "archive_type": "Archive Type",
+    "group_app": "App info",
     "package_name": "Package",
     "app_name": "Name",
     "switch_label_language": "Switch app name language",
