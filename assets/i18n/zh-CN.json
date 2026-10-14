@@ -427,5 +427,21 @@
     "structure": "结构",
     "signature": "签名",
     "security": "安全"
+  },
+  "coverage": {
+    "title": "分析覆盖",
+    "covered": "已覆盖",
+    "partial": "部分覆盖",
+    "not_covered": "未覆盖",
+    "not_applicable": "本次不适用",
+    "summary": "{applicable} 个维度中有 {covered} 个完整覆盖",
+    "all_covered": "全部适用维度都已完整覆盖",
+    "gap_count": "{count} 个维度存在缺口",
+    "no_gaps": "没有缺口",
+    "column_dimension": "维度",
+    "column_status": "状态",
+    "column_amount": "覆盖量",
+    "column_note": "说明",
+    "hint": "缺口意味着结论不覆盖全部范围：这里的「没发现」不等于「没有」。"
   }
 }

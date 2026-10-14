@@ -15,6 +15,8 @@
 /// 3. **没有证据的字段必须留空或标 unknown**，不允许为了让报告显得完整而猜测。
 library;
 
+import 'analysis_coverage.dart';
+
 /// 平台。
 enum SecurityPlatform {
   android,
@@ -336,12 +338,22 @@ class SecurityAnalysisResult {
   /// 动态检测包装成已实现功能）。
   final bool includesRuntimeEvidence;
 
+  /// **结构化**的覆盖情况。
+  ///
+  /// 与 [limitations] 的分工：[limitations] 是给人读的句子（措辞会变），
+  /// 这里是给程序读的数据（id 稳定、状态可判定）。UI 与报告都读这一份，
+  /// 不再各自从 `limitations` 的文本里猜。
+  ///
+  /// 默认空表示「本引擎没有产出结构化覆盖」—— 那是「没报」，不是「全覆盖」。
+  final AnalysisCoverage coverage;
+
   const SecurityAnalysisResult({
     required this.engineVersion,
     required this.rulesVersion,
     this.findings = const [],
     this.limitations = const [],
     this.includesRuntimeEvidence = false,
+    this.coverage = const AnalysisCoverage(),
   });
 
   /// 各等级发现数量。
@@ -365,6 +377,7 @@ class SecurityAnalysisResult {
       findings: findings,
       limitations: [...limitations, limitation],
       includesRuntimeEvidence: includesRuntimeEvidence,
+      coverage: coverage,
     );
   }
 

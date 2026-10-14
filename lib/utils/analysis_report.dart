@@ -54,6 +54,8 @@ class AnalysisReport {
       }
     }
     _securitySection(sb, result, t);
+    // 覆盖放在「未覆盖范围」之前：先逐维度说清覆盖到哪，再说报告级的未执行项。
+    _coverage(sb, result, t);
     _limitations(sb, result, t);
     if (!securityOnly) _diagnostics(sb, result, t);
 
@@ -426,6 +428,66 @@ class AnalysisReport {
     return items;
   }
 
+  /// **逐维度**的分析覆盖。
+  ///
+  /// 与 [_limitations] 分开：那是「报告级的未执行说明」（一句一句的话），
+  /// 这里是结构化数据。两者一起看才知道「哪个维度没覆盖」以及「为什么」。
+  static void _coverage(
+    StringBuffer sb,
+    PackageAnalysisResult result,
+    Translations t,
+  ) {
+    final coverage = result.security?.coverage;
+    if (coverage == null || coverage.isEmpty) return;
+
+    sb
+      ..writeln('## ${t.coverage.title}')
+      ..writeln()
+      ..writeln(coverageSummary(coverage, t))
+      ..writeln();
+
+    sb
+      ..writeln(
+          '| ${t.coverage.column_dimension} | ${t.coverage.column_status} '
+          '| ${t.coverage.column_amount} | ${t.coverage.column_note} |')
+      ..writeln('| --- | --- | --- | --- |');
+    for (final entry in coverage.entries) {
+      sb.writeln('| ${_escape(entry.id)} '
+          '| ${coverageStatusText(entry.status, t)} '
+          '| ${entry.ratioText ?? '—'} '
+          '| ${_escape(entry.note ?? '')} |');
+    }
+    sb
+      ..writeln()
+      ..writeln(t.coverage.hint)
+      ..writeln();
+  }
+
+  /// 覆盖情况的汇总句。UI 与 Markdown 共用 —— 两处各写一遍必然漂移。
+  static String coverageSummary(AnalysisCoverage coverage, Translations t) {
+    final applicable = coverage.applicable;
+    final covered = [
+      for (final e in applicable)
+        if (e.status == CoverageStatus.covered) e,
+    ].length;
+    if (applicable.isEmpty) return t.coverage.no_gaps;
+    if (covered == applicable.length) {
+      return '${t.coverage.summary(covered: covered, applicable: applicable.length)}'
+          '（${t.coverage.all_covered}）';
+    }
+    return '${t.coverage.summary(covered: covered, applicable: applicable.length)}；'
+        '${t.coverage.gap_count(count: coverage.gaps.length)}';
+  }
+
+  /// 覆盖状态的本地化文本。UI 与 Markdown 共用。
+  static String coverageStatusText(CoverageStatus status, Translations t) =>
+      switch (status) {
+        CoverageStatus.covered => t.coverage.covered,
+        CoverageStatus.partial => t.coverage.partial,
+        CoverageStatus.notCovered => t.coverage.not_covered,
+        CoverageStatus.notApplicable => t.coverage.not_applicable,
+      };
+
   static void _diagnostics(
     StringBuffer sb,
     PackageAnalysisResult result,
@@ -510,7 +572,13 @@ class AnalysisReport {
   /// 与 `engineVersion` / `rulesVersion` 是三件不同的事：
   /// - 本字段变 → 报告结构变了，解析脚本要跟着改；
   /// - 引擎 / 规则版本变 → 结论可能变，但结构没变。
-  static const int reportSchemaVersion = 1;
+  /// 报告 schema 版本。
+  ///
+  /// **只在结构变化时递增**，与 `engineVersion` / `rulesVersion` 是三件事：
+  /// 引擎换了但结构没变，消费者不需要改代码。
+  ///
+  /// v2：`coverage` 从「只有 hasGaps + limitations」扩成含结构化 `entries`。
+  static const int reportSchemaVersion = 2;
 
   static String renderJson(
     PackageAnalysisResult result, {
@@ -601,9 +669,24 @@ class AnalysisReport {
 
       'findings': findings,
 
-      // 安全引擎视角的覆盖情况（引擎内部的截断、加固、预算不足）。
+      // 安全引擎视角的覆盖情况。
+      //
+      // `entries` 是**结构化**的逐维度状态（稳定 id + 可判定状态）；
+      // `limitations` 是给人读的句子。两者都在：程序用前者，
+      // 人读后者，且不必从文本里反推状态。
       'coverage': {
         'hasGaps': security?.hasCoverageGaps ?? true,
+        'entries': [
+          for (final entry
+              in security?.coverage.entries ?? const <CoverageEntry>[])
+            {
+              'id': entry.id,
+              'status': entry.status.name,
+              'covered': entry.covered,
+              'limit': entry.limit,
+              'note': entry.note,
+            },
+        ],
         'limitations': security?.limitations ?? const <String>[],
       },
 

@@ -456,4 +456,96 @@ void main() {
       expect(name, contains('unknown'));
     });
   });
+  // ---- 阶段 6：结构化覆盖进报告 ----
+  group('AnalysisReport — 逐维度的分析覆盖', () {
+    const coverage = AnalysisCoverage(entries: [
+      CoverageEntry(id: 'android.manifest', status: CoverageStatus.covered),
+      CoverageEntry(
+        id: 'android.dex.strings',
+        status: CoverageStatus.partial,
+        covered: 1024,
+        limit: 2048,
+        note: '1 个 DEX 未完整扫描',
+      ),
+      CoverageEntry(
+          id: 'android.arsc', status: CoverageStatus.notCovered, note: '资源表缺失'),
+      CoverageEntry(id: 'ios.signature', status: CoverageStatus.notApplicable),
+    ]);
+    const security = SecurityAnalysisResult(
+      engineVersion: 'e',
+      rulesVersion: 'r',
+      coverage: coverage,
+    );
+
+    test('Markdown 里有覆盖一节，逐维度列出状态与覆盖量', () {
+      final report = AnalysisReport.render(
+        _android(security: security),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(report, contains('## ${t.coverage.title}'));
+      expect(report, contains('android.manifest'));
+      expect(report, contains(t.coverage.covered));
+      expect(report, contains('android.dex.strings'));
+      expect(report, contains(t.coverage.partial));
+      expect(report, contains('1024/2048'), reason: '覆盖量要能看到');
+      expect(report, contains('android.arsc'));
+      expect(report, contains(t.coverage.not_covered));
+      expect(report, contains('资源表缺失'), reason: '「为什么没覆盖」要带上');
+      expect(report, contains(t.coverage.not_applicable));
+      expect(report, contains(t.coverage.hint));
+    });
+
+    test('JSON 的 coverage 带结构化 entries，而不是只有一句 hasGaps', () {
+      final json = AnalysisReport.renderJson(
+        _android(security: security),
+        generatedAt: _at,
+        t: t,
+      );
+
+      expect(json, contains('"coverage"'));
+      expect(json, contains('"entries"'));
+      expect(json, contains('"id": "android.dex.strings"'));
+      expect(json, contains('"status": "partial"'));
+      expect(json, contains('"covered": 1024'));
+      expect(json, contains('"limit": 2048'));
+      // 与既有 severity / confidence 一致：用 Dart 枚举名（camelCase）。
+      expect(json, contains('"status": "notApplicable"'));
+      // 旧的字段不能丢 —— 已有消费者依赖它。
+      expect(json, contains('"hasGaps"'));
+      expect(json, contains('"limitations"'));
+    });
+
+    test('schema 版本随结构变化递增（v2）', () {
+      final json = AnalysisReport.renderJson(
+        _android(security: security),
+        generatedAt: _at,
+        t: t,
+      );
+
+      expect(json, contains('"reportSchemaVersion": 2'));
+    });
+
+    test('没有 coverage 时不出现覆盖一节，也不崩', () {
+      final report = AnalysisReport.render(_android(), t, generatedAt: _at);
+
+      expect(report, isNot(contains('## ${t.coverage.title}')));
+    });
+
+    test('「仅安全检测」范围下覆盖一节仍然保留', () {
+      final report = AnalysisReport.render(
+        _android(security: security),
+        t,
+        generatedAt: _at,
+        securityOnly: true,
+      );
+
+      expect(
+        report,
+        contains('## ${t.coverage.title}'),
+        reason: '覆盖是安全结论可信度的一部分，不该被「仅安全」裁掉',
+      );
+    });
+  });
 }

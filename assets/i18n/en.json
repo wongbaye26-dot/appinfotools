@@ -428,5 +428,21 @@
     "structure": "Structure",
     "signature": "Signature",
     "security": "Security"
+  },
+  "coverage": {
+    "title": "Analysis coverage",
+    "covered": "Covered",
+    "partial": "Partially covered",
+    "not_covered": "Not covered",
+    "not_applicable": "Not applicable",
+    "summary": "{covered} of {applicable} dimensions fully covered",
+    "all_covered": "All applicable dimensions are fully covered",
+    "gap_count": "{count} dimensions have gaps",
+    "no_gaps": "No gaps",
+    "column_dimension": "Dimension",
+    "column_status": "Status",
+    "column_amount": "Amount",
+    "column_note": "Note",
+    "hint": "A gap means the conclusion does not cover everything: “not found” here does not mean “none”."
   }
 }

@@ -20,6 +20,7 @@ import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
@@ -723,6 +724,22 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ));
     }
 
+    // ===== 分析覆盖 =====
+    //
+    // 覆盖率是**结构化**的（逐维度状态 + 覆盖量 + 说明），因此单独成一张
+    // 卡片，而不是混进「解析诊断」的文本里 —— 后者是给人读的句子，
+    // 从句子里反推「哪个维度没覆盖」既不可靠也没必要。
+    final coverage = result.security?.coverage;
+    if (coverage != null && !coverage.isEmpty) {
+      cards.add(
+          _SectionHeader(title: t.coverage.title, tab: DetailTab.security));
+      cards.add(card(
+        t.coverage.title,
+        _coverageBody(coverage, t),
+        selectable: true,
+      ));
+    }
+
     // ===== 解析诊断 =====
     final diagnostics = DetailRenderer.diagnostics(result.diagnostics, t);
     if (diagnostics.isNotEmpty) {
@@ -735,6 +752,28 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     cards.addAll(_buildSecurityCards(result.security));
 
     return cards;
+  }
+
+  /// 覆盖情况的正文：汇总句 + 逐维度一行。
+  ///
+  /// 汇总句与状态文案都从 [AnalysisReport] 取 —— Markdown 报告与界面用同一份，
+  /// 两处各写一遍必然漂移。
+  String _coverageBody(AnalysisCoverage coverage, Translations t) {
+    final sb = StringBuffer()
+      ..writeln(AnalysisReport.coverageSummary(coverage, t))
+      ..writeln()
+      ..writeln(t.coverage.hint)
+      ..writeln();
+
+    for (final entry in coverage.entries) {
+      final status = AnalysisReport.coverageStatusText(entry.status, t);
+      final amount = entry.ratioText;
+      final note = entry.note;
+      sb.writeln('$status  ${entry.id}'
+          '${amount == null ? '' : '  $amount'}'
+          '${note == null || note.isEmpty ? '' : '  —— $note'}');
+    }
+    return sb.toString().trimRight();
   }
 
   /// 安全检测卡片组。

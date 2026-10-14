@@ -427,5 +427,21 @@
     "structure": "結構",
     "signature": "簽章",
     "security": "安全"
+  },
+  "coverage": {
+    "title": "分析覆蓋",
+    "covered": "已覆蓋",
+    "partial": "部分覆蓋",
+    "not_covered": "未覆蓋",
+    "not_applicable": "本次不適用",
+    "summary": "{applicable} 個維度中有 {covered} 個完整覆蓋",
+    "all_covered": "全部適用維度都已完整覆蓋",
+    "gap_count": "{count} 個維度存在缺口",
+    "no_gaps": "沒有缺口",
+    "column_dimension": "維度",
+    "column_status": "狀態",
+    "column_amount": "覆蓋量",
+    "column_note": "說明",
+    "hint": "缺口意味著結論不覆蓋全部範圍：這裡的「沒發現」不等於「沒有」。"
   }
 }

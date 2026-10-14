@@ -708,11 +708,90 @@ class IosPrivacyAudit {
     findings.addAll(nativeReport.findings);
     limitations.addAll(nativeReport.limitations);
 
+    // ---- 结构化覆盖 ----
+    //
+    // 与 Android 侧同一套模型：把「覆盖了什么」从 limitations 的句子里收敛成
+    // 带稳定 id 的数据，UI 与报告读同一份。
+    final coverage = AnalysisCoverage(entries: [
+      CoverageEntry(
+        id: 'ios.infoPlist',
+        status: usage.hasValue || infoPlist.raw != null
+            ? CoverageStatus.covered
+            : CoverageStatus.notCovered,
+        note:
+            usage.hasValue || infoPlist.raw != null ? null : 'Info.plist 未能解析',
+      ),
+      CoverageEntry(
+        id: 'ios.usageDescriptions',
+        status:
+            usage.hasValue ? CoverageStatus.covered : CoverageStatus.notCovered,
+        covered: usage.hasValue ? usage.value!.length : null,
+        note: usage.hasValue ? null : 'Info.plist 未解析，用途说明未读取',
+      ),
+      CoverageEntry(
+        id: 'ios.privacyManifest',
+        status: infoPlist.privacyInfo.hasValue
+            ? CoverageStatus.covered
+            : CoverageStatus.notApplicable,
+        note: infoPlist.privacyInfo.hasValue
+            ? null
+            : '本 bundle 没有 PrivacyInfo.xcprivacy（iOS 17 之前不需要）',
+      ),
+      CoverageEntry(
+        id: 'ios.executables',
+        status: targets.isEmpty
+            ? CoverageStatus.notCovered
+            : (scannedPaths.length == targets.length
+                ? CoverageStatus.covered
+                : (scannedPaths.isEmpty
+                    ? CoverageStatus.notCovered
+                    : CoverageStatus.partial)),
+        covered: scannedPaths.length,
+        limit: targets.length,
+        note: unscanned.isEmpty ? null : '${unscanned.length} 个可执行文件未参与扫描',
+      ),
+      CoverageEntry(
+        id: 'ios.macho.strings',
+        status: scannedPaths.isEmpty
+            ? CoverageStatus.notCovered
+            : (truncated ? CoverageStatus.partial : CoverageStatus.covered),
+        covered: scanned,
+        note: scannedPaths.isEmpty
+            ? '未能读取任何 Mach-O 可执行文件的内容'
+            : (truncated ? '部分可执行文件超过单文件扫描预算' : null),
+      ),
+      CoverageEntry(
+        id: 'ios.nativeSymbols',
+        status: nativeResult.scannedImages == 0
+            ? CoverageStatus.notCovered
+            : (nativeResult.unreadableImages.isNotEmpty ||
+                    nativeResult.hasImageWithoutSymtab
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: nativeResult.scannedImages,
+        note: nativeResult.scannedImages == 0
+            ? '没有可读符号表的 Mach-O 镜像'
+            : (nativeResult.unreadableImages.isNotEmpty
+                ? '${nativeResult.unreadableImages.length} 个镜像的符号表越界'
+                : (nativeResult.hasImageWithoutSymtab
+                    ? '部分镜像没有 LC_SYMTAB（符号表被剥离）'
+                    : null)),
+      ),
+      CoverageEntry(
+        id: 'ios.signature',
+        // 签名验证由 codesign 在**主 isolate** 单独执行，不在本审计里 ——
+        // 标 notApplicable 而不是 notCovered，避免报告凭空多出一个假缺口。
+        status: CoverageStatus.notApplicable,
+        note: '签名验证由 codesign 单独执行，见签名信息卡片',
+      ),
+    ]);
+
     return SecurityAnalysisResult(
       engineVersion: engineVersion,
       rulesVersion: rulesVersion,
       findings: findings,
       limitations: limitations,
+      coverage: coverage,
     );
   }
 

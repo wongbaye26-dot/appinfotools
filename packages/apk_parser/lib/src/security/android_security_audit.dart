@@ -301,6 +301,12 @@ class AndroidSecurityAudit {
     // DEX 的 method_ids 里看不到原生代码调用了什么。ELF 的 `.dynsym` 能补上
     // 这一块：导入的符号是精确的标识符，比字符串命中确定得多。
     final nativeScan = NativeSymbolScanner.scan(nativeEntries);
+
+    // 资源表是否读到：`locales` / `densities` 任一非空即说明 arsc 解析成功
+    // （两者都由 arsc 提供）。两个都空既可能是「资源表确实没有多语言/密度
+    // 变体」，也可能是「资源表没读到」—— 因此只用它判「读到过没有」，
+    // 判不出来时如实标 notCovered 并说明。
+    final arscEntryCount = meta.locales.length + meta.densities.length;
     for (final skipped in nativeScan.skippedForBudget) {
       limitations.add('原生库扫描预算：$skipped —— 该库未参与分析。');
     }
@@ -718,6 +724,113 @@ class AndroidSecurityAudit {
     limitations.add('OCR / 上传 / 后台的判定基于字符串标记同现，'
         '未做反汇编与跨方法数据流还原；混淆与动态加载可能改变结论。');
 
+    // ---- 结构化覆盖 ----
+    //
+    // 此前「覆盖了什么」散在 limitations 的句子里，UI 与报告只能各自去猜。
+    // 这里收敛成带稳定 id 的数据，两者读同一份。
+    final coverage = AnalysisCoverage(entries: [
+      CoverageEntry(
+        id: 'android.manifest',
+        status:
+            manifestParsed ? CoverageStatus.covered : CoverageStatus.notCovered,
+        note: manifestParsed
+            ? null
+            : 'AndroidManifest.xml 未能解析'
+                '（${manifestFailureReason ?? '原因未记录'}）',
+      ),
+      CoverageEntry(
+        id: 'android.permissions',
+        status:
+            manifestParsed ? CoverageStatus.covered : CoverageStatus.notCovered,
+        covered: manifestParsed ? meta.permissionRequests.length : null,
+        note: manifestParsed ? null : '清单未解析，权限审计无法进行',
+      ),
+      CoverageEntry(
+        id: 'android.dex.structure',
+        status: dexEntries.isEmpty
+            ? CoverageStatus.notCovered
+            : (untraversable.isEmpty
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        covered: structures.length - untraversable.length,
+        limit: structures.length,
+        note: dexEntries.isEmpty
+            ? '未读取到任何 classes.dex 内容'
+            : (untraversable.isEmpty
+                ? null
+                : '${untraversable.length} 个 DEX 结构不可信'),
+      ),
+      CoverageEntry(
+        id: 'android.dex.strings',
+        status: dexEntries.isEmpty
+            ? CoverageStatus.notCovered
+            : (scan.skippedForBudget.isEmpty
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        covered: scan.scannedBytes,
+        note: dexEntries.isEmpty
+            ? '未读取到任何 classes.dex 内容'
+            : (scan.skippedForBudget.isEmpty
+                ? null
+                : '${scan.skippedForBudget.length} 个 DEX 未完整扫描'),
+      ),
+      CoverageEntry(
+        id: 'android.dex.methodReferences',
+        status: methodScan.scannedDexCount == 0
+            ? CoverageStatus.notCovered
+            : ((methodScan.skippedEntries > 0 ||
+                    methodScan.truncatedForBudget.isNotEmpty)
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: methodScan.scannedDexCount,
+        limit: dexEntries.length,
+        note: methodScan.scannedDexCount == 0
+            ? '没有结构可信的 DEX，方法引用未分析'
+            : (methodScan.skippedEntries > 0
+                ? '${methodScan.skippedEntries} 个 method_ids 条目读不出来'
+                : null),
+      ),
+      CoverageEntry(
+        id: 'android.dex.callSites',
+        status: methodScan.walkedDexCount == 0
+            ? CoverageStatus.notCovered
+            : (methodScan.desyncedBodies.isEmpty
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        covered: methodScan.callSiteCount,
+        note: methodScan.walkedDexCount == 0
+            ? '没有可遍历的 DEX 方法体'
+            : (methodScan.desyncedBodies.isEmpty
+                ? null
+                : '${methodScan.desyncedBodies.length} 个方法体指令遍历未对齐'),
+      ),
+      CoverageEntry(
+        id: 'android.nativeSymbols',
+        status: nativeEntries.isEmpty
+            ? CoverageStatus.notApplicable
+            : ((nativeScan.skippedForBudget.isNotEmpty ||
+                    nativeScan.notTraversable.isNotEmpty ||
+                    nativeScan.truncated)
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: nativeScan.libraries.length,
+        limit: nativeEntries.length,
+        note: nativeEntries.isEmpty
+            ? '本次未提供原生库内容（没有 lib/**.so 或未读取）'
+            : (nativeScan.skippedForBudget.isNotEmpty
+                ? '${nativeScan.skippedForBudget.length} 个原生库因预算未分析'
+                : null),
+      ),
+      CoverageEntry(
+        id: 'android.arsc',
+        status: arscEntryCount == 0
+            ? CoverageStatus.notCovered
+            : CoverageStatus.covered,
+        covered: arscEntryCount,
+        note: arscEntryCount == 0 ? '资源表缺失或解析失败' : null,
+      ),
+    ]);
+
     return SecurityAnalysisResult(
       engineVersion: engineVersion,
       rulesVersion: rulesVersion,
@@ -726,6 +839,7 @@ class AndroidSecurityAudit {
       // `SecurityFinding.withDedupedEvidence` 的注释。
       findings: [for (final f in findings) f.withDedupedEvidence()],
       limitations: limitations,
+      coverage: coverage,
     );
   }
 
