@@ -198,6 +198,15 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
           // 数据源/汇
           if (finding.dataSource != null || finding.dataSink != null)
             _buildDataFlowRow(context),
+          // 关联说明：这条结论的「依据链」走到哪一步、哪一段没证实。
+          //
+          // 与下面的「局限」是两件事：局限说的是**能力边界**（没做反汇编），
+          // 关联说的是**这条结论自己的证据链**。只说「有风险」而不说依据到
+          // 哪一步，读者无从复核 —— 这正是本项目可信度表达的核心。
+          if (finding.relationship != null) ...[
+            const SizedBox(height: 12),
+            _buildRelationship(context, finding.relationship!),
+          ],
           // 建议
           if (finding.recommendation.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -231,6 +240,49 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
             label: 'Sink: ${finding.dataSink}',
           ),
       ],
+    );
+  }
+
+  /// 关联说明。
+  ///
+  /// 与「局限」分开渲染：局限是能力边界（没做反汇编、预算截断），
+  /// 关联是**这条结论自己的证据链**（哪一段只是同现、哪一段没证实）。
+  Widget _buildRelationship(BuildContext context, String text) {
+    final theme = Theme.of(context);
+    final t = TranslationProvider.of(context).translations;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.15),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.link, size: 14, color: theme.hintColor),
+              const SizedBox(width: 6),
+              Text(
+                t.security.relationship,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.hintColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(text, style: theme.textTheme.bodySmall),
+        ],
+      ),
     );
   }
 

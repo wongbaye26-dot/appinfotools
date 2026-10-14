@@ -411,7 +411,8 @@
     "confidence_confirmed": "Confirmed",
     "confidence_suspected": "Suspected",
     "confidence_capability": "Capability only",
-    "confidence_unknown": "Unknown"
+    "confidence_unknown": "Unknown",
+    "relationship": "How the pieces are linked"
   },
   "detail_tab": {
     "overview": "Overview",

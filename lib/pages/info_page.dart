@@ -1274,6 +1274,31 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
+  /// 渲染 Android 侧的 [FieldValue] 字段。
+  ///
+  /// Android 详情页此前直读 `ApkInfo` 的裸字段并 `?? ""` 兜底 —— 于是
+  /// 「文件里没有」与「我们没读到」在界面上长得一模一样，而这两件事的
+  /// 结论完全相反（后者意味着结论不可靠）。这里改成走统一模型：
+  /// - 有值 → 值本身；
+  /// - `absent` → `-`（文件里确实没有）；
+  /// - 其余（`failed` / `unsupported` / `hardenedUnknown` / `notRequested`）
+  ///   → `[状态] 原因`，明确说「我们没读到」。
+  ///
+  /// 与 iOS 侧的局部 `field()` 是同一套语义，只是那边直接读 `FieldValue`
+  /// 而这边要处理 `analysis.android` 可能为 null 的情况。
+  String _androidField(
+    FieldValue<Object?>? value,
+    String Function(Object value) format,
+  ) {
+    if (value == null) return '-';
+    if (value.hasValue) return format(value.value as Object);
+    if (value.status == FieldStatus.absent) return '-';
+    final reason = value.diagnostic;
+    return reason == null
+        ? '[${value.status.name}]'
+        : '[${value.status.name}] $reason';
+  }
+
   /// Android 详情卡片。
   List<Widget> _buildAndroidCards(
     FileState fileState,
@@ -1348,7 +1373,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       Card(
           child: TitleValueLayout(
         title: t.apk_info.min_sdk,
-        value: getSdkVersionText(apkInfo?.sdkVersion),
+        value: _androidField(
+          fileState.analysis?.android?.minSdkVersion,
+          (v) => getSdkVersionText(v as int),
+        ),
       )),
       if (apkInfo?.isXapk ?? false)
         Card(
@@ -1359,7 +1387,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       Card(
           child: TitleValueLayout(
         title: t.apk_info.target_sdk,
-        value: getSdkVersionText(apkInfo?.targetSdkVersion),
+        value: _androidField(
+          fileState.analysis?.android?.targetSdkVersion,
+          (v) => getSdkVersionText(v as int),
+        ),
       )),
       Card(
           child: TitleValueLayout(
@@ -1390,11 +1421,18 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         maxLines: textMaxLines,
         selectable: true,
       )),
-      if (apkInfo?.maxSdkVersion != null)
+      // 只有「文件里确实没有」才整张卡片不显示。`unsupported` / `failed`
+      // 这类「我们没读到」**必须显示出来并说明原因** —— 否则读者会以为
+      // 文件里没有声明（缺陷 D5 的其中一半）。
+      if (fileState.analysis?.android?.maxSdkVersion.status !=
+          FieldStatus.absent)
         Card(
             child: TitleValueLayout(
           title: t.apk_info.max_sdk,
-          value: getSdkVersionText(apkInfo?.maxSdkVersion),
+          value: _androidField(
+            fileState.analysis?.android?.maxSdkVersion,
+            (v) => getSdkVersionText(v as int),
+          ),
         )),
       if (apkInfo?.components.isNotEmpty ?? false)
         Card(

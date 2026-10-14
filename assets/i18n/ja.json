@@ -293,7 +293,8 @@
     "confidence_confirmed": "確認済み",
     "confidence_suspected": "推定",
     "confidence_capability": "能力のみ",
-    "confidence_unknown": "不明"
+    "confidence_unknown": "不明",
+    "relationship": "関連の説明"
   },
   "report": {
     "export_json_action": "JSON セキュリティレポートをエクスポート",

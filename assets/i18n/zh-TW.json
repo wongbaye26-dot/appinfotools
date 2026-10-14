@@ -410,7 +410,8 @@
     "confidence_confirmed": "已確認",
     "confidence_suspected": "疑似",
     "confidence_capability": "僅具備能力",
-    "confidence_unknown": "未知"
+    "confidence_unknown": "未知",
+    "relationship": "關聯說明"
   },
   "detail_tab": {
     "overview": "概覽",

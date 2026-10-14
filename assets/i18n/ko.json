@@ -293,7 +293,8 @@
     "confidence_confirmed": "확인됨",
     "confidence_suspected": "의심",
     "confidence_capability": "능력만 있음",
-    "confidence_unknown": "알 수 없음"
+    "confidence_unknown": "알 수 없음",
+    "relationship": "연관 설명"
   },
   "report": {
     "export_json_action": "JSON 보안 보고서 낳출",
