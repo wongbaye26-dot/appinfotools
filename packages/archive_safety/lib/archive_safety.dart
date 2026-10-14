@@ -7,3 +7,4 @@
 
 export 'src/archive_open.dart';
 export 'src/zip_budget.dart';
+export 'src/zip_structure.dart';

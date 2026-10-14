@@ -27,6 +27,13 @@ class ZipBudget {
   /// 允许的最大压缩比（100:1）。
   static const int maxCompressionRatio = 100;
 
+  /// 单个条目允许的解压后字节数上限（256 MiB）。
+  ///
+  /// 总量上限（1 GiB）拦不住「一个 900 MiB 的条目」—— 读取那一条时仍会
+  /// 一次性吃掉内存。而 APK / IPA 里最大的条目通常是 `resources.arsc`
+  /// 或几 MB 的原生库，256 MiB 已远超正常值。
+  static const int maxSingleEntryUncompressed = 256 * 1024 * 1024;
+
   /// 判定归档是否超出预算。
   ///
   /// 只读取归档头部声明的尺寸，不实际解压，因此开销可忽略。
@@ -40,6 +47,7 @@ class ZipBudget {
       // ArchiveFile.size 为解压后的尺寸（解码时取自 ZipFile.uncompressedSize）。
       final uncompressed = file.size;
       if (uncompressed < 0) return true;
+      if (uncompressed > maxSingleEntryUncompressed) return true;
       totalUncompressed += uncompressed;
       if (totalUncompressed > maxTotalUncompressed) return true;
       final raw = file.rawContent;
@@ -63,6 +71,77 @@ class ZipBudget {
       throw ZipBombException(
         'Refusing to open archive: decompression bomb detected',
         source: source,
+      );
+    }
+  }
+}
+
+/// 跨多层归档累计的解压预算。
+///
+/// **为什么需要它**：`ZipBudget.isExceeded` 只看单个归档，于是「每层都刚好
+/// 不超限」的嵌套归档（APK 里套 ZIP、ZIP 里再套 ZIP）能累计耗尽资源 ——
+/// 每层各自通过检查，总量却失控。
+///
+/// 用法：为**一次解包流程**创建一个实例，每打开一层归档就 `add` 一次。
+/// 不要跨流程复用 —— 那会把两次无关的解包算到一起，产生误报。
+class ZipBudgetTracker {
+  int _totalUncompressed = 0;
+  int _entryCount = 0;
+  final List<String> _layers = [];
+
+  /// 已累计的解压后总字节数。
+  int get totalUncompressed => _totalUncompressed;
+
+  /// 已累计的条目数。
+  int get entryCount => _entryCount;
+
+  /// 已累计的层标签，按加入顺序。
+  List<String> get layers => List.unmodifiable(_layers);
+
+  /// 累计一层归档；超出累计预算时抛 [ZipBombException]。
+  ///
+  /// [label] 会在异常里指出是**哪一层**把总量顶爆的 —— 嵌套解包时只报
+  /// 「总量超限」没有可操作性。
+  void add(Archive archive, {required String label}) {
+    var layerBytes = 0;
+    var layerCount = 0;
+
+    for (final file in archive.files) {
+      layerCount++;
+      if (!file.isFile) continue;
+      final uncompressed = file.size;
+      if (uncompressed < 0) {
+        throw ZipBombException(
+          'Refusing to open archive: entry declares a negative size',
+          source: label,
+        );
+      }
+      if (uncompressed > ZipBudget.maxSingleEntryUncompressed) {
+        throw ZipBombException(
+          'Refusing to open archive: a single entry exceeds '
+          '${ZipBudget.maxSingleEntryUncompressed ~/ (1024 * 1024)} MiB',
+          source: label,
+        );
+      }
+      layerBytes += uncompressed;
+    }
+
+    _totalUncompressed += layerBytes;
+    _entryCount += layerCount;
+    _layers.add(label);
+
+    if (_totalUncompressed > ZipBudget.maxTotalUncompressed) {
+      throw ZipBombException(
+        'Refusing to open archive: cumulative uncompressed size across '
+        '${_layers.length} nested layers exceeds the budget',
+        source: label,
+      );
+    }
+    if (_entryCount > ZipBudget.maxEntryCount) {
+      throw ZipBombException(
+        'Refusing to open archive: cumulative entry count across '
+        '${_layers.length} nested layers exceeds the budget',
+        source: label,
       );
     }
   }

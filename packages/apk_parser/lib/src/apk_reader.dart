@@ -44,6 +44,14 @@ class ApkReader {
   ApkMeta? _meta;
   ArscParser? _arscParser;
 
+  /// 最近一次打开时发现的**结构异常**说明；正常时为 `null`。
+  ///
+  /// 目前只有一项：EOCD 声明的条目数与实际解析出的不一致（被裁剪或拼接的
+  /// 归档）。**不拒绝打开** —— 这类不一致在正常打包工具产出的包里几乎不会
+  /// 出现，但也不是绝对不可能（某些自研打包器会留下不一致的注释长度），
+  /// 因此记为异常供上层参考，而不是直接判死。
+  String? structureAnomaly;
+
   /// 打开 APK 文件（ZIP 格式）。
   ///
   /// 返回具体的失败原因而非笼统的 `false`：调用方需要区分
@@ -94,6 +102,13 @@ class ApkReader {
       if (ZipBudget.isExceeded(archive)) {
         _archive = null;
         return ArchiveOpenResult.resourceBudgetExceeded;
+      }
+      // EOCD 声明的条目数与实际条目数比对。`open`（流式解码）拿不到原始
+      // 字节，因此这一项只在内存路径做。
+      structureAnomaly =
+          ZipStructure.checkEntryCount(data, archive.files.length);
+      if (structureAnomaly != null) {
+        _log.warning('openBytes: structural anomaly: $structureAnomaly');
       }
       _archive = archive;
       return ArchiveOpenResult.ok;
