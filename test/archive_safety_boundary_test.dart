@@ -140,11 +140,10 @@ void main() {
       // EOCD 从尾部往前找（这里没有注释，就是最后 22 字节）。
       final eocd = bytes.length - ZipStructure.eocdLength;
       expect(bytes[eocd], 0x50, reason: '样本应当是合法 ZIP');
-      // 偏移 10 是「本磁盘条目数」，12 是「总条目数」—— 两个都改。
+      // 偏移 8 是「本磁盘条目数」，**10 是「总条目数」**，12 起是中央目录
+      // 大小（4 字节）。我们读的是偏移 10，因此只改这一处。
       bytes[eocd + 10] = declaredOverride & 0xff;
       bytes[eocd + 11] = (declaredOverride >> 8) & 0xff;
-      bytes[eocd + 12] = declaredOverride & 0xff;
-      bytes[eocd + 13] = (declaredOverride >> 8) & 0xff;
       return bytes;
     }
 
@@ -174,15 +173,36 @@ void main() {
       );
     });
 
-    test('EOCD 后面带注释时仍能定位', () {
+    test('EOCD 后面带合法注释时仍能定位', () {
       final bytes = zipWithDeclaredCount(2, 2);
-      // 追加一段注释（EOCD 的 comment length 字段本应同步改，但这里只验证
-      // 「向前搜索」这一行为：注释把 EOCD 推离末尾后仍要能找到）。
+      // 追加注释，并**同步改 comment length 字段** —— 否则这不是一个合法
+      // ZIP，测的就是另一回事了。
+      const commentLength = 64;
+      final eocd = bytes.length - ZipStructure.eocdLength;
+      bytes[eocd + 20] = commentLength & 0xff;
+      bytes[eocd + 21] = (commentLength >> 8) & 0xff;
+
       final withComment = Uint8List.fromList([
         ...bytes,
-        ...List<int>.filled(64, 0x2a),
+        ...List<int>.filled(commentLength, 0x2a),
       ]);
       expect(ZipStructure.declaredEntryCount(withComment), 2);
+      expect(ZipStructure.checkEntryCount(withComment, 2), isNull);
+    });
+
+    test('尾部多出字节导致长度不自洽时，不认那个 EOCD（避免误报）', () {
+      // 压缩数据里偶然出现 `PK\x05\x06` 是可能的。校验「注释长度恰好把
+      // EOCD 顶到末尾」才能把它排除掉；不校验的话，这里会报出 0 条并据此
+      // 判定「归档不一致」—— 一次彻底的误报。
+      final bytes = zipWithDeclaredCount(2, 2);
+      final padded = Uint8List.fromList([...bytes, 0x00, 0x00, 0x00, 0x00]);
+
+      expect(
+        ZipStructure.declaredEntryCount(padded),
+        isNull,
+        reason: '注释长度为 0 却还有 4 个尾随字节 → 这不是一个合法的 EOCD',
+      );
+      expect(ZipStructure.checkEntryCount(padded, 2), isNull);
     });
   });
 }

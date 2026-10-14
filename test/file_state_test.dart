@@ -131,5 +131,43 @@ void main() {
 
       expect(state.analysis!.diagnostics, isEmpty);
     });
+
+    // Android 侧与 iOS 侧是**同一个**缺陷：`buildAndroid` 的 `diagnostics`
+    // 参数同样有默认值 `const []`，同样漏传了很久。修 iOS 时没有一起修，
+    // 于是 Android 的「解析诊断」卡片一直是空的。
+    test('Android 的清单解析失败会出现在统一结果里', () {
+      final info = ApkInfo()..parseFailureReason = 'manifest truncated';
+      final state = FileState(filePath: 'Example.apk', apkInfo: info);
+
+      final analysis = state.analysis!;
+      final codes = analysis.diagnostics.map((d) => d.code);
+      expect(codes, contains('android.manifest_unparsed'));
+      // 原因必须带上 —— 只说「解析失败」等于没说。
+      expect(
+        analysis.diagnostics.first.message,
+        contains('manifest truncated'),
+      );
+    });
+
+    test('Android 的分包一致性结论会出现在统一结果里', () {
+      final info = ApkInfo()
+        ..splitConsistency = const SplitConsistencyReport(
+          issues: ['分包 split_config.x.apk 解压失败，未能比对。'],
+          checkedCount: 8,
+          totalCount: 12,
+        );
+      final state = FileState(filePath: 'multi.xapk', apkInfo: info);
+
+      final analysis = state.analysis!;
+      final codes = analysis.diagnostics.map((d) => d.code).toList();
+      expect(codes, contains('android.split_inconsistent'));
+      expect(codes, contains('android.split_sampling_truncated'));
+    });
+
+    test('Android 没有可说的时是空列表，不编造诊断', () {
+      final state = FileState(filePath: 'Example.apk', apkInfo: ApkInfo());
+
+      expect(state.analysis!.diagnostics, isEmpty);
+    });
   });
 }

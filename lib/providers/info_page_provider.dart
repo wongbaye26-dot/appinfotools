@@ -211,6 +211,10 @@ class FileState {
       structure: info.structure.fileEntryCount == 0 ? null : info.structure,
       signature: signature,
       security: info.securityResult,
+      // Android 侧此前**从不**传诊断，于是详情页的「解析诊断」卡片与导出的
+      // 报告里永远是空的。iOS 侧同一个缺陷已修（见上面 buildIos 的注释），
+      // 这里补齐 —— 「没读到」不能长得像「没有可说的」。
+      diagnostics: info.diagnostics,
     );
   }
 

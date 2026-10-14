@@ -18,10 +18,19 @@ class ZipStructure {
   /// ZIP 注释的上限（EOCD 后面最多跟这么多字节）。
   static const int maxCommentLength = 65535;
 
+  /// 为定位 EOCD 需要从**文件尾部**读取的最大字节数。
+  ///
+  /// 等于 [eocdLength] + [maxCommentLength]。读尾部这么多字节足以覆盖任何
+  /// 合法归档 —— 不需要把整个文件读进内存（大 APK 有几百 MB）。
+  static const int maxTailBytes = eocdLength + maxCommentLength;
+
   /// 从尾部读取 EOCD，返回它声明的总条目数。
   ///
-  /// 读不到时返回 `null` —— **读不到不算异常**：`zipAsArchive` 之类的场景
-  /// 本就可能不是标准 ZIP，把它当异常会产生误报。
+  /// 读不到时返回 `null` —— **读不到不算异常**：调用方可能在处理非标准
+  /// ZIP，把「找不到 EOCD」当异常会产生误报。
+  ///
+  /// 传进来的 [bytes] 必须是归档的**尾部**（且包含完整的注释），否则注释
+  /// 长度自洽校验会失败，方法会返回 `null`。用 [maxTailBytes] 取尾部即可。
   static int? declaredEntryCount(Uint8List bytes) {
     if (bytes.length < eocdLength) return null;
 
@@ -36,7 +45,17 @@ class ZipStructure {
           bytes[i + 3] != 0x06) {
         continue;
       }
-      // 偏移 10 起是「本磁盘条目数」（2 字节），12 起是「总条目数」。
+
+      // EOCD 各字段的偏移：4 本磁盘号、6 中央目录所在磁盘号、8 本磁盘条目数、
+      // **10 总条目数**、12 中央目录大小、16 中央目录偏移、20 注释长度。
+      //
+      // 校验「注释长度恰好把 EOCD 顶到缓冲区末尾」再认它：压缩数据里偶然
+      // 出现 `PK\x05\x06` 这四个字节是可能的，而只有真正的 EOCD 才能让长度
+      // 自洽。自洽校验失败时**继续向前找**而不是直接放弃 —— 前面可能还有
+      // 真正的 EOCD。
+      final commentLength = bytes[i + 20] | (bytes[i + 21] << 8);
+      if (i + eocdLength + commentLength != bytes.length) continue;
+
       return bytes[i + 10] | (bytes[i + 11] << 8);
     }
     return null;

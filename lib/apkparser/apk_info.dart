@@ -11,11 +11,11 @@ import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
 import 'package:analysis_model/analysis_model.dart'
-    show FieldSource, SecurityAnalysisResult;
+    show AnalysisDiagnostic, FieldSource, SecurityAnalysisResult;
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
 import 'package:apk_parser/apk_parser.dart'
-    show ApkParseStage, HardeningObservation;
+    show ApkParseStage, HardeningObservation, ManifestParser;
 import 'package:path/path.dart' as path;
 import 'aapt2_task.dart';
 import 'parse_task.dart';
@@ -460,6 +460,23 @@ Future<ApkInfo?> getApkInfo(
           apkInfo.totalSize = manifest.totalSize;
         }
       }
+
+      // 分包一致性校验：抽检若干分包，比对包名与 versionCode。
+      //
+      // 放在 manifest 补全**之后**：那时 apkInfo 的包名与版本已经取到最可靠
+      // 的值（base APK 解析优先，XAPK manifest 兜底）。
+      // 必须在 finally 之前 —— 分包要解压到 tempDir，而它随后就被删了。
+      final temp = tempDir;
+      final base = baseEntry;
+      if (temp != null && base != null && apkInfo.archiveApks.length > 1) {
+        apkInfo.splitConsistency = await _checkSplitConsistency(
+          zip: zip,
+          tempDirPath: temp.path,
+          splitEntries: apkInfo.archiveApks.where((e) => e != base).toList(),
+          basePackageName: apkInfo.packageName,
+          baseVersionCode: apkInfo.versionCode,
+        );
+      }
     } finally {
       zip.close();
       if (tempDir != null && await tempDir.exists()) {
@@ -618,6 +635,111 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
   } finally {
     reader.close();
   }
+}
+
+/// 分包一致性校验的结果。
+///
+/// **「发现的不一致」与「这次查了多少」必须分开**：前者是结论，后者是覆盖
+/// 范围。混在一个字符串列表里，下游只能靠猜来区分 —— 截断说明会被当成一条
+/// 异常报给用户，而真正的不一致也可能被当成说明忽略掉。
+class SplitConsistencyReport {
+  /// 实际发现的问题：包名 / versionCode 与 base 不符，或分包读不出来。
+  final List<String> issues;
+
+  /// 本次实际尝试比对的分包数（不含 base）。
+  final int checkedCount;
+
+  /// 分包总数（不含 base）。
+  final int totalCount;
+
+  const SplitConsistencyReport({
+    this.issues = const [],
+    this.checkedCount = 0,
+    this.totalCount = 0,
+  });
+
+  /// 是否因为抽检上限而没查完。
+  bool get isTruncated => checkedCount < totalCount;
+}
+
+/// 抽检分包的包名与 versionCode 是否与 base 一致。
+///
+/// **只比对这两项**：不一致意味着安装集合是拼凑的，是最值得报的异常。
+/// `minSdk` / `targetSdk` 允许分包间有差异（工具链会为不同 ABI 生成不同的
+/// 值），报出来只会是噪声。
+///
+/// 签名身份**不做**逐分包比对 —— 那要对每个分包跑一次 `apksigner`，开销远超
+/// 收益，而 base 的签名结论已经给出。
+///
+/// 抽检有上限：大 XAPK 可能有几十个分包，逐个解压太慢。截断时如实报告查了
+/// 多少、共多少，不假装查完了。
+Future<SplitConsistencyReport> _checkSplitConsistency({
+  required ZipHelper zip,
+  required String tempDirPath,
+  required List<String> splitEntries,
+  required String? basePackageName,
+  required int? baseVersionCode,
+}) async {
+  const maxSplitsToCheck = 8;
+  final issues = <String>[];
+  final attempted = splitEntries.take(maxSplitsToCheck).toList();
+
+  for (final entry in attempted) {
+    final name = path.basename(entry);
+    final splitPath = path.join(tempDirPath, name);
+    try {
+      // 解压失败也必须留下记录：静默 `continue` 等于告诉用户「这个分包比对
+      // 过了」，而实际根本没读到它。
+      if (!await zip.extractFile(entry, splitPath)) {
+        issues.add('分包 $name 解压失败，未能比对。');
+        continue;
+      }
+
+      final splitZip = ZipHelper();
+      try {
+        final openResult = await splitZip.open(splitPath);
+        if (!openResult.isOk) {
+          issues.add('分包 $name 打不开（${openResult.description}）。');
+          continue;
+        }
+        final manifestBytes =
+            await splitZip.readFileContent('AndroidManifest.xml');
+        if (manifestBytes == null) {
+          issues.add('分包 $name 里没有 AndroidManifest.xml。');
+          continue;
+        }
+
+        final splitMeta = ManifestParser.parse(manifestBytes);
+        if (basePackageName != null &&
+            splitMeta.packageName != null &&
+            splitMeta.packageName != basePackageName) {
+          issues.add(
+            '分包 $name 的包名是 ${splitMeta.packageName}，'
+            '与 base 的 $basePackageName 不一致。',
+          );
+        }
+        if (baseVersionCode != null &&
+            splitMeta.versionCode != null &&
+            splitMeta.versionCode != baseVersionCode) {
+          issues.add(
+            '分包 $name 的 versionCode 是 ${splitMeta.versionCode}，'
+            '与 base 的 $baseVersionCode 不一致。',
+          );
+        }
+      } finally {
+        splitZip.close();
+      }
+    } catch (e) {
+      log.warning('_checkSplitConsistency: $entry failed: $e');
+      issues.add('分包 $name 解析失败（$e）。');
+    }
+  }
+
+  return SplitConsistencyReport(
+    issues: issues,
+    checkedCount: attempted.length,
+    totalCount: splitEntries.length,
+  );
 }
 
 Future<ApkInfo?> _getApkInfoBuiltin(
@@ -951,6 +1073,56 @@ class ApkInfo {
   ///
   /// 分开是因为界面上必须能区分「没查到」与「没查」。
   String? parseFailureReason;
+
+  /// 分包（XAPK / APKM / APKS）一致性校验的结果。
+  ///
+  /// `null` 表示**没查**（单 APK，或没有可用的解包目录），与「查了、没发现
+  /// 问题」（`issues` 为空）是两件必须分开的事。
+  SplitConsistencyReport? splitConsistency;
+
+  /// 由解析结果派生的诊断记录。
+  ///
+  /// 只放**解析层面**的事实（清单读不出来、分包不一致、抽检截断）。
+  /// 安全发现不在这里 —— 它们有自己的模型与卡片，混进来会把「解析诊断」
+  /// 变成第二个安全列表。
+  ///
+  /// 这个方法的存在是为了让 Android 侧也有诊断产出者：此前
+  /// `AnalysisBuilder.buildAndroid` 从不接收 `diagnostics`，于是详情页的
+  /// 「解析诊断」卡片与导出的报告里**永远是空的** —— 而「没读到」与
+  /// 「没有可说的」必须分得开，那条链路断在这里就等于把前者说成了后者。
+  List<AnalysisDiagnostic> get diagnostics {
+    final out = <AnalysisDiagnostic>[];
+
+    final failure = parseFailureReason;
+    if (failure != null) {
+      out.add(AnalysisDiagnostic.error(
+        'android.manifest_unparsed',
+        'AndroidManifest.xml 未能解析：$failure',
+        source: manifestSource,
+      ));
+    }
+
+    final split = splitConsistency;
+    if (split != null) {
+      for (final issue in split.issues) {
+        out.add(AnalysisDiagnostic.warning(
+          'android.split_inconsistent',
+          issue,
+          source: FieldSource.builtinParser,
+        ));
+      }
+      if (split.isTruncated) {
+        out.add(AnalysisDiagnostic.info(
+          'android.split_sampling_truncated',
+          '分包一致性只抽检了 ${split.checkedCount} 个分包'
+              '（共 ${split.totalCount} 个），其余未比对。',
+          source: FieldSource.builtinParser,
+        ));
+      }
+    }
+
+    return out;
+  }
 
   (String, String) parseToKeyValue(String line, String separator) {
     final pos = line.indexOf(separator);

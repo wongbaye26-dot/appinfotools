@@ -95,4 +95,112 @@ void main() {
       );
     });
   });
+
+  group('分包一致性校验（阶段 2）', () {
+    /// 造一个含 base.apk + 若干无法解析的分包的 XAPK。
+    File makeXapkWithSplits(Directory dir, int splitCount) {
+      final broken = Uint8List.fromList(List<int>.filled(64, 0));
+      final archive = Archive()
+        ..addFile(ArchiveFile('base.apk', broken.length, broken));
+      for (var i = 0; i < splitCount; i++) {
+        archive.addFile(ArchiveFile(
+          'split_config.$i.apk',
+          broken.length,
+          broken,
+        ));
+      }
+      final xapk = File(path.join(dir.path, 'multi.xapk'));
+      xapk.writeAsBytesSync(ZipEncoder().encode(archive));
+      return xapk;
+    }
+
+    test('分包无法解析时如实记录，不假装通过', () async {
+      final dir = Directory.systemTemp.createTempSync('xapk_splits');
+      addTearDown(() {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+
+      final xapk = makeXapkWithSplits(dir, 2);
+      final info = await getApkInfo(xapk.path);
+
+      expect(info, isNotNull);
+      expect(info!.splitConsistency, isNotNull, reason: '多分包就必须查，不能是 null');
+      expect(
+        info.splitConsistency!.issues,
+        isNotEmpty,
+        reason: '分包读不出来时必须留下记录 —— 静默通过等于说「它们一致」',
+      );
+      // 每条都应指明是哪个分包出的问题。
+      for (final issue in info.splitConsistency!.issues) {
+        expect(issue, contains('split_config'));
+      }
+    });
+
+    test('分包数超过抽检上限时，如实报告查了多少、共多少', () async {
+      final dir = Directory.systemTemp.createTempSync('xapk_many');
+      addTearDown(() {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+
+      final xapk = makeXapkWithSplits(dir, 12);
+      final info = await getApkInfo(xapk.path);
+
+      expect(info, isNotNull);
+      final report = info!.splitConsistency!;
+      expect(report.totalCount, 12);
+      expect(report.checkedCount, 8, reason: '抽检上限是 8');
+      expect(
+        report.isTruncated,
+        isTrue,
+        reason: '截断必须可判定，否则读者会以为全部比对了',
+      );
+    });
+
+    test('抽检结果会变成诊断，让「解析诊断」卡片不再恒为空', () async {
+      final dir = Directory.systemTemp.createTempSync('xapk_diag');
+      addTearDown(() {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+
+      final xapk = makeXapkWithSplits(dir, 12);
+      final info = await getApkInfo(xapk.path);
+
+      final codes = info!.diagnostics.map((d) => d.code).toList();
+      expect(codes, contains('android.split_inconsistent'));
+      expect(
+        codes,
+        contains('android.split_sampling_truncated'),
+        reason: '截断是覆盖范围说明，不能与「发现不一致」混成同一条',
+      );
+
+      // 截断那条是 info，不一致那条是 warning —— 两者语义不同。
+      final truncated = info.diagnostics
+          .firstWhere((d) => d.code == 'android.split_sampling_truncated');
+      expect(truncated.severity, DiagnosticSeverity.info);
+      final inconsistent = info.diagnostics
+          .firstWhere((d) => d.code == 'android.split_inconsistent');
+      expect(inconsistent.severity, DiagnosticSeverity.warning);
+    });
+
+    test('单 APK 没查分包时 splitConsistency 为 null，不是空报告', () async {
+      final dir = Directory.systemTemp.createTempSync('single_apk');
+      addTearDown(() {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+
+      // 一个不含 base.apk 的普通 APK：走不到分包分支。
+      final archive = Archive()
+        ..addFile(ArchiveFile(
+            'AndroidManifest.xml',
+            4,
+            Uint8List.fromList(
+              List<int>.filled(4, 0),
+            )));
+      final apk = File(path.join(dir.path, 'plain.apk'));
+      apk.writeAsBytesSync(ZipEncoder().encode(archive));
+
+      final info = await getApkInfo(apk.path);
+      expect(info?.splitConsistency, isNull, reason: '「没查」与「查了没问题」必须分开');
+    });
+  });
 }

@@ -148,6 +148,39 @@ enum ComponentType {
       };
 }
 
+/// 一个 `<intent-filter>` 的解析结果。
+///
+/// 安全审计关心的是「这个组件能被谁唤起」—— 只有 action 与 data 能回答，
+/// 光有一个布尔「有没有 filter」回答不了。例如
+/// `android.intent.action.VIEW` + `scheme=https` 意味着可被浏览器打开，
+/// 而 `android.intent.category.LAUNCHER` 只说明它是启动入口。
+///
+/// **只取 scheme，不取 host / path**：scheme 是判断「能否被外部唤起」的
+/// 关键，而 host / path 对安全判断的边际价值低、且会显著膨胀模型。
+class IntentFilterInfo {
+  /// `<action android:name>` 列表。
+  final List<String> actions;
+
+  /// `<category android:name>` 列表。
+  final List<String> categories;
+
+  /// `<data android:scheme>` 列表。
+  final List<String> schemes;
+
+  const IntentFilterInfo({
+    this.actions = const [],
+    this.categories = const [],
+    this.schemes = const [],
+  });
+
+  bool get isEmpty => actions.isEmpty && categories.isEmpty && schemes.isEmpty;
+
+  @override
+  String toString() =>
+      'IntentFilterInfo(actions: $actions, categories: $categories, '
+      'schemes: $schemes)';
+}
+
 /// manifest 中声明的一个组件。
 ///
 /// [exported] 是**三态**，刻意不用 `bool`：
@@ -170,6 +203,16 @@ class AndroidComponent {
 
   final bool hasIntentFilter;
 
+  /// `<intent-filter>` 明细。为空表示没有 filter 或 filter 里没有任何
+  /// action / category / scheme。
+  final List<IntentFilterInfo> intentFilters;
+
+  /// manifest 中显式声明的 `android:enabled`；未声明为 `null`。
+  ///
+  /// 未声明时平台默认为 `true`。**单独保留 `null`** 而不是折成 `true`：
+  /// 「显式写了 true」与「没写、平台默认 true」在排查配置问题时是两件事。
+  final bool? enabled;
+
   /// 仅 provider 有：`android:authorities`。
   final String? authorities;
 
@@ -179,6 +222,8 @@ class AndroidComponent {
     this.exported,
     this.permission,
     this.hasIntentFilter = false,
+    this.intentFilters = const [],
+    this.enabled,
     this.authorities,
   });
 
@@ -191,10 +236,23 @@ class AndroidComponent {
   /// 声明，UI 应优先展示原始值。
   bool get effectivelyExported => exported ?? hasIntentFilter;
 
+  /// 按平台默认规则推导的「是否启用」。
+  ///
+  /// 与 [effectivelyExported] 同样的道理：[enabled] 保留原始声明，
+  /// 这里只给推导值。
+  bool get effectivelyEnabled => enabled ?? true;
+
+  /// 该组件声明了哪些可被外部唤起的 scheme。
+  ///
+  /// 用于安全审计判断「能否被浏览器 / 其他应用直接打开」。
+  List<String> get declaredSchemes => [
+        for (final f in intentFilters) ...f.schemes,
+      ];
+
   @override
   String toString() => 'AndroidComponent{${type.elementName}, name: $name, '
       'exported: $exported, permission: $permission, '
-      'hasIntentFilter: $hasIntentFilter}';
+      'hasIntentFilter: $hasIntentFilter, enabled: $enabled}';
 }
 
 /// 资源表条目信息（用于将 ArscParser 数据导出给图标渲染器等外部使用）

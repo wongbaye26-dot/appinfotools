@@ -166,6 +166,8 @@ class ManifestParser {
           exported: _parseBool(child.attributes['exported']),
           permission: child.attributes['permission'],
           hasIntentFilter: child.children.any((c) => c.name == 'intent-filter'),
+          intentFilters: _parseIntentFilters(child),
+          enabled: _parseBool(child.attributes['enabled']),
           authorities: child.attributes['authorities'],
         ));
 
@@ -180,6 +182,44 @@ class ManifestParser {
     }
 
     return meta;
+  }
+
+  /// 解析组件的所有 `<intent-filter>`。
+  ///
+  /// 只取 action / category / scheme 三类 —— 它们是判断「能否被外部唤起」
+  /// 的关键（例如 `android.intent.action.VIEW` + `scheme=https` 意味着可被
+  /// 浏览器打开）。host / path 不取：对安全判断边际价值低，且会显著膨胀模型。
+  static List<IntentFilterInfo> _parseIntentFilters(XmlElement component) {
+    final filters = <IntentFilterInfo>[];
+
+    for (final child in component.children) {
+      if (child.name != 'intent-filter') continue;
+
+      final actions = <String>[];
+      final categories = <String>[];
+      final schemes = <String>[];
+
+      for (final entry in child.children) {
+        final name = entry.attributes['name'];
+        switch (entry.name) {
+          case 'action':
+            if (name != null && name.isNotEmpty) actions.add(name);
+          case 'category':
+            if (name != null && name.isNotEmpty) categories.add(name);
+          case 'data':
+            final scheme = entry.attributes['scheme'];
+            if (scheme != null && scheme.isNotEmpty) schemes.add(scheme);
+        }
+      }
+
+      filters.add(IntentFilterInfo(
+        actions: actions,
+        categories: categories,
+        schemes: schemes,
+      ));
+    }
+
+    return filters;
   }
 
   static bool _isLaunchableActivity(XmlElement activity) {

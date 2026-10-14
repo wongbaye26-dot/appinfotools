@@ -206,6 +206,7 @@ void _parseEntryPoint(_ParseRequest request) async {
         manifestFailureReason: 'AndroidManifest.xml missing or unreadable',
         containerAnomalies: [
           for (final obs in reader.scanHardeningSignals()) obs.evidence,
+          if (reader.structureAnomaly case final anomaly?) anomaly,
         ],
       );
       request.reply.send(ParseFailed(
@@ -227,6 +228,9 @@ void _parseEntryPoint(_ParseRequest request) async {
       dexEntries: dexEntries,
       containerAnomalies: [
         for (final obs in reader.scanHardeningSignals()) obs.evidence,
+        // 结构异常（EOCD 声明的条目数与实际不符）也要进覆盖说明 ——
+        // 「这个包的结构与声明对不上」直接影响本次结论的可信范围。
+        if (reader.structureAnomaly case final anomaly?) anomaly,
       ],
     );
 

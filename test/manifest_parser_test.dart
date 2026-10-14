@@ -417,4 +417,90 @@ void main() {
       expect(hardened.minSdkVersion, 24);
     });
   });
+
+  group('组件的 enabled 与 intent-filter 明细（阶段 2）', () {
+    test('enabled 三态：显式 true / 显式 false / 未声明', () {
+      final doc = _doc([
+        _app([
+          _el('activity', {'name': 'A', 'enabled': 'true'}),
+          _el('activity', {'name': 'B', 'enabled': 'false'}),
+          _el('activity', {'name': 'C'}),
+        ]),
+      ]);
+
+      final meta = ManifestParser.fromDocument(doc);
+      final byName = {for (final c in meta.components) c.name: c};
+
+      expect(byName['A']!.enabled, isTrue);
+      expect(byName['B']!.enabled, isFalse);
+      expect(
+        byName['C']!.enabled,
+        isNull,
+        reason: '「未声明」必须保留 null —— 它与「显式写了 true」是两件事',
+      );
+      expect(byName['C']!.effectivelyEnabled, isTrue, reason: '平台默认为启用');
+    });
+
+    test('解析 intent-filter 的 action / category / scheme', () {
+      final filter = _el('intent-filter');
+      filter.children.addAll([
+        _el('action', {'name': 'android.intent.action.VIEW'}),
+        _el('category', {'name': 'android.intent.category.DEFAULT'}),
+        _el('category', {'name': 'android.intent.category.BROWSABLE'}),
+        // host 刻意留着 —— 实现应当忽略它，只取 scheme。
+        _el('data', {'scheme': 'https', 'host': 'example.com'}),
+        _el('data', {'scheme': 'myapp'}),
+      ]);
+      final activity = _el('activity', {'name': 'A'});
+      activity.children.add(filter);
+
+      final doc = _doc([
+        _app([activity]),
+      ]);
+      final meta = ManifestParser.fromDocument(doc);
+      final component = meta.components.single;
+
+      expect(component.intentFilters, hasLength(1));
+      final info = component.intentFilters.single;
+      expect(info.actions, ['android.intent.action.VIEW']);
+      expect(info.categories, contains('android.intent.category.BROWSABLE'));
+      expect(info.schemes, ['https', 'myapp']);
+      expect(component.declaredSchemes, ['https', 'myapp']);
+      expect(component.hasIntentFilter, isTrue);
+    });
+
+    test('多个 intent-filter 分别保留', () {
+      final f1 = _el('intent-filter')
+        ..children.add(_el('action', {'name': 'A1'}));
+      final f2 = _el('intent-filter')
+        ..children.add(_el('action', {'name': 'A2'}));
+      final activity = _el('activity', {'name': 'A'})
+        ..children.addAll([f1, f2]);
+
+      final doc = _doc([
+        _app([activity]),
+      ]);
+      final meta = ManifestParser.fromDocument(doc);
+
+      expect(meta.components.single.intentFilters, hasLength(2));
+      expect(
+        meta.components.single.intentFilters.map((f) => f.actions.single),
+        ['A1', 'A2'],
+      );
+    });
+
+    test('没有 filter 时明细为空，且不误报 hasIntentFilter', () {
+      final doc = _doc([
+        _app([
+          _el('service', {'name': 'S'})
+        ]),
+      ]);
+      final meta = ManifestParser.fromDocument(doc);
+      final component = meta.components.single;
+
+      expect(component.intentFilters, isEmpty);
+      expect(component.declaredSchemes, isEmpty);
+      expect(component.hasIntentFilter, isFalse);
+    });
+  });
 }

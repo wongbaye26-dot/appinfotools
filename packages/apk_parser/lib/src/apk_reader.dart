@@ -76,6 +76,13 @@ class ApkReader {
         _archive = null;
         return ArchiveOpenResult.resourceBudgetExceeded;
       }
+      // 流式解码拿不到原始字节，改为**只读文件尾部**再找 EOCD —— 读
+      // `maxTailBytes`（约 64 KiB）就够，不必把几百 MB 的包读进内存。
+      structureAnomaly =
+          await _checkEntryCountFromFile(filePath, archive.files.length);
+      if (structureAnomaly != null) {
+        _log.warning('open: structural anomaly: $structureAnomaly');
+      }
       _archive = archive;
       return ArchiveOpenResult.ok;
     } on FileSystemException catch (e) {
@@ -103,8 +110,7 @@ class ApkReader {
         _archive = null;
         return ArchiveOpenResult.resourceBudgetExceeded;
       }
-      // EOCD 声明的条目数与实际条目数比对。`open`（流式解码）拿不到原始
-      // 字节，因此这一项只在内存路径做。
+      // EOCD 声明的条目数与实际条目数比对（这里手上就有完整字节）。
       structureAnomaly =
           ZipStructure.checkEntryCount(data, archive.files.length);
       if (structureAnomaly != null) {
@@ -115,6 +121,39 @@ class ApkReader {
     } catch (e, stackTrace) {
       _log.warning('openBytes failed: $e\n$stackTrace');
       return ArchiveOpenResult.corrupt;
+    }
+  }
+
+  /// 只读文件尾部，比对 EOCD 声明的条目数与实际条目数。
+  ///
+  /// 供流式路径 [open] 使用：`ZipDecoder().decodeStream` 不保留原始字节，
+  /// 但 EOCD 必然位于文件末尾 [ZipStructure.maxTailBytes] 字节以内，因此
+  /// 单独读这一小段即可。
+  ///
+  /// 读不到 EOCD（例如调用方传了个不完整的尾部）时返回 `null` ——
+  /// **不把「读不到」当异常**，避免误报。
+  Future<String?> _checkEntryCountFromFile(
+    String filePath,
+    int actualCount,
+  ) async {
+    RandomAccessFile? raf;
+    try {
+      final length = await File(filePath).length();
+      if (length < ZipStructure.eocdLength) return null;
+      final tailLength = length < ZipStructure.maxTailBytes
+          ? length
+          : ZipStructure.maxTailBytes;
+
+      raf = await File(filePath).open();
+      await raf.setPosition(length - tailLength);
+      final tail = await raf.read(tailLength);
+      return ZipStructure.checkEntryCount(tail, actualCount);
+    } catch (e) {
+      // 读尾部失败只是少了一项检查，不该让整个打开流程失败。
+      _log.warning('_checkEntryCountFromFile failed: $e');
+      return null;
+    } finally {
+      await raf?.close();
     }
   }
 
