@@ -131,6 +131,15 @@ class IosPackageInfo {
   final FieldValue<List<int>> deviceFamily;
   final FieldValue<List<String>> queriesSchemes;
   final FieldValue<List<String>> requiredDeviceCapabilities;
+
+  /// `CFBundleURLTypes` 里注册的 URL scheme —— **外部可以唤起本应用**的入口。
+  ///
+  /// 与 [queriesSchemes] 方向相反：那个是本应用能唤起别人（白名单），
+  /// 这个是别人能唤起本应用（攻击面）。
+  final FieldValue<List<String>> urlSchemes;
+
+  /// `UIBackgroundModes`：声明申请的后台执行模式。
+  final FieldValue<List<String>> backgroundModes;
   final FieldValue<IosIconConfiguration> icons;
 
   /// `CFBundleExecutable` —— 主可执行文件名。
@@ -189,6 +198,8 @@ class IosPackageInfo {
     this.deviceFamily = const FieldValue<List<int>>.absent(),
     this.queriesSchemes = const FieldValue<List<String>>.absent(),
     this.requiredDeviceCapabilities = const FieldValue<List<String>>.absent(),
+    this.urlSchemes = const FieldValue<List<String>>.absent(),
+    this.backgroundModes = const FieldValue<List<String>>.absent(),
     this.icons = const FieldValue<IosIconConfiguration>.absent(),
     this.executableName = const FieldValue.absent(),
     this.executable,

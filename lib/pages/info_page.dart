@@ -595,15 +595,34 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     // ===== 能力声明（归入「权限」Tab，与 Android 侧的权限/组件对位）=====
     if (ios.queriesSchemes.hasValue ||
+        ios.urlSchemes.hasValue ||
+        ios.backgroundModes.hasValue ||
         ios.requiredDeviceCapabilities.hasValue ||
         ios.hasMultipleMainApps) {
       cards.add(_SectionHeader(
           title: t.detail_tab.permissions, tab: DetailTab.permissions));
     }
+    // 「注册的 scheme」与「查询的 scheme」是**两个方向**的事实：
+    // 前者是本应用被外部唤起的入口，后者是本应用可以唤起别人的白名单。
+    // 放在一起但分开陈述，避免读者把两者混为一谈。
+    if (ios.urlSchemes.hasValue) {
+      cards.add(card(
+        t.ios_info.url_schemes,
+        ios.urlSchemes.value!.join('\n'),
+        selectable: true,
+      ));
+    }
     if (ios.queriesSchemes.hasValue) {
       cards.add(card(
         t.ios_info.queries_schemes,
         ios.queriesSchemes.value!.join('\n'),
+        selectable: true,
+      ));
+    }
+    if (ios.backgroundModes.hasValue) {
+      cards.add(card(
+        t.ios_info.background_modes,
+        ios.backgroundModes.value!.join('\n'),
         selectable: true,
       ));
     }

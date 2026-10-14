@@ -12,7 +12,8 @@ import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
     show ReferenceCycle, ReferenceCycleReport;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ipa_parser/ipa_parser.dart' show IpaContainer;
+import 'package:ipa_parser/ipa_parser.dart'
+    show IosBundle, IosBundleKind, IpaContainer, IpaInfoPlist;
 
 void main() {
   group('FileState.copyWith 的置空语义', () {
@@ -200,6 +201,75 @@ void main() {
         state.analysis!.diagnostics.map((d) => d.code),
         contains('android.icon_resolution'),
       );
+    });
+  });
+  // 阶段 5 新增的两个 iOS 字段要一路透传到统一模型 ——
+  // 「在解析层加了字段但忘了在 AnalysisBuilder 里透传」是本项目踩过的坑
+  // （字段有默认值 `absent`，漏传不报错，只是界面上永远不显示）。
+  group('iOS 新字段透传到统一结果', () {
+    IpaAnalysis analysisWith({
+      required FieldValue<List<String>> urlSchemes,
+      required FieldValue<List<String>> backgroundModes,
+    }) {
+      return IpaAnalysis(
+        container: const IpaContainer(),
+        infoPlist: IpaInfoPlist(
+          bundle: const IosBundle(
+            kind: IosBundleKind.mainApp,
+            path: 'Payload/App.app',
+            name: 'App.app',
+            infoPlistPath: 'Payload/App.app/Info.plist',
+            infoPlistSize: 1,
+            fileCount: 1,
+            uncompressedBytes: 1,
+          ),
+          urlSchemes: urlSchemes,
+          backgroundModes: backgroundModes,
+        ),
+      );
+    }
+
+    test('注册的 URL scheme 出现在统一结果里', () {
+      final state = FileState(
+        filePath: 'App.ipa',
+        ipaAnalysis: analysisWith(
+          urlSchemes: const FieldValue<List<String>>.extracted(
+            ['myapp', 'myapp2'],
+            source: FieldSource.infoPlist,
+          ),
+          backgroundModes: const FieldValue<List<String>>.absent(),
+        ),
+      );
+
+      expect(state.analysis!.ios!.urlSchemes.value, ['myapp', 'myapp2']);
+    });
+
+    test('后台模式出现在统一结果里', () {
+      final state = FileState(
+        filePath: 'App.ipa',
+        ipaAnalysis: analysisWith(
+          urlSchemes: const FieldValue<List<String>>.absent(),
+          backgroundModes: const FieldValue<List<String>>.extracted(
+            ['fetch', 'remote-notification'],
+            source: FieldSource.infoPlist,
+          ),
+        ),
+      );
+
+      expect(
+        state.analysis!.ios!.backgroundModes.value,
+        ['fetch', 'remote-notification'],
+      );
+    });
+
+    test('没有 plist 时是 absent，不是空列表', () {
+      final state = FileState(
+        filePath: 'App.ipa',
+        ipaAnalysis: const IpaAnalysis(container: IpaContainer()),
+      );
+
+      expect(state.analysis!.ios!.urlSchemes.status, FieldStatus.absent);
+      expect(state.analysis!.ios!.backgroundModes.status, FieldStatus.absent);
     });
   });
 }

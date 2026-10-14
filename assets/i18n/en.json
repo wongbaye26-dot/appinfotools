@@ -344,6 +344,8 @@
     "profile_team": "Team ID",
     "profile_valid": "not expired",
     "queries_schemes": "Queryable URL schemes",
+    "url_schemes": "Registered URL schemes",
+    "background_modes": "Background modes",
     "required_capabilities": "Required device capabilities",
     "rpaths": "Runtime search paths",
     "section": "iOS app",

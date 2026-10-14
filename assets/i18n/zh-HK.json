@@ -343,6 +343,8 @@
     "profile_team": "Team ID",
     "profile_valid": "未過期",
     "queries_schemes": "可查詢的 URL Scheme",
+    "url_schemes": "註冊的 URL Scheme",
+    "background_modes": "後台模式",
     "required_capabilities": "必需的裝置能力",
     "rpaths": "執行時搜尋路徑",
     "section": "iOS 應用",

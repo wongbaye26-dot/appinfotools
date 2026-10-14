@@ -105,6 +105,39 @@ class IosPrivacyAudit {
       }
     }
 
+    // ---- 注册的 URL scheme：外部可以唤起本应用的入口 ----
+    final urlSchemes = infoPlist.urlSchemes;
+    if (urlSchemes.hasValue && urlSchemes.value!.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-URL-SCHEMES',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'Info.plist 注册了 ${urlSchemes.value!.length} 个自定义 URL '
+            'scheme：${urlSchemes.value!.join('、')}。'
+            '这些是**外部可以唤起本应用**的入口，属于攻击面的事实描述；'
+            '注册了 scheme 不代表处理逻辑有问题。',
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.infoPlist,
+            location: '${infoPlist.bundle.path}/Info.plist / CFBundleURLTypes',
+            detail: urlSchemes.value!.join(', '),
+          ),
+        ],
+        limitation: '本次未检查 scheme 的处理代码（未反汇编）；'
+            '「入口存在」与「入口安全」是两件事。',
+        recommendation: '如需评估攻击面，请人工检查 scheme 的处理逻辑是否'
+            '校验来源、是否把参数直接拼进路径或 SQL。',
+      ));
+    } else if (urlSchemes.status == FieldStatus.wrongType ||
+        urlSchemes.status == FieldStatus.failed) {
+      // 读不出来就说出来 —— 不能让「读不到」长得像「没注册」。
+      limitations.add('CFBundleURLTypes 读不出来'
+          '（${urlSchemes.diagnostic ?? urlSchemes.status.name}）：'
+          '注册的 URL scheme 未覆盖。');
+    }
+
     // ---- Mach-O 符号线索 ----
     final clues = <String, _MachOClue>{};
     var scanned = 0;
@@ -162,6 +195,7 @@ class IosPrivacyAudit {
         clues.containsKey('network-session') ||
         clues.containsKey('network-alamofire') ||
         clues.containsKey('network-afnetworking');
+    final hasClipboard = clues.containsKey('clipboard');
 
     String? usageKeyFor(String prefix) {
       if (!usage.hasValue) return null;
@@ -247,6 +281,37 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- iOS 规则 A：完整照片库访问 + 未见更克制的输入路径 ----
+    //
+    // 与 Android 规则 A 同构（「广泛访问 + 未见明显业务用途」）。iOS 上的
+    // 「更克制的路径」就是系统照片选择器：Apple 明确它**不需要**完整相册
+    // 授权。因此「只有 PhotoKit、没有 PHPicker」才是值得复核的那一种。
+    if (hasPhotoLibrary && !hasPhotoPicker) {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-RULE-A',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.photoAccess,
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: '发现完整照片库访问（PhotoKit）线索，'
+            '但**没有**发现系统照片选择器（PHPickerViewController / PhotosUI）'
+            '这条更克制的路径。列为待人工复核的中风险候选项 —— '
+            '申请完整库访问不一定不合理（相册管理类应用确实需要），'
+            '但值得确认是否有更小权限的替代方案。',
+        evidence: _clueEvidence(clues, const [
+          'photo-full-library',
+          'photo-asset',
+        ]),
+        relationship: '「缺少选择器路径」是**静态推断**：选择器也可能通过'
+            'SwiftUI 的 `PhotosPicker` 或动态加载使用，'
+            '而它们不一定会留下可扫描的符号。',
+        limitation: '符号存在不等于运行时会调用；'
+            '符号缺失也不等于功能不存在（动态加载、反射、SwiftUI 包装）。',
+        recommendation: '人工复核：是否可以用系统照片选择器替代完整库访问；'
+            '本项为待复核候选项，不是恶意判定。',
+      ));
+    }
+
     // ---- OCR ----
     if (hasOcr) {
       findings.add(SecurityFinding(
@@ -259,6 +324,42 @@ class IosPrivacyAudit {
             '仅发现能力，不判定恶意。',
         evidence: _clueEvidence(clues, const ['ocr', 'ocr-image-request']),
         recommendation: '确认识别输入来源（用户主动提供 / 相册）与结果去向。',
+      ));
+    }
+
+    // ---- iOS 规则 B：图像输入 + 文字识别 ----
+    //
+    // 与 Android 规则 B 同构：两段线索同现，但**没有**证实它们位于同一条
+    // 调用路径上。这一步只到「疑似关联」。
+    if ((hasPhotoLibrary || hasPhotoPicker || hasCamera) && hasOcr) {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-RULE-B',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.ocrImage,
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: '同时发现图像输入来源与文字识别能力：'
+            '输入（${[
+          if (hasPhotoLibrary) '完整照片库（PhotoKit）',
+          if (hasPhotoPicker) '系统照片选择器',
+          if (hasCamera) '相机',
+        ].join('、')}）与识别能力（Vision 文本识别）。'
+            '该组合可能对应正常功能（文档扫描、翻译、名片识别）。',
+        evidence: [
+          ..._clueEvidence(clues, const [
+            'photo-full-library',
+            'photo-asset',
+            'photo-picker',
+            'camera',
+          ]),
+          ..._clueEvidence(clues, const ['ocr', 'ocr-image-request']),
+        ],
+        relationship: '图像输入 → 文字识别：两段线索同现，但未被证实位于'
+            '同一条调用路径上。',
+        limitation: '未反汇编，无法确认识别模块实际处理的是用户主动选择的'
+            '图片还是批量扫描的媒体文件。',
+        recommendation: '确认识别的输入来源与用户授权方式'
+            '（是否走系统照片选择器）。',
       ));
     }
 
@@ -296,6 +397,64 @@ class IosPrivacyAudit {
             '「识别结果进入请求体」这一跳未被证实。',
         limitation: '未反汇编、未观察流量；框架引用不等于被调用。',
         recommendation: '人工复核，必要时在隔离环境抓包验证。',
+      ));
+    }
+
+    // ---- iOS 规则 E：后台执行 + 敏感读取 + 回传 ----
+    //
+    // 与 Android 规则 E 同构（后台 + 敏感读取 + 上传）。iOS 的「后台」
+    // 对应 `UIBackgroundModes` —— 它是**声明性事实**：申请了某个模式不等于
+    // 运行时真的在后台跑。
+    final backgroundModes = infoPlist.backgroundModes;
+    final hasBackground =
+        backgroundModes.hasValue && backgroundModes.value!.isNotEmpty;
+    final hasSensitiveRead =
+        hasPhotoLibrary || hasPhotoPicker || hasCamera || hasClipboard;
+    if (hasBackground && hasSensitiveRead && hasUpload) {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-RULE-E',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: '同时发现后台执行声明、敏感数据读取能力与网络回传能力：'
+            '后台模式（${backgroundModes.value!.join('、')}）、'
+            '敏感读取（${[
+          if (hasPhotoLibrary) '完整照片库',
+          if (hasPhotoPicker) '照片选择器',
+          if (hasCamera) '相机',
+          if (hasClipboard) '剪贴板',
+        ].join('、')}）、网络（NSURLSession / 上传）。'
+            '这个组合可能对应正常功能（后台上传备份、消息同步）。',
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.infoPlist,
+            location: '${infoPlist.bundle.path}/Info.plist / UIBackgroundModes',
+            detail: backgroundModes.value!.join(', '),
+          ),
+          ..._clueEvidence(clues, const [
+            'photo-full-library',
+            'photo-asset',
+            'photo-picker',
+            'camera',
+            'clipboard',
+          ]),
+          ..._clueEvidence(clues, const [
+            'network-session',
+            'network-upload',
+            'network-alamofire',
+            'network-afnetworking',
+          ]),
+        ],
+        dataSource: '相册 / 相机 / 剪贴板中的敏感内容',
+        dataSink: '网络请求（后台执行期间）',
+        relationship: '后台执行声明 → 敏感数据读取 → 网络回传：三段分别有'
+            '证据，但**没有任何一跳被证实** —— 既没有证明敏感读取发生在后台，'
+            '也没有证明读取的内容进入了请求体。',
+        limitation: '`UIBackgroundModes` 是**声明**，不等于运行时的实际后台'
+            '行为；未反汇编、未观察流量。',
+        recommendation: '人工复核后台上传的内容与触发条件；'
+            '必要时在隔离环境中观察后台期间的网络行为。',
       ));
     }
 

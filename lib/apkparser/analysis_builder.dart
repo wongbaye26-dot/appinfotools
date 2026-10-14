@@ -255,6 +255,8 @@ class AnalysisBuilder {
       deviceFamily: _ios(info?.deviceFamily),
       queriesSchemes: _ios(info?.queriesSchemes),
       requiredDeviceCapabilities: _ios(info?.requiredDeviceCapabilities),
+      urlSchemes: _ios(info?.urlSchemes),
+      backgroundModes: _ios(info?.backgroundModes),
       icons: _ios(info?.icons),
       executableName: _ios(info?.executable),
       executable: analysis?.executable,

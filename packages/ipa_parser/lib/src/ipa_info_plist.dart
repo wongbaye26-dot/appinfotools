@@ -118,6 +118,21 @@ class IpaInfoPlist {
 
   final FieldValue<List<String>> queriesSchemes;
   final FieldValue<List<String>> requiredDeviceCapabilities;
+
+  /// `UIBackgroundModes`：声明申请的后台执行模式。
+  ///
+  /// 取值是 `audio` / `location` / `fetch` / `remote-notification` / `voip` /
+  /// `processing` / `bluetooth-central` 等。它是**声明性事实**：申请了某个
+  /// 模式不等于运行时真的在后台跑，但「后台执行 + 敏感读取 + 回传」这个组合
+  /// 是规则 E 的输入。
+  final FieldValue<List<String>> backgroundModes;
+
+  /// `CFBundleURLTypes` 里注册的 URL scheme。
+  ///
+  /// 这些是**外部可以唤起本应用**的入口（`myapp://…`），属于攻击面的事实
+  /// 描述。只取 scheme，不取 `CFBundleURLName` —— 后者只是展示名。
+  final FieldValue<List<String>> urlSchemes;
+
   final FieldValue<IosIconConfiguration> icons;
 
   /// `NS*UsageDescription` 系列键：用途说明键名 → 说明原文。
@@ -158,6 +173,8 @@ class IpaInfoPlist {
     this.deviceFamily = const FieldValue<List<int>>.absent(),
     this.queriesSchemes = const FieldValue<List<String>>.absent(),
     this.requiredDeviceCapabilities = const FieldValue<List<String>>.absent(),
+    this.backgroundModes = const FieldValue<List<String>>.absent(),
+    this.urlSchemes = const FieldValue<List<String>>.absent(),
     this.icons = const FieldValue<IosIconConfiguration>.absent(),
     this.privacyUsageDescriptions =
         const FieldValue<Map<String, String>>.absent(),
@@ -325,6 +342,9 @@ class IpaInfoPlistReader {
       requiredDeviceCapabilities: PlistFields.stringList(
           root, 'UIRequiredDeviceCapabilities',
           source: source),
+      backgroundModes:
+          PlistFields.stringList(root, 'UIBackgroundModes', source: source),
+      urlSchemes: _urlSchemes(root, source),
       icons: _icons(root),
       privacyUsageDescriptions: _usageDescriptions(root, source),
       allowsArbitraryLoads: _atsArbitraryLoads(root, source),
@@ -332,6 +352,44 @@ class IpaInfoPlistReader {
       privacyInfo: _readPrivacyInfo(archive, bundle, diagnostics),
       diagnostics: diagnostics,
     );
+  }
+
+  /// `CFBundleURLTypes` 里注册的 URL scheme。
+  ///
+  /// 结构是**数组套字典**：每个字典里有 `CFBundleURLSchemes`（字符串数组）
+  /// 与 `CFBundleURLName`（展示名）。
+  ///
+  /// 条目形状不对（不是字典、没有 `CFBundleURLSchemes`）时**如实跳过**，
+  /// 不猜也不编；一个条目都没有时返回 `absent`（文件里确实没注册）。
+  static FieldValue<List<String>> _urlSchemes(
+    PlistValue root,
+    FieldSource source,
+  ) {
+    final value = root.asDict?.value['CFBundleURLTypes'];
+    if (value == null) {
+      return FieldValue<List<String>>.absent(source: source);
+    }
+    final array = value.asArray;
+    if (array == null) {
+      return FieldValue<List<String>>.wrongType(
+        diagnostic: 'CFBundleURLTypes is ${value.typeName}, expected array',
+        source: source,
+      );
+    }
+
+    final schemes = <String>[];
+    for (final entry in array.value) {
+      final dict = entry.asDict;
+      if (dict == null) continue;
+      final entrySchemes = dict.value['CFBundleURLSchemes']?.asStringList;
+      if (entrySchemes == null) continue;
+      for (final scheme in entrySchemes) {
+        if (scheme.isNotEmpty && !schemes.contains(scheme)) {
+          schemes.add(scheme);
+        }
+      }
+    }
+    return FieldValue<List<String>>.extracted(schemes, source: source);
   }
 
   /// 用途说明键。
@@ -583,6 +641,14 @@ class IpaInfoPlistReader {
         source: FieldSource.infoPlist,
       ),
       requiredDeviceCapabilities: FieldValue<List<String>>.failed(
+        diagnostic: diagnostic.message,
+        source: FieldSource.infoPlist,
+      ),
+      backgroundModes: FieldValue<List<String>>.failed(
+        diagnostic: diagnostic.message,
+        source: FieldSource.infoPlist,
+      ),
+      urlSchemes: FieldValue<List<String>>.failed(
         diagnostic: diagnostic.message,
         source: FieldSource.infoPlist,
       ),

@@ -354,4 +354,204 @@ void main() {
           _byId(result, 'IOS-RULE-F')!.confidence, SecurityConfidence.unknown);
     });
   });
+  // ---- 阶段 5 新增：UIBackgroundModes / CFBundleURLTypes ----
+  group('Info.plist：后台模式与 URL scheme', () {
+    const plistWithBoth = """
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.example.app</string>
+  <key>UIBackgroundModes</key>
+  <array><string>fetch</string><string>remote-notification</string></array>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>com.example.app</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>example</string><string>ex2</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleURLName</key><string>com.example.other</string>
+    </dict>
+  </array>
+</dict></plist>
+""";
+
+    test('UIBackgroundModes 被提取为字符串列表', () {
+      final plist = _plist(infoPlist: plistWithBoth);
+
+      expect(plist.backgroundModes.hasValue, isTrue);
+      expect(plist.backgroundModes.value, ['fetch', 'remote-notification']);
+    });
+
+    test('CFBundleURLTypes 只取 scheme，形状不对的条目如实跳过', () {
+      final plist = _plist(infoPlist: plistWithBoth);
+
+      expect(plist.urlSchemes.hasValue, isTrue);
+      expect(
+        plist.urlSchemes.value,
+        ['example', 'ex2'],
+        reason: '第二个 dict 没有 CFBundleURLSchemes，应当被跳过而不是猜',
+      );
+    });
+
+    test('没有注册 scheme 时是 absent（文件里确实没有），不是空列表', () {
+      final plist = _plist(infoPlist: """
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.example.app</string>
+</dict></plist>
+""");
+
+      expect(plist.urlSchemes.status, FieldStatus.absent);
+      expect(plist.backgroundModes.status, FieldStatus.absent);
+    });
+
+    test('CFBundleURLTypes 类型不符时记 wrongType，不猜', () {
+      final plist = _plist(infoPlist: """
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleURLTypes</key><string>not-an-array</string>
+</dict></plist>
+""");
+
+      expect(plist.urlSchemes.status, FieldStatus.wrongType);
+      expect(plist.urlSchemes.diagnostic, contains('array'));
+    });
+
+    test('注册了 scheme 时记录为事实，并写明「入口存在 ≠ 入口安全」', () {
+      final plist = _plist(infoPlist: plistWithBoth);
+      final result = IosPrivacyAudit.audit(infoPlist: plist);
+
+      final finding = _byId(result, 'IOS-URL-SCHEMES');
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.info);
+      expect(finding.finding, contains('example'));
+      expect(finding.finding, contains('外部可以唤起'));
+      expect(finding.limitation, contains('未反汇编'));
+    });
+  });
+
+  group('规则 A：完整库访问但看不到更克制的路径', () {
+    test('只有 PhotoKit、没有选择器 → P2 待复核', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert('PHPhotoLibrary\n'),
+      );
+
+      final ruleA = _byId(result, 'IOS-RULE-A');
+      expect(ruleA, isNotNull);
+      expect(ruleA!.severity, SecuritySeverity.p2);
+      expect(ruleA.confidence, SecurityConfidence.suspected);
+      expect(ruleA.finding, contains('更克制'));
+      expect(ruleA.relationship, contains('静态推断'));
+      expect(ruleA.recommendation, contains('不是恶意判定'));
+    });
+
+    test('同时有选择器时不触发规则 A', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert(
+          'PHPhotoLibrary\nPHPickerViewController\n',
+        ),
+      );
+
+      expect(
+        _byId(result, 'IOS-RULE-A'),
+        isNull,
+        reason: '看到了更克制的路径，就不该报「缺少替代方案」',
+      );
+    });
+  });
+
+  group('规则 B：图像输入 + 文字识别', () {
+    test('相册 + OCR → P2，且写明同现未被证实', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert(
+          'PHPickerViewController\nVNRecognizeTextRequest\n',
+        ),
+      );
+
+      final ruleB = _byId(result, 'IOS-RULE-B');
+      expect(ruleB, isNotNull);
+      expect(ruleB!.severity, SecuritySeverity.p2);
+      expect(ruleB.confidence, SecurityConfidence.suspected);
+      expect(ruleB.relationship, contains('未被证实'));
+      expect(ruleB.finding, contains('可能'));
+    });
+
+    test('只有 OCR 时不触发规则 B', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes:
+            const Utf8Encoder().convert('VNRecognizeTextRequest\n'),
+      );
+
+      expect(_byId(result, 'IOS-RULE-B'), isNull);
+    });
+  });
+
+  group('规则 E：后台 + 敏感读取 + 回传', () {
+    const backgroundPlist = """
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.example.app</string>
+  <key>NSPhotoLibraryUsageDescription</key><string>用于上传头像</string>
+  <key>UIBackgroundModes</key>
+  <array><string>fetch</string></array>
+</dict></plist>
+""";
+
+    test('三段同现 → P2，且写明没有任何一跳被证实', () {
+      final plist = _plist(infoPlist: backgroundPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert(
+          'PHPhotoLibrary\nNSURLSession\n',
+        ),
+      );
+
+      final ruleE = _byId(result, 'IOS-RULE-E');
+      expect(ruleE, isNotNull);
+      expect(ruleE!.severity, SecuritySeverity.p2);
+      expect(ruleE.confidence, SecurityConfidence.suspected);
+      expect(ruleE.dataSource, contains('相册'));
+      expect(ruleE.dataSink, contains('网络'));
+      expect(ruleE.relationship, contains('没有任何一跳被证实'));
+      expect(ruleE.limitation, contains('声明'));
+      expect(
+        ruleE.evidence.any((e) =>
+            e.source == SecurityEvidenceSource.infoPlist &&
+            e.detail.contains('fetch')),
+        isTrue,
+        reason: '证据里要能看到是哪个后台模式',
+      );
+    });
+
+    test('没有后台模式时不触发规则 E', () {
+      final plist = _plist(infoPlist: _usageOnlyPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert(
+          'PHPhotoLibrary\nNSURLSession\n',
+        ),
+      );
+
+      expect(_byId(result, 'IOS-RULE-E'), isNull);
+    });
+
+    test('有后台模式但没有敏感读取时不触发', () {
+      final plist = _plist(infoPlist: backgroundPlist);
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        executableBytes: const Utf8Encoder().convert('NSURLSession\n'),
+      );
+
+      expect(_byId(result, 'IOS-RULE-E'), isNull);
+    });
+  });
 }
