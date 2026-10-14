@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
@@ -6,6 +7,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
+import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
@@ -14,17 +16,19 @@ import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 /// 应用概览页。
 ///
-/// 用户打开应用后的默认落地页，提供：
-/// - Hero 横幅：欢迎语与快捷操作
-/// - 统计指标：文件分析历史汇总
-/// - 拖放区域：支持直接拖入文件，拖入时显示预览
-/// - 最近分析列表：快速访问历史文件
-/// - 空状态：首次使用时的引导
+/// 用户打开应用后的默认落地页。**整页固定一屏、不上下滚动**：
+/// - Hero 区：未导入文件时是引导横幅，导入后变成「当前文件状态面板」
+/// - 统计：一行三个卡片
+/// - 最近文件：占据剩余空间，列表自身可滚动
+///
+/// 布局按窗口宽度自适应（`LayoutBuilder`）：窄窗口收紧间距、状态卡片
+/// 改为两列两行。
 class OverviewPage extends ConsumerStatefulWidget {
   const OverviewPage({super.key});
 
@@ -34,6 +38,9 @@ class OverviewPage extends ConsumerStatefulWidget {
 
 class _OverviewPageState extends ConsumerState<OverviewPage> {
   bool _dragging = false;
+
+  /// 窄窗口阈值：低于它时收紧间距、状态卡片两列排布。
+  static const _compactWidth = 900.0;
 
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
@@ -52,13 +59,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     if (!File(filePath).existsSync()) return;
 
     // 交给分析页去解析：解析流水线（任务句柄、阶段回调、取消、代际计数）
-    // 只存在于那里。概览页只负责发起请求并把用户带过去 —— 早先这里自己
-    // 写了一份 FileState，看起来「打开了」，实际没有任何解析发生。
+    // 只存在于那里。概览页只负责发起请求并把用户带过去。
     ref.read(pendingOpenRequestProvider.notifier).request(filePath);
     ref.read(shellNavigationProvider.notifier).navigate('analysis');
   }
 
-  /// 检查文件是否受支持。
   bool _isSupported(String filePath) => isSupportedPackagePath(filePath);
 
   @override
@@ -66,12 +71,10 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // 概览页常驻在 IndexedStack 里，切回来时不会重建 —— 订阅这两个
-    // provider 才能在「分析完成」「切换文件」时刷新统计与 Hero 面板。
-    ref.watch(recentFilesRevisionProvider);
     final fileState = ref.watch(currentFileStateProvider);
     final apkInfo = ref.watch(currentApkInfoProvider);
     final isParsing = ref.watch(isParsingProvider);
+    final recentFiles = ref.watch(recentFilesProvider);
 
     return DropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
@@ -79,44 +82,45 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       onDragDone: (details) {
         setState(() => _dragging = false);
         final files = details.files;
-        if (files.isNotEmpty) {
-          final filePath = files.first.path;
-          if (_isSupported(filePath)) {
-            _openFile(filePath);
-          } else {
-            _showInvalidFileSnack(filePath);
-          }
+        if (files.isEmpty) return;
+        final filePath = files.first.path;
+        if (_isSupported(filePath)) {
+          _openFile(filePath);
+        } else {
+          _showInvalidFileSnack(filePath);
         }
       },
       child: Container(
         color: _dragging
             ? colorScheme.primaryContainer.withValues(alpha: 0.3)
             : theme.scaffoldBackgroundColor,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Hero 区：已导入文件时显示「当前文件状态面板」，
-              // 否则显示引导横幅。两者占据同一位置（设计稿的红框）。
-              if (fileState.filePath == null)
-                _buildHeroBanner(context)
-              else
-                _buildCurrentFilePanel(context, fileState, apkInfo, isParsing),
-              const SizedBox(height: 32),
-              // 统计指标
-              _buildStatsPanel(context),
-              const SizedBox(height: 32),
-              // 快捷操作区
-              _buildQuickActions(context),
-              const SizedBox(height: 32),
-              // 最近文件列表
-              _buildRecentFiles(context),
-              const SizedBox(height: 32),
-              // 拖放提示（仅在非拖放状态时显示静态提示）
-              if (!_dragging) _buildDropZone(context),
-            ],
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < _compactWidth;
+            final gap = compact ? 14.0 : 20.0;
+            final pad = compact ? 16.0 : 24.0;
+
+            return Padding(
+              padding: EdgeInsets.all(pad),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Hero 区
+                  if (fileState.filePath == null)
+                    _buildWelcomeHero(context, compact)
+                  else
+                    _buildCurrentFilePanel(
+                        context, fileState, apkInfo, isParsing, compact),
+                  SizedBox(height: gap),
+                  // 统计
+                  _buildStatsPanel(context, recentFiles),
+                  SizedBox(height: gap),
+                  // 最近文件（占满剩余空间，列表自身滚动）
+                  Expanded(child: _buildRecentFiles(context, recentFiles)),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -125,8 +129,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   void _showInvalidFileSnack(String filePath) {
     final ext = p.extension(filePath).toLowerCase();
     final name = p.basename(filePath);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -150,24 +153,108 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
   }
 
-  /// 当前文件状态面板（设计稿红框区）。
-  ///
-  /// 展示刚导入 / 正在分析的那个包：图标、名称、标识符、版本，外加四个
-  /// 状态卡片（平台 / 大小 / 签名 / 安全）与操作按钮。
-  ///
-  /// 未导入任何文件时这个面板不出现 —— 那时显示 [_buildHeroBanner] 的引导。
+  // ---------------------------------------------------------------------
+  // 引导横幅（未导入文件时）
+  // ---------------------------------------------------------------------
+
+  Widget _buildWelcomeHero(BuildContext context, bool compact) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 20 : 28),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.primaryContainer.withValues(alpha: 0.6),
+            colorScheme.secondaryContainer.withValues(alpha: 0.4),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Row(
+        children: [
+          AppLogo(size: compact ? 48 : 56),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  t.title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  t.overview.subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    const _FeatureChip(
+                      icon: Icons.android,
+                      label: 'APK / XAPK / APKM / APKS',
+                      color: Colors.green,
+                    ),
+                    const _FeatureChip(
+                      icon: Icons.apple,
+                      label: 'IPA',
+                      color: Colors.grey,
+                    ),
+                    _FeatureChip(
+                      icon: Icons.security,
+                      label: t.overview.feature_security,
+                      color: Colors.orange,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const _DropHint(),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          FilledButton.icon(
+            onPressed: _pickFile,
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: Text(t.overview.open_file),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // 当前文件状态面板
+  // ---------------------------------------------------------------------
+
   Widget _buildCurrentFilePanel(
     BuildContext context,
     FileState fileState,
     ApkInfo? apkInfo,
     bool isParsing,
+    bool compact,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final analysis = fileState.analysis;
     final isIos = fileState.platform == PackagePlatform.ios;
 
-    // 名称 / 标识符 / 版本：两个平台的取值位置完全不同。
     final String appName;
     final String identifier;
     final String version;
@@ -182,22 +269,14 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       version = apkInfo?.versionName ?? '';
     }
 
-    // 四个状态卡片的数据源。
-    final sizeText = RecentFilesManager.formatSize(fileState.fileSize ?? 0);
-
-    final (String signatureText, Color signatureColor) = _signatureStatus(
-      fileState,
-      analysis,
-      isIos,
-    );
-    final (String securityText, Color securityColor) = _securityStatus(
-      analysis?.security,
-      isParsing,
-    );
+    final (String signatureText, Color signatureColor) =
+        _signatureStatus(fileState, analysis, isIos);
+    final (String securityText, Color securityColor) =
+        _securityStatus(analysis?.security, isParsing);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(compact ? 18 : 24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -215,160 +294,281 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 应用图标
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: isIos
-                    ? IosIconThumbnail(
-                        resolution: analysis?.ios?.icon, size: 56)
-                    : (apkInfo?.mainIconImage != null
-                        ? RawImage(
-                            image: apkInfo!.mainIconImage,
-                            fit: BoxFit.contain,
-                          )
-                        : Center(
-                            child: Icon(
-                              Icons.android,
-                              size: 26,
-                              color: theme.hintColor.withValues(alpha: 0.4),
-                            ),
-                          )),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          isIos ? Icons.apple : Icons.android,
-                          size: 14,
-                          color: isIos ? Colors.grey : Colors.green,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          t.overview.current_file,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.hintColor,
-                            fontWeight: FontWeight.w600,
+          // 上半：图标 + 四行文字 + 按钮。
+          //
+          // `IntrinsicHeight` + `stretch` 让图标高度**等于右侧文字列的高度**
+          // （用户明确要求）：文字行数或字号变化时图标自动跟着变，
+          // 不用手算像素。
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildIconBox(context, apkInfo, analysis, isIos, compact),
+                SizedBox(width: compact ? 14 : 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // 第 1 行：平台 + 「当前文件」
+                      Row(
+                        children: [
+                          Icon(
+                            isIos ? Icons.apple : Icons.android,
+                            size: 13,
+                            color: isIos ? Colors.grey : Colors.green,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      appName.isNotEmpty ? appName : t.overview.no_file,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
+                          const SizedBox(width: 5),
+                          Text(
+                            t.overview.current_file,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.hintColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    SelectableText(
-                      identifier.isNotEmpty ? identifier : '-',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.hintColor,
-                        fontFamily: 'monospace',
-                        fontFamilyFallback: const ['Menlo', 'Courier'],
-                      ),
-                    ),
-                    if (version.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
+                      // 第 2 行：应用名
                       Text(
-                        'v$version',
+                        appName.isNotEmpty ? appName : t.overview.no_file,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      // 第 3 行：标识符（可复制）
+                      _CopyableLine(text: identifier, monospace: true),
+                      const SizedBox(height: 2),
+                      // 第 4 行：版本
+                      Text(
+                        version.isNotEmpty ? 'v$version' : '-',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                  ),
+                ),
+                SizedBox(width: compact ? 10 : 16),
+                // 操作按钮（竖排，避免窄窗口挤成一团）
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => ref
+                          .read(shellNavigationProvider.notifier)
+                          .navigate('analysis'),
+                      icon: const Icon(Icons.analytics_outlined, size: 16),
+                      label: Text(t.overview.view_details),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: fileState.analysis == null
+                          ? null
+                          : () => _exportReport(fileState),
+                      icon: const Icon(Icons.description_outlined, size: 16),
+                      label: Text(t.overview.export_report),
+                    ),
                   ],
                 ),
-              ),
-              // 操作按钮
-              Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => ref
-                        .read(shellNavigationProvider.notifier)
-                        .navigate('analysis'),
-                    icon: const Icon(Icons.analytics_outlined, size: 16),
-                    label: Text(t.overview.view_details),
-                  ),
-                  FilledButton.icon(
-                    onPressed: fileState.analysis == null
-                        ? null
-                        : () => _exportReport(fileState),
-                    icon: const Icon(Icons.description_outlined, size: 16),
-                    label: Text(t.overview.export_report),
+              ],
+            ),
+          ),
+          SizedBox(height: compact ? 14 : 18),
+          // 下半：四个状态卡片
+          _buildStatusCards(
+            context,
+            compact,
+            isIos: isIos,
+            sizeText: RecentFilesManager.formatSize(fileState.fileSize ?? 0),
+            signatureText: signatureText,
+            signatureColor: signatureColor,
+            securityText: securityText,
+            securityColor: securityColor,
+          ),
+          const SizedBox(height: 10),
+          // 拖放提示：原先底部有一张占满宽度的大卡片，去掉后收成这里一行。
+          const _DropHint(),
+        ],
+      ),
+    );
+  }
+
+  /// 图标容器。
+  ///
+  /// 宽度固定、高度由外层 `IntrinsicHeight` + `stretch` 拉伸到与右侧文字
+  /// 列等高（用户要求「图标高度跟右边四行文字一样」）。
+  ///
+  /// **刻意不用 `AspectRatio`**：它在 `IntrinsicHeight` 下会报出偏大的
+  /// 内在宽度（实测在 800px 窗口里把整行挤溢出 102px），而这里的诉求
+  /// 只是「高度对齐」，宽度固定反而更可控。
+  Widget _buildIconBox(
+    BuildContext context,
+    ApkInfo? apkInfo,
+    PackageAnalysisResult? analysis,
+    bool isIos,
+    bool compact,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return SizedBox(
+      width: compact ? 76 : 92,
+      child: GestureDetector(
+        // 右键打开导出菜单
+        onSecondaryTapUp: isIos
+            ? null
+            : (details) => _showIconExportMenu(
+                  context,
+                  details.globalPosition,
+                  apkInfo,
+                ),
+        child: Stack(
+          children: [
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.07),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // 四个状态卡片
-          Row(
-            children: [
-              Expanded(
-                child: _StatusCard(
-                  icon: isIos ? Icons.apple : Icons.android,
-                  label: t.overview.status_platform,
-                  value: isIos ? 'iOS' : 'Android',
-                  color: isIos ? Colors.grey : Colors.green,
+              clipBehavior: Clip.antiAlias,
+              child: isIos
+                  ? IosIconThumbnail(
+                      resolution: analysis?.ios?.icon,
+                      size: double.infinity,
+                    )
+                  : (apkInfo?.mainIconImage != null
+                      ? RawImage(
+                          image: apkInfo!.mainIconImage,
+                          fit: BoxFit.contain,
+                        )
+                      : Center(
+                          child: Icon(
+                            Icons.android,
+                            size: 28,
+                            color: theme.hintColor.withValues(alpha: 0.4),
+                          ),
+                        )),
+            ),
+            // 导出角标（仅 Android：iOS 的图标来源不支持多候选导出）
+            if (!isIos && apkInfo != null)
+              Positioned(
+                right: 3,
+                bottom: 3,
+                child: Material(
+                  color: colorScheme.surface.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(7),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(7),
+                    onTap: () => _showIconExportMenu(
+                      context,
+                      _iconMenuAnchor(context),
+                      apkInfo,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: Icon(
+                        Icons.download,
+                        size: 12,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatusCard(
-                  icon: Icons.sd_storage_outlined,
-                  label: t.overview.status_size,
-                  value: sizeText,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatusCard(
-                  icon: Icons.verified_outlined,
-                  label: t.overview.status_signature,
-                  value: signatureText,
-                  color: signatureColor,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatusCard(
-                  icon: Icons.security,
-                  label: t.overview.status_security,
-                  value: securityText,
-                  color: securityColor,
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  /// 图标菜单的锚点（图标左下角）。
+  Offset _iconMenuAnchor(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return Offset.zero;
+    return box.localToGlobal(Offset(0, box.size.height));
+  }
+
+  Widget _buildStatusCards(
+    BuildContext context,
+    bool compact, {
+    required bool isIos,
+    required String sizeText,
+    required String signatureText,
+    required Color signatureColor,
+    required String securityText,
+    required Color securityColor,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final cards = [
+      _StatusCard(
+        icon: isIos ? Icons.apple : Icons.android,
+        label: t.overview.status_platform,
+        value: isIos ? 'iOS' : 'Android',
+        color: isIos ? Colors.grey : Colors.green,
+      ),
+      _StatusCard(
+        icon: Icons.sd_storage_outlined,
+        label: t.overview.status_size,
+        value: sizeText,
+        color: colorScheme.primary,
+      ),
+      _StatusCard(
+        icon: Icons.verified_outlined,
+        label: t.overview.status_signature,
+        value: signatureText,
+        color: signatureColor,
+      ),
+      _StatusCard(
+        icon: Icons.security,
+        label: t.overview.status_security,
+        value: securityText,
+        color: securityColor,
+      ),
+    ];
+
+    // 窄窗口：两列两行；宽窗口：一行四个。
+    if (compact) {
+      return Column(
+        children: [
+          Row(children: [
+            Expanded(child: cards[0]),
+            const SizedBox(width: 10),
+            Expanded(child: cards[1]),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: cards[2]),
+            const SizedBox(width: 10),
+            Expanded(child: cards[3]),
+          ]),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        for (var i = 0; i < cards.length; i++) ...[
+          if (i > 0) const SizedBox(width: 12),
+          Expanded(child: cards[i]),
+        ],
+      ],
     );
   }
 
@@ -391,7 +591,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     };
   }
 
-  /// 安全状态：未开启审计 / 未跑完 / 有发现 / 无发现。
+  /// 安全状态：解析中 / 未检测 / 未发现风险 / N 项发现。
+  ///
+  /// 「未检测」不能显示成绿色 —— 那是「没查到」，不是「没问题」。
   (String, Color) _securityStatus(
     SecurityAnalysisResult? security,
     bool isParsing,
@@ -400,7 +602,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     if (security == null) return (t.overview.security_not_run, Colors.grey);
     final count = security.findings.length;
     if (count == 0) return (t.overview.security_clean, Colors.green);
-    // 有 P0/P1 就用红色，否则橙色 —— 与安全卡片的风险配色一致。
     final severe = security.findings.any(
       (f) =>
           f.severity == SecuritySeverity.p0 ||
@@ -412,10 +613,110 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
   }
 
-  /// 从 Hero 面板直接导出报告。
-  ///
-  /// 刻意不接收 `BuildContext` 参数：跨 `await` 之后必须用 `State.context`
-  /// 才能被 `mounted` 正确守护，传入的 context 无法判断是否仍然有效。
+  /// 图标导出菜单：PNG / SVG / 原始文件。
+  Future<void> _showIconExportMenu(
+    BuildContext context,
+    Offset position,
+    ApkInfo? apkInfo,
+  ) async {
+    if (apkInfo == null) return;
+    final index = ref.read(selectedIconIndexProvider);
+
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'png',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.image_outlined, size: 18),
+            title: Text(t.icon.export_as_png),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'svg',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.code, size: 18),
+            title: Text(t.icon.export_as_svg),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'raw',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.insert_drive_file_outlined, size: 18),
+            title: Text(t.icon.export_original),
+          ),
+        ),
+      ],
+    );
+    if (choice == null || !mounted) return;
+    await _exportIcon(choice, apkInfo, index);
+  }
+
+  Future<void> _exportIcon(String kind, ApkInfo apkInfo, int index) async {
+    try {
+      final baseName =
+          (apkInfo.label ?? 'icon').replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final extension = switch (kind) {
+        'png' => 'png',
+        'svg' => 'svg',
+        _ => 'bin',
+      };
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: t.icon.export_icon,
+        fileName: '$baseName-$index.$extension',
+        type: FileType.custom,
+        allowedExtensions: [extension],
+        lockParentWindow: true,
+      );
+      if (savePath == null) return;
+
+      if (kind == 'png') {
+        final image = await apkInfo.renderIconForExport(index);
+        if (image == null) throw StateError('icon render failed');
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (data == null) throw StateError('icon encode failed');
+        await File(savePath).writeAsBytes(data.buffer.asUint8List());
+      } else if (kind == 'svg') {
+        final svg = await apkInfo.exportSvgString(index);
+        if (svg == null) throw StateError(t.icon.error_svg_conversion);
+        await File(savePath).writeAsString(svg);
+      } else {
+        // 原始文件：取该候选在 APK 里的原始字节（PNG / WebP / XML），
+        // 不经任何重编码 —— 这才是「原始」的意义。
+        final candidates = apkInfo.iconCandidates;
+        if (index < 0 || index >= candidates.length) {
+          throw StateError('icon candidate out of range');
+        }
+        final bytes = candidates[index].rawBytes;
+        if (bytes == null) throw StateError('no raw bytes');
+        await File(savePath).writeAsBytes(bytes);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.icon.export_success)),
+      );
+    } catch (e) {
+      log.warning('export icon failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.icon.export_failed(error: '$e'))),
+      );
+    }
+  }
+
   Future<void> _exportReport(FileState fileState) async {
     final analysis = fileState.analysis;
     if (analysis == null) return;
@@ -435,110 +736,26 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     }
   }
 
-  Widget _buildHeroBanner(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  // ---------------------------------------------------------------------
+  // 统计
+  // ---------------------------------------------------------------------
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primaryContainer.withValues(alpha: 0.6),
-            colorScheme.secondaryContainer.withValues(alpha: 0.4),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.primary.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const AppLogo(size: 56),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      t.title,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      t.overview.subtitle,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.hintColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _FeatureChip(
-                icon: Icons.android,
-                label: 'APK / XAPK / APKM / APKS',
-                color: Colors.green,
-              ),
-              _FeatureChip(
-                icon: Icons.apple,
-                label: 'IPA',
-                color: Colors.grey,
-              ),
-              _FeatureChip(
-                icon: Icons.security,
-                label: t.overview.feature_security,
-                color: Colors.orange,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 统计指标面板。
-  ///
-  /// 从最近文件历史中汇总：总分析次数、平台分布、最近分析时间。
-  Widget _buildStatsPanel(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final recentFiles = RecentFilesManager.load();
+  Widget _buildStatsPanel(
+    BuildContext context,
+    List<RecentFileEntry> recentFiles,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
 
     final total = recentFiles.length;
     final androidCount =
         recentFiles.where((e) => e.platform == 'android').length;
     final iosCount = recentFiles.where((e) => e.platform == 'ios').length;
-    final unknownCount = total - androidCount - iosCount;
-    final lastAnalyzed = recentFiles.isNotEmpty ? recentFiles.first : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          t.overview.statistics,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 16),
+        _SectionLabel(text: t.overview.statistics),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
@@ -558,9 +775,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                 icon: Icons.android,
                 label: 'Android',
                 value: '$androidCount',
-                sublabel: unknownCount > 0 && androidCount == 0
-                    ? '+$unknownCount unknown'
-                    : null,
                 color: Colors.green,
               ),
             ),
@@ -570,255 +784,255 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                 icon: Icons.apple,
                 label: 'iOS',
                 value: '$iosCount',
-                sublabel: null,
                 color: Colors.grey,
               ),
             ),
           ],
         ),
-        if (lastAnalyzed != null) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: theme.dividerColor.withValues(alpha: 0.15),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.access_time,
-                  size: 16,
-                  color: theme.hintColor,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  t.overview.last_analyzed(name: lastAnalyzed.fileName),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.hintColor,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  lastAnalyzed.timeAgo(),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ],
     );
   }
 
-  Widget _buildQuickActions(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  // ---------------------------------------------------------------------
+  // 最近文件
+  // ---------------------------------------------------------------------
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          t.overview.quick_actions,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionCard(
-                icon: Icons.folder_open,
-                label: t.overview.open_file,
-                description: t.overview.open_file_desc,
-                onTap: _pickFile,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ActionCard(
-                icon: Icons.analytics,
-                label: t.overview.go_to_analysis,
-                description: t.overview.go_to_analysis_desc,
-                onTap: () {
-                  ref
-                      .read(shellNavigationProvider.notifier)
-                      .navigate('analysis');
-                },
-                color: colorScheme.secondary,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRecentFiles(BuildContext context) {
-    final theme = Theme.of(context);
-    final recentFiles = RecentFilesManager.load();
-
+  Widget _buildRecentFiles(
+    BuildContext context,
+    List<RecentFileEntry> recentFiles,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text(
-              t.overview.recent_files,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            _SectionLabel(text: t.overview.recent_files),
             const Spacer(),
             if (recentFiles.isNotEmpty)
               TextButton(
-                onPressed: () async {
-                  await RecentFilesManager.clear();
-                  setState(() {});
-                },
+                onPressed: () => ref.read(recentFilesProvider.notifier).clear(),
                 child: Text(t.overview.clear),
               ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (recentFiles.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: theme.dividerColor.withValues(alpha: 0.15),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.history,
-                  size: 32,
-                  color: theme.hintColor.withValues(alpha: 0.4),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  t.overview.no_recent_files,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.hintColor.withValues(alpha: 0.6),
+        const SizedBox(height: 6),
+        Expanded(
+          child: recentFiles.isEmpty
+              ? _buildEmptyRecentFiles(context)
+              : ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: recentFiles.length,
+                  itemBuilder: (context, i) => _RecentFileTile(
+                    entry: recentFiles[i],
+                    onTap: () => _openFile(recentFiles[i].path),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  t.overview.recent_files_hint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.hintColor.withValues(alpha: 0.4),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          ...recentFiles.map((entry) => _RecentFileTile(
-                entry: entry,
-                onTap: () => _openFile(entry.path),
-              )),
+        ),
       ],
     );
   }
 
-  /// 拖放区域。
-  ///
-  /// 静态状态下显示引导提示；拖入文件时显示「释放以分析」状态。
-  Widget _buildDropZone(BuildContext context) {
+  Widget _buildEmptyRecentFiles(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // 拖入中状态：显示释放提示
-    if (_dragging) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(48),
-        decoration: BoxDecoration(
-          color: colorScheme.primaryContainer.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: colorScheme.primary.withValues(alpha: 0.3),
-            width: 2,
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.touch_app,
-              size: 40,
-              color: colorScheme.primary.withValues(alpha: 0.7),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              t.overview.release_to_analyze,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              t.overview.drop_hint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.hintColor,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // 静态状态：默认引导提示
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(48),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(16),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.2),
-          width: 1,
-          style: BorderStyle.solid,
+          color: theme.dividerColor.withValues(alpha: 0.12),
         ),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.cloud_upload_outlined,
-            size: 48,
-            color: theme.hintColor.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            t.overview.drop_zone_title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.hintColor.withValues(alpha: 0.7),
-            ),
+            Icons.history,
+            size: 28,
+            color: theme.hintColor.withValues(alpha: 0.35),
           ),
           const SizedBox(height: 8),
           Text(
-            t.overview.drop_zone_hint,
+            t.overview.no_recent_files,
             style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.hintColor.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            t.overview.recent_files_hint,
+            style: theme.textTheme.labelSmall?.copyWith(
               color: theme.hintColor.withValues(alpha: 0.5),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 分区标题。
+class _SectionLabel extends StatelessWidget {
+  final String text;
+
+  const _SectionLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text,
+      style: theme.textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+}
+
+/// 可复制的单行文本（标识符）。
+///
+/// 包名 / Bundle ID 是用户最常拿去搜索或比对的字段，值得给一个显式的
+/// 复制入口，而不是让用户手动划选。
+class _CopyableLine extends StatelessWidget {
+  final String text;
+  final bool monospace;
+
+  const _CopyableLine({required this.text, this.monospace = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = monospace
+        ? theme.textTheme.bodySmall?.copyWith(
+            color: theme.hintColor,
+            fontFamily: 'monospace',
+            fontFamilyFallback: const ['Menlo', 'Courier'],
+          )
+        : theme.textTheme.bodySmall;
+
+    return Row(
+      children: [
+        Flexible(
+          child: SelectableText(
+            text.isNotEmpty ? text : '-',
+            style: style,
+            maxLines: 1,
+          ),
+        ),
+        if (text.isNotEmpty)
+          IconButton(
+            iconSize: 14,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.only(left: 4),
+            constraints: const BoxConstraints(),
+            tooltip: t.home.copy_content,
+            icon: Icon(Icons.content_copy, color: theme.hintColor),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(t.home.copied_content(content: text)),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+/// 拖放提示（一行小字，放在 Hero 区里）。
+class _DropHint extends StatelessWidget {
+  const _DropHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.cloud_upload_outlined,
+          size: 12,
+          color: theme.hintColor.withValues(alpha: 0.6),
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            t.overview.drop_zone_hint,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.hintColor.withValues(alpha: 0.7),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 状态卡片。
+class _StatusCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatusCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -846,31 +1060,31 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
+        border: Border.all(
           color: theme.dividerColor.withValues(alpha: 0.15),
-          width: 1,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, size: 18, color: color),
-                ),
-                const Spacer(),
                 Text(
                   value,
                   style: theme.textTheme.headlineSmall?.copyWith(
@@ -878,25 +1092,19 @@ class _StatCard extends StatelessWidget {
                     color: color,
                   ),
                 ),
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.hintColor,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (sublabel != null)
-              Text(
-                sublabel!,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.hintColor.withValues(alpha: 0.6),
-                ),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -918,25 +1126,29 @@ class _FeatureChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withValues(alpha: 0.2),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: color.withValues(alpha: 0.9),
-              fontWeight: FontWeight.w500,
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          // `Flexible` + 省略号：`Wrap` 在窄窗口下给的空间可能小于标签
+          // 的自然宽度（`APK / XAPK / APKM / APKS` 尤其长），不给收缩
+          // 余地就会直接撑破整行。
+          Flexible(
+            child: Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -950,10 +1162,7 @@ class _RecentFileTile extends StatelessWidget {
   final RecentFileEntry entry;
   final VoidCallback onTap;
 
-  const _RecentFileTile({
-    required this.entry,
-    required this.onTap,
-  });
+  const _RecentFileTile({required this.entry, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -962,210 +1171,56 @@ class _RecentFileTile extends StatelessWidget {
     final isIos = entry.platform == 'ios';
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.15),
-            width: 1,
-          ),
-        ),
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: theme.dividerColor.withValues(alpha: 0.15),
+              ),
+            ),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: isAndroid
-                        ? Colors.green.withValues(alpha: 0.1)
-                        : isIos
-                            ? Colors.grey.withValues(alpha: 0.1)
-                            : theme.colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    isAndroid
-                        ? Icons.android
-                        : isIos
-                            ? Icons.apple
-                            : Icons.insert_drive_file,
-                    size: 18,
-                    color: isAndroid
-                        ? Colors.green
-                        : isIos
-                            ? Colors.grey
-                            : theme.hintColor,
-                  ),
+                Icon(
+                  isAndroid
+                      ? Icons.android
+                      : isIos
+                          ? Icons.apple
+                          : Icons.insert_drive_file,
+                  size: 16,
+                  color: isAndroid
+                      ? Colors.green
+                      : isIos
+                          ? Colors.grey
+                          : theme.hintColor,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.fileName,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${RecentFilesManager.formatSize(entry.size)} · ${entry.timeAgo()}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.hintColor,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    entry.fileName,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: theme.hintColor.withValues(alpha: 0.4),
+                const SizedBox(width: 12),
+                Text(
+                  '${RecentFilesManager.formatSize(entry.size)} · ${entry.timeAgo()}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 状态卡片。
-///
-/// 左侧图标 + 上方标签 + 下方数值，用在 Hero 面板的四个状态位。
-class _StatusCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatusCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.12),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.hintColor,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 快捷操作卡片。
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String description;
-  final VoidCallback onTap;
-  final Color color;
-
-  const _ActionCard({
-    required this.icon,
-    required this.label,
-    required this.description,
-    required this.onTap,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: theme.dividerColor.withValues(alpha: 0.15),
-          width: 1,
-        ),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 24, color: color),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                label,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                description,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.hintColor,
-                ),
-              ),
-            ],
           ),
         ),
       ),

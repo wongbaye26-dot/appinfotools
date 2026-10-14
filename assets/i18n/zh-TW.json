@@ -394,7 +394,11 @@
       "hash_signature": "計算檔案雜湊（MD5 / SHA-1 / SHA-256）並驗證簽章",
       "hardening_report": "識別加固線索並匯出分析報告",
       "security_audit": "安全審計：權限、OCR 與網路傳輸檢測"
-    }
+    },
+    "tagline": "跨平台 Android / iOS 應用程式套件分析工具",
+    "repository": "專案位址",
+    "open_repository": "在 GitHub 上開啟",
+    "license": "基於 MIT 授權條款開源"
   },
   "security": {
     "title": "安全檢測",

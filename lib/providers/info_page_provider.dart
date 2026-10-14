@@ -5,6 +5,7 @@ import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
+import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -325,19 +326,27 @@ class CurrentFileState extends _$CurrentFileState {
   }
 }
 
-/// 最近文件列表的版本号。
+/// 最近文件列表。
 ///
-/// 概览页在 `AppShell` 的 `IndexedStack` 里常驻，从分析页切回来时**不会重建**
-/// —— 而它的「最近文件」「统计」是直接读 `Config.recentFiles` 的，于是永远
-/// 停在第一次构建时的快照上（表现为「分析完了但概览页还是空」）。
-///
-/// 解析完成后自增这个值，概览页 `ref.watch` 它即可拿到最新数据。
+/// 让数据本身成为 provider，而不是「概览页直接读 `Config` + 别处手动
+/// bump 一个版本号」：
+/// - 概览页常驻 `IndexedStack`，不会自己重建，读 `Config` 只会拿到首次
+///   构建时的快照（表现为「分析完了统计还是 0」）；
+/// - 写入方更新 state，读方 `ref.watch` 即可，不存在忘记通知的路径。
 @Riverpod(keepAlive: true)
-class RecentFilesRevision extends _$RecentFilesRevision {
+class RecentFiles extends _$RecentFiles {
   @override
-  int build() => 0;
+  List<RecentFileEntry> build() => RecentFilesManager.load();
 
-  void bump() => state = state + 1;
+  Future<void> add(String path, int size, {String? platform}) async {
+    await RecentFilesManager.add(path, size, platform: platform);
+    state = RecentFilesManager.load();
+  }
+
+  Future<void> clear() async {
+    await RecentFilesManager.clear();
+    state = const [];
+  }
 }
 
 /// 跨页面的「打开这个文件」请求。

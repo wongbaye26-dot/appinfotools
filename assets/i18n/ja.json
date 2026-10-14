@@ -277,7 +277,11 @@
       "hash_signature": "ファイルハッシュ（MD5 / SHA-1 / SHA-256）の計算と署名検証",
       "hardening_report": "加固の手がかりを検出し、解析レポートを書き出す",
       "security_audit": "セキュリティ監査：権限、OCR、ネットワーク転送の検出"
-    }
+    },
+    "tagline": "Android / iOS アプリケーションパッケージのクロスプラットフォーム解析ツール",
+    "repository": "プロジェクトリポジトリ",
+    "open_repository": "GitHub で開く",
+    "license": "MIT ライセンスで公開"
   },
   "security": {
     "title": "セキュリティ検出",

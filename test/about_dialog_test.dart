@@ -84,14 +84,15 @@ void main() {
     }
   });
 
-  testWidgets('不再显示版权声明与仓库链接', (tester) async {
+  testWidgets('显示项目地址', (tester) async {
     await _openAboutDialog(tester);
 
+    // 桌面工具的「关于」是用户找源码 / 提 issue 的地方，仓库地址必须在这里。
+    // （早先的版本刻意去掉了它，但那让用户无处可去 —— 需求已改回。）
     final text = _dialogText(tester);
-    expect(text, isNot(contains('github.com')));
-    expect(text, isNot(contains('huanfeng')));
-    // 版本号以外的装饰性内容也不该有。
-    expect(text, isNot(contains('Copyright')));
+    expect(text, contains('github.com/wongbaye26-dot/appinfotools'));
+    expect(text, contains(t.about.repository));
+    expect(text, contains(t.about.license));
   });
 
   testWidgets('只有关闭一个操作', (tester) async {

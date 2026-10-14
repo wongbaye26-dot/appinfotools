@@ -395,7 +395,11 @@
       "hash_signature": "Compute file hashes (MD5 / SHA-1 / SHA-256) and verify signatures",
       "hardening_report": "Surface hardening hints and export an analysis report",
       "security_audit": "Security audit: permission, OCR and network transmission detection"
-    }
+    },
+    "tagline": "Cross-platform package inspector for Android and iOS",
+    "repository": "Project repository",
+    "open_repository": "Open on GitHub",
+    "license": "Released under the MIT License"
   },
   "security": {
     "title": "Security Detection",

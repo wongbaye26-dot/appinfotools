@@ -6,12 +6,14 @@ import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
+import 'package:apk_info_tool/utils/app_links.dart';
 import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/tool_downloader.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
+import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:apk_info_tool/widgets/title_width_setting.dart';
 import 'package:file_picker/file_picker.dart';
@@ -19,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingPage extends ConsumerStatefulWidget {
   const SettingPage({super.key});
@@ -709,57 +712,170 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     );
   }
 
-  /// 关于对话框：**只显示版本号与功能详情**。
+  /// 关于对话框。
   ///
-  /// 不用 `showAboutDialog`：它固定带一个「查看开源许可」按钮和一段版权声明
-  /// 的位置，而这两样都不属于「版本号 + 功能详情」。这里用普通 `AlertDialog`
-  /// 把内容限定成两件事 —— 应用名只是为了说清这是谁，版本号与功能列表才是
-  /// 用户点开「关于」想看的东西。
+  /// 结构：应用标识 + 版本 → 一句话定位 → 功能列表 → 项目地址。
   ///
-  /// 原先还放了版权声明与仓库链接。那两项对「这是什么、能做什么」没有帮助，
-  /// 反而把真正要看的东西挤到下面；仓库地址在项目主页上更合适。
+  /// 不用 `showAboutDialog`：它固定带一个「查看开源许可」按钮，而许可
+  /// 全文在这个对话框里既放不下也不是用户点开「关于」想看的东西。
+  ///
+  /// **项目地址必须在这里**：早先的版本刻意去掉了仓库链接（理由写在
+  /// 旧注释里），但那让用户想找源码 / 提 issue 时无处可去 —— 桌面工具的
+  /// 「关于」正是放这个的地方。
   void _showAboutDialog() {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final features = [
       t.about.features.android,
       t.about.features.ios,
       t.about.features.details,
       t.about.features.hash_signature,
       t.about.features.hardening_report,
+      t.about.features.security_audit,
     ];
 
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(t.title),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 版本号。
-              SelectableText(
-                'v${packageInfo.version}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 16),
-              // 功能详情。
-              Text(t.settings.features, style: theme.textTheme.titleSmall),
-              const SizedBox(height: 8),
-              for (final feature in features)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('·  ', style: theme.textTheme.bodyMedium),
-                      Expanded(
-                        child: Text(feature, style: theme.textTheme.bodyMedium),
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        content: SizedBox(
+          width: 460,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 应用标识 + 版本
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const AppLogo(size: 48),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            t.title,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          SelectableText(
+                            'v${packageInfo.version}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.hintColor,
+                              fontFamily: 'monospace',
+                              fontFamilyFallback: const ['Menlo', 'Courier'],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  t.about.tagline,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor,
                   ),
                 ),
-            ],
+                const SizedBox(height: 20),
+                // 功能
+                Text(
+                  t.settings.features,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final feature in features)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.check_circle_outline,
+                          size: 15,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            feature,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                // 项目地址
+                Text(
+                  t.about.repository,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => launchUrl(
+                    Uri.parse(kRepositoryUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: theme.dividerColor.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.code, size: 16, color: colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            kRepositoryUrl,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.primary,
+                              fontFamily: 'monospace',
+                              fontFamilyFallback: const ['Menlo', 'Courier'],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(
+                          Icons.open_in_new,
+                          size: 14,
+                          color: theme.hintColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  t.about.license,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [

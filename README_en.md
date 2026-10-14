@@ -1,175 +1,170 @@
 <p align="center">
-  <img src="docs/assets/icon_512.png" width="120" alt="AppInfoTool">
+  <img src="docs/assets/icon_512.png" width="120" alt="AppInfoTool Logo">
 </p>
 
 <h1 align="center">AppInfoTool</h1>
 
 <p align="center">
-  <strong>Lightweight yet powerful cross-platform Android package analyzer and installer</strong><br>
-  Drag, drop, done — simple and intuitive.
+  <strong>Cross-platform Android / iOS package inspector</strong><br>
+  Parse the structure, review the risks — all in one window.
 </p>
 
 <p align="center">
-  <a href="https://github.com/huanfeng/ApkInfoTool/releases/latest"><img src="https://img.shields.io/github/v/release/huanfeng/ApkInfoTool?style=flat-square&color=28a745" alt="Release"></a>
-  <a href="https://github.com/huanfeng/ApkInfoTool/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/huanfeng/ApkInfoTool/build.yml?style=flat-square" alt="Build"></a>
-  <a href="https://github.com/huanfeng/ApkInfoTool/blob/main/LICENSE"><img src="https://img.shields.io/github/license/huanfeng/ApkInfoTool?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platform">
-  <a href="https://github.com/huanfeng/ApkInfoTool/stargazers"><img src="https://img.shields.io/github/stars/huanfeng/ApkInfoTool?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/wongbaye26-dot/appinfotools/releases/latest">Download</a>
+  ·
+  <a href="https://github.com/wongbaye26-dot/appinfotools/issues">Report an issue</a>
+  ·
+  <a href="https://github.com/huanfeng/ApkInfoTool">Original project</a>
 </p>
 
 <p align="center">
-  <a href="README.md">简体中文</a> · <a href="README_en.md">English</a>
+  <img src="https://img.shields.io/badge/Flutter-Dart-blue?style=flat-square" alt="Flutter">
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platforms">
+  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS-3DDC84?style=flat-square" alt="Android">
+  <img src="https://img.shields.io/badge/iOS-IPA-000000?style=flat-square" alt="iOS">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
+</p>
+
+<p align="center">
+  <a href="README.md">简体中文</a> · <strong>English</strong>
 </p>
 
 ---
 
-## Highlights
+## Overview
 
-📦 **All Formats** — APK / XAPK / APKM / APKS with automatic split structure and OBB detection
+**AppInfoTool** is a Flutter desktop tool for inspecting Android and iOS application packages. It answers "what is this package, what's inside it, and is anything risky" in a single drag-and-drop.
 
-🔍 **Deep Analysis** — Package name, version, SDK levels, permissions, activities, signatures, file hashes (MD5/SHA1)
+It builds on the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTool), keeping its parsing foundation while reworking the interface, completing iOS support, and adding a security audit engine.
 
-📋 **Split Package Details** — Clear view of split APK lists and OBB file lists for XAPK/APKM/APKS
+## Features
 
-🎨 **Icon Preview & Export** — Renders PNG / WebP / XML adaptive icons (including gradient vectors), multi-candidate switching, export as PNG / SVG / raw, configurable icon display size (2 or 3 rows)
+### Package parsing
 
-📝 **File Renaming** — Rename APK / XAPK / APKM / APKS files by custom rules
+| Platform | Formats | What you get |
+|---|---|---|
+| Android | APK / XAPK / APKM / APKS | App name (all locales), package ID, version, SDK range, screens & densities, ABIs, permissions, components (Activity/Service/Receiver/Provider with exported state), split APKs and OBB, file structure (DEX / native libs / top-level dirs) |
+| iOS | IPA | Bundle ID, version and build, minimum OS, device family, executable, nested bundles and frameworks, URL schemes, device capabilities, Mach-O architectures |
 
-🚀 **One-Click ADB Install** — Handles split APK installs and OBB push automatically
+### Security audit
 
-⬇️ **One-Click Dependency Download** — Download adb / aapt2 / apksigner directly from Settings, no manual Android SDK setup needed
+| Capability | Description |
+|---|---|
+| Permission review | Per-permission severity, purpose and rationale. Version conditions such as `maxSdkVersion` and `uses-permission-sdk-23` are preserved rather than dropped |
+| OCR / sensitive-data clues | Scans DEX strings for document scanning, screenshots, photo-library access and similar capabilities |
+| Data transmission analysis | Detects network libraries, upload endpoints and domains/IPs, labelled **confirmed / suspected / capability only** |
+| Privacy manifests | On iOS, checks `Info.plist` usage descriptions and `PrivacyInfo.xcprivacy` declarations |
+| Risk grading | P0–P3 / INFO / **UNKNOWN** — "cannot determine" is kept strictly separate from "low risk", so limited coverage is never shown as green |
 
-🧩 **Built-in Parser** — Pure Dart APK parser, no aapt2 dependency needed — faster parsing with obfuscated APK support
+### Interface
 
-🌍 **Multi-Language & Themes** — Simplified Chinese, Traditional Chinese, English, Japanese, Korean; customizable theme colors
+- **Overview** — everything on one screen: current file status, four status cards (platform / size / signature / security), statistics and recent files
+- **Detail page** — six tabs (Overview / Application / Permissions / Structure / Signature / Security) with identical semantics for APK and IPA
+- **Drag and drop** — dropping a file starts the analysis immediately
+- **Export** — analysis report (Markdown / JSON), app icons (PNG / SVG / original file)
+- **Rename** — rename by app name, or name + version
+- **Light/dark themes** and six UI languages (English / 简体中文 / 繁體中文 ×2 / 日本語 / 한국어)
 
-## Screenshots
+## Download
 
-<!-- Add screenshots or GIF demos here -->
-<!-- <p align="center">
-  <img src="screenshots/main.png" width="800" alt="Main UI">
-</p> -->
+Get the latest build from [Releases](https://github.com/wongbaye26-dot/appinfotools/releases/latest):
 
-> Screenshots coming soon — download and try it out!
+| Platform | File |
+|---|---|
+| macOS | `AppInfoTool-<version>-macOS-universal.dmg` (Intel + Apple Silicon) |
+| Windows | `AppInfoTool-<version>-Windows-x86_64-Setup.exe` (installer) / `.zip` (portable) |
+| Linux | `AppInfoTool-<version>-Linux-x86_64.AppImage` |
 
-## Installation
+> **macOS note**: release builds are ad-hoc signed. If Gatekeeper blocks the first launch, right-click → Open, or run:
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/AppInfoTool.app"
+> ```
 
-### Package Managers
+## Running from source
 
-**Windows — Scoop (Recommended)**
-
-```bash
-scoop bucket add huanfeng https://github.com/huanfeng/scoop-bucket
-scoop install apk_info_tool
-```
-
-**macOS — Homebrew**
-
-```bash
-brew install --cask huanfeng/homebrew-tap/apk-info-tool
-```
-
-### Manual Download
-
-Grab the latest release for your platform from [Releases](https://github.com/huanfeng/ApkInfoTool/releases/latest):
-
-| Platform | Format | Notes |
-|----------|--------|-------|
-| Windows | `.exe` | Installer |
-| Windows | `.zip` | Portable, run directly |
-| macOS | `.dmg` | Disk image |
-| Linux | `.AppImage` | Executable |
-
-## Built-in APK Parser
-
-Starting from v2.0, the **built-in parser engine** is enabled by default — a pure Dart implementation that requires no external tools:
-
-- Binary XML decompression and structured AndroidManifest.xml parsing
-- Full resources.arsc parsing (string pools, resource values, type configs, etc.)
-- BCP-47 packed locale support (e.g., `ast`, `sr-Latn`, `zh-Hans-CN`)
-- Deep compatibility with obfuscated APKs (invalid path filtering, non-standard attribute tolerance)
-- aapt2 dump badging style text output
-
-> You can switch between aapt2 and the built-in engine in Settings. Advanced features like signature verification still require Android SDK tools.
-
-> The built-in parser is still being actively improved. If you encounter any issues, please provide feedback.
-
-## Comparison
-
-| Capability | AppInfoTool | CLI aapt | Other GUI Tools |
-|------------|:---:|:---:|:---:|
-| XAPK / APKM / APKS support | ✅ | ❌ | ⚠️ Partial |
-| Full adaptive icon rendering | ✅ | ❌ | ❌ |
-| Built-in parsing (no aapt2) | ✅ | — | ❌ |
-| Drag & drop | ✅ | ❌ | ✅ |
-| Cross-platform (Win/Mac/Linux) | ✅ | ✅ | ⚠️ Partial |
-| One-click ADB install | ✅ | ❌ | ⚠️ Partial |
-| Icon export PNG/SVG | ✅ | ❌ | ❌ |
-
-## Development
-
-This project is built with [Flutter](https://flutter.dev/). With Flutter SDK installed:
+Requires the Flutter SDK (stable) and the toolchain for your platform.
 
 ```bash
-# Get dependencies
+git clone https://github.com/wongbaye26-dot/appinfotools.git
+cd appinfotools
+
 flutter pub get
-
-# Run code generation
-dart run build_runner build
-
-# Run in debug mode
-flutter run
-
-# Build release
-flutter build windows   # Windows
-flutter build macos     # macOS
-flutter build linux     # Linux
+dart run build_runner build --delete-conflicting-outputs
+flutter run -d macos    # or windows / linux
 ```
 
-## Internationalization
+### Release builds
 
-The app supports the following languages. Language files are located in `assets/i18n`:
+```bash
+flutter build macos --release
+flutter build windows --release
+flutter build linux --release
+```
 
-| Language | Code |
-|----------|------|
-| Simplified Chinese | `zh-CN` |
-| Traditional Chinese (HK) | `zh-HK` |
-| Traditional Chinese (TW) | `zh-TW` |
-| English | `en` |
-| Japanese | `ja` |
-| Korean | `ko` |
+On macOS, the bundled script handles build, signature verification and DMG packaging in one step:
 
-## Platform Notes
+```bash
+tool/build_macos.sh
+```
 
-**macOS**
-- Sandbox restrictions limit the rename feature; only built-in adb/aapt2 can be used
-- apksigner requires Java Runtime and is not bundled on macOS
-- No developer certificate — first launch requires manual trust: `System Settings → Privacy & Security → Open Anyway`
+## Tech stack
 
-**Linux**
-- Not fully tested — please [open an issue](https://github.com/huanfeng/ApkInfoTool/issues) if you encounter problems
+- **Flutter / Dart** — cross-platform desktop app
+- **Pure-Dart parsers** — AXML, `resources.arsc`, binary plists and Mach-O are parsed in-house, so most fields are available without external tools
+- **Optional external tools** — `apksigner` / `codesign` for signature verification, `adb` for install assistance. When a tool is missing, the UI reports "cannot determine" rather than claiming the signature is invalid
+- **Riverpod** — state management
+- **slang** — type-safe internationalization
 
-**Icon Display**
-- Rendering of XML adaptive icons may differ slightly from the actual device display
+### Project layout
 
-## Android SDK Tools (Optional)
+```
+lib/                Application layer (pages, providers, widgets)
+packages/
+  analysis_model/   Platform-neutral data models (zero dependencies)
+  archive_safety/   Safety primitives for untrusted ZIPs (budget, structure checks)
+  apk_parser/       Android parsing
+  ipa_parser/       iOS parsing
+tool/               Build and icon-generation scripts
+```
 
-The built-in parser covers most use cases. For ADB installation or signature verification, you can download the required tools (adb / aapt2 / apksigner) with one click in the app **Settings** — no manual Android SDK setup needed.
+The Android and iOS parsers do not depend on each other; they share only `analysis_model` and `archive_safety`.
+
+## Design principles
+
+A few decisions that shape the whole project:
+
+- **Never present "couldn't find it" as "nothing wrong"**. Missing fields are distinguished as `absent` / `wrongType` / `failed` / `unsupported`; in risk grading, `UNKNOWN` is kept apart from `P3`.
+- **Don't guess**. Malformed input yields diagnostics plus whatever was successfully read — never an exception or a placeholder value.
+- **Signature verdicts come only from trusted tools' explicit conclusions**. "Tool unavailable" is not "signature invalid".
+- **Validate bounds before using untrusted input**. The archive layer enforces a decompression budget; parsers enforce depth limits and cycle detection.
 
 ## Contributing
 
-Contributions are welcome!
+Issues, feature requests and pull requests are welcome.
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make focused, reviewable changes
+4. Add the necessary tests and documentation
+5. Open a pull request
 
-## Acknowledgments
+For changes to parsers or security logic, please include a reproducible sample and the verification results.
 
-- App icon created with [AppIcon Forge](https://github.com/zhangyu1818/appicon-forge)
+## Acknowledgements
+
+Special thanks to **[huanfeng](https://github.com/huanfeng)** for the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTool), which provided the technical foundation for Android package parsing, icon rendering and cross-platform desktop development.
+
+- Original project: [huanfeng/ApkInfoTool](https://github.com/huanfeng/ApkInfoTool)
+- This project: [wongbaye26-dot/appinfotools](https://github.com/wongbaye26-dot/appinfotools)
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT License](LICENSE), inherited from the original project (Copyright © 2024 huanfeng).
+
+When redistributing or reusing the code, please comply with the license's copyright notice and conditions.
+
+---
+
+<p align="center">
+  AppInfoTool · Package analysis made simple
+</p>

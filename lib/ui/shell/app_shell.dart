@@ -57,10 +57,15 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    // 监听外部页面发起的导航请求
-    ref.listen(shellNavigationProvider, (_, next) {
-      if (_pageKeys.contains(next) && _selectedNavId != next) {
-        setState(() => _selectedNavId = next);
+    // 监听外部页面发起的导航请求。
+    //
+    // 判据是**序号是否变化**，而不是 target 是否不同 —— 后者会让
+    // 「从概览点前往分析 → 手动切回概览 → 再点前往分析」的第二次失效
+    // （目标没变，listener 不触发）。
+    ref.listen(shellNavigationProvider, (prev, next) {
+      if (prev != null && prev.seq == next.seq) return;
+      if (_pageKeys.contains(next.target) && _selectedNavId != next.target) {
+        setState(() => _selectedNavId = next.target);
       }
     });
 

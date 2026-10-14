@@ -27,7 +27,6 @@ import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/platform.dart';
-import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IosBundle, IosPrivacyAudit;
@@ -229,15 +228,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           fileState.update(currentState.copyWith(
             apkInfo: apkInfo,
           ));
-          // 追加到最近文件列表，并通知概览页刷新。
-          // 概览页常驻在 IndexedStack 里不会自己重建，必须显式通知。
-          unawaited(RecentFilesManager.add(
-            currentState.filePath ?? '',
-            currentState.fileSize ?? 0,
-            platform: 'android',
-          ).then((_) {
-            ref.read(recentFilesRevisionProvider.notifier).bump();
-          }));
+          // 追加到最近文件列表。走 provider 而不是直接写 Config ——
+          // 概览页常驻 IndexedStack，只有 provider 变化才会让它重建。
+          unawaited(ref.read(recentFilesProvider.notifier).add(
+                currentState.filePath ?? '',
+                currentState.fileSize ?? 0,
+                platform: 'android',
+              ));
         }
       }
     } on ApkParseCancelledException {
@@ -387,14 +384,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ipaAnalysis: parsed,
         securityResult: security,
       ));
-      // 追加到最近文件列表，并通知概览页刷新。
-      unawaited(RecentFilesManager.add(
-        currentState.filePath ?? '',
-        currentState.fileSize ?? 0,
-        platform: 'ios',
-      ).then((_) {
-        ref.read(recentFilesRevisionProvider.notifier).bump();
-      }));
+      // 追加到最近文件列表（走 provider，见 Android 侧的说明）。
+      unawaited(ref.read(recentFilesProvider.notifier).add(
+            currentState.filePath ?? '',
+            currentState.fileSize ?? 0,
+            platform: 'ios',
+          ));
       isParsingState.update(false);
       iosStageState.update(null);
 
@@ -998,6 +993,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 设置菜单项更紧凑
       itemBuilder: (context) => [
         _buildMenuItem(
+            'rename', Icons.drive_file_rename_outline, t.rename.rename_file),
+        _buildMenuItem(
             'open_directory', Icons.folder_open, t.open.open_file_directory),
         _buildMenuItem('copy_path', Icons.content_copy, t.home.copy_file_path),
       ],
@@ -1484,9 +1481,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       offset: const Offset(0, 0),
       position: PopupMenuPosition.under,
       itemBuilder: (context) => [
-        _buildMenuItem(
-            'rename', Icons.drive_file_rename_outline, t.rename.rename_file,
-            enabled: state.filePath != null),
+        // 重命名移到了「文件信息 → 文件」那一行后面的菜单里
+        // （它操作的就是那个文件，放在文件旁边比放在全局「更多」里更直白）。
         _buildMenuItem('text_info', Icons.text_snippet, t.apk_info.text_info,
             enabled: state.filePath != null && apkInfo != null),
         // 只有真的拿到了分析结果才让点。

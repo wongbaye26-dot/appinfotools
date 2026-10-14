@@ -277,7 +277,11 @@
       "hash_signature": "파일 해시(MD5 / SHA-1 / SHA-256) 계산 및 서명 검증",
       "hardening_report": "하드닝 단서 탐지 및 분석 보고서 내보내기",
       "security_audit": "보안 감사: 권한, OCR 및 네트워크 전송 탐지"
-    }
+    },
+    "tagline": "Android / iOS 앱 패키지 크로스 플랫폼 분석 도구",
+    "repository": "프로젝트 저장소",
+    "open_repository": "GitHub에서 열기",
+    "license": "MIT 라이선스로 공개"
   },
   "security": {
     "title": "보안 탐지",

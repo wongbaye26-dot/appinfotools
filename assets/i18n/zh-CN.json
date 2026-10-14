@@ -394,7 +394,11 @@
       "hash_signature": "计算文件哈希（MD5 / SHA-1 / SHA-256）并验证签名",
       "hardening_report": "识别加固线索并导出分析报告",
       "security_audit": "安全审计：权限、OCR 与网络传输检测"
-    }
+    },
+    "tagline": "跨平台 Android / iOS 应用包分析工具",
+    "repository": "项目地址",
+    "open_repository": "在 GitHub 上打开",
+    "license": "基于 MIT 许可证开源"
   },
   "security": {
     "title": "安全检测",
