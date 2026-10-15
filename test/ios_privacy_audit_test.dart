@@ -341,8 +341,9 @@ void main() {
 
       final info = _byId(result, 'IOS-PRIVACY-INFO');
       expect(info, isNotNull);
-      expect(info!.finding, contains('声明性材料'));
-      expect(info.finding, contains('不等于'));
+      final infoText = AnalysisReport.findingText(info!, t);
+      expect(infoText, contains('declarative material'));
+      expect(infoText, contains('does not equal'));
       expect(info.evidence.single.source, SecurityEvidenceSource.privacyInfo);
       expect(info.evidence.single.detail,
           contains('NSPrivacyCollectedDataTypeDeviceID'));
@@ -438,8 +439,9 @@ void main() {
       final finding = _byId(result, 'IOS-URL-SCHEMES');
       expect(finding, isNotNull);
       expect(finding!.severity, SecuritySeverity.info);
-      expect(finding.finding, contains('example'));
-      expect(finding.finding, contains('外部可以唤起'));
+      final schemeText = AnalysisReport.findingText(finding, t);
+      expect(schemeText, contains('example'));
+      expect(schemeText, contains('external callers'));
       expect(finding.limitation, contains('未反汇编'));
     });
   });
@@ -499,7 +501,10 @@ void main() {
       expect(ruleB!.severity, SecuritySeverity.p2);
       expect(ruleB.confidence, SecurityConfidence.suspected);
       expect(ruleB.relationship, contains('未被证实'));
-      expect(ruleB.finding, contains('可能'));
+      expect(
+        AnalysisReport.findingText(ruleB, t),
+        contains('may correspond'),
+      );
     });
 
     test('只有 OCR 时不触发规则 B', () {
@@ -587,8 +592,9 @@ void main() {
       final coverage = _byId(result, 'IOS-SCAN-COVERAGE');
       expect(coverage, isNotNull);
       expect(coverage!.severity, SecuritySeverity.info);
-      expect(coverage.finding, contains('1 个可执行文件中的 1 个'));
-      expect(coverage.finding, contains('全部可执行文件都已覆盖'));
+      final covText = AnalysisReport.findingText(coverage, t);
+      expect(covText, contains('covered 1 of 1 executables'));
+      expect(covText, contains('Every executable was covered'));
     });
 
     test('嵌套可执行文件的字节参与扫描，并成为线索来源', () {
@@ -610,7 +616,10 @@ void main() {
       );
 
       final coverage = _byId(result, 'IOS-SCAN-COVERAGE')!;
-      expect(coverage.finding, contains('2 个可执行文件中的 2 个'));
+      expect(
+        AnalysisReport.findingText(coverage, t),
+        contains('covered 2 of 2 executables'),
+      );
 
       // 线索要能指出**来自哪个文件** —— 否则「扩展里有 OCR」无从核对。
       final ocr = _byId(result, 'IOS-OCR-CAPABILITY');
@@ -639,8 +648,9 @@ void main() {
       );
 
       final coverage = _byId(result, 'IOS-SCAN-COVERAGE')!;
-      expect(coverage.finding, contains('2 个可执行文件中的 1 个'));
-      expect(coverage.finding, contains('未覆盖 1 个'));
+      final gapText = AnalysisReport.findingText(coverage, t);
+      expect(gapText, contains('covered 1 of 2 executables'));
+      expect(gapText, contains('Executables not covered: 1'));
       expect(
         coverage.evidence.any((e) => e.detail == 'NOT scanned'),
         isTrue,
@@ -962,6 +972,250 @@ void main() {
       final en = AnalysisReport.findingText(finding, t);
       expect(RegExp(cjk).hasMatch(en), isFalse, reason: 'en 不该有中文：$en');
       expect(en, contains('suspected path'));
+    });
+  });
+
+  // B11 第三批：iOS 侧剩余 9 处，含带参数的与 ruleId 是三元的。
+  //
+  // RULE-B / RULE-E 的参数是**来源 id 列表**：引擎不依赖 slang，产不出中文，
+  // 也不能自己拼一句中文塞进占位符（那等于把没本地化的句子藏进参数里）。
+  // 所以只传 id，名字与分隔符由 `AnalysisReport.findingText` 按语言包组装 ——
+  // 与 `coverageDimensionLabel` 同一思路。
+  group('发现项文案本地化（B11 第三批：iOS 剩余 9 处）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    const migrated = [
+      (
+        rule: 'IOS-URL-SCHEMES',
+        message: 'ios.url_schemes',
+        recommendation: 'ios.url_schemes.manual_review',
+        args: <String, Object>{'count': 2, 'schemes': 'example, ex2'},
+      ),
+      (
+        rule: 'IOS-SCAN-COVERAGE',
+        message: 'ios.scan_coverage',
+        recommendation: 'ios.scan_coverage.manual_review',
+        args: <String, Object>{'total': 2, 'scanned': 1, 'bytes': 100},
+      ),
+      (
+        rule: 'IOS-PHOTO-LIBRARY',
+        message: 'ios.photo_library',
+        recommendation: 'ios.photo_library.review',
+        args: <String, Object>{},
+      ),
+      (
+        rule: 'IOS-CAMERA',
+        message: 'ios.camera',
+        recommendation: 'ios.camera.check_purpose',
+        args: <String, Object>{},
+      ),
+      (
+        rule: 'IOS-RULE-B',
+        message: 'ios.rule_b',
+        recommendation: 'ios.rule_b.confirm_pipeline',
+        args: <String, Object>{
+          'sources': <String>['photo_library'],
+        },
+      ),
+      (
+        rule: 'IOS-RULE-E',
+        message: 'ios.rule_e',
+        recommendation: 'ios.rule_e.manual_review',
+        args: <String, Object>{
+          'modes': 'fetch',
+          'sources': <String>['clipboard'],
+        },
+      ),
+      (
+        rule: 'IOS-RULE-D',
+        message: 'ios.rule_d',
+        recommendation: 'ios.rule_d.manual_review',
+        args: <String, Object>{},
+      ),
+      (
+        rule: 'IOS-PRIVACY-INFO',
+        message: 'ios.privacy_info',
+        recommendation: 'ios.privacy_info.cross_check',
+        args: <String, Object>{},
+      ),
+      (
+        rule: 'IOS-PRIVACY-TRACKING',
+        message: 'ios.privacy_tracking',
+        recommendation: 'ios.privacy_tracking.confirm_att',
+        args: <String, Object>{},
+      ),
+    ];
+
+    // URL scheme + 相册 + 相机 + OCR + ATS + 跟踪声明，一次触发大多数规则。
+    const richPlist = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.example.app</string>
+  <key>NSPhotoLibraryUsageDescription</key><string>用于上传头像</string>
+  <key>NSCameraUsageDescription</key><string>用于拍照识别</string>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLSchemes</key>
+    <array><string>example</string></array>
+  </dict></array>
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+</dict></plist>
+''';
+
+    const trackingXcprivacy = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>NSPrivacyTracking</key><true/>
+</dict></plist>
+''';
+
+    const backgroundPlist = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.example.app</string>
+  <key>UIBackgroundModes</key>
+  <array><string>fetch</string></array>
+</dict></plist>
+''';
+
+    const atsOnlyPlist = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.example.app</string>
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+</dict></plist>
+''';
+
+    test('引擎真的把 code 挂上去了（否则等于没迁）', () {
+      // 第一轮：相册 + 相机 + OCR + URL scheme + ATS + 跟踪声明，且**没有**网络
+      // 线索 —— 这样规则 F 也出得来，而规则 E 需要上传，留给第二轮。
+      final rich = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: richPlist, xcprivacy: trackingXcprivacy),
+        executableBytes: const Utf8Encoder().convert(
+          'PHPhotoLibrary\nAVCapture\nVNRecognizeText\n',
+        ),
+      );
+
+      // 第二轮：后台模式 + 剪贴板 + 上传 → 规则 E。
+      final background = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: backgroundPlist),
+        executableBytes: const Utf8Encoder().convert(
+          'UIPasteboard\nNSURLSession\n',
+        ),
+      );
+
+      // 第三轮：只有 ATS，没有图像/识别/网络线索 → 非升级版的规则 D。
+      final plainAts = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: atsOnlyPlist),
+        executableBytes: const Utf8Encoder().convert('unrelated\n'),
+      );
+
+      for (final m in migrated) {
+        final finding = _byId(rich, m.rule) ??
+            _byId(background, m.rule) ??
+            _byId(plainAts, m.rule);
+        expect(finding, isNotNull, reason: '测试输入没有触发 ${m.rule}');
+        expect(finding!.messageCode, m.message, reason: m.rule);
+        expect(finding.recommendationCode, m.recommendation, reason: m.rule);
+        expect(
+          RegExp(cjk).hasMatch(finding.finding),
+          isFalse,
+          reason: '${m.rule} 的英文回退里还有中文：${finding.finding}',
+        );
+        expect(
+          RegExp(cjk).hasMatch(finding.recommendation),
+          isFalse,
+          reason: '${m.rule} 的建议没有一起迁移：${finding.recommendation}',
+        );
+      }
+    });
+
+    test('四个维护中的语言包都能取到文案，且不留占位符', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final m in migrated) {
+          final finding = SecurityFinding(
+            ruleId: m.rule,
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'fallback finding',
+            evidence: const [],
+            recommendation: 'fallback recommendation',
+            messageCode: m.message,
+            messageArgs: m.args,
+            recommendationCode: m.recommendation,
+          );
+
+          final text = AnalysisReport.findingText(finding, t);
+          expect(text, isNot('fallback finding'),
+              reason: '$locale 下 ${m.message} 没取到本地化文案');
+          // 本批有 5 条带参数：出现花括号说明占位符没被替换。
+          expect(text, isNot(contains('{')), reason: '$locale / ${m.message}');
+          expect(text, isNot(contains('}')), reason: '$locale / ${m.message}');
+          // 英文回退与英文语言包措辞刻意对齐，所以「不等于回退」在 en 下
+          // 证明不了什么 —— 真正能证明走了本地化路径的是中文变体里得有中文。
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text), isTrue,
+                reason: '$locale 下 ${m.message} 不是中文：$text');
+          }
+
+          final rec = AnalysisReport.recommendationText(finding, t);
+          expect(rec, isNot('fallback recommendation'),
+              reason: '$locale 下 ${m.recommendation} 没取到本地化文案');
+          expect(rec, isNot(contains('{')),
+              reason: '$locale / ${m.recommendation}');
+        }
+      }
+    });
+
+    test('来源列表按语言包组装：英文逗号、中文顿号', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: richPlist),
+        executableBytes: const Utf8Encoder().convert(
+          'PHPhotoLibrary\nAVCapture\nVNRecognizeText\n',
+        ),
+      );
+      final ruleB = _byId(result, 'IOS-RULE-B')!;
+      // 引擎传的是 id，不是已经拼好的句子。
+      expect(ruleB.messageArgs['sources'], ['photo_library', 'camera']);
+
+      await LocaleSettings.setLocaleRaw('en');
+      final en = AnalysisReport.findingText(ruleB, t);
+      expect(en, contains('full photo library (PhotoKit), camera'));
+      expect(en, isNot(contains('{')));
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.findingText(ruleB, t);
+      expect(zh, contains('完整照片库（PhotoKit）、相机'));
+      expect(zh, isNot(contains('{')));
+      expect(RegExp(cjk).hasMatch(zh), isTrue);
+    });
+
+    test('后台模式用 plist 里的原始字面量，不翻译', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: backgroundPlist),
+        executableBytes: const Utf8Encoder().convert(
+          'UIPasteboard\nNSURLSession\n',
+        ),
+      );
+      final ruleE = _byId(result, 'IOS-RULE-E')!;
+      // `UIBackgroundModes` 的值是 Apple 定义的标识符（fetch / audio …），
+      // 不是给人读的句子 —— 翻译它们反而会让人对不上 Info.plist。
+      expect(ruleE.messageArgs['modes'], 'fetch');
+      expect(ruleE.messageArgs['sources'], ['clipboard']);
+
+      final text = AnalysisReport.findingText(ruleE, t);
+      expect(text, contains('fetch'));
+      expect(text, contains('clipboard'));
+      expect(text, isNot(contains('{')));
     });
   });
 }

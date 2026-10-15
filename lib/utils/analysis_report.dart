@@ -618,6 +618,14 @@ class AnalysisReport {
     final f = t.security.finding_texts;
     final key = finding.messageArgs['key'];
     final bundle = finding.messageArgs['bundle'];
+    final count = finding.messageArgs['count'];
+    final schemes = finding.messageArgs['schemes'];
+    final total = finding.messageArgs['total'];
+    final scanned = finding.messageArgs['scanned'];
+    final bytes = finding.messageArgs['bytes'];
+    final uncovered = finding.messageArgs['uncovered'];
+    final modes = finding.messageArgs['modes'];
+    final sources = _sourcesText(finding.messageArgs['sources'], t);
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -630,6 +638,33 @@ class AnalysisReport {
       'ios.ocr_capability' => f.ios_ocr_capability,
       'ios.rule_c' => f.ios_rule_c,
       'ios.rule_f' => f.ios_rule_f,
+      'ios.url_schemes' => (count == null || schemes == null)
+          ? null
+          : f.ios_url_schemes(count: count, schemes: schemes),
+      'ios.scan_coverage' => (total == null || scanned == null || bytes == null)
+          ? null
+          : f.ios_scan_coverage(total: total, scanned: scanned, bytes: bytes),
+      'ios.scan_coverage_gap' =>
+        (total == null || scanned == null || bytes == null || uncovered == null)
+            ? null
+            : f.ios_scan_coverage_gap(
+                total: total,
+                scanned: scanned,
+                bytes: bytes,
+                uncovered: uncovered,
+              ),
+      'ios.photo_library' => f.ios_photo_library,
+      'ios.photo_library_no_usage' => f.ios_photo_library_no_usage,
+      'ios.camera' => f.ios_camera,
+      'ios.camera_no_usage' => f.ios_camera_no_usage,
+      'ios.rule_b' => sources == null ? null : f.ios_rule_b(sources: sources),
+      'ios.rule_e' => (modes == null || sources == null)
+          ? null
+          : f.ios_rule_e(modes: modes, sources: sources),
+      'ios.rule_d' => f.ios_rule_d,
+      'ios.rule_d_escalated' => f.ios_rule_d_escalated,
+      'ios.privacy_info' => f.ios_privacy_info,
+      'ios.privacy_tracking' => f.ios_privacy_tracking,
       _ => null,
     };
     return localized ?? finding.finding;
@@ -651,9 +686,47 @@ class AnalysisReport {
         f.ios_ocr_capability_confirm_input_and_sink,
       'ios.rule_c.manual_review' => f.ios_rule_c_manual_review,
       'ios.rule_f.runtime_traffic' => f.ios_rule_f_runtime_traffic,
+      'ios.url_schemes.manual_review' => f.ios_url_schemes_manual_review,
+      'ios.scan_coverage.manual_review' => f.ios_scan_coverage_manual_review,
+      'ios.photo_library.review' => f.ios_photo_library_review,
+      'ios.photo_library_no_usage.add_usage' =>
+        f.ios_photo_library_no_usage_add_usage,
+      'ios.camera.check_purpose' => f.ios_camera_check_purpose,
+      'ios.camera_no_usage.add_usage' => f.ios_camera_no_usage_add_usage,
+      'ios.rule_b.confirm_pipeline' => f.ios_rule_b_confirm_pipeline,
+      'ios.rule_e.manual_review' => f.ios_rule_e_manual_review,
+      'ios.rule_d.manual_review' => f.ios_rule_d_manual_review,
+      'ios.privacy_info.cross_check' => f.ios_privacy_info_cross_check,
+      'ios.privacy_tracking.confirm_att' => f.ios_privacy_tracking_confirm_att,
       _ => null,
     };
     return localized ?? finding.recommendation;
+  }
+
+  /// 把「来源 id 列表」组装成**本地化**的一句话片段。
+  ///
+  /// 引擎只能产出 id（`photo_library` / `photo_picker` / `camera` / `clipboard`）
+  /// —— 它不依赖 slang，产不出任何语言的成品句子。名字与分隔符都放在语言包里，
+  /// 与 `coverageDimensionLabel` 同一思路：**JSON 里保留机器 id，
+  /// UI 与 Markdown 显示本地化名字**。
+  ///
+  /// 参数缺失、不是列表、或列表为空时返回 `null`，调用方据此回退英文原文 ——
+  /// 宁可显示英文，也不要显示一个空括号或半截句子。
+  static String? _sourcesText(Object? arg, Translations t) {
+    if (arg is! List) return null;
+    final ids = arg.whereType<String>().toList();
+    if (ids.isEmpty) return null;
+
+    final names = t.security.sources;
+    return ids
+        .map((id) => switch (id) {
+              'photo_library' => names.photo_library,
+              'photo_picker' => names.photo_picker,
+              'camera' => names.camera,
+              'clipboard' => names.clipboard,
+              _ => id,
+            })
+        .join(t.security.list_join);
   }
 
   /// 覆盖说明的**本地化文本**。

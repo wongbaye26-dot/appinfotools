@@ -167,10 +167,16 @@ class IosPrivacyAudit {
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: 'Info.plist 注册了 ${urlSchemes.value!.length} 个自定义 URL '
-            'scheme：${urlSchemes.value!.join('、')}。'
-            '这些是**外部可以唤起本应用**的入口，属于攻击面的事实描述；'
-            '注册了 scheme 不代表处理逻辑有问题。',
+        finding: 'Info.plist registers ${urlSchemes.value!.length} custom '
+            'URL scheme(s): ${urlSchemes.value!.join(', ')}. These are entry '
+            'points that external callers can use to launch this app — a '
+            'factual description of the attack surface; registering a scheme '
+            'does not mean the handling logic is flawed.',
+        messageCode: 'ios.url_schemes',
+        messageArgs: {
+          'count': urlSchemes.value!.length,
+          'schemes': urlSchemes.value!.join(', '),
+        },
         evidence: [
           SecurityEvidence(
             source: SecurityEvidenceSource.infoPlist,
@@ -180,8 +186,10 @@ class IosPrivacyAudit {
         ],
         limitation: '本次未检查 scheme 的处理代码（未反汇编）；'
             '「入口存在」与「入口安全」是两件事。',
-        recommendation: '如需评估攻击面，请人工检查 scheme 的处理逻辑是否'
-            '校验来源、是否把参数直接拼进路径或 SQL。',
+        recommendation: 'To assess the attack surface, manually check whether '
+            'the scheme handling logic validates the caller and whether it '
+            'concatenates parameters straight into paths or SQL.',
+        recommendationCode: 'ios.url_schemes.manual_review',
       ));
     } else if (urlSchemes.status == FieldStatus.wrongType ||
         urlSchemes.status == FieldStatus.failed) {
@@ -333,9 +341,21 @@ class IosPrivacyAudit {
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: 'API 使用线索扫描覆盖了 ${targets.length} 个可执行文件中的 '
-            '${scannedPaths.length} 个，共 $scanned 字节。'
-            '${unscanned.isEmpty ? '全部可执行文件都已覆盖。' : '未覆盖 ${unscanned.length} 个。'}',
+        finding: unscanned.isEmpty
+            ? 'API usage clue scanning covered ${scannedPaths.length} of '
+                '${targets.length} executables, $scanned bytes in total. '
+                'Every executable was covered.'
+            : 'API usage clue scanning covered ${scannedPaths.length} of '
+                '${targets.length} executables, $scanned bytes in total. '
+                'Executables not covered: ${unscanned.length}.',
+        messageCode:
+            unscanned.isEmpty ? 'ios.scan_coverage' : 'ios.scan_coverage_gap',
+        messageArgs: {
+          'total': targets.length,
+          'scanned': scannedPaths.length,
+          'bytes': scanned,
+          if (unscanned.isNotEmpty) 'uncovered': unscanned.length,
+        },
         evidence: [
           for (final path in scannedPaths)
             SecurityEvidence(
@@ -353,7 +373,9 @@ class IosPrivacyAudit {
         limitation: '扫描仅提取可打印 ASCII 字符串：'
             'dyld 共享缓存里的系统框架符号、非 ASCII 字面量'
             '以及被加密/加固的段都会漏掉。',
-        recommendation: '如需更完整的结论，请人工检查未覆盖的可执行文件。',
+        recommendation: 'For a more complete conclusion, manually inspect '
+            'the executables that were not covered.',
+        recommendationCode: 'ios.scan_coverage.manual_review',
       ));
       if (unscanned.isNotEmpty) {
         limitations.add('${unscanned.length} 个可执行文件未参与扫描'
@@ -424,11 +446,15 @@ class IosPrivacyAudit {
         severity: missingUsage ? SecuritySeverity.p2 : SecuritySeverity.p3,
         confidence: SecurityConfidence.suspected,
         finding: missingUsage
-            ? '发现完整照片库访问 API 线索（PhotoKit），但 Info.plist 中'
-                '没有找到 NSPhotoLibraryUsageDescription：授权说明缺失，'
-                '访问会在运行时被系统拒绝，同时也值得人工确认其来源。'
-            : '发现完整照片库访问 API 线索（PhotoKit），且 Info.plist 提供了'
-                'NSPhotoLibraryUsageDescription 用途说明。',
+            ? 'Found full photo library access API clues (PhotoKit), but no '
+                'NSPhotoLibraryUsageDescription in Info.plist: the usage '
+                'description is missing, so the system will refuse access at '
+                'runtime — and the source of the access is worth confirming '
+                'manually.'
+            : 'Found full photo library access API clues (PhotoKit), and '
+                'Info.plist provides an NSPhotoLibraryUsageDescription.',
+        messageCode:
+            missingUsage ? 'ios.photo_library_no_usage' : 'ios.photo_library',
         evidence: [
           ..._clueEvidence(clues, const [
             'photo-full-library',
@@ -444,9 +470,14 @@ class IosPrivacyAudit {
         limitation: 'API 符号存在不等于运行时会调用；'
             '符号也可能来自未使用的框架引用。',
         recommendation: missingUsage
-            ? '人工核查调用来源与构建配置；'
-                '按 Apple 要求补充用途说明或移除该能力。'
-            : '确认识别/上传链路中照片的实际用途与用户授权方式。',
+            ? 'Manually check the call sites and the build configuration; add '
+                'a usage description as Apple requires, or remove the '
+                'capability.'
+            : 'Confirm the actual purpose of the photos and how the user '
+                'authorises them in the recognition/upload pipeline.',
+        recommendationCode: missingUsage
+            ? 'ios.photo_library_no_usage.add_usage'
+            : 'ios.photo_library.review',
       ));
     }
 
@@ -459,11 +490,20 @@ class IosPrivacyAudit {
         severity: missingUsage ? SecuritySeverity.p2 : SecuritySeverity.p3,
         confidence: SecurityConfidence.suspected,
         finding: missingUsage
-            ? '发现相机 API 线索，但 Info.plist 中没有 NSCameraUsageDescription。'
-            : '发现相机 API 线索，且 Info.plist 提供了相机用途说明。',
+            ? 'Found camera API clues, but no NSCameraUsageDescription in '
+                'Info.plist.'
+            : 'Found camera API clues, and Info.plist provides a camera usage '
+                'description.',
+        messageCode: missingUsage ? 'ios.camera_no_usage' : 'ios.camera',
         evidence: _clueEvidence(clues, const ['camera']),
-        recommendation:
-            missingUsage ? '人工核查调用来源；按 Apple 要求补充用途说明。' : '结合拍摄、识别与上传行为判断是否合理。',
+        recommendation: missingUsage
+            ? 'Manually check the call sites; add a usage description as '
+                'Apple requires.'
+            : 'Judge whether this is reasonable in the light of the capture, '
+                'recognition and upload behaviour.',
+        recommendationCode: missingUsage
+            ? 'ios.camera_no_usage.add_usage'
+            : 'ios.camera.check_purpose',
       ));
     }
 
@@ -527,19 +567,27 @@ class IosPrivacyAudit {
     // 与 Android 规则 B 同构：两段线索同现，但**没有**证实它们位于同一条
     // 调用路径上。这一步只到「疑似关联」。
     if ((hasPhotoLibrary || hasPhotoPicker || hasCamera) && hasOcr) {
+      // 来源用**稳定 id**传给呈现层，本地化名字由呈现层组装 ——
+      // 引擎不能产出中文（否则英文界面混中文），也不能自己拼一句话
+      // 塞进参数（那等于把没本地化的句子藏进占位符里）。
+      final imageSources = [
+        if (hasPhotoLibrary) 'photo_library',
+        if (hasPhotoPicker) 'photo_picker',
+        if (hasCamera) 'camera',
+      ];
       findings.add(SecurityFinding(
         ruleId: 'IOS-RULE-B',
         platform: SecurityPlatform.ios,
         category: SecurityCategory.ocrImage,
         severity: SecuritySeverity.p2,
         confidence: SecurityConfidence.suspected,
-        finding: '同时发现图像输入来源与文字识别能力：'
-            '输入（${[
-          if (hasPhotoLibrary) '完整照片库（PhotoKit）',
-          if (hasPhotoPicker) '系统照片选择器',
-          if (hasCamera) '相机',
-        ].join('、')}）与识别能力（Vision 文本识别）。'
-            '该组合可能对应正常功能（文档扫描、翻译、名片识别）。',
+        finding: 'Both an image input source and text recognition capability '
+            'were found: input (${_sourceLabels(imageSources)}) and '
+            'recognition (Vision text recognition). This combination may '
+            'correspond to a normal feature (document scanning, translation, '
+            'business card reading).',
+        messageCode: 'ios.rule_b',
+        messageArgs: {'sources': imageSources},
         evidence: [
           ..._clueEvidence(clues, const [
             'photo-full-library',
@@ -553,8 +601,10 @@ class IosPrivacyAudit {
             '同一条调用路径上。',
         limitation: '未反汇编，无法确认识别模块实际处理的是用户主动选择的'
             '图片还是批量扫描的媒体文件。',
-        recommendation: '确认识别的输入来源与用户授权方式'
-            '（是否走系统照片选择器）。',
+        recommendation: 'Confirm the recognition input source and how the '
+            'user authorises it (whether it goes through the system photo '
+            'picker).',
+        recommendationCode: 'ios.rule_b.confirm_pipeline',
       ));
     }
 
@@ -611,21 +661,29 @@ class IosPrivacyAudit {
     final hasSensitiveRead =
         hasPhotoLibrary || hasPhotoPicker || hasCamera || hasClipboard;
     if (hasBackground && hasSensitiveRead && hasUpload) {
+      final sensitiveSources = [
+        if (hasPhotoLibrary) 'photo_library',
+        if (hasPhotoPicker) 'photo_picker',
+        if (hasCamera) 'camera',
+        if (hasClipboard) 'clipboard',
+      ];
       findings.add(SecurityFinding(
         ruleId: 'IOS-RULE-E',
         platform: SecurityPlatform.ios,
         category: SecurityCategory.dataExfiltration,
         severity: SecuritySeverity.p2,
         confidence: SecurityConfidence.suspected,
-        finding: '同时发现后台执行声明、敏感数据读取能力与网络回传能力：'
-            '后台模式（${backgroundModes.value!.join('、')}）、'
-            '敏感读取（${[
-          if (hasPhotoLibrary) '完整照片库',
-          if (hasPhotoPicker) '照片选择器',
-          if (hasCamera) '相机',
-          if (hasClipboard) '剪贴板',
-        ].join('、')}）、网络（NSURLSession / 上传）。'
-            '这个组合可能对应正常功能（后台上传备份、消息同步）。',
+        finding: 'A background execution declaration, sensitive data read '
+            'capability and network upload capability all appear together: '
+            'background modes (${backgroundModes.value!.join(', ')}), '
+            'sensitive reads (${_sourceLabels(sensitiveSources)}), network '
+            '(NSURLSession / upload). This combination may correspond to a '
+            'normal feature (background backup, message sync).',
+        messageCode: 'ios.rule_e',
+        messageArgs: {
+          'modes': backgroundModes.value!.join(', '),
+          'sources': sensitiveSources,
+        },
         evidence: [
           SecurityEvidence(
             source: SecurityEvidenceSource.infoPlist,
@@ -653,8 +711,10 @@ class IosPrivacyAudit {
             '也没有证明读取的内容进入了请求体。',
         limitation: '`UIBackgroundModes` 是**声明**，不等于运行时的实际后台'
             '行为；未反汇编、未观察流量。',
-        recommendation: '人工复核后台上传的内容与触发条件；'
-            '必要时在隔离环境中观察后台期间的网络行为。',
+        recommendation: 'Manually review what is uploaded in the background '
+            'and what triggers it; if necessary, observe network behaviour '
+            'while the app is backgrounded in an isolated environment.',
+        recommendationCode: 'ios.rule_e.manual_review',
       ));
     }
 
@@ -670,11 +730,13 @@ class IosPrivacyAudit {
         severity: withSensitive ? SecuritySeverity.p1 : SecuritySeverity.p2,
         confidence: SecurityConfidence.confirmed,
         finding: withSensitive
-            ? 'App Transport Security 允许任意明文流量'
-                '（NSAllowsArbitraryLoads=true），且同时存在图像/识别/网络'
-                '相关线索：敏感数据可能经未加密链路传输。'
-            : 'App Transport Security 允许任意明文流量'
-                '（NSAllowsArbitraryLoads=true）。',
+            ? 'App Transport Security allows arbitrary cleartext traffic '
+                '(NSAllowsArbitraryLoads=true), and image / recognition / '
+                'network clues are present at the same time: sensitive data '
+                'may travel over an unencrypted channel.'
+            : 'App Transport Security allows arbitrary cleartext traffic '
+                '(NSAllowsArbitraryLoads=true).',
+        messageCode: withSensitive ? 'ios.rule_d_escalated' : 'ios.rule_d',
         evidence: [
           SecurityEvidence(
             source: SecurityEvidenceSource.infoPlist,
@@ -685,7 +747,9 @@ class IosPrivacyAudit {
         ],
         limitation: '配置允许明文不等同于实际使用明文；'
             '例外域内的具体例外设置未展开。',
-        recommendation: '确认是否存在明文请求，必要时关闭该开关。',
+        recommendation: 'Confirm whether cleartext requests exist, and turn '
+            'the switch off if necessary.',
+        recommendationCode: 'ios.rule_d.manual_review',
       ));
     }
 
@@ -699,8 +763,11 @@ class IosPrivacyAudit {
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: '发现隐私清单（PrivacyInfo.xcprivacy），声明内容如下。'
-            '注意：这是**声明性材料**，不等于系统已证实的实际数据访问行为。',
+        finding: 'Found a privacy manifest (PrivacyInfo.xcprivacy); its '
+            'declarations are listed below. Note: this is **declarative '
+            'material** and does not equal actual data access proven by the '
+            'system.',
+        messageCode: 'ios.privacy_info',
         evidence: [
           SecurityEvidence(
             source: SecurityEvidenceSource.privacyInfo,
@@ -718,7 +785,9 @@ class IosPrivacyAudit {
         ],
         limitation: '隐私清单不记录实际行为；'
             '运行时的数据访问需依赖系统的 App Privacy Report（本版本不提供）。',
-        recommendation: '将声明内容与 API 线索、隐私政策人工比对。',
+        recommendation: 'Manually compare the declarations against the API '
+            'clues and the privacy policy.',
+        recommendationCode: 'ios.privacy_info.cross_check',
       ));
       if (info.tracking == true) {
         findings.add(SecurityFinding(
@@ -727,7 +796,9 @@ class IosPrivacyAudit {
           category: SecurityCategory.thirdPartySdk,
           severity: SecuritySeverity.p3,
           confidence: SecurityConfidence.confirmed,
-          finding: '隐私清单声明应用会跟踪用户（NSPrivacyTracking=true）。',
+          finding: 'The privacy manifest declares that the app tracks the '
+              'user (NSPrivacyTracking=true).',
+          messageCode: 'ios.privacy_tracking',
           evidence: [
             SecurityEvidence(
               source: SecurityEvidenceSource.privacyInfo,
@@ -735,7 +806,9 @@ class IosPrivacyAudit {
               detail: 'NSPrivacyTracking = true',
             ),
           ],
-          recommendation: '确认跟踪用途与 ATT 授权流程是否符合预期。',
+          recommendation: 'Confirm that the tracking purpose and the ATT '
+              'authorisation flow match expectations.',
+          recommendationCode: 'ios.privacy_tracking.confirm_att',
         ));
       }
     } else if (privacy.status == FieldStatus.failed) {
@@ -966,3 +1039,18 @@ class IosPrivacyAudit {
     return SecurityCategory.other;
   }
 }
+
+/// 英文回退里的来源名。
+///
+/// 呈现层用**同一组 id** 组装本地化名字（`AnalysisReport.findingText`），
+/// 因此这里的措辞要与 `assets/i18n/*.json` 的 `security.sources.*` 对齐 ——
+/// 否则「回退」与「本地化」会说出两种不同的东西。
+String _sourceLabels(List<String> ids) => ids
+    .map((id) => switch (id) {
+          'photo_library' => 'full photo library (PhotoKit)',
+          'photo_picker' => 'system photo picker',
+          'camera' => 'camera',
+          'clipboard' => 'clipboard',
+          _ => id,
+        })
+    .join(', ');
