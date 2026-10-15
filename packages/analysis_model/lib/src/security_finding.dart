@@ -316,10 +316,9 @@ class SecurityFinding {
   final String? relationshipCode;
   final Map<String, Object> relationshipArgs;
 
-  /// [limitation] 的稳定标识，语义同 [relationshipCode]。
-  ///
-  /// 同样**没有**参数表：目前所有局限都不带占位符。
+  /// [limitation] 的稳定标识与参数，语义同 [relationshipCode]。
   final String? limitationCode;
+  final Map<String, Object> limitationArgs;
 
   const SecurityFinding({
     required this.ruleId,
@@ -341,6 +340,7 @@ class SecurityFinding {
     this.relationshipCode,
     this.relationshipArgs = const {},
     this.limitationCode,
+    this.limitationArgs = const {},
   });
 
   /// 去掉**本 finding 内**完全相同的证据条目，返回新的 finding。
@@ -380,6 +380,7 @@ class SecurityFinding {
       relationshipCode: relationshipCode,
       relationshipArgs: relationshipArgs,
       limitationCode: limitationCode,
+      limitationArgs: limitationArgs,
     );
   }
 

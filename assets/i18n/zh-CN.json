@@ -554,7 +554,12 @@
       "android_network_endpoints_limitation": "字符串表不包含全部构造式 URL（拼接、加密配置），也不反映实际连接。",
       "android_network_client_limitation": "使用反射、动态加载或加固壳的 HTTP 实现不会出现在 method_ids 里，因此「没有代码引用」不等于「没有网络通信」。",
       "android_rule_b_limitation": "未反汇编，无法确认识别模块实际处理的是用户主动选择的图片还是批量扫描的媒体文件。",
-      "android_rule_c_limitation": "关联来自多标记同现，不是调用图分析；反射、动态加载与加固均可能使真实链路不同。"
+      "android_rule_c_limitation": "关联来自多标记同现，不是调用图分析；反射、动态加载与加固均可能使真实链路不同。",
+      "android_permission_expired": "{name}：{note}",
+      "android_permission_expired_limitation": "版本条件按 targetSdk={targetSdk} 判定；若实际设备版本不同，生效情况以设备为准。",
+      "android_permission_expired_keep_observing": "该声明在当前目标版本下不构成实际访问能力，可保留观察。",
+      "android_permission_inert": "{name}：{note}",
+      "android_permission_inert_check_legacy": "确认应用是否仍依赖该权限的旧行为；高 targetSdk 下它通常已被分区存储取代。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -594,6 +599,11 @@
       "domains": "域名 {count} 个：{names}",
       "ips": "IP {count} 个：{names}",
       "join": "；"
+    },
+    "verdicts": {
+      "max_sdk": "该权限声明了 maxSdkVersion={max}，而应用 targetSdk={targetSdk}，系统不再授予（在 Android {next}+ 上不生效）。",
+      "min_api": "面向 API {minApi}+ 的权限，应用 targetSdk={targetSdk}：实际生效的可能是旧版访问模型，需结合 minSdk 判断。",
+      "max_api_effective_above": "targetSdk={targetSdk} 高于 API {maxApi}，该权限的实际效果已被分区存储大幅削弱。"
     },
     "findings": "发现项"
   },

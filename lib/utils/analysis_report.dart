@@ -634,6 +634,11 @@ class AnalysisReport {
     final parts = _evidencePartsText(finding.messageArgs['parts'], t);
     final inputClues = _joinNames(finding.messageArgs['inputClues'], t);
     final ocrClues = _joinNames(finding.messageArgs['ocrClues'], t);
+    final note = _verdictNoteText(
+      finding.messageArgs['noteCode'],
+      finding.messageArgs['noteArgs'],
+      t,
+    );
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -702,6 +707,12 @@ class AnalysisReport {
           ? null
           : f.android_rule_b(inputClues: inputClues, ocrClues: ocrClues),
       'android.rule_c' => f.android_rule_c,
+      'android.permission_expired' => (name == null || note == null)
+          ? null
+          : f.android_permission_expired(name: name, note: note),
+      'android.permission_inert' => (name == null || note == null)
+          ? null
+          : f.android_permission_inert(name: name, note: note),
       _ => null,
     };
     return localized ?? finding.finding;
@@ -751,6 +762,10 @@ class AnalysisReport {
         f.android_network_client_manual_review,
       'android.rule_b.confirm_pipeline' => f.android_rule_b_confirm_pipeline,
       'android.rule_c.manual_review' => f.android_rule_c_manual_review,
+      'android.permission_expired.keep_observing' =>
+        f.android_permission_expired_keep_observing,
+      'android.permission_inert.check_legacy' =>
+        f.android_permission_inert_check_legacy,
       _ => null,
     };
     return localized ?? finding.recommendation;
@@ -804,6 +819,7 @@ class AnalysisReport {
     if (code == null) return raw;
 
     final f = t.security.finding_texts;
+    final targetSdk = finding.limitationArgs['targetSdk'];
     final String? localized = switch (code) {
       'ios.url_schemes.limitation' => f.ios_url_schemes_limitation,
       'ios.scan_coverage.limitation' => f.ios_scan_coverage_limitation,
@@ -830,6 +846,9 @@ class AnalysisReport {
         f.android_network_client_limitation,
       'android.rule_b.limitation' => f.android_rule_b_limitation,
       'android.rule_c.limitation' => f.android_rule_c_limitation,
+      'android.permission_expired.limitation' => targetSdk == null
+          ? null
+          : f.android_permission_expired_limitation(targetSdk: targetSdk),
       _ => null,
     };
     return localized ?? raw;
@@ -965,6 +984,42 @@ class AnalysisReport {
 
     if (parts.isEmpty) return null;
     return parts.join(p.join);
+  }
+
+  /// 版本条件说明（`_Verdict.note`）的本地化文本。
+  ///
+  /// 它是**嵌在发现项正文里的一句话**（`"{name}: {note}"`），因此不能只做一层
+  /// 查表：`messageArgs` 里带的是 `noteCode` + `noteArgs`，先在这里解析成一句
+  /// 本地化的话，再作为参数交给外层文案。
+  ///
+  /// 认不出来就返回 `null`，外层据此整条回退到英文原文 ——
+  /// 绝不渲染出 `{note}` 或半句话。
+  static String? _verdictNoteText(
+    Object? code,
+    Object? args,
+    Translations t,
+  ) {
+    if (code is! String) return null;
+    final a = args is Map ? args : const {};
+    final v = t.security.verdicts;
+    final max = a['max'];
+    final targetSdk = a['targetSdk'];
+    final next = a['next'];
+    final minApi = a['minApi'];
+    final maxApi = a['maxApi'];
+
+    return switch (code) {
+      'max_sdk' => (max == null || targetSdk == null || next == null)
+          ? null
+          : v.max_sdk(max: max, targetSdk: targetSdk, next: next),
+      'min_api' => (minApi == null || targetSdk == null)
+          ? null
+          : v.min_api(minApi: minApi, targetSdk: targetSdk),
+      'max_api_effective_above' => (targetSdk == null || maxApi == null)
+          ? null
+          : v.max_api_effective_above(targetSdk: targetSdk, maxApi: maxApi),
+      _ => null,
+    };
   }
 
   /// 把「来源 id 列表」组装成**本地化**的一句话片段。

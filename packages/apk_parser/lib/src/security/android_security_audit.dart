@@ -211,11 +211,23 @@ class AndroidSecurityAudit {
           category: rule.category,
           severity: SecuritySeverity.info,
           confidence: SecurityConfidence.confirmed,
-          finding: '${request.shortName}：${verdict.note}',
+          finding: '${request.shortName}: ${verdict.note}',
+          messageCode: 'android.permission_expired',
+          messageArgs: {
+            'name': request.shortName,
+            'noteCode': verdict.noteCode,
+            'noteArgs': verdict.noteArgs,
+          },
           evidence: [_manifestEvidence(request)],
-          limitation: '版本条件按 targetSdk=$targetSdk 判定；'
-              '若实际设备版本不同，生效情况以设备为准。',
-          recommendation: '该声明在当前目标版本下不构成实际访问能力，可保留观察。',
+          limitation: 'The version condition is judged against '
+              'targetSdk=$targetSdk; if the actual device version differs, '
+              'the device is authoritative.',
+          limitationCode: 'android.permission_expired.limitation',
+          limitationArgs: {'targetSdk': '$targetSdk'},
+          recommendation: 'This declaration does not grant actual access '
+              'capability under the current target version; keep it under '
+              'observation.',
+          recommendationCode: 'android.permission_expired.keep_observing',
         ));
         continue;
       }
@@ -227,10 +239,18 @@ class AndroidSecurityAudit {
           category: rule.category,
           severity: SecuritySeverity.p3,
           confidence: SecurityConfidence.confirmed,
-          finding: '${request.shortName}：${verdict.note}',
+          finding: '${request.shortName}: ${verdict.note}',
+          messageCode: 'android.permission_inert',
+          messageArgs: {
+            'name': request.shortName,
+            'noteCode': verdict.noteCode,
+            'noteArgs': verdict.noteArgs,
+          },
           evidence: [_manifestEvidence(request)],
-          recommendation: '确认应用是否仍依赖该权限的旧行为；'
-              '高 targetSdk 下它通常已被分区存储取代。',
+          recommendation: 'Confirm whether the app still relies on the legacy '
+              'behaviour of this permission; on a high targetSdk it is '
+              'usually superseded by scoped storage.',
+          recommendationCode: 'android.permission_inert.check_legacy',
         ));
       }
 
@@ -1083,8 +1103,15 @@ class AndroidSecurityAudit {
         return _Verdict(
           effective: false,
           partial: false,
-          note: '该权限声明了 maxSdkVersion=$max，而应用 targetSdk=$targetSdk，'
-              '系统不再授予（在 Android ${max + 1}+ 上不生效）。',
+          note: 'The permission declares maxSdkVersion=$max, while the app '
+              'targets targetSdk=$targetSdk, so the system no longer grants '
+              'it (ineffective on Android ${max + 1}+).',
+          noteCode: 'max_sdk',
+          noteArgs: {
+            'max': max,
+            'targetSdk': targetSdk,
+            'next': max + 1,
+          },
         );
       }
       return const _Verdict(effective: true, partial: false, note: '');
@@ -1093,8 +1120,11 @@ class AndroidSecurityAudit {
       return _Verdict(
         effective: true,
         partial: false,
-        note: '面向 API ${rule.minApi}+ 的权限，应用 targetSdk=$targetSdk：'
-            '实际生效的可能是旧版访问模型，需结合 minSdk 判断。',
+        note: 'A permission aimed at API ${rule.minApi}+, while the app '
+            'targets targetSdk=$targetSdk: the effective model may be the '
+            'legacy one; judge it together with minSdk.',
+        noteCode: 'min_api',
+        noteArgs: {'minApi': rule.minApi!, 'targetSdk': targetSdk},
       );
     }
     if (rule.maxApiEffectiveAbove != null && targetSdk != null) {
@@ -1102,8 +1132,14 @@ class AndroidSecurityAudit {
         return _Verdict(
           effective: true,
           partial: true,
-          note: 'targetSdk=$targetSdk 高于 API ${rule.maxApiEffectiveAbove}，'
-              '该权限的实际效果已被分区存储大幅削弱。',
+          note: 'targetSdk=$targetSdk is higher than API '
+              '${rule.maxApiEffectiveAbove}, so the effective behaviour of '
+              'this permission is largely reduced by scoped storage.',
+          noteCode: 'max_api_effective_above',
+          noteArgs: {
+            'targetSdk': targetSdk,
+            'maxApi': rule.maxApiEffectiveAbove!,
+          },
         );
       }
     }
@@ -1254,11 +1290,22 @@ class AndroidSecurityAudit {
 class _Verdict {
   final bool effective;
   final bool partial;
+
+  /// 给用户看的版本条件说明（**英文回退**）。
+  ///
+  /// 引擎层不依赖 slang，产不出本地化文案 —— 与 `SecurityFinding.finding`
+  /// 同一套「稳定 code + 英文回退 + 参数」的做法。
   final String note;
+
+  /// [note] 的稳定标识与参数；空字符串表示「没有额外说明」。
+  final String noteCode;
+  final Map<String, Object> noteArgs;
 
   const _Verdict({
     required this.effective,
     required this.partial,
     required this.note,
+    this.noteCode = '',
+    this.noteArgs = const {},
   });
 }

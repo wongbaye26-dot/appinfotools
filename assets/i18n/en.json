@@ -555,7 +555,12 @@
       "android_network_endpoints_limitation": "The string table does not contain every constructed URL (concatenation, encrypted configuration), nor does it reflect actual connections.",
       "android_network_client_limitation": "HTTP implementations using reflection, dynamic loading or a hardened shell do not appear in method_ids, so “no code reference” does not mean “no network communication”.",
       "android_rule_b_limitation": "No disassembly was performed, so it cannot be determined whether the recognition module actually handles user-selected images or batch-scanned media files.",
-      "android_rule_c_limitation": "The association comes from multiple markers co-occurring, not from call-graph analysis; reflection, dynamic loading and hardening may all make the real path different."
+      "android_rule_c_limitation": "The association comes from multiple markers co-occurring, not from call-graph analysis; reflection, dynamic loading and hardening may all make the real path different.",
+      "android_permission_expired": "{name}: {note}",
+      "android_permission_expired_limitation": "The version condition is judged against targetSdk={targetSdk}; if the actual device version differs, the device is authoritative.",
+      "android_permission_expired_keep_observing": "This declaration does not grant actual access capability under the current target version; keep it under observation.",
+      "android_permission_inert": "{name}: {note}",
+      "android_permission_inert_check_legacy": "Confirm whether the app still relies on the legacy behaviour of this permission; on a high targetSdk it is usually superseded by scoped storage."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -595,6 +600,11 @@
       "domains": "domains ({count}): {names}",
       "ips": "IP addresses ({count}): {names}",
       "join": "; "
+    },
+    "verdicts": {
+      "max_sdk": "The permission declares maxSdkVersion={max}, while the app targets targetSdk={targetSdk}, so the system no longer grants it (ineffective on Android {next}+).",
+      "min_api": "A permission aimed at API {minApi}+, while the app targets targetSdk={targetSdk}: the effective model may be the legacy one; judge it together with minSdk.",
+      "max_api_effective_above": "targetSdk={targetSdk} is higher than API {maxApi}, so the effective behaviour of this permission is largely reduced by scoped storage."
     },
     "findings": "Findings"
   },

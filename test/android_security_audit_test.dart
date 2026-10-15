@@ -159,8 +159,9 @@ void main() {
       final expired = _byId(result, 'ANDROID-PERMISSION-EXPIRED');
       expect(expired, isNotNull);
       expect(expired!.severity, SecuritySeverity.info);
-      expect(expired.finding, contains('maxSdkVersion=32'));
-      expect(expired.finding, contains('不再授予'));
+      final expiredText = AnalysisReport.findingText(expired, t);
+      expect(expiredText, contains('maxSdkVersion=32'));
+      expect(expiredText, contains('no longer grants'));
       // 关键：不再生效的存储访问不得计入规则 A 的「广泛访问」。
       expect(_byId(result, 'ANDROID-RULE-A'), isNull);
       expect(result.hasRiskFindings, isFalse);
@@ -1213,6 +1214,155 @@ void main() {
       final zh = AnalysisReport.findingText(ruleA, t);
       expect(zh, contains('、'));
       expect(zh, isNot(contains(', ')));
+    });
+  });
+
+  // B11 第八批：版本条件说明（`_Verdict.note`）+ EXPIRED / INERT。
+  //
+  // 这条链的特殊之处：版本说明是**嵌在发现项正文里的一句话**
+  // （`"{name}: {note}"`），所以要做**两层**查表 —— 先把 noteCode 解析成
+  // 一句本地化的话，再作为参数交给外层文案。少一层就会渲染出 `{note}`。
+  group('发现项文案本地化（B11 第八批：版本条件）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    /// 声明了 maxSdkVersion 的权限在更高 targetSdk 上不生效 → EXPIRED。
+    SecurityAnalysisResult expired() => AndroidSecurityAudit.audit(
+          meta: _meta(
+            targetSdk: 34,
+            permissions: [
+              _perm('android.permission.READ_EXTERNAL_STORAGE', maxSdk: 32),
+            ],
+          ),
+          dexEntries: const [],
+        );
+
+    /// 生效但效果被削弱 → INERT（WRITE_EXTERNAL_STORAGE 在 API 29 后失效）。
+    SecurityAnalysisResult inert() => AndroidSecurityAudit.audit(
+          meta: _meta(
+            targetSdk: 34,
+            permissions: [_perm('android.permission.WRITE_EXTERNAL_STORAGE')],
+          ),
+          dexEntries: const [],
+        );
+
+    test('引擎把 code 与版本说明的 code 都挂上了（两层都要有）', () {
+      final e = _byId(expired(), 'ANDROID-PERMISSION-EXPIRED');
+      expect(e, isNotNull);
+      expect(e!.messageCode, 'android.permission_expired');
+      expect(e.recommendationCode, 'android.permission_expired.keep_observing');
+      expect(e.limitationCode, 'android.permission_expired.limitation');
+      expect(e.messageArgs['noteCode'], 'max_sdk');
+      expect(RegExp(cjk).hasMatch(e.finding), isFalse,
+          reason: '英文回退里还有中文：${e.finding}');
+      expect(RegExp(cjk).hasMatch(e.limitation!), isFalse);
+      expect(RegExp(cjk).hasMatch(e.recommendation), isFalse);
+
+      final i = _byId(inert(), 'ANDROID-PERMISSION-INERT');
+      expect(i, isNotNull);
+      expect(i!.messageCode, 'android.permission_inert');
+      expect(i.recommendationCode, 'android.permission_inert.check_legacy');
+      expect(i.messageArgs['noteCode'], 'max_api_effective_above');
+      expect(RegExp(cjk).hasMatch(i.finding), isFalse,
+          reason: '英文回退里还有中文：${i.finding}');
+    });
+
+    test('两层查表都生效：中文界面下正文与版本说明都是中文', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      final e = _byId(expired(), 'ANDROID-PERMISSION-EXPIRED')!;
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.findingText(e, t);
+      expect(zh, contains('READ_EXTERNAL_STORAGE'));
+      expect(zh, contains('系统不再授予'));
+      expect(zh, isNot(contains('{note}')));
+      expect(zh, isNot(contains('{')));
+      expect(RegExp(cjk).hasMatch(zh), isTrue);
+
+      await LocaleSettings.setLocaleRaw('en');
+      final en = AnalysisReport.findingText(e, t);
+      expect(en, contains('no longer grants'));
+      expect(RegExp(cjk).hasMatch(en), isFalse, reason: 'en 不该有中文：$en');
+    });
+
+    test('三个版本说明在四个语言包里都能取到，且不留占位符', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      const notes = [
+        (
+          code: 'max_sdk',
+          args: <String, Object>{'max': 32, 'targetSdk': 34, 'next': 33},
+        ),
+        (
+          code: 'min_api',
+          args: <String, Object>{'minApi': 33, 'targetSdk': 30},
+        ),
+        (
+          code: 'max_api_effective_above',
+          args: <String, Object>{'targetSdk': 34, 'maxApi': 28},
+        ),
+      ];
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final n in notes) {
+          final f = SecurityFinding(
+            ruleId: 'ANDROID-PERMISSION-EXPIRED',
+            platform: SecurityPlatform.android,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.confirmed,
+            finding: 'fallback finding',
+            evidence: const [],
+            recommendation: 'r',
+            messageCode: 'android.permission_expired',
+            messageArgs: <String, Object>{
+              'name': 'READ_EXTERNAL_STORAGE',
+              'noteCode': n.code,
+              'noteArgs': n.args,
+            },
+          );
+          final text = AnalysisReport.findingText(f, t);
+          expect(text, isNot('fallback finding'),
+              reason: '$locale 下 ${n.code} 没取到本地化文案');
+          expect(text, isNot(contains('{')));
+          expect(text, contains('READ_EXTERNAL_STORAGE'));
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text), isTrue,
+                reason: '$locale 下 ${n.code} 不是中文：$text');
+          }
+        }
+      }
+    });
+
+    test('版本说明的 code 认不出时整条回退，不渲染半句话', () {
+      const f = SecurityFinding(
+        ruleId: 'ANDROID-PERMISSION-EXPIRED',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'fallback finding',
+        evidence: [],
+        recommendation: 'r',
+        messageCode: 'android.permission_expired',
+        messageArgs: <String, Object>{
+          'name': 'X',
+          'noteCode': 'future_note',
+        },
+      );
+      expect(AnalysisReport.findingText(f, t), 'fallback finding');
+    });
+
+    test('版本条件的局限也本地化，并带上 targetSdk', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      final e = _byId(expired(), 'ANDROID-PERMISSION-EXPIRED')!;
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.limitationText(e, t);
+      expect(zh, contains('targetSdk=34'));
+      expect(zh, isNot(contains('{')));
+      expect(RegExp(cjk).hasMatch(zh!), isTrue);
     });
   });
 }
