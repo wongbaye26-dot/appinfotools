@@ -63,6 +63,7 @@ It builds on the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTo
 
 - **Overview** — everything on one screen: current file status, four status cards (platform / size / signature / security), statistics and recent files
 - **Detail page** — six tabs (Overview / Application / Permissions / Structure / Signature / Security) with identical semantics for APK and IPA
+- **Version comparison** — structured diff between two analysed packages (field level plus collections such as permissions, components, native symbols and domains), shown as added / removed / changed while keeping "we could not read it" strictly apart from "not present in the file"; exports a Markdown / JSON comparison report
 - **Drag and drop** — dropping a file starts the analysis immediately
 - **Export** — analysis report (Markdown / JSON), app icons (PNG / SVG / original file)
 - **Rename** — rename by app name, or name + version
