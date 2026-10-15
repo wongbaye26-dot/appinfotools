@@ -436,6 +436,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 kind: nested.kind,
                 bytes: nested.bytes,
                 failure: nested.failure ?? nested.bytesFailure,
+                // 嵌套 bundle 自己的用途说明（iOS-A）：扩展常常正是处理
+                // 照片与 OCR 的地方，只看主应用会漏掉这一类声明。
+                usageDescriptions: nested.usageDescriptions,
               ),
           ],
         );

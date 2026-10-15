@@ -50,12 +50,20 @@ class IosNestedExecutableInput {
 
   final String? failure;
 
+  /// 该嵌套 bundle 自己 `Info.plist` 里的用途说明；`null` 表示没读到。
+  ///
+  /// 主应用的用途说明走 `infoPlist`，这里只放**嵌套 bundle 的** ——
+  /// 扩展常常正是处理照片与 OCR 的地方，而主应用的 Info.plist 里可能
+  /// 一条相册用途都没有。
+  final Map<String, String>? usageDescriptions;
+
   const IosNestedExecutableInput({
     required this.path,
     required this.bundlePath,
     required this.kind,
     this.bytes,
     this.failure,
+    this.usageDescriptions,
   });
 }
 
@@ -177,6 +185,52 @@ class IosPrivacyAudit {
       limitations.add('CFBundleURLTypes 读不出来'
           '（${urlSchemes.diagnostic ?? urlSchemes.status.name}）：'
           '注册的 URL scheme 未覆盖。');
+    }
+
+    // ---- 嵌套 bundle 的用途说明 ----
+    //
+    // 主应用的用途说明在上面已逐条记过。这里补上**每个嵌套 bundle 自己**的
+    // 用途说明 —— App Extension 常常正是处理照片与 OCR 的地方，而主应用的
+    // Info.plist 里可能一条相册用途都没有。只看主应用，「扩展声明了相册访问」
+    // 这件事就完全看不见。
+    //
+    // 每条 finding 的 `location` 都指向**那个 bundle 的** Info.plist，
+    // 主应用的结论不会被嵌套 bundle 污染（ruleId 也刻意与主应用不同）。
+    var nestedDescriptionCount = 0;
+    final nestedWithoutDescriptions = <String>[];
+    for (final nested in nestedExecutables) {
+      final descriptions = nested.usageDescriptions;
+      if (descriptions == null) {
+        // 没读到 ≠ 没有：如实记下来，不让覆盖率虚高。
+        nestedWithoutDescriptions.add(nested.bundlePath);
+        continue;
+      }
+      nestedDescriptionCount += descriptions.length;
+      for (final entry in descriptions.entries) {
+        findings.add(SecurityFinding(
+          ruleId: 'IOS-NESTED-USAGE-DESCRIPTION',
+          platform: SecurityPlatform.ios,
+          category: _categoryForKey(entry.key),
+          severity: SecuritySeverity.info,
+          confidence: SecurityConfidence.confirmed,
+          finding: '嵌套 bundle ${nested.bundlePath} 声明了 ${entry.key}'
+              '（用途说明已提供）。用途说明只表示该 bundle **声称**会使用'
+              '该能力，不证明运行时真的访问了对应数据。',
+          evidence: [
+            SecurityEvidence(
+              source: SecurityEvidenceSource.infoPlist,
+              location: '${nested.bundlePath}/Info.plist / ${entry.key}',
+              detail: entry.value.isEmpty ? '(value is empty)' : entry.value,
+            ),
+          ],
+          recommendation: '与实际使用的 API 交叉核对：'
+              '见本报告中对应的 API 线索条目。',
+        ));
+      }
+    }
+    if (nestedWithoutDescriptions.isNotEmpty) {
+      limitations.add('${nestedWithoutDescriptions.length} 个嵌套 bundle 的 '
+          'Info.plist 没读到，其中的用途说明未覆盖。');
     }
 
     // ---- Mach-O 符号线索（主可执行文件 + 嵌套 bundle）----
@@ -733,7 +787,11 @@ class IosPrivacyAudit {
         id: 'ios.usageDescriptions',
         status:
             usage.hasValue ? CoverageStatus.covered : CoverageStatus.notCovered,
-        covered: usage.hasValue ? usage.value!.length : null,
+        // 覆盖量 = 主应用的用途说明 + 嵌套 bundle 的用途说明。
+        // 只算主应用会让「扩展声明了 5 条相册用途」在覆盖率上完全看不见。
+        covered: usage.hasValue
+            ? usage.value!.length + nestedDescriptionCount
+            : null,
         note: usage.hasValue
             ? null
             : (

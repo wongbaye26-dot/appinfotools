@@ -135,6 +135,15 @@ class IosNestedBinary {
   /// 字节没能保留的原因；保留成功时为 `null`。
   final String? bytesFailure;
 
+  /// 该 bundle 自己 `Info.plist` 里的用途说明（键 → 值）；读不到时为 `null`。
+  ///
+  /// 为什么必须逐 bundle 带上：扩展**常常正是**处理照片与 OCR 的地方，
+  /// 而主应用的 `Info.plist` 里可能一条相册用途都没有。只看主应用，
+  /// 「扩展声明了相册访问」这件事就完全看不见。
+  ///
+  /// `null` 表示**没读到**（与「读到了但一条都没有」= 空 map 不同）。
+  final Map<String, String>? usageDescriptions;
+
   const IosNestedBinary({
     required this.bundlePath,
     required this.kind,
@@ -143,6 +152,7 @@ class IosNestedBinary {
     this.failure,
     this.bytes,
     this.bytesFailure,
+    this.usageDescriptions,
   });
 
   /// 该可执行文件是否**参与安全扫描**（字节在手上）。
@@ -409,6 +419,7 @@ class IpaAnalysisReader {
             ? null
             : 'bytes not retained (nested budget of '
                 '${maxNestedRetainedBytes ~/ (1024 * 1024)} MiB reached)',
+        usageDescriptions: info.privacyUsageDescriptions.value,
       ));
     }
     if (droppedForBudget > 0) {

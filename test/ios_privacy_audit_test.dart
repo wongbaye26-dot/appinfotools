@@ -648,4 +648,91 @@ void main() {
       expect(result.hasCoverageGaps, isTrue);
     });
   });
+  // iOS-A：嵌套 bundle 的用途说明。
+  //
+  // 扩展常常正是处理照片与 OCR 的地方，而主应用的 Info.plist 里可能
+  // 一条相册用途都没有。只看主应用，这类声明完全看不见。
+  group('嵌套 bundle 的用途说明（iOS-A）', () {
+    const emptyPlist = '<?xml version="1.0" encoding="UTF-8"?>'
+        '<plist version="1.0"><dict></dict></plist>';
+
+    const cameraPlist = '<?xml version="1.0" encoding="UTF-8"?>'
+        '<plist version="1.0"><dict>'
+        '<key>NSCameraUsageDescription</key><string>拍照</string>'
+        '</dict></plist>';
+
+    test('扩展声明的用途说明成为独立 finding，并指向那个 bundle', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: emptyPlist),
+        nestedExecutables: const [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/PlugIns/Photo.appex/Photo',
+            bundlePath: 'Payload/Example.app/PlugIns/Photo.appex',
+            kind: IosBundleKind.appExtension,
+            usageDescriptions: {
+              'NSPhotoLibraryUsageDescription': '用于选择照片',
+            },
+          ),
+        ],
+      );
+
+      final finding = _byId(result, 'IOS-NESTED-USAGE-DESCRIPTION');
+      expect(finding, isNotNull, reason: '扩展的用途说明必须被检出');
+      expect(finding!.evidence.single.location,
+          contains('PlugIns/Photo.appex/Info.plist'));
+      expect(finding.evidence.single.location,
+          contains('NSPhotoLibraryUsageDescription'));
+      // 主应用一条用途说明都没有 —— 结论不该被嵌套 bundle 污染。
+      expect(_byId(result, 'IOS-USAGE-DESCRIPTION'), isNull);
+    });
+
+    test('主应用与扩展的用途说明各自成条，互不覆盖', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: cameraPlist),
+        nestedExecutables: const [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/PlugIns/X.appex/X',
+            bundlePath: 'Payload/Example.app/PlugIns/X.appex',
+            kind: IosBundleKind.appExtension,
+            usageDescriptions: {
+              'NSPhotoLibraryUsageDescription': '选择照片',
+            },
+          ),
+        ],
+      );
+
+      final main = _byId(result, 'IOS-USAGE-DESCRIPTION');
+      final nested = _byId(result, 'IOS-NESTED-USAGE-DESCRIPTION');
+      expect(main, isNotNull);
+      expect(nested, isNotNull);
+      expect(
+          main!.evidence.single.location, contains('NSCameraUsageDescription'));
+      expect(main.evidence.single.location, isNot(contains('PlugIns/X.appex')));
+      expect(nested!.evidence.single.location, contains('PlugIns/X.appex'));
+    });
+
+    test('嵌套 bundle 没读到 Info.plist 时记进局限，不静默', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: emptyPlist),
+        nestedExecutables: const [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/PlugIns/X.appex/X',
+            bundlePath: 'Payload/Example.app/PlugIns/X.appex',
+            kind: IosBundleKind.appExtension,
+            // usageDescriptions 刻意不传 = 没读到
+          ),
+        ],
+      );
+
+      expect(result.limitations.any((l) => l.contains('没读到')), isTrue,
+          reason: '「没读到」与「没有」必须分开');
+    });
+
+    test('没有嵌套 bundle 时不产生这类 finding（回归）', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: emptyPlist),
+      );
+      expect(_byId(result, 'IOS-NESTED-USAGE-DESCRIPTION'), isNull);
+    });
+  });
 }
