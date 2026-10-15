@@ -266,6 +266,23 @@ class SecurityFinding {
   /// 建议的人工核查或整改措施。
   final String recommendation;
 
+  /// [finding] 的**稳定标识**与占位符实参；`null` 表示尚未迁移。
+  ///
+  /// 引擎层（`apk_parser` / `ipa_parser`）不依赖 slang，产不出本地化文案，
+  /// 因此逐步迁移成「稳定 code + 英文回退 + 参数」，由呈现层
+  ///（`AnalysisReport.findingText`）本地化。
+  ///
+  /// **刻意是可选的**：迁移是增量的，没填 code 的发现项继续按原文渲染 ——
+  /// 这样任何时刻都不会出现「一半中文一半英文」的中间态。
+  final String? messageCode;
+  final Map<String, Object> messageArgs;
+
+  /// [recommendation] 的稳定标识与参数，语义同 [messageCode]。
+  ///
+  /// 与 [messageCode] 分开是因为两者是**两句独立的话**，各有各的占位符。
+  final String? recommendationCode;
+  final Map<String, Object> recommendationArgs;
+
   const SecurityFinding({
     required this.ruleId,
     required this.platform,
@@ -279,6 +296,10 @@ class SecurityFinding {
     this.relationship,
     this.limitation,
     required this.recommendation,
+    this.messageCode,
+    this.messageArgs = const {},
+    this.recommendationCode,
+    this.recommendationArgs = const {},
   });
 
   /// 去掉**本 finding 内**完全相同的证据条目，返回新的 finding。

@@ -138,9 +138,12 @@ class IosPrivacyAudit {
           category: _categoryForKey(entry.key),
           severity: SecuritySeverity.info,
           confidence: SecurityConfidence.confirmed,
-          finding: 'Info.plist 声明了 $entry.key（用途说明已提供）。'
-              '用途说明的存在只表示应用**声称**会使用该能力，'
-              '不证明运行时真的访问了对应数据。',
+          // 已迁移到「稳定 code + 英文回退 + 参数」（B11）。没迁移的发现项
+          // 仍按原文渲染，因此不会出现「英文界面下一半中文一半英文」。
+          finding: 'Info.plist declares ${entry.key} '
+              '(a usage description is provided).',
+          messageCode: 'ios.usage_description',
+          messageArgs: {'key': entry.key},
           evidence: [
             SecurityEvidence(
               source: SecurityEvidenceSource.infoPlist,
@@ -148,8 +151,9 @@ class IosPrivacyAudit {
               detail: entry.value.isEmpty ? '(value is empty)' : entry.value,
             ),
           ],
-          recommendation: '与实际使用的 API 交叉核对：'
-              '见本报告中对应的 API 线索条目。',
+          recommendation: 'Cross-check against the APIs actually used: see '
+              'the corresponding API clue entries in this report.',
+          recommendationCode: 'ios.usage_description.cross_check',
         ));
       }
     }
@@ -213,9 +217,13 @@ class IosPrivacyAudit {
           category: _categoryForKey(entry.key),
           severity: SecuritySeverity.info,
           confidence: SecurityConfidence.confirmed,
-          finding: '嵌套 bundle ${nested.bundlePath} 声明了 ${entry.key}'
-              '（用途说明已提供）。用途说明只表示该 bundle **声称**会使用'
-              '该能力，不证明运行时真的访问了对应数据。',
+          finding: 'Nested bundle ${nested.bundlePath} declares ${entry.key} '
+              '(a usage description is provided).',
+          messageCode: 'ios.nested_usage_description',
+          messageArgs: {
+            'bundle': nested.bundlePath,
+            'key': entry.key,
+          },
           evidence: [
             SecurityEvidence(
               source: SecurityEvidenceSource.infoPlist,
@@ -223,8 +231,9 @@ class IosPrivacyAudit {
               detail: entry.value.isEmpty ? '(value is empty)' : entry.value,
             ),
           ],
-          recommendation: '与实际使用的 API 交叉核对：'
-              '见本报告中对应的 API 线索条目。',
+          recommendation: 'Cross-check against the APIs actually used: see '
+              'the corresponding API clue entries in this report.',
+          recommendationCode: 'ios.usage_description.cross_check',
         ));
       }
     }

@@ -362,8 +362,7 @@
     "signature_verdict": "簽章結論與材料",
     "target_platform": "目標平台",
     "unavailable": "iOS 分析無法使用",
-    "uuid": "UUID"
-  ,
+    "uuid": "UUID",
     "code_resources": "密封清單（CodeResources）",
     "code_resources_sealed": "密封 {count} 個檔案",
     "code_resources_rules": "規則 {count} 條",
@@ -416,8 +415,7 @@
     "network_section": "網路端點",
     "network_domains": "網域",
     "network_ips": "IP 位址",
-    "network_hint": "靜態提取不等於執行時實際存取過 —— 網域可能來自設定項、SDK 位址或從未連線的備用端點。"
-  ,
+    "network_hint": "靜態提取不等於執行時實際存取過 —— 網域可能來自設定項、SDK 位址或從未連線的備用端點。",
     "split_section": "分包一致性",
     "split_checked": "已比對 {checked}/{total} 個分包",
     "split_all_checked": "全部分包都已比對",
@@ -442,7 +440,6 @@
   },
   "security": {
     "title": "安全檢測",
-    "findings": "發現項",
     "no_findings": "未檢測到安全問題",
     "risk_overview": "風險總覽",
     "limitations": "覆蓋不足",
@@ -451,7 +448,13 @@
     "confidence_suspected": "疑似",
     "confidence_capability": "僅具備能力",
     "confidence_unknown": "未知",
-    "relationship": "關聯說明"
+    "relationship": "關聯說明",
+    "finding_texts": {
+      "ios_usage_description": "Info.plist 宣告了 {key}（用途說明已提供）。用途說明的存在只表示應用**聲稱**會使用該能力，不證明執行時真的存取了對應資料。",
+      "ios_nested_usage_description": "嵌套 bundle {bundle} 宣告了 {key}（用途說明已提供）。用途說明只表示該 bundle **聲稱**會使用該能力，不證明執行時真的存取了對應資料。",
+      "ios_usage_description_cross_check": "與實際使用的 API 交叉核對：見本報告中對應的 API 線索條目。"
+    },
+    "findings": "發現項"
   },
   "detail_tab": {
     "overview": "概覽",
@@ -518,6 +521,5 @@
       "ios_native_symbols_stripped": "部分映像沒有 LC_SYMTAB（符號表被剝離）",
       "ios_signature_separate_step": "簽名驗證由 codesign 單獨執行，見簽名資訊卡片"
     }
-
   }
 }

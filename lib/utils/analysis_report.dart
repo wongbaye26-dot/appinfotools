@@ -344,7 +344,8 @@ class AnalysisReport {
     for (final finding in security.findings) {
       sb.writeln('### ${finding.ruleId} [${finding.severity.name}]');
       sb.writeln();
-      sb.writeln('- **${t.security.findings}:** ${finding.finding}');
+      sb.writeln(
+          '- **${t.security.finding_texts}:** ${findingText(finding, t)}');
       sb.writeln('- **Confidence:** ${finding.confidence.name}');
       if (finding.evidence.isNotEmpty) {
         sb.writeln('- **Evidence:**');
@@ -352,8 +353,9 @@ class AnalysisReport {
           sb.writeln('  - ${ev.source.name} (${ev.location}): ${ev.detail}');
         }
       }
-      if (finding.recommendation.isNotEmpty) {
-        sb.writeln('- **Recommendation:** ${finding.recommendation}');
+      final recommendation = recommendationText(finding, t);
+      if (recommendation.isNotEmpty) {
+        sb.writeln('- **Recommendation:** $recommendation');
       }
       if (finding.limitation != null && finding.limitation!.isNotEmpty) {
         sb.writeln('- **Limitation:** ${finding.limitation}');
@@ -603,6 +605,46 @@ class AnalysisReport {
     };
   }
 
+  /// 发现项的**本地化正文**。
+  ///
+  /// 引擎产出的是 [SecurityFinding.messageCode]（稳定 id）+ `finding`（英文回退）
+  /// —— 引擎层不依赖 slang。这里按 code 取本地化文案，**认不出来就回退原文**。
+  ///
+  /// **迁移是增量的**：没填 `messageCode` 的发现项直接返回原文（目前可能是中文），
+  /// 因此任何时刻都不会出现「英文界面下一半中文一半英文」的中间态。
+  static String findingText(SecurityFinding finding, Translations t) {
+    final code = finding.messageCode;
+    if (code == null) return finding.finding;
+
+    final f = t.security.finding_texts;
+    final key = finding.messageArgs['key'];
+    final bundle = finding.messageArgs['bundle'];
+
+    final String? localized = switch (code) {
+      'ios.usage_description' =>
+        key == null ? null : f.ios_usage_description(key: key),
+      'ios.nested_usage_description' => (key == null || bundle == null)
+          ? null
+          : f.ios_nested_usage_description(bundle: bundle, key: key),
+      _ => null,
+    };
+    return localized ?? finding.finding;
+  }
+
+  /// 发现项**建议**的本地化正文，语义同 [findingText]。
+  static String recommendationText(SecurityFinding finding, Translations t) {
+    final code = finding.recommendationCode;
+    if (code == null) return finding.recommendation;
+
+    final f = t.security.finding_texts;
+    final String? localized = switch (code) {
+      'ios.usage_description.cross_check' =>
+        f.ios_usage_description_cross_check,
+      _ => null,
+    };
+    return localized ?? finding.recommendation;
+  }
+
   /// 覆盖说明的**本地化文本**。
   ///
   /// 引擎产出的是 [CoverageEntry.noteCode]（稳定 id）+ [CoverageEntry.note]
@@ -808,6 +850,8 @@ class AnalysisReport {
             'dataSink': f.dataSink,
             'relationship': f.relationship,
             'limitation': f.limitation,
+            'messageCode': f.messageCode,
+            'recommendationCode': f.recommendationCode,
             'recommendation': f.recommendation,
           },
     ];

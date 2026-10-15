@@ -363,8 +363,7 @@
     "signature_verdict": "Verdict and materials",
     "target_platform": "Target platform",
     "unavailable": "iOS analysis is unavailable",
-    "uuid": "UUID"
-  ,
+    "uuid": "UUID",
     "code_resources": "CodeResources (sealed manifest)",
     "code_resources_sealed": "{count} file(s) sealed",
     "code_resources_rules": "{count} rule(s)",
@@ -417,8 +416,7 @@
     "network_section": "Network endpoints",
     "network_domains": "Domains",
     "network_ips": "IP addresses",
-    "network_hint": "Static extraction does not mean these endpoints were actually contacted at runtime."
-  ,
+    "network_hint": "Static extraction does not mean these endpoints were actually contacted at runtime.",
     "split_section": "Split consistency",
     "split_checked": "{checked} of {total} split(s) were compared",
     "split_all_checked": "All splits were compared",
@@ -443,7 +441,6 @@
   },
   "security": {
     "title": "Security Detection",
-    "findings": "Findings",
     "no_findings": "No security findings detected",
     "risk_overview": "Risk Overview",
     "limitations": "Coverage Limitations",
@@ -452,7 +449,13 @@
     "confidence_suspected": "Suspected",
     "confidence_capability": "Capability only",
     "confidence_unknown": "Unknown",
-    "relationship": "How the pieces are linked"
+    "relationship": "How the pieces are linked",
+    "finding_texts": {
+      "ios_usage_description": "Info.plist declares {key} (a usage description is provided). Its presence only means the app **claims** it will use this capability; it does not prove the data was actually accessed at runtime.",
+      "ios_nested_usage_description": "Nested bundle {bundle} declares {key} (a usage description is provided). Its presence only means that bundle **claims** it will use this capability; it does not prove the data was actually accessed at runtime.",
+      "ios_usage_description_cross_check": "Cross-check against the APIs actually used: see the corresponding API clue entries in this report."
+    },
+    "findings": "Findings"
   },
   "detail_tab": {
     "overview": "Overview",
@@ -519,6 +522,5 @@
       "ios_native_symbols_stripped": "Some images have no LC_SYMTAB (symbol table stripped)",
       "ios_signature_separate_step": "Signature verification is performed separately by codesign; see the signature card"
     }
-
   }
 }

@@ -362,8 +362,7 @@
     "signature_verdict": "签名结论与材料",
     "target_platform": "目标平台",
     "unavailable": "iOS 分析不可用",
-    "uuid": "UUID"
-  ,
+    "uuid": "UUID",
     "code_resources": "密封清单（CodeResources）",
     "code_resources_sealed": "密封 {count} 个文件",
     "code_resources_rules": "规则 {count} 条",
@@ -416,8 +415,7 @@
     "network_section": "网络端点",
     "network_domains": "域名",
     "network_ips": "IP 地址",
-    "network_hint": "静态提取不等于运行时实际访问过 —— 域名可能来自配置项、SDK 地址或从未连接的备用端点。"
-  ,
+    "network_hint": "静态提取不等于运行时实际访问过 —— 域名可能来自配置项、SDK 地址或从未连接的备用端点。",
     "split_section": "分包一致性",
     "split_checked": "已比对 {checked}/{total} 个分包",
     "split_all_checked": "全部分包都已比对",
@@ -442,7 +440,6 @@
   },
   "security": {
     "title": "安全检测",
-    "findings": "发现项",
     "no_findings": "未检测到安全问题",
     "risk_overview": "风险总览",
     "limitations": "覆盖不足",
@@ -451,7 +448,13 @@
     "confidence_suspected": "疑似",
     "confidence_capability": "仅具备能力",
     "confidence_unknown": "未知",
-    "relationship": "关联说明"
+    "relationship": "关联说明",
+    "finding_texts": {
+      "ios_usage_description": "Info.plist 声明了 {key}（用途说明已提供）。用途说明的存在只表示应用**声称**会使用该能力，不证明运行时真的访问了对应数据。",
+      "ios_nested_usage_description": "嵌套 bundle {bundle} 声明了 {key}（用途说明已提供）。用途说明只表示该 bundle **声称**会使用该能力，不证明运行时真的访问了对应数据。",
+      "ios_usage_description_cross_check": "与实际使用的 API 交叉核对：见本报告中对应的 API 线索条目。"
+    },
+    "findings": "发现项"
   },
   "detail_tab": {
     "overview": "概览",
@@ -518,6 +521,5 @@
       "ios_native_symbols_stripped": "部分镜像没有 LC_SYMTAB（符号表被剥离）",
       "ios_signature_separate_step": "签名验证由 codesign 单独执行，见签名信息卡片"
     }
-
   }
 }

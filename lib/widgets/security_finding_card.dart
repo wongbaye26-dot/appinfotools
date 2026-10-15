@@ -1,3 +1,4 @@
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:flutter/material.dart';
@@ -142,7 +143,7 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
               const SizedBox(height: 12),
               // 发现标题
               Text(
-                finding.finding,
+                AnalysisReport.findingText(finding, t),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w500,
                 ),
@@ -208,9 +209,10 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
             _buildRelationship(context, finding.relationship!),
           ],
           // 建议
-          if (finding.recommendation.isNotEmpty) ...[
+          if (AnalysisReport.recommendationText(finding, t).isNotEmpty) ...[
             const SizedBox(height: 12),
-            _buildRecommendation(context, finding.recommendation),
+            _buildRecommendation(
+                context, AnalysisReport.recommendationText(finding, t)),
           ],
           // 局限
           if (finding.limitation != null) ...[

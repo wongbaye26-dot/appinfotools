@@ -5,6 +5,8 @@
 // - 隐私清单是声明性材料，报告不得说成「已证实收集」；
 // - 有 API 没用途说明才升级；只有用途说明不判「已访问」。
 
+import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'dart:convert';
 
 import 'package:analysis_model/analysis_model.dart';
@@ -227,7 +229,8 @@ void main() {
       expect(usageFindings, hasLength(2));
       for (final f in usageFindings) {
         expect(f.severity, SecuritySeverity.info);
-        expect(f.finding, contains('不证明运行时'));
+        // 迁移后要看**本地化后的正文**，而不是英文回退。
+        expect(AnalysisReport.findingText(f, t), contains('does not prove'));
       }
       expect(_byId(result, 'IOS-PHOTO-LIBRARY-NO-USAGE'), isNull);
     });
@@ -733,6 +736,74 @@ void main() {
         infoPlist: _plist(infoPlist: emptyPlist),
       );
       expect(_byId(result, 'IOS-NESTED-USAGE-DESCRIPTION'), isNull);
+    });
+  });
+  // B11 第一批：发现项文案本地化（机制 + iOS 用途说明两条）。
+  //
+  // 迁移是**增量**的：没填 messageCode 的发现项继续按原文渲染，
+  // 因此不会出现「英文界面下一半中文一半英文」的中间态。
+  group('发现项文案本地化（B11 第一批）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    const photoPlist = '<?xml version="1.0" encoding="UTF-8"?>'
+        '<plist version="1.0"><dict>'
+        '<key>NSPhotoLibraryUsageDescription</key><string>选择照片</string>'
+        '</dict></plist>';
+
+    test('已迁移的发现项带 messageCode，且英文回退里没有中文', () {
+      final result =
+          IosPrivacyAudit.audit(infoPlist: _plist(infoPlist: photoPlist));
+      final finding = _byId(result, 'IOS-USAGE-DESCRIPTION')!;
+
+      expect(finding.messageCode, 'ios.usage_description');
+      expect(finding.messageArgs['key'], 'NSPhotoLibraryUsageDescription');
+      expect(RegExp(cjk).hasMatch(finding.finding), isFalse,
+          reason: '英文回退里不该有中文：${finding.finding}');
+
+      expect(finding.recommendationCode, 'ios.usage_description.cross_check');
+      expect(RegExp(cjk).hasMatch(finding.recommendation), isFalse,
+          reason: '建议也要一起迁移，不能一句英文一句中文');
+    });
+
+    test('findingText 认得 code 时给出本地化文案，且不留占位符', () {
+      final result =
+          IosPrivacyAudit.audit(infoPlist: _plist(infoPlist: photoPlist));
+      final finding = _byId(result, 'IOS-USAGE-DESCRIPTION')!;
+
+      final text = AnalysisReport.findingText(finding, t);
+      expect(text, contains('NSPhotoLibraryUsageDescription'));
+      expect(text, isNot(contains('{')));
+      expect(AnalysisReport.recommendationText(finding, t), isNotEmpty);
+    });
+
+    test('未知 code 回退到原文，不显示空白', () {
+      const finding = SecurityFinding(
+        ruleId: 'X',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.unknown,
+        finding: 'fallback text',
+        evidence: [],
+        recommendation: 'fallback recommendation',
+        messageCode: 'ios.future.something_new',
+      );
+      expect(AnalysisReport.findingText(finding, t), 'fallback text');
+    });
+
+    test('未迁移的发现项原样返回（迁移是增量的）', () {
+      const finding = SecurityFinding(
+        ruleId: 'X',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.unknown,
+        finding: '尚未迁移的原文',
+        evidence: [],
+        recommendation: '尚未迁移的建议',
+      );
+      expect(AnalysisReport.findingText(finding, t), '尚未迁移的原文');
+      expect(AnalysisReport.recommendationText(finding, t), '尚未迁移的建议');
     });
   });
 }
