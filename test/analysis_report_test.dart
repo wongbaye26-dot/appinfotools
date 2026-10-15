@@ -532,14 +532,98 @@ void main() {
       expect(json, contains('"limitations"'));
     });
 
-    test('schema 版本随结构变化递增（v3）', () {
+    test('schema 版本随结构变化递增，且本版新增的字段确实在', () {
+      // 自带一条**带全部 code 的**发现项：上面那个 `security` 夹具没有发现项，
+      // 拿它断言只会测到「没有 findings 时也不崩」。
+      const withCodes = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        findings: [
+          SecurityFinding(
+            ruleId: 'X',
+            platform: SecurityPlatform.android,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.confirmed,
+            finding: 'f',
+            evidence: [
+              SecurityEvidence(
+                source: SecurityEvidenceSource.manifest,
+                location: 'loc',
+                detail: 'd',
+                locationCode: 'loc.code',
+                detailCode: 'detail.code',
+              ),
+            ],
+            recommendation: 'rec',
+            messageCode: 'msg.code',
+            recommendationCode: 'rec.code',
+            relationshipCode: 'rel.code',
+            limitationCode: 'lim.code',
+          ),
+        ],
+      );
+
       final json = AnalysisReport.renderJson(
-        _android(security: security),
+        _android(security: withCodes),
         generatedAt: _at,
         t: t,
       );
 
-      expect(json, contains('"reportSchemaVersion": 3'));
+      // v4：B11 给 findings[] 与 evidence[] 补了稳定 code。
+      // 版本号与字段**必须一起断言** —— 只改号不加字段（或反之）都会让
+      // 消费脚本的判断落空。
+      expect(json, contains('"reportSchemaVersion": 4'));
+      for (final field in [
+        '"messageCode"',
+        '"recommendationCode"',
+        '"relationshipCode"',
+        '"limitationCode"',
+        '"locationCode"',
+        '"detailCode"',
+      ]) {
+        expect(json, contains(field), reason: 'v4 声明的字段 $field 不在输出里');
+      }
+    });
+
+    // 阶段 4.3：证据位置 / 详情的**可读化**。
+    //
+    // 只改呈现 —— JSON 与引擎数据保留原始描述符，那是能逐字对上
+    // `dexdump -d` 输出的形式。
+    group('证据可读化', () {
+      test('类型描述符展开成包名形式', () {
+        expect(
+          AnalysisReport.readableEvidenceText('Lcom/foo/Bar;'),
+          'com.foo.Bar',
+        );
+        expect(
+          AnalysisReport.readableEvidenceText('[Ljava/lang/String;'),
+          'java.lang.String[]',
+        );
+      });
+
+      test('方法引用与调用点的整条样本都可读', () {
+        expect(
+          AnalysisReport.readableEvidenceText(
+            'Lcom/foo/Bar;.baz(Ljava/lang/String;)V '
+            '@ Lcom/foo/Other;.open +0x10',
+          ),
+          'com.foo.Bar.baz(java.lang.String)V '
+          '@ com.foo.Other.open +16',
+        );
+      });
+
+      test('偏移标成十进制（十六进制只是 DEX 里的写法）', () {
+        expect(AnalysisReport.readableEvidenceText('+0x254'), '+596');
+        expect(AnalysisReport.readableEvidenceText('+0x0'), '+0');
+      });
+
+      test('没有描述符的文本原样返回', () {
+        const plain = 'AndroidManifest.xml / manifest / uses-permission';
+        expect(AnalysisReport.readableEvidenceText(plain), plain);
+        expect(
+            AnalysisReport.readableEvidenceText('classes.dex'), 'classes.dex');
+      });
     });
 
     test('没有 coverage 时不出现覆盖一节，也不崩', () {

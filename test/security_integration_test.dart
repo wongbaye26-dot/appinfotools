@@ -300,7 +300,7 @@ void main() {
       // 报告 schema 化（缺陷 D3）：结构版本、报告 ID、输入文件身份、
       // 引擎与规则版本都要在 —— 否则脚本无法判断能不能解析这份报告、
       // 也无法追溯它是用哪套规则跑出来的。
-      expect(json, contains('"reportSchemaVersion": 3'));
+      expect(json, contains('"reportSchemaVersion": 4'));
       expect(json, contains('"reportId"'));
       expect(json, contains('"generatedAt": "2026-10-14T12:00:00.000Z"'));
       expect(json, contains('"inputArtifact"'));
@@ -402,15 +402,16 @@ void main() {
         detailArgs: {'marker': 'ocr-mlkit', 'samples': 'Lfoo;.bar()'},
       );
 
+      // 详情走一遍**可读化**（阶段 4.3）：`Lfoo;.bar()` → `foo.bar()`。
       await LocaleSettings.setLocaleRaw('en');
       expect(
         AnalysisReport.detailText(reference, t),
-        'ocr-mlkit (reference): Lfoo;.bar()',
+        'ocr-mlkit (reference): foo.bar()',
       );
 
       await LocaleSettings.setLocaleRaw('zh-CN');
       final zh = AnalysisReport.detailText(reference, t);
-      expect(zh, 'ocr-mlkit（引用）: Lfoo;.bar()');
+      expect(zh, 'ocr-mlkit（引用）: foo.bar()');
       expect(RegExp(cjk).hasMatch(zh), isTrue);
     });
 

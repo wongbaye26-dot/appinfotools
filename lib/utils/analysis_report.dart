@@ -916,6 +916,29 @@ class AnalysisReport {
         .join(t.security.list_join);
   }
 
+  /// DEX 类型描述符 → 人类可读形式（阶段 4.3）。
+  ///
+  /// - `Lcom/foo/Bar;` → `com.foo.Bar`
+  /// - `[Ljava/lang/String;` → `java.lang.String[]`
+  /// - `+0x10` → `+16`（偏移是**字节**，十六进制只是 DEX 里的写法）
+  ///
+  /// **只改呈现**：引擎数据与 JSON 保留原始描述符 —— 那是能逐字对上
+  /// `dexdump -d` 输出的形式，改了就再也无法和工具输出核对。
+  /// 与「JSON 保留机器 id、UI 显示本地化名字」是同一条原则。
+  static final RegExp _typeDescriptor = RegExp(r'(\[*)L([A-Za-z0-9_/$]+);');
+  static final RegExp _hexOffset = RegExp(r'\+0x([0-9a-fA-F]+)');
+
+  static String readableEvidenceText(String text) {
+    final withoutDescriptors = text.replaceAllMapped(_typeDescriptor, (m) {
+      final arraySuffix = '[]' * m.group(1)!.length;
+      return '${m.group(2)!.replaceAll('/', '.')}$arraySuffix';
+    });
+    return withoutDescriptors.replaceAllMapped(
+      _hexOffset,
+      (m) => '+${int.parse(m.group(1)!, radix: 16)}',
+    );
+  }
+
   /// 证据详情的**本地化正文**，语义同 [findingText]。
   ///
   /// 详情里的标签（「引用」「调用点」「导入」）也是给人读的，此前由引擎直接
@@ -953,7 +976,7 @@ class AnalysisReport {
             ),
       _ => null,
     };
-    return localized ?? evidence.detail;
+    return readableEvidenceText(localized ?? evidence.detail);
   }
 
   /// 证据**位置**的本地化正文。
@@ -971,7 +994,7 @@ class AnalysisReport {
           : t.security.evidence_texts.dex_strings_location(count: count),
       _ => null,
     };
-    return localized ?? evidence.location;
+    return readableEvidenceText(localized ?? evidence.location);
   }
 
   /// 组装「代码引用 / 字符串提及 / 域名 / IP」这类**证据来源分项**。
@@ -1482,7 +1505,11 @@ class AnalysisReport {
   /// v2：`coverage` 从「只有 hasGaps + limitations」扩成含结构化 `entries`。
   /// v3：补 `application.permissions`、`signatureSummary` 的平台详情、
   ///     以及一级字段 `network`。
-  static const int reportSchemaVersion = 3;
+  /// v4：B11 给 `findings[]` 补 `messageCode` / `recommendationCode` /
+  ///     `relationshipCode` / `limitationCode`，给 `evidence[]` 补
+  ///     `detailCode` / `locationCode`。**只增不改**：老消费者忽略新字段即可，
+  ///     但「结构变了」这件事必须让脚本能判断出来。
+  static const int reportSchemaVersion = 4;
 
   static String renderJson(
     PackageAnalysisResult result, {
@@ -1506,7 +1533,11 @@ class AnalysisReport {
                 {
                   'source': e.source.name,
                   'location': e.location,
-                  'detail': e.detail
+                  'detail': e.detail,
+                  // 与 findings 的 `*Code` 同构：程序按 code 取本地化文案，
+                  // `location` / `detail` 是英文回退。
+                  'locationCode': e.locationCode,
+                  'detailCode': e.detailCode,
                 },
             ],
             'dataSource': f.dataSource,
