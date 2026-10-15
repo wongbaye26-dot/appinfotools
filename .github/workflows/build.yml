@@ -412,6 +412,12 @@ jobs:
         #
         # 分类规则按 Conventional Commits 取 type：`type[(scope)][!]:`。
         # 首行必须是 `type: `，否则整条进「其它」—— 宁可噪音多一点，也不能漏。
+        #
+        # **必须允许复合 type。** 本仓的提交风格是 `fix(overview) + docs(audit): ...`
+        # 这种「一个提交同时做两件事、两个 type 都写上」的写法，25 个提交里有 3 条。
+        # 分类器原先只认单个 type，于是这类提交**全部落进「其它」** ——
+        # v2.3.1 的发布页上，本轮最重要的那条修复就在「其它」里躺着。
+        # 归类按**第一个** type（那是这条提交的主类型），冒号前的其余组合允许存在。
         run: |
           set -euo pipefail
           PREV=$(git describe --tags --abbrev=0 'HEAD^' 2>/dev/null || true)
@@ -424,7 +430,10 @@ jobs:
 
           # %s 是提交主题（首行），不带换行；统一加 "- " 前缀，下面各分类都用它。
           SUBJECTS=$(git log --no-merges --pretty='- %s' "$RANGE")
-          TYPED='^[-] (feat|fix|perf|refactor|build|ci|chore|docs|style|test|revert)(\([^)]+\))?!?: '
+          # 冒号之前可能出现的「+ type[(scope)][!]」组合，用来兼容复合写法。
+          TYPES='(feat|fix|perf|refactor|build|ci|chore|docs|style|test|revert)'
+          MORE="([+ ]+${TYPES}(\([^)]+\))?!?)*"
+          TYPED="^[-] ${TYPES}(\([^)]+\))?!?${MORE}: "
 
           emit() {
             # $1 = 小节标题，$2 = 已经筛好的条目；空的一节整节不输出。
@@ -435,19 +444,23 @@ jobs:
           }
 
           # 兼容 POSIX sh（GitHub 的 run 走 bash，但 emit 在子 shell 里也能用）。
+          # $1 = 小节标题，$2 = 这些小节的 type（`|` 分隔）。
+          # 归类的依据是**首个** type —— 一条提交只会进恰好一个小节，
+          # 也因此下面的冒烟断言「列出的条数 == 提交条数」才不会因为重复计数而误报。
           emit_typed() {
-            emit "$1" "$(printf '%s\n' "$SUBJECTS" | grep -E "$2" || true)"
+            emit "$1" "$(printf '%s\n' "$SUBJECTS" \
+              | grep -E "^[-] ($2)(\([^)]+\))?!?${MORE}: " || true)"
           }
 
           {
             printf '## 更新内容\n\n'
-            emit_typed '新功能' "^[-] feat(\([^)]+\))?!?: "
-            emit_typed '修复' "^[-] fix(\([^)]+\))?!?: "
-            emit_typed '重构与优化' "^[-] (perf|refactor)(\([^)]+\))?!?: "
-            emit_typed '工程与构建' "^[-] (build|ci|chore)(\([^)]+\))?!?: "
-            emit_typed '文档' "^[-] docs(\([^)]+\))?!?: "
-            emit_typed '样式' "^[-] style(\([^)]+\))?!?: "
-            emit_typed '测试' "^[-] test(\([^)]+\))?!?: "
+            emit_typed '新功能' 'feat'
+            emit_typed '修复' 'fix'
+            emit_typed '重构与优化' 'perf|refactor'
+            emit_typed '工程与构建' 'build|ci|chore'
+            emit_typed '文档' 'docs'
+            emit_typed '样式' 'style'
+            emit_typed '测试' 'test'
             # 没归进上面任何一类的一条。这里用**否定**而不是 `^` —— `^` 会把
             # 已经列过的再列一遍。
             emit '其它' "$(printf '%s\n' "$SUBJECTS" | grep -Ev "$TYPED" || true)"
