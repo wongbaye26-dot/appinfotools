@@ -728,24 +728,40 @@ class AndroidSecurityAudit {
     //
     // 此前「覆盖了什么」散在 limitations 的句子里，UI 与报告只能各自去猜。
     // 这里收敛成带稳定 id 的数据，两者读同一份。
+    // 覆盖说明用「三件套」：稳定 code + 英文回退 + 占位符实参。
+    //
+    // 引擎层不依赖 slang，产不出本地化文案，因此这里给的是**可映射的 id**；
+    // 呈现层（`AnalysisReport.coverageNote`）按它取本地化文案，认不出来才回退
+    // 到英文。英文是机器/日志语言，与 `CoverageStatus.label`、各 `failure`
+    // 原因一致 —— 此前这里写的是中文，于是英文/日文/韩文报告里会混进中文。
     final coverage = AnalysisCoverage(entries: [
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.manifest',
         status:
             manifestParsed ? CoverageStatus.covered : CoverageStatus.notCovered,
         note: manifestParsed
             ? null
-            : 'AndroidManifest.xml 未能解析'
-                '（${manifestFailureReason ?? '原因未记录'}）',
+            : (
+                'android.manifest.unparsed',
+                'AndroidManifest.xml could not be parsed '
+                    '(${manifestFailureReason ?? 'reason not recorded'})',
+                {'reason': manifestFailureReason ?? 'reason not recorded'},
+              ),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.permissions',
         status:
             manifestParsed ? CoverageStatus.covered : CoverageStatus.notCovered,
         covered: manifestParsed ? meta.permissionRequests.length : null,
-        note: manifestParsed ? null : '清单未解析，权限审计无法进行',
+        note: manifestParsed
+            ? null
+            : (
+                'android.permissions.manifest_unparsed',
+                'Manifest not parsed; the permission audit cannot run',
+                const <String, Object>{},
+              ),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.dex.structure',
         status: dexEntries.isEmpty
             ? CoverageStatus.notCovered
@@ -755,12 +771,21 @@ class AndroidSecurityAudit {
         covered: structures.length - untraversable.length,
         limit: structures.length,
         note: dexEntries.isEmpty
-            ? '未读取到任何 classes.dex 内容'
+            ? (
+                'android.dex.no_content',
+                'No classes.dex content was read',
+                const <String, Object>{},
+              )
             : (untraversable.isEmpty
                 ? null
-                : '${untraversable.length} 个 DEX 结构不可信'),
+                : (
+                    'android.dex.structure_untrusted',
+                    '${untraversable.length} DEX file(s) have an '
+                        'untrustworthy structure',
+                    {'count': untraversable.length},
+                  )),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.dex.strings',
         status: dexEntries.isEmpty
             ? CoverageStatus.notCovered
@@ -769,12 +794,21 @@ class AndroidSecurityAudit {
                 : CoverageStatus.partial),
         covered: scan.scannedBytes,
         note: dexEntries.isEmpty
-            ? '未读取到任何 classes.dex 内容'
+            ? (
+                'android.dex.no_content',
+                'No classes.dex content was read',
+                const <String, Object>{},
+              )
             : (scan.skippedForBudget.isEmpty
                 ? null
-                : '${scan.skippedForBudget.length} 个 DEX 未完整扫描'),
+                : (
+                    'android.dex.strings_not_fully_scanned',
+                    '${scan.skippedForBudget.length} DEX file(s) were not '
+                        'fully scanned',
+                    {'count': scan.skippedForBudget.length},
+                  )),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.dex.methodReferences',
         status: methodScan.scannedDexCount == 0
             ? CoverageStatus.notCovered
@@ -785,12 +819,22 @@ class AndroidSecurityAudit {
         covered: methodScan.scannedDexCount,
         limit: dexEntries.length,
         note: methodScan.scannedDexCount == 0
-            ? '没有结构可信的 DEX，方法引用未分析'
+            ? (
+                'android.dex.no_traversable_dex',
+                'No DEX with a trustworthy structure; method references were '
+                    'not analysed',
+                const <String, Object>{},
+              )
             : (methodScan.skippedEntries > 0
-                ? '${methodScan.skippedEntries} 个 method_ids 条目读不出来'
+                ? (
+                    'android.dex.method_entries_unreadable',
+                    '${methodScan.skippedEntries} method_ids entries could not '
+                        'be read',
+                    {'count': methodScan.skippedEntries},
+                  )
                 : null),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.dex.callSites',
         status: methodScan.walkedDexCount == 0
             ? CoverageStatus.notCovered
@@ -799,12 +843,21 @@ class AndroidSecurityAudit {
                 : CoverageStatus.partial),
         covered: methodScan.callSiteCount,
         note: methodScan.walkedDexCount == 0
-            ? '没有可遍历的 DEX 方法体'
+            ? (
+                'android.dex.no_traversable_bodies',
+                'No DEX method bodies to walk',
+                const <String, Object>{},
+              )
             : (methodScan.desyncedBodies.isEmpty
                 ? null
-                : '${methodScan.desyncedBodies.length} 个方法体指令遍历未对齐'),
+                : (
+                    'android.dex.desynced_bodies',
+                    '${methodScan.desyncedBodies.length} method body(ies) were '
+                        'not instruction-aligned',
+                    {'count': methodScan.desyncedBodies.length},
+                  )),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.nativeSymbols',
         status: nativeEntries.isEmpty
             ? CoverageStatus.notApplicable
@@ -816,18 +869,34 @@ class AndroidSecurityAudit {
         covered: nativeScan.libraries.length,
         limit: nativeEntries.length,
         note: nativeEntries.isEmpty
-            ? '本次未提供原生库内容（没有 lib/**.so 或未读取）'
+            ? (
+                'android.native_symbols.not_provided',
+                'No native library content was provided '
+                    '(no lib/**.so, or none was read)',
+                const <String, Object>{},
+              )
             : (nativeScan.skippedForBudget.isNotEmpty
-                ? '${nativeScan.skippedForBudget.length} 个原生库因预算未分析'
+                ? (
+                    'android.native_symbols.skipped_for_budget',
+                    '${nativeScan.skippedForBudget.length} native library(ies) '
+                        'were skipped due to the budget',
+                    {'count': nativeScan.skippedForBudget.length},
+                  )
                 : null),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'android.arsc',
         status: arscEntryCount == 0
             ? CoverageStatus.notCovered
             : CoverageStatus.covered,
         covered: arscEntryCount,
-        note: arscEntryCount == 0 ? '资源表缺失或解析失败' : null,
+        note: arscEntryCount == 0
+            ? (
+                'android.arsc.missing',
+                'Resource table missing or unparsable',
+                const <String, Object>{},
+              )
+            : null,
       ),
     ]);
 

@@ -52,6 +52,9 @@ class AnalysisReport {
         case PackagePlatform.unknown:
           break;
       }
+      // 分包一致性单列一节。放在平台段之后、安全段之前：它是**结构事实**，
+      // 不是风险结论 —— 混进安全段会被读成「发现了风险」。
+      _splitConsistency(sb, result, t);
     }
     _securitySection(sb, result, t);
     // 「网络」是报告八部分里独立的一部分：从发现项的证据里也能看到域名，
@@ -498,11 +501,56 @@ class AnalysisReport {
       sb.writeln('| ${_escape(coverageDimensionLabel(entry.id, t))} '
           '| ${coverageStatusText(entry.status, t)} '
           '| ${entry.ratioText ?? '—'} '
-          '| ${_escape(entry.note ?? '')} |');
+          '| ${_escape(coverageNote(entry, t) ?? '')} |');
     }
     sb
       ..writeln()
       ..writeln(t.coverage.hint)
+      ..writeln();
+  }
+
+  /// 分包（XAPK / APKM / APKS）一致性。
+  ///
+  /// **只有查过分包才出现** —— `splitConsistency` 为 `null` 表示「没查」
+  ///（单 APK，或本次未做这项检查），此时不渲染空章节：一个空的「分包一致性」
+  /// 小节会被读成「查了没问题」。
+  ///
+  /// 与「解析诊断」分开：那里是给人读的句子，这里是结构化结论
+  ///（比对了几个、有几个不一致、有没有没查到的）。
+  static void _splitConsistency(
+    StringBuffer sb,
+    PackageAnalysisResult result,
+    Translations t,
+  ) {
+    final split = result.splitConsistency;
+    if (split == null) return;
+
+    sb
+      ..writeln('## ${t.report.split_section}')
+      ..writeln()
+      ..writeln(t.report
+          .split_checked(checked: split.checkedCount, total: split.totalCount))
+      ..writeln();
+
+    if (split.isFullyChecked) {
+      sb.writeln('- ${t.report.split_all_checked}');
+    } else {
+      sb.writeln('- ${t.report.split_unchecked(count: split.uncheckedCount)}');
+    }
+
+    if (split.hasIssues) {
+      sb.writeln('- ${t.report.split_issue_count(count: split.issues.length)}');
+      sb.writeln();
+      for (final issue in split.issues) {
+        sb.writeln('- ${_escape(issue)}');
+      }
+    } else {
+      sb.writeln('- ${t.report.split_no_issues}');
+    }
+
+    sb
+      ..writeln()
+      ..writeln(t.report.split_note)
       ..writeln();
   }
 
@@ -555,6 +603,66 @@ class AnalysisReport {
     };
   }
 
+  /// 覆盖说明的**本地化文本**。
+  ///
+  /// 引擎产出的是 [CoverageEntry.noteCode]（稳定 id）+ [CoverageEntry.note]
+  /// （英文回退）—— 引擎层不依赖 slang，产不出本地化文案。这里按 code 取
+  /// 本地化文本，**认不出来就回退到英文 `note`**：
+  ///
+  /// - 宁可显示英文，也不要显示空白 —— 空白会被读成「没什么可说的」；
+  /// - 参数缺失时同样回退，绝不渲染出未替换的 `{count}`。
+  ///
+  /// 没有 `noteCode` 时（老数据 / 测试手工构造）直接返回 `note`。
+  static String? coverageNote(CoverageEntry entry, Translations t) {
+    final code = entry.noteCode;
+    if (code == null) return entry.note;
+
+    final n = t.coverage.notes;
+    final count = entry.noteArgs['count'];
+    final reason = entry.noteArgs['reason'];
+
+    final String? localized = switch (code) {
+      'android.manifest.unparsed' =>
+        reason == null ? null : n.android_manifest_unparsed(reason: reason),
+      'android.permissions.manifest_unparsed' =>
+        n.android_permissions_manifest_unparsed,
+      'android.dex.no_content' => n.android_dex_no_content,
+      'android.dex.structure_untrusted' =>
+        count == null ? null : n.android_dex_structure_untrusted(count: count),
+      'android.dex.strings_not_fully_scanned' => count == null
+          ? null
+          : n.android_dex_strings_not_fully_scanned(count: count),
+      'android.dex.no_traversable_dex' => n.android_dex_no_traversable_dex,
+      'android.dex.method_entries_unreadable' => count == null
+          ? null
+          : n.android_dex_method_entries_unreadable(count: count),
+      'android.dex.no_traversable_bodies' =>
+        n.android_dex_no_traversable_bodies,
+      'android.dex.desynced_bodies' =>
+        count == null ? null : n.android_dex_desynced_bodies(count: count),
+      'android.native_symbols.not_provided' =>
+        n.android_native_symbols_not_provided,
+      'android.native_symbols.skipped_for_budget' => count == null
+          ? null
+          : n.android_native_symbols_skipped_for_budget(count: count),
+      'android.arsc.missing' => n.android_arsc_missing,
+      'ios.info_plist.unparsed' => n.ios_info_plist_unparsed,
+      'ios.usage_descriptions.not_read' => n.ios_usage_descriptions_not_read,
+      'ios.privacy_manifest.absent' => n.ios_privacy_manifest_absent,
+      'ios.executables.unscanned' =>
+        count == null ? null : n.ios_executables_unscanned(count: count),
+      'ios.macho.no_content' => n.ios_macho_no_content,
+      'ios.macho.truncated' => n.ios_macho_truncated,
+      'ios.native_symbols.no_symtab' => n.ios_native_symbols_no_symtab,
+      'ios.native_symbols.unreadable' =>
+        count == null ? null : n.ios_native_symbols_unreadable(count: count),
+      'ios.native_symbols.stripped' => n.ios_native_symbols_stripped,
+      'ios.signature.separate_step' => n.ios_signature_separate_step,
+      _ => null,
+    };
+    return localized ?? entry.note;
+  }
+
   /// 一条覆盖维度在界面上的单行呈现。
   ///
   /// 由 `AnalysisReport` 提供而不是写在页面里：状态文案、维度名、覆盖量的
@@ -562,7 +670,7 @@ class AnalysisReport {
   static String coverageEntryLine(CoverageEntry entry, Translations t) {
     final status = coverageStatusText(entry.status, t);
     final amount = entry.ratioText;
-    final note = entry.note;
+    final note = coverageNote(entry, t);
     return '$status  ${coverageDimensionLabel(entry.id, t)}'
         '${amount == null ? '' : '  $amount'}'
         '${note == null || note.isEmpty ? '' : '  —— $note'}';
@@ -793,10 +901,24 @@ class AnalysisReport {
         'ips': security?.network.ips ?? const <String>[],
       },
 
+      // 分包一致性。`null` 表示**没查**（单 APK 或本次未做这项检查）——
+      // 与「查了没问题」（对象存在且 issues 为空）必须分得开。
+      // 消费方读 `isFullyChecked` 判断结论是否覆盖全部分包。
+      if (!securityOnly)
+        'splitConsistency': switch (result.splitConsistency) {
+          null => null,
+          final s => {
+              'checkedCount': s.checkedCount,
+              'totalCount': s.totalCount,
+              'isFullyChecked': s.isFullyChecked,
+              'uncheckedCount': s.uncheckedCount,
+              'issues': s.issues,
+            },
+        },
+
       'findings': findings,
 
-      // 安全引擎视角的覆盖情况。
-      //
+      // 安全引擎视角的覆盖情况。      //
       // `entries` 是**结构化**的逐维度状态（稳定 id + 可判定状态）；
       // `limitations` 是给人读的句子。两者都在：程序用前者，
       // 人读后者，且不必从文本里反推状态。
@@ -810,6 +932,10 @@ class AnalysisReport {
               'status': entry.status.name,
               'covered': entry.covered,
               'limit': entry.limit,
+              // 程序读 code（稳定），人读 note（英文回退）。两者都在，
+              // 消费方不必从本地化文本里反推「这是哪一类缺口」。
+              'noteCode': entry.noteCode,
+              'noteArgs': entry.noteArgs,
               'note': entry.note,
             },
         ],

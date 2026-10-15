@@ -122,6 +122,17 @@ class ApkMeta {
   /// 因为它直接影响「这个包为什么看起来不正常」的判断。
   List<String> manifestLayoutAnomalies = [];
 
+  /// `AndroidManifest.xml` **解析失败**的原因；成功时为 `null`。
+  ///
+  /// 与「清单里什么都没有」是两件相反的事：后者是事实（这份清单确实没声明
+  /// 任何东西），前者意味着**我们没读到**，据此得出的任何结论都不可靠。
+  /// 没有这个字段时，解析失败只能靠抛异常表达，而调用方看到的只有一个
+  /// 空 `ApkMeta` —— 两者长得一模一样。
+  String? manifestParseFailure;
+
+  /// 清单是否解析失败。
+  bool get manifestUnparsed => manifestParseFailure != null;
+
   @override
   String toString() {
     return 'ApkMeta{packageName: $packageName, versionCode: $versionCode, '

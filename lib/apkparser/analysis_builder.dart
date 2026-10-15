@@ -108,6 +108,7 @@ class AnalysisBuilder {
     ContainerStructure? structure,
     SignatureAnalysis? signature,
     SecurityAnalysisResult? security,
+    SplitConsistency? splitConsistency,
     List<AnalysisDiagnostic> diagnostics = const [],
   }) {
     final hardeningHints = <HardeningHint>[
@@ -167,6 +168,7 @@ class AnalysisBuilder {
       diagnostics: diagnostics,
       android: android,
       security: security,
+      splitConsistency: splitConsistency,
     );
   }
 

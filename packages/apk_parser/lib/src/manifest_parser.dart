@@ -4,9 +4,23 @@ import 'models.dart';
 
 class ManifestParser {
   /// 从二进制 AndroidManifest.xml 解析。
+  ///
+  /// **不抛异常**：畸形字节（空输入、截断、根本不是 AXML）会返回一个**空
+  /// `ApkMeta`**，并把原因写进 [ApkMeta.manifestParseFailure]。
+  ///
+  /// 为什么不是抛异常：调用方拿到的若是异常，就只能整体放弃 —— 而「清单读
+  /// 不出来」本身是一条**要展示给用户的事实**（见 `parse_task` 的
+  /// `manifestParsed: false` 分支）。把它记成数据，调用方才能既继续往下走，
+  /// 又如实说明「这一步没读到」。
   static ApkMeta parse(Uint8List manifestBytes) {
-    final decompressor = BinaryXmlDecompressor();
-    return fromDocument(decompressor.decompressToDocument(manifestBytes));
+    try {
+      final decompressor = BinaryXmlDecompressor();
+      return fromDocument(decompressor.decompressToDocument(manifestBytes));
+    } catch (e) {
+      final meta = ApkMeta();
+      meta.manifestParseFailure = e.toString();
+      return meta;
+    }
   }
 
   /// 从已反编译的文档树解析。

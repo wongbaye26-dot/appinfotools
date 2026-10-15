@@ -222,7 +222,11 @@ void main() {
       expect(structure.status, CoverageStatus.partial);
       expect(structure.covered, 1);
       expect(structure.limit, 2);
-      expect(structure.note, contains('1 个 DEX 结构不可信'));
+      // 引擎只产出「稳定 code + 英文回退 + 参数」，本地化在呈现层做（COV-3）。
+      // 此前这里断言的是引擎直接吐出的中文 —— 那正是缺陷本身。
+      expect(structure.noteCode, 'android.dex.structure_untrusted');
+      expect(structure.noteArgs['count'], 1);
+      expect(structure.note, contains('1 DEX file(s)'));
     });
   });
 
@@ -521,6 +525,184 @@ void main() {
           final key = id.replaceAll('.', '_');
           expect(dimensions![key], isNotEmpty, reason: '$locale 缺维度名 $key');
         }
+      }
+    });
+  });
+
+  // 缺陷 COV-3 的回归测试（见 docs/plans/V2.4.0_PROGRESS.md §11.5）。
+  //
+  // 背景：`CoverageEntry.note` 是引擎直接产出的**自由文本**，两个引擎写的都是
+  // 中文，而引擎层（`analysis_model` / `apk_parser` / `ipa_parser`）都不依赖
+  // slang —— 结果英文/日文/韩文报告里混进中文。现在引擎只产出
+  // 「稳定 code + 英文回退 + 参数」，本地化交给呈现层。
+  group('覆盖说明的本地化（COV-3 回归）', () {
+    /// 两个引擎实际会产出的全部 note code。**故意写死**：新增 code 时这条会红，
+    /// 提醒补语言包，而不是让界面悄悄显示英文。
+    const allNoteCodes = <String>[
+      'android.manifest.unparsed',
+      'android.permissions.manifest_unparsed',
+      'android.dex.no_content',
+      'android.dex.structure_untrusted',
+      'android.dex.strings_not_fully_scanned',
+      'android.dex.no_traversable_dex',
+      'android.dex.method_entries_unreadable',
+      'android.dex.no_traversable_bodies',
+      'android.dex.desynced_bodies',
+      'android.native_symbols.not_provided',
+      'android.native_symbols.skipped_for_budget',
+      'android.arsc.missing',
+      'ios.info_plist.unparsed',
+      'ios.usage_descriptions.not_read',
+      'ios.privacy_manifest.absent',
+      'ios.executables.unscanned',
+      'ios.macho.no_content',
+      'ios.macho.truncated',
+      'ios.native_symbols.no_symtab',
+      'ios.native_symbols.unreadable',
+      'ios.native_symbols.stripped',
+      'ios.signature.separate_step',
+    ];
+
+    /// 带参数的两个：`count` 与 `reason`。
+    const codeWithCount = 'android.dex.desynced_bodies';
+    const codeWithReason = 'android.manifest.unparsed';
+
+    CoverageEntry entryWith(String code) => CoverageEntry(
+          id: 'android.manifest',
+          status: CoverageStatus.partial,
+          noteCode: code,
+          note: 'ENGLISH FALLBACK',
+          noteArgs: {
+            'count': 3,
+            'reason': 'boom',
+          },
+        );
+
+    test('每个 note code 都能取到本地化文案，且不留未替换的占位符', () {
+      for (final code in allNoteCodes) {
+        final text = AnalysisReport.coverageNote(entryWith(code), t);
+        expect(text, isNotNull, reason: '$code 没有文案');
+        expect(text, isNotEmpty, reason: '$code 文案为空');
+        expect(text, isNot('ENGLISH FALLBACK'),
+            reason: '$code 回退到了英文 —— 说明 code 没被识别');
+        expect(text, isNot(contains('{')), reason: '$code 渲染出了未替换的占位符：$text');
+        expect(text, isNot(contains('Closure')),
+            reason: '$code 把函数对象插进了字符串：$text');
+      }
+    });
+
+    test('带参的 code 把参数替换进去', () {
+      final countText =
+          AnalysisReport.coverageNote(entryWith(codeWithCount), t);
+      expect(countText, contains('3'), reason: '数量参数没被替换：$countText');
+
+      final reasonText =
+          AnalysisReport.coverageNote(entryWith(codeWithReason), t);
+      expect(reasonText, contains('boom'), reason: '原因参数没被替换：$reasonText');
+    });
+
+    test('未知 code 回退到英文 note，而不是显示空白', () {
+      final entry = CoverageEntry(
+        id: 'android.manifest',
+        status: CoverageStatus.partial,
+        noteCode: 'android.future.something_new',
+        note: 'Fallback text',
+      );
+      expect(AnalysisReport.coverageNote(entry, t), 'Fallback text');
+    });
+
+    test('参数缺失时回退到英文 note，而不是渲染出 {count}', () {
+      final entry = CoverageEntry(
+        id: 'android.manifest',
+        status: CoverageStatus.partial,
+        noteCode: codeWithCount,
+        note: 'Fallback text',
+        // 故意不传 count
+      );
+      final text = AnalysisReport.coverageNote(entry, t);
+      expect(text, 'Fallback text');
+      expect(text, isNot(contains('{')));
+    });
+
+    test('没有 noteCode 时直接用 note（老数据 / 手工构造）', () {
+      const entry = CoverageEntry(
+        id: 'android.manifest',
+        status: CoverageStatus.partial,
+        note: 'Plain note',
+      );
+      expect(AnalysisReport.coverageNote(entry, t), 'Plain note');
+    });
+
+    test('UI 单行格式用的是本地化说明', () {
+      final line =
+          AnalysisReport.coverageEntryLine(entryWith(codeWithCount), t);
+      expect(line, contains('3'));
+      expect(line, isNot(contains('ENGLISH FALLBACK')));
+    });
+
+    test('维护中的语言包带齐 22 条说明，且中文确实翻译过', () {
+      const mustHave = ['en', 'zh-CN', 'zh-HK', 'zh-TW'];
+      const mayFallback = ['ja', 'ko'];
+
+      Map<String, dynamic> readNotes(String locale) {
+        final json =
+            jsonDecode(File('assets/i18n/$locale.json').readAsStringSync())
+                as Map<String, dynamic>;
+        final coverage = json['coverage'] as Map<String, dynamic>? ?? const {};
+        return (coverage['notes'] as Map<String, dynamic>?) ?? const {};
+      }
+
+      final en = readNotes('en');
+      for (final code in allNoteCodes) {
+        expect(en[code.replaceAll('.', '_')], isNotEmpty,
+            reason: 'en 缺说明 $code');
+      }
+
+      for (final locale in [...mustHave, ...mayFallback]) {
+        final notes = readNotes(locale);
+        if (notes.isEmpty) {
+          expect(mayFallback, contains(locale),
+              reason: '$locale 必须带 notes 段，不允许回退');
+          continue;
+        }
+        for (final code in allNoteCodes) {
+          final key = code.replaceAll('.', '_');
+          expect(notes[key], isNotEmpty, reason: '$locale 缺说明 $key');
+        }
+      }
+
+      // 中文包不能照抄英文 —— 那等于「翻译了但没翻」。
+      for (final locale in ['zh-CN', 'zh-HK', 'zh-TW']) {
+        final notes = readNotes(locale);
+        final identical = [
+          for (final code in allNoteCodes)
+            if (notes[code.replaceAll('.', '_')] ==
+                en[code.replaceAll('.', '_')])
+              code,
+        ];
+        expect(identical, isEmpty,
+            reason: '$locale 有 ${identical.length} 条与英文完全相同：$identical');
+      }
+    });
+
+    test('引擎产出的说明不含中文（引擎层只产出英文）', () {
+      // 真实跑一次 Android 审计：manifest 未解析时覆盖率会产出多条说明。
+      final result = AndroidSecurityAudit.audit(
+        meta: ApkMeta(),
+        dexEntries: const [],
+        manifestParsed: false,
+        manifestFailureReason: 'unit test',
+      );
+
+      final cjk = RegExp(r'[\u4e00-\u9fff]');
+      expect(result.coverage.entries, isNotEmpty);
+      for (final entry in result.coverage.entries) {
+        final note = entry.note;
+        if (note == null) continue;
+        expect(cjk.hasMatch(note), isFalse,
+            reason: '${entry.id} 的说明里混进了中文：$note');
+        expect(entry.noteCode, isNotNull,
+            reason: '${entry.id} 有说明却没有 noteCode —— 界面将无法本地化');
       }
     });
   });

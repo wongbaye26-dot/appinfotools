@@ -52,6 +52,20 @@ class ApkReader {
   /// 因此记为异常供上层参考，而不是直接判死。
   String? structureAnomaly;
 
+  /// 最近一次 [parse] 里 manifest 未能解析的原因；成功时为 `null`。
+  ///
+  /// [parse] 在「文件里没有 manifest」与「manifest 解析失败」两种情况下都
+  /// 返回 `null`，但这两件事的措辞不该一样 —— 前者是事实，后者意味着
+  /// 我们没读到。调用方读这个字段来区分。
+  String? manifestFailure;
+
+  /// 最近一次 [parse] 里 `resources.arsc` 解析失败的原因；成功或没有该文件
+  /// 时为 `null`。
+  ///
+  /// 与「资源表里没有这一项」分开：`ApkMeta.hasNightMode` 保持 `null` 表示
+  /// 「没读到」，而这个字段说明**为什么**没读到。
+  String? arscParseFailure;
+
   /// 打开 APK 文件（ZIP 格式）。
   ///
   /// 返回具体的失败原因而非笼统的 `false`：调用方需要区分
@@ -170,13 +184,24 @@ class ApkReader {
     // 1. 读取并解析 AndroidManifest.xml
     onStage?.call(ApkParseStage.manifest);
     final manifestFile = archive.findFile('AndroidManifest.xml');
-    if (manifestFile == null) return null;
+    if (manifestFile == null) {
+      // 「文件里没有」与「我们没读到」要分得开：两者都会让 parse 返回 null，
+      // 但原因不同，报告里的措辞也该不同。
+      manifestFailure = 'AndroidManifest.xml not found in the archive';
+      return null;
+    }
     final rawManifestBytes = manifestFile.content;
     final manifestBytes =
         rawManifestBytes.buffer.lengthInBytes == rawManifestBytes.length
             ? rawManifestBytes
             : Uint8List.fromList(rawManifestBytes);
     final meta = ManifestParser.parse(manifestBytes);
+    if (meta.manifestUnparsed) {
+      manifestFailure = 'AndroidManifest.xml could not be parsed: '
+          '${meta.manifestParseFailure}';
+      return null;
+    }
+    manifestFailure = null;
     // 记下来供 scanHardeningSignals 使用 —— manifest 层的加固线索只能在
     // 解析之后才有，而那个方法是在 parse 之后被调用的。
     _meta = meta;
@@ -191,19 +216,22 @@ class ApkReader {
       final arscBytes = rawArscBytes.buffer.lengthInBytes == rawArscBytes.length
           ? rawArscBytes
           : Uint8List.fromList(rawArscBytes);
-      try {
-        _arscParser = ArscParser(arscBytes);
+      final parser = ArscParser(arscBytes);
+      if (parser.parseFailure != null) {
+        // 资源表读不出来不影响基本信息，但要把原因记下来 ——
+        // 「资源表解析失败」与「资源表里没有这一项」是两件事。
+        arscParseFailure = parser.parseFailure;
+        _log.warning('arsc parse failed: ${parser.parseFailure}');
+      } else {
+        _arscParser = parser;
         _resolveLabel(meta);
         _resolveIconPaths(meta);
-        meta.locales = _arscParser!.getLocales().toList();
-        meta.densities = _arscParser!.getDensities().toList();
+        meta.locales = parser.getLocales().toList();
+        meta.densities = parser.getDensities().toList();
         // 只有资源表真的解析成功了才设这两项 —— 保持 `null` 表示「没读到」，
         // 免得把「资源表解析失败」呈现成「没有夜间资源」。
-        meta.hasNightMode = _arscParser!.hasNightModeResources;
-        meta.uiModeTypes = _arscParser!.getUiModeTypes();
-      } catch (e, stackTrace) {
-        // arsc 解析失败不影响基本信息，但记录详细错误便于排查
-        _log.warning('arsc parse failed: $e\n$stackTrace');
+        meta.hasNightMode = parser.hasNightModeResources;
+        meta.uiModeTypes = parser.getUiModeTypes();
       }
     }
 

@@ -213,20 +213,22 @@ void _parseEntryPoint(_ParseRequest request) async {
       // Manifest 读不出来时**仍然跑一次审计**，把「没查」明确说出来。
       // 早先这里只回一个 reason，界面上安全 Tab 就是一片空白 —— 用户分不清
       // 「没查到问题」与「根本没审」，而这两件事的结论完全相反。
+      //
+      // 原因取 `reader.manifestFailure`：它区分「归档里没有这个文件」与
+      // 「有，但解析失败」—— 后者说明包被做过手脚，措辞不该和前者一样。
+      final reason =
+          reader.manifestFailure ?? 'AndroidManifest.xml missing or unreadable';
       final failedSecurity = AndroidSecurityAudit.audit(
         meta: ApkMeta(),
         dexEntries: const [],
         manifestParsed: false,
-        manifestFailureReason: 'AndroidManifest.xml missing or unreadable',
+        manifestFailureReason: reason,
         containerAnomalies: [
           for (final obs in reader.scanHardeningSignals()) obs.evidence,
           if (reader.structureAnomaly case final anomaly?) anomaly,
         ],
       );
-      request.reply.send(ParseFailed(
-        'AndroidManifest.xml missing or unreadable',
-        security: failedSecurity,
-      ));
+      request.reply.send(ParseFailed(reason, security: failedSecurity));
       return;
     }
 

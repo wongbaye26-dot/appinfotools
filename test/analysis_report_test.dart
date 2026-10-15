@@ -33,6 +33,7 @@ PackageAnalysisResult _android({
   List<HardeningHint> hints = const [],
   List<AnalysisDiagnostic> diagnostics = const [],
   SecurityAnalysisResult? security,
+  SplitConsistency? splitConsistency,
 }) =>
     PackageAnalysisResult(
       platform: PackagePlatform.android,
@@ -98,6 +99,7 @@ PackageAnalysisResult _android({
         structure: const ContainerStructure(fileEntryCount: 12),
       ),
       security: security,
+      splitConsistency: splitConsistency,
     );
 
 PackageAnalysisResult _ios({
@@ -652,6 +654,105 @@ void main() {
         reason: '只给结论不给详情时，JSON 消费者看不到用的是哪个签名方案',
       );
       expect(json, contains('"toolExecuted"'));
+    });
+  });
+
+  group('AnalysisReport — 分包一致性（RPT）', () {
+    test('没查分包时不渲染空章节（空章节会被读成「查了没问题」）', () {
+      final report = AnalysisReport.render(_android(), t, generatedAt: _at);
+      expect(report, isNot(contains('## ${t.report.split_section}')));
+    });
+
+    test('查过且有分包时单列一节，给出比对数量与结论', () {
+      final report = AnalysisReport.render(
+        _android(
+          splitConsistency: const SplitConsistency(
+            checkedCount: 2,
+            totalCount: 2,
+          ),
+        ),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(report, contains('## ${t.report.split_section}'));
+      expect(report, contains(t.report.split_all_checked));
+      expect(report, contains(t.report.split_no_issues));
+      expect(report, contains(t.report.split_note));
+    });
+
+    test('抽检没查完时明确说明未比对数量，而不是说「没问题」', () {
+      final report = AnalysisReport.render(
+        _android(
+          splitConsistency:
+              const SplitConsistency(checkedCount: 1, totalCount: 4),
+        ),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(report, contains(t.report.split_unchecked(count: 3)));
+      expect(report, isNot(contains(t.report.split_all_checked)));
+    });
+
+    test('发现不一致时逐条列出', () {
+      final report = AnalysisReport.render(
+        _android(
+          splitConsistency: const SplitConsistency(
+            issues: ['split_config.en: packageName differs from base'],
+            checkedCount: 1,
+            totalCount: 1,
+          ),
+        ),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(report, contains(t.report.split_issue_count(count: 1)));
+      expect(
+          report, contains('split_config.en: packageName differs from base'));
+      expect(report, isNot(contains(t.report.split_no_issues)));
+    });
+
+    test('JSON 里 splitConsistency 是结构化的，没查时为 null', () {
+      final notChecked = AnalysisReport.renderJson(
+        _android(),
+        generatedAt: _at,
+        t: t,
+      );
+      expect(notChecked, contains('"splitConsistency": null'));
+
+      final checked = AnalysisReport.renderJson(
+        _android(
+          splitConsistency: const SplitConsistency(
+            issues: ['a differs'],
+            checkedCount: 1,
+            totalCount: 3,
+          ),
+        ),
+        generatedAt: _at,
+        t: t,
+      );
+      expect(checked, contains('"checkedCount": 1'));
+      expect(checked, contains('"totalCount": 3'));
+      expect(checked, contains('"isFullyChecked": false'));
+      expect(checked, contains('"uncheckedCount": 2'));
+      expect(checked, contains('"a differs"'));
+    });
+
+    test('「仅安全检测」范围不含分包章节（它是结构事实，不是安全结论）', () {
+      final report = AnalysisReport.render(
+        _android(
+          splitConsistency: const SplitConsistency(
+            checkedCount: 1,
+            totalCount: 1,
+          ),
+        ),
+        t,
+        generatedAt: _at,
+        securityOnly: true,
+      );
+      expect(report, isNot(contains('## ${t.report.split_section}')));
     });
   });
 }

@@ -371,4 +371,41 @@ void main() {
       }
     });
   });
+
+  group('SplitConsistency — 「没查」与「查了没问题」分开', () {
+    test('没查时整体为 null，而不是空报告', () {
+      // 调用方用 null 表示「没查」；空报告会被读成「查了，没问题」。
+      const SplitConsistency? notChecked = null;
+      expect(notChecked, isNull);
+    });
+
+    test('查了没问题：issues 为空且全部比过', () {
+      const split = SplitConsistency(checkedCount: 3, totalCount: 3);
+      expect(split.hasIssues, isFalse);
+      expect(split.isFullyChecked, isTrue);
+      expect(split.uncheckedCount, 0);
+    });
+
+    test('抽检有上限时 isFullyChecked 为 false，且给出未比对数量', () {
+      const split = SplitConsistency(checkedCount: 2, totalCount: 5);
+      expect(split.isFullyChecked, isFalse, reason: '只比了 2 个不能说「全部分包都没问题」');
+      expect(split.uncheckedCount, 3);
+    });
+
+    test('发现不一致时 hasIssues 为 true', () {
+      const split = SplitConsistency(
+        issues: ['split_config.arm64_v8a: versionCode 7 != base 6'],
+        checkedCount: 1,
+        totalCount: 1,
+      );
+      expect(split.hasIssues, isTrue);
+      expect(split.isFullyChecked, isTrue);
+    });
+
+    test('totalCount 为 0 时不算「全部比过」（没有分包可比）', () {
+      const split = SplitConsistency();
+      expect(split.isFullyChecked, isFalse);
+      expect(split.uncheckedCount, 0);
+    });
+  });
 }

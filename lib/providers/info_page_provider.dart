@@ -215,6 +215,16 @@ class FileState {
       // 报告里永远是空的。iOS 侧同一个缺陷已修（见上面 buildIos 的注释），
       // 这里补齐 —— 「没读到」不能长得像「没有可说的」。
       diagnostics: info.diagnostics,
+      // 应用层的 `SplitConsistencyReport` 是产出方，报告只认识平台中立的
+      // `SplitConsistency` —— 在这里做一次映射，而不是让报告去依赖应用层。
+      splitConsistency: switch (info.splitConsistency) {
+        null => null,
+        final s => SplitConsistency(
+            issues: s.issues,
+            checkedCount: s.checkedCount,
+            totalCount: s.totalCount,
+          ),
+      },
     );
   }
 

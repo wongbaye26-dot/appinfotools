@@ -712,32 +712,51 @@ class IosPrivacyAudit {
     //
     // 与 Android 侧同一套模型：把「覆盖了什么」从 limitations 的句子里收敛成
     // 带稳定 id 的数据，UI 与报告读同一份。
+    // 覆盖说明用「三件套」：稳定 code + 英文回退 + 占位符实参（见
+    // `CoverageEntry.noted`）。此前这里写的是中文，而本包不依赖 slang，
+    // 于是英文/日文/韩文报告里会混进中文。
     final coverage = AnalysisCoverage(entries: [
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.infoPlist',
         status: usage.hasValue || infoPlist.raw != null
             ? CoverageStatus.covered
             : CoverageStatus.notCovered,
-        note:
-            usage.hasValue || infoPlist.raw != null ? null : 'Info.plist 未能解析',
+        note: usage.hasValue || infoPlist.raw != null
+            ? null
+            : (
+                'ios.info_plist.unparsed',
+                'Info.plist could not be parsed',
+                const <String, Object>{},
+              ),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.usageDescriptions',
         status:
             usage.hasValue ? CoverageStatus.covered : CoverageStatus.notCovered,
         covered: usage.hasValue ? usage.value!.length : null,
-        note: usage.hasValue ? null : 'Info.plist 未解析，用途说明未读取',
+        note: usage.hasValue
+            ? null
+            : (
+                'ios.usage_descriptions.not_read',
+                'Info.plist not parsed; usage descriptions were not read',
+                const <String, Object>{},
+              ),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.privacyManifest',
         status: infoPlist.privacyInfo.hasValue
             ? CoverageStatus.covered
             : CoverageStatus.notApplicable,
         note: infoPlist.privacyInfo.hasValue
             ? null
-            : '本 bundle 没有 PrivacyInfo.xcprivacy（iOS 17 之前不需要）',
+            : (
+                'ios.privacy_manifest.absent',
+                'No PrivacyInfo.xcprivacy in this bundle '
+                    '(not required before iOS 17)',
+                const <String, Object>{},
+              ),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.executables',
         status: targets.isEmpty
             ? CoverageStatus.notCovered
@@ -748,19 +767,35 @@ class IosPrivacyAudit {
                     : CoverageStatus.partial)),
         covered: scannedPaths.length,
         limit: targets.length,
-        note: unscanned.isEmpty ? null : '${unscanned.length} 个可执行文件未参与扫描',
+        note: unscanned.isEmpty
+            ? null
+            : (
+                'ios.executables.unscanned',
+                '${unscanned.length} executable(s) were not scanned',
+                {'count': unscanned.length},
+              ),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.macho.strings',
         status: scannedPaths.isEmpty
             ? CoverageStatus.notCovered
             : (truncated ? CoverageStatus.partial : CoverageStatus.covered),
         covered: scanned,
         note: scannedPaths.isEmpty
-            ? '未能读取任何 Mach-O 可执行文件的内容'
-            : (truncated ? '部分可执行文件超过单文件扫描预算' : null),
+            ? (
+                'ios.macho.no_content',
+                'No Mach-O executable content could be read',
+                const <String, Object>{},
+              )
+            : (truncated
+                ? (
+                    'ios.macho.truncated',
+                    'Some executables exceeded the per-file scan budget',
+                    const <String, Object>{},
+                  )
+                : null),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.nativeSymbols',
         status: nativeResult.scannedImages == 0
             ? CoverageStatus.notCovered
@@ -770,19 +805,38 @@ class IosPrivacyAudit {
                 : CoverageStatus.covered),
         covered: nativeResult.scannedImages,
         note: nativeResult.scannedImages == 0
-            ? '没有可读符号表的 Mach-O 镜像'
+            ? (
+                'ios.native_symbols.no_symtab',
+                'No Mach-O image with a readable symbol table',
+                const <String, Object>{},
+              )
             : (nativeResult.unreadableImages.isNotEmpty
-                ? '${nativeResult.unreadableImages.length} 个镜像的符号表越界'
+                ? (
+                    'ios.native_symbols.unreadable',
+                    '${nativeResult.unreadableImages.length} image(s) had an '
+                        'out-of-range symbol table',
+                    {'count': nativeResult.unreadableImages.length},
+                  )
                 : (nativeResult.hasImageWithoutSymtab
-                    ? '部分镜像没有 LC_SYMTAB（符号表被剥离）'
+                    ? (
+                        'ios.native_symbols.stripped',
+                        'Some images have no LC_SYMTAB '
+                            '(symbol table stripped)',
+                        const <String, Object>{},
+                      )
                     : null)),
       ),
-      CoverageEntry(
+      CoverageEntry.noted(
         id: 'ios.signature',
         // 签名验证由 codesign 在**主 isolate** 单独执行，不在本审计里 ——
         // 标 notApplicable 而不是 notCovered，避免报告凭空多出一个假缺口。
         status: CoverageStatus.notApplicable,
-        note: '签名验证由 codesign 单独执行，见签名信息卡片',
+        note: (
+          'ios.signature.separate_step',
+          'Signature verification is performed separately by codesign; '
+              'see the signature card',
+          const <String, Object>{},
+        ),
       ),
     ]);
 

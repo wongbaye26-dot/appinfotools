@@ -406,6 +406,14 @@
     "network_domains": "網域",
     "network_ips": "IP 位址",
     "network_hint": "靜態提取不等於執行時實際存取過 —— 網域可能來自設定項、SDK 位址或從未連線的備用端點。"
+  ,
+    "split_section": "分包一致性",
+    "split_checked": "已比對 {checked}/{total} 個分包",
+    "split_all_checked": "全部分包都已比對",
+    "split_unchecked": "{count} 個分包未參與比對",
+    "split_no_issues": "未發現分包與 base 不一致",
+    "split_issue_count": "發現 {count} 處不一致",
+    "split_note": "分包必須與 base 聲明相同的包名與 versionCode；不一致說明這個包被改過或拼裝過。"
   },
   "about": {
     "features": {
@@ -474,6 +482,30 @@
       "ios_macho_strings": "Mach-O 字串",
       "ios_nativeSymbols": "原生庫符號",
       "ios_signature": "簽名"
+    },
+    "notes": {
+      "android_manifest_unparsed": "AndroidManifest.xml 無法解析（{reason}）",
+      "android_permissions_manifest_unparsed": "清單未解析，權限審計無法進行",
+      "android_dex_no_content": "未讀取到任何 classes.dex 內容",
+      "android_dex_structure_untrusted": "{count} 個 DEX 結構不可信",
+      "android_dex_strings_not_fully_scanned": "{count} 個 DEX 未完整掃描",
+      "android_dex_no_traversable_dex": "沒有結構可信的 DEX，方法引用未分析",
+      "android_dex_method_entries_unreadable": "{count} 個 method_ids 條目讀不出來",
+      "android_dex_no_traversable_bodies": "沒有可遍歷的 DEX 方法體",
+      "android_dex_desynced_bodies": "{count} 個方法體指令遍歷未對齊",
+      "android_native_symbols_not_provided": "本次未提供原生庫內容（沒有 lib/**.so 或未讀取）",
+      "android_native_symbols_skipped_for_budget": "{count} 個原生庫因預算未分析",
+      "android_arsc_missing": "資源表缺失或解析失敗",
+      "ios_info_plist_unparsed": "Info.plist 未能解析",
+      "ios_usage_descriptions_not_read": "Info.plist 未解析，用途說明未讀取",
+      "ios_privacy_manifest_absent": "本 bundle 沒有 PrivacyInfo.xcprivacy（iOS 17 之前不需要）",
+      "ios_executables_unscanned": "{count} 個可執行檔未參與掃描",
+      "ios_macho_no_content": "未能讀取任何 Mach-O 可執行檔的內容",
+      "ios_macho_truncated": "部分可執行檔超過單檔掃描預算",
+      "ios_native_symbols_no_symtab": "沒有可讀符號表的 Mach-O 映像",
+      "ios_native_symbols_unreadable": "{count} 個映像的符號表越界",
+      "ios_native_symbols_stripped": "部分映像沒有 LC_SYMTAB（符號表被剝離）",
+      "ios_signature_separate_step": "簽名驗證由 codesign 單獨執行，見簽名資訊卡片"
     }
 
   }

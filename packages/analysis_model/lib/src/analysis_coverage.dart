@@ -28,6 +28,12 @@ enum CoverageStatus {
       };
 }
 
+/// 一条覆盖说明的三件套：稳定 code / 英文回退文本 / 占位符实参。
+///
+/// 命名规则：`<平台>.<维度>.<原因>`，全小写下划线；把 `.` 换成 `_`
+/// 就是语言包里的键名。
+typedef CoverageNote = (String, String, Map<String, Object>);
+
 /// 一条覆盖维度。
 ///
 /// 存在的意义是把覆盖率从「散落各处的说明文本」收敛成**结构化数据**：
@@ -52,9 +58,28 @@ class CoverageEntry {
 
   /// 说明：截断原因、读不到的原因。
   ///
-  /// 完整覆盖时通常为 `null`。措辞由产出它的引擎给出（与 `limitations`
-  /// 同一套口径），UI 原样展示。
+  /// 完整覆盖时通常为 `null`。**这是机器语言（英文）的自由文本**，用于日志与
+  /// JSON；界面与报告应当优先用 [noteCode] 走本地化（见 [AnalysisReport]）。
+  ///
+  /// 之所以留一个自由文本字段：`noteCode` 认不出来时（新引擎 + 旧界面）
+  /// 至少要能显示**某句话**，而不是一片空白 —— 那会让「没覆盖」看起来像
+  /// 「没什么可说的」。
   final String? note;
+
+  /// 说明的**稳定标识**，例如 `android.dex.strings_not_fully_scanned`。
+  ///
+  /// 引擎层（`apk_parser` / `ipa_parser`）不依赖 slang，产不出本地化文案，
+  /// 因此这里给的是**可映射的 id**：呈现层按它取本地化文案。
+  ///
+  /// 命名规则：`<平台>.<维度>.<原因>`，全小写下划线；把 `.` 换成 `_`
+  /// 就是语言包里的键名。为 `null` 时呈现层回退到 [note]。
+  final String? noteCode;
+
+  /// [noteCode] 的占位符实参，例如 `{'count': 3}`。
+  ///
+  /// 值用 `Object` 而不是 `String`：数量这类东西在 JSON 里应当是数字，
+  /// 由呈现层决定怎么显示。
+  final Map<String, Object> noteArgs;
 
   const CoverageEntry({
     required this.id,
@@ -62,7 +87,31 @@ class CoverageEntry {
     this.covered,
     this.limit,
     this.note,
+    this.noteCode,
+    this.noteArgs = const {},
   });
+
+  /// 从一个「三件套」建条目 —— [note] / [noteCode] / [noteArgs] 同进同退。
+  ///
+  /// 引擎层（`apk_parser` / `ipa_parser`）不依赖 slang，只能给出稳定 code +
+  /// 英文回退 + 参数；用这个工厂把三件事绑在一起，避免「改了一处漏了另一处」
+  /// —— 只给 note 会让界面显示英文，只给 code 而语言包缺键会显示空白。
+  factory CoverageEntry.noted({
+    required String id,
+    required CoverageStatus status,
+    int? covered,
+    int? limit,
+    CoverageNote? note,
+  }) =>
+      CoverageEntry(
+        id: id,
+        status: status,
+        covered: covered,
+        limit: limit,
+        note: note?.$2,
+        noteCode: note?.$1,
+        noteArgs: note?.$3 ?? const {},
+      );
 
   /// 该维度是否是**缺口**（部分覆盖或完全没覆盖）。
   bool get isGap =>

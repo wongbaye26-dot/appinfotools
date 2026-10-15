@@ -406,6 +406,14 @@
     "network_domains": "域名",
     "network_ips": "IP 地址",
     "network_hint": "静态提取不等于运行时实际访问过 —— 域名可能来自配置项、SDK 地址或从未连接的备用端点。"
+  ,
+    "split_section": "分包一致性",
+    "split_checked": "已比对 {checked}/{total} 个分包",
+    "split_all_checked": "全部分包都已比对",
+    "split_unchecked": "{count} 个分包未参与比对",
+    "split_no_issues": "未发现分包与 base 不一致",
+    "split_issue_count": "发现 {count} 处不一致",
+    "split_note": "分包必须与 base 声明相同的包名与 versionCode；不一致说明这个包被改过或拼装过。"
   },
   "about": {
     "features": {
@@ -474,6 +482,30 @@
       "ios_macho_strings": "Mach-O 字符串",
       "ios_nativeSymbols": "原生库符号",
       "ios_signature": "签名"
+    },
+    "notes": {
+      "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",
+      "android_permissions_manifest_unparsed": "清单未解析，权限审计无法进行",
+      "android_dex_no_content": "未读取到任何 classes.dex 内容",
+      "android_dex_structure_untrusted": "{count} 个 DEX 结构不可信",
+      "android_dex_strings_not_fully_scanned": "{count} 个 DEX 未完整扫描",
+      "android_dex_no_traversable_dex": "没有结构可信的 DEX，方法引用未分析",
+      "android_dex_method_entries_unreadable": "{count} 个 method_ids 条目读不出来",
+      "android_dex_no_traversable_bodies": "没有可遍历的 DEX 方法体",
+      "android_dex_desynced_bodies": "{count} 个方法体指令遍历未对齐",
+      "android_native_symbols_not_provided": "本次未提供原生库内容（没有 lib/**.so 或未读取）",
+      "android_native_symbols_skipped_for_budget": "{count} 个原生库因预算未分析",
+      "android_arsc_missing": "资源表缺失或解析失败",
+      "ios_info_plist_unparsed": "Info.plist 未能解析",
+      "ios_usage_descriptions_not_read": "Info.plist 未解析，用途说明未读取",
+      "ios_privacy_manifest_absent": "本 bundle 没有 PrivacyInfo.xcprivacy（iOS 17 之前不需要）",
+      "ios_executables_unscanned": "{count} 个可执行文件未参与扫描",
+      "ios_macho_no_content": "未能读取任何 Mach-O 可执行文件的内容",
+      "ios_macho_truncated": "部分可执行文件超过单文件扫描预算",
+      "ios_native_symbols_no_symtab": "没有可读符号表的 Mach-O 镜像",
+      "ios_native_symbols_unreadable": "{count} 个镜像的符号表越界",
+      "ios_native_symbols_stripped": "部分镜像没有 LC_SYMTAB（符号表被剥离）",
+      "ios_signature_separate_step": "签名验证由 codesign 单独执行，见签名信息卡片"
     }
 
   }

@@ -19,3 +19,4 @@ export 'src/signature_status.dart';
 export 'src/native_symbol_markers.dart';
 export 'src/analysis_coverage.dart';
 export 'src/network_facts.dart';
+export 'src/split_consistency.dart';

@@ -407,6 +407,14 @@
     "network_domains": "Domains",
     "network_ips": "IP addresses",
     "network_hint": "Static extraction does not mean these endpoints were actually contacted at runtime."
+  ,
+    "split_section": "Split consistency",
+    "split_checked": "{checked} of {total} split(s) were compared",
+    "split_all_checked": "All splits were compared",
+    "split_unchecked": "{count} split(s) were not compared",
+    "split_no_issues": "No split disagreed with the base APK",
+    "split_issue_count": "{count} disagreement(s) found",
+    "split_note": "A split must declare the same package name and versionCode as the base APK; a disagreement means the archive was modified or assembled from parts."
   },
   "about": {
     "features": {
@@ -475,6 +483,30 @@
       "ios_macho_strings": "Mach-O strings",
       "ios_nativeSymbols": "Native symbols",
       "ios_signature": "Signature"
+    },
+    "notes": {
+      "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",
+      "android_permissions_manifest_unparsed": "Manifest not parsed; the permission audit cannot run",
+      "android_dex_no_content": "No classes.dex content was read",
+      "android_dex_structure_untrusted": "{count} DEX file(s) have an untrustworthy structure",
+      "android_dex_strings_not_fully_scanned": "{count} DEX file(s) were not fully scanned",
+      "android_dex_no_traversable_dex": "No DEX with a trustworthy structure; method references were not analysed",
+      "android_dex_method_entries_unreadable": "{count} method_ids entries could not be read",
+      "android_dex_no_traversable_bodies": "No DEX method bodies to walk",
+      "android_dex_desynced_bodies": "{count} method body(ies) were not instruction-aligned",
+      "android_native_symbols_not_provided": "No native library content was provided (no lib/**.so, or none was read)",
+      "android_native_symbols_skipped_for_budget": "{count} native library(ies) were skipped due to the budget",
+      "android_arsc_missing": "Resource table missing or unparsable",
+      "ios_info_plist_unparsed": "Info.plist could not be parsed",
+      "ios_usage_descriptions_not_read": "Info.plist not parsed; usage descriptions were not read",
+      "ios_privacy_manifest_absent": "No PrivacyInfo.xcprivacy in this bundle (not required before iOS 17)",
+      "ios_executables_unscanned": "{count} executable(s) were not scanned",
+      "ios_macho_no_content": "No Mach-O executable content could be read",
+      "ios_macho_truncated": "Some executables exceeded the per-file scan budget",
+      "ios_native_symbols_no_symtab": "No Mach-O image with a readable symbol table",
+      "ios_native_symbols_unreadable": "{count} image(s) had an out-of-range symbol table",
+      "ios_native_symbols_stripped": "Some images have no LC_SYMTAB (symbol table stripped)",
+      "ios_signature_separate_step": "Signature verification is performed separately by codesign; see the signature card"
     }
 
   }

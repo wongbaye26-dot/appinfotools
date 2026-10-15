@@ -65,25 +65,33 @@ void main() {
       }
     });
 
-    // 包层契约：`parse` 假定调用方**已经确认**这是 AXML。
+    // 包层契约（阶段 2 起）：**解析器不抛异常，失败记成数据**。
     //
-    // 非 AXML 字节上它会抛（实测 `IndexError`）。应用侧是安全的 ——
-    // `lib/apkparser/parse_task.dart:200` 用 try/catch 把整个解析包住，
-    // 异常会变成一次「解析失败」事件而不是崩溃。
-    //
-    // 这里如实把契约钉住：如果哪天有人改成「返回空结果」，这条会红，
-    // 提醒他先确认调用方是否依赖旧行为。
-    test('非 AXML 字节抛异常（调用方负责先确认格式）', () {
-      expect(
-        () => ManifestParser.parse(
-          Uint8List.fromList(List.generate(256, (i) => i % 251)),
-        ),
-        throwsA(anything),
+    // 此前畸形字节会抛 `IndexError`，应用侧靠 `parse_task.dart` 的 try/catch
+    // 兜住 —— 但调用方拿到的若只是异常，就只能整体放弃，而「清单读不出来」
+    // 本身是一条要展示给用户的事实。现在失败写进 `manifestParseFailure`，
+    // 调用方既能继续往下走，又能如实说明「这一步没读到」。
+    test('非 AXML 字节不抛异常，而是记下失败原因', () {
+      final meta = ManifestParser.parse(
+        Uint8List.fromList(List.generate(256, (i) => i % 251)),
       );
+
+      expect(meta.manifestUnparsed, isTrue);
+      expect(meta.manifestParseFailure, isNotEmpty);
+      expect(meta.packageName, isNull, reason: '失败时不该编出字段');
+      expect(meta.components, isEmpty);
     });
 
-    test('空输入同样抛异常，不会静默返回半成品', () {
-      expect(() => ManifestParser.parse(Uint8List(0)), throwsA(anything));
+    test('空输入同样不抛异常', () {
+      late ApkMeta meta;
+      expect(() => meta = ManifestParser.parse(Uint8List(0)), returnsNormally);
+      expect(meta.manifestUnparsed, isTrue);
+    });
+
+    test('解析成功时失败原因为 null（不能把「解析过」也标成失败）', () {
+      final meta = ManifestParser.parse(_bytes('apk/hardened-manifest.axml'));
+      expect(meta.manifestUnparsed, isFalse);
+      expect(meta.manifestParseFailure, isNull);
     });
   });
 
@@ -210,20 +218,39 @@ void main() {
       expect(parser.getAllResources(), isNotEmpty);
     });
 
-    // 与 ManifestParser 同一个包层契约：畸形输入抛异常，由调用方兜住。
-    // 应用侧确实兜住了 —— `packages/apk_parser/lib/src/apk_reader.dart:194`
-    // 用 try/catch 包住构造，失败只记一条日志、不影响基本信息。
-    test('空输入抛异常（构造即解析）', () {
-      expect(() => ArscParser(Uint8List(0)), throwsA(anything));
+    // 与 ManifestParser 同一套契约：构造不抛，失败记在 [ArscParser.parseFailure]。
+    test('空输入不抛异常，parseFailure 非空', () {
+      late ArscParser parser;
+      expect(() => parser = ArscParser(Uint8List(0)), returnsNormally);
+
+      expect(parser.parseFailure, isNotNull);
+      expect(parser.getAllResources(), isEmpty);
     });
 
-    test('垃圾字节抛异常，而不是返回一个「空资源表」冒充成功', () {
+    test('垃圾字节不抛异常，也不假装解出了资源', () {
+      late ArscParser parser;
       expect(
-        () => ArscParser(
+        () => parser = ArscParser(
           Uint8List.fromList(List.generate(512, (i) => (i * 7) % 253)),
         ),
-        throwsA(anything),
+        returnsNormally,
       );
+
+      expect(parser.parseFailure, isNotNull);
+      expect(parser.getAllResources(), isEmpty);
+      // 失败后读取其它 getter 也不能抛（此前 `late final` 字符串池会在这里
+      // 抛 LateInitializationError —— 那只是把异常推迟到了下一次读）。
+      expect(parser.getLocales().toList(), isEmpty);
+      expect(parser.getDensities().toList(), isEmpty);
+      expect(parser.getUiModeTypes(), isEmpty);
+      expect(parser.hasNightModeResources, isFalse);
+      expect(parser.getStringValue(0x7f010001), isNull);
+    });
+
+    test('真实资源表解析成功时 parseFailure 为 null', () {
+      final parser = ArscParser(_arscFrom('night-mode-resources.apk'));
+      expect(parser.parseFailure, isNull);
+      expect(parser.getAllResources(), isNotEmpty);
     });
   });
 }

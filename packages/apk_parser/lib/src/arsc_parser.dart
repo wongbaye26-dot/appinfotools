@@ -16,11 +16,34 @@ import 'models.dart';
 /// - TT: type id (1-based)
 /// - EEEE: entry index
 class ArscParser {
-  late final StringPool _globalStringPool;
+  /// 全局字符串池。解析失败时为 `null`（见 [parseFailure]）。
+  ///
+  /// 刻意不是 `late final`：构造里解析失败时它不会被赋值，而
+  /// `getStringValue` 这类读取方仍可能被调用（例如调用方在失败后顺手读一下
+  /// label）。`late final` 会在那里抛 `LateInitializationError` —— 那等于把
+  /// 「构造不抛」换成了「下一次读才抛」，问题只是被推迟。
+  StringPool? _globalStringPool;
   final List<_Package> _packages = [];
 
+  /// 解析失败的原因；成功时为 `null`。
+  ///
+  /// 与「资源表里什么都没有」是两件事：后者是事实，前者意味着**我们没读到**。
+  /// 覆盖率的 `android.arsc` 维度据此给出「缺失」还是「解析失败」。
+  String? parseFailure;
+
+  /// 构造即解析，**但不抛异常**。
+  ///
+  /// 畸形字节（空输入、截断、根本不是资源表）只会让 [parseFailure] 非空、
+  /// 内部状态保持为空。理由与 `ManifestParser.parse` 相同：调用方需要
+  /// 「读不到」这条事实本身，而不是一个只能整体放弃的异常。
   ArscParser(Uint8List data) {
-    _parse(ByteDataReader.wrapUint8List(data, endian: Endian.little));
+    try {
+      _parse(ByteDataReader.wrapUint8List(data, endian: Endian.little));
+    } catch (e) {
+      parseFailure = e.toString();
+      _globalStringPool = null;
+      _packages.clear();
+    }
   }
 
   /// 通过资源 ID 获取字符串值
@@ -50,7 +73,7 @@ class ArscParser {
       if (entry == null || entry.value == null) continue;
 
       if (entry.value!.isString) {
-        return _globalStringPool.get(entry.value!.data);
+        return _globalStringPool?.get(entry.value!.data);
       }
     }
 
@@ -60,7 +83,7 @@ class ArscParser {
         final entry = config.entries[entryIndex];
         if (entry == null || entry.value == null) continue;
         if (entry.value!.isString) {
-          return _globalStringPool.get(entry.value!.data);
+          return _globalStringPool?.get(entry.value!.data);
         }
       }
     }
@@ -89,7 +112,7 @@ class ArscParser {
         final entry = config.entries[entryIndex];
         if (entry == null || entry.value == null) continue;
         if (entry.value!.isString) {
-          return _globalStringPool.get(entry.value!.data);
+          return _globalStringPool?.get(entry.value!.data);
         }
       }
     }
@@ -100,7 +123,7 @@ class ArscParser {
       final entry = config.entries[entryIndex];
       if (entry == null || entry.value == null) continue;
       if (entry.value!.isString) {
-        return _globalStringPool.get(entry.value!.data);
+        return _globalStringPool?.get(entry.value!.data);
       }
     }
 
@@ -109,7 +132,7 @@ class ArscParser {
       final entry = config.entries[entryIndex];
       if (entry == null || entry.value == null) continue;
       if (entry.value!.isString) {
-        return _globalStringPool.get(entry.value!.data);
+        return _globalStringPool?.get(entry.value!.data);
       }
     }
 
@@ -133,7 +156,7 @@ class ArscParser {
       final entry = config.entries[entryIndex];
       if (entry == null || entry.value == null) continue;
       if (entry.value!.isString) {
-        final path = _globalStringPool.get(entry.value!.data);
+        final path = _globalStringPool?.get(entry.value!.data);
         if (path != null && _isValidResourcePath(path)) {
           results.add(MapEntry(config.config.density, path));
         }
@@ -240,7 +263,7 @@ class ArscParser {
 
             if (entry.value != null) {
               if (entry.value!.isString) {
-                final str = _globalStringPool.get(entry.value!.data);
+                final str = _globalStringPool?.get(entry.value!.data);
                 if (str != null && !info.filePaths.contains(str)) {
                   info.filePaths.add(str);
                 }

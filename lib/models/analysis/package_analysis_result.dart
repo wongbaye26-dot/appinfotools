@@ -278,6 +278,12 @@ class PackageAnalysisResult {
   final AndroidPackageInfo? android;
   final IosPackageInfo? ios;
 
+  /// 分包一致性核对结果。
+  ///
+  /// `null` 表示**没查**（单 APK 没有分包，或本次未做这项检查）——
+  /// 与「查了没问题」（非 null 且 `issues` 为空）必须分开。
+  final SplitConsistency? splitConsistency;
+
   /// 安全检测分析结果。
   ///
   /// `null` 表示未启用安全检测，或该解析路径尚未接入安全分析
@@ -298,6 +304,7 @@ class PackageAnalysisResult {
     this.android,
     this.ios,
     this.security,
+    this.splitConsistency,
   });
 
   /// 把 Android 的签名状态折算成平台中立结论。
