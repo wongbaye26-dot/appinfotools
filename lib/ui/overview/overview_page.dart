@@ -8,6 +8,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
+import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
@@ -618,87 +619,106 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return SizedBox(
-      width: compact ? 76 : 92,
-      child: GestureDetector(
-        // 右键打开导出菜单
-        onSecondaryTapUp: isIos
-            ? (_) => _exportIosIcon(analysis?.ios?.icon)
-            : (details) => _showIconExportMenu(
-                  context,
-                  details.globalPosition,
-                  apkInfo,
-                ),
-        child: Stack(
-          children: [
-            Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.07),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+    // 图标必须是**正方形** —— 真实的 App 图标就是圆角正方形。
+    //
+    // 外层 Hero 行是按右侧文字列的高度拉伸的（实测 92 宽 × 109 高），如果让
+    // 图标跟着拉伸，`BoxFit.contain` 会在上下各留 8.7px 的 `colorScheme.surface`
+    // 深色条 —— 用户看到的就是图标外那一圈「黑边」。
+    //
+    // 所以这里固定成正方形并居中：多出来的高度由 Hero 卡片自己的背景填充，
+    // 而不是一个深色的空框。圆角按 iOS 图标的比例给（约 22.4%），比原来写死的
+    // 14px（15%）更接近真实图标。
+    final side = compact ? 76.0 : 92.0;
+    final radius = side * 0.2237;
+
+    return Center(
+      child: SizedBox.square(
+        dimension: side,
+        child: GestureDetector(
+          // 右键打开导出菜单
+          onSecondaryTapUp: isIos
+              ? (_) => _exportIosIcon(analysis?.ios?.icon)
+              : (details) => _showIconExportMenu(
+                    context,
+                    details.globalPosition,
+                    apkInfo,
                   ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: isIos
-                  ? IosIconThumbnail(
-                      resolution: analysis?.ios?.icon,
-                      size: double.infinity,
-                    )
-                  : (apkInfo?.mainIconImage != null
-                      ? RawImage(
-                          image: apkInfo!.mainIconImage,
-                          fit: BoxFit.contain,
-                        )
-                      : Center(
-                          child: Icon(
-                            Icons.android,
-                            size: 28,
-                            color: theme.hintColor.withValues(alpha: 0.4),
-                          ),
-                        )),
-            ),
-            // 导出角标（Android / iOS 都支持）
-            if ((isIos && analysis?.ios?.icon != null) ||
-                (!isIos && apkInfo != null))
-              Positioned(
-                right: 3,
-                bottom: 3,
-                child: Builder(
-                  // 用 `Builder` 拿到**按钮自己**的 context：早先传的是整个
-                  // 图标区域的 context，锚点算出来在图标左下角，菜单弹得
-                  // 离按钮很远。
-                  builder: (btnContext) => Material(
-                    color: colorScheme.surface.withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(7),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(7),
-                      onTap: () => isIos
-                          ? _exportIosIcon(analysis?.ios?.icon)
-                          : _showIconExportMenu(
-                              context,
-                              _anchorOf(btnContext),
-                              apkInfo,
+          child: Stack(
+            children: [
+              Container(
+                // 供版式测试定位：断言这个框是**正方形**（见上方注释）。
+                key: const ValueKey('overview_hero_icon'),
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(radius),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.07),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: isIos
+                    ? IosIconThumbnail(
+                        resolution: analysis?.ios?.icon,
+                        size: double.infinity,
+                      )
+                    : (apkInfo?.mainIconImage != null
+                        ? RawImage(
+                            image: apkInfo!.mainIconImage,
+                            // cover 而不是 contain：图块必须被填满。
+                            // 源图不是正方形时 contain 会在两侧露出底色，
+                            // 又变成一圈「黑边」。
+                            fit: BoxFit.cover,
+                          )
+                        : Center(
+                            child: Icon(
+                              Icons.android,
+                              size: 28,
+                              color: theme.hintColor.withValues(alpha: 0.4),
                             ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(3),
-                        child: Icon(
-                          Icons.download,
-                          size: 12,
-                          color: colorScheme.primary,
+                          )),
+              ),
+              // 导出角标（Android / iOS 都支持）
+              if ((isIos && analysis?.ios?.icon != null) ||
+                  (!isIos && apkInfo != null))
+                Positioned(
+                  right: 3,
+                  bottom: 3,
+                  child: Builder(
+                    // 用 `Builder` 拿到**按钮自己**的 context：早先传的是整个
+                    // 图标区域的 context，锚点算出来在图标左下角，菜单弹得
+                    // 离按钮很远。
+                    builder: (btnContext) => Material(
+                      color: colorScheme.surface.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(7),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(7),
+                        onTap: () => isIos
+                            ? _exportIosIcon(analysis?.ios?.icon)
+                            : _showIconExportMenu(
+                                context,
+                                _anchorOf(btnContext),
+                                apkInfo,
+                              ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(3),
+                          child: Icon(
+                            Icons.download,
+                            size: 12,
+                            color: colorScheme.primary,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -896,41 +916,38 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             ),
             TextButton(
               onPressed: () async {
-                if (formKey.currentState?.validate() ?? false) {
-                  final newName = controller.text;
-                  final directory = file.parent;
-                  final newPath =
-                      '${directory.path}${Platform.pathSeparator}$newName';
+                if (!(formKey.currentState?.validate() ?? false)) return;
 
-                  try {
-                    await file.rename(newPath);
-                  } catch (e) {
-                    // macOS 上文件被占用或跨文件系统时可能抛出
-                    // OSError 等非 FileSystemException 异常，
-                    // 因此必须捕获所有异常而非仅 FileSystemException。
-                    log.info('rename failed ($e), falling back to copy+delete');
-                    try {
-                      await file.copy(newPath);
-                      await file.delete();
-                    } catch (fallbackError) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                              '${localT.rename.rename_file}失败: $fallbackError'),
-                        ),
-                      );
-                      return;
-                    }
-                  }
+                // 三级回退（就地改名 → 复制+删除 → 保存对话框）都封在
+                // `renameFile` 里：macOS 沙箱只授予「用户选中的那个文件」的
+                // 写权限，不含它所在的目录，前两条都会 EPERM 失败。
+                final result = await renameFile(
+                  file,
+                  newName: controller.text,
+                  saveDialogTitle: localT.rename.rename_file,
+                );
 
-                  if (mounted) {
+                if (!mounted) return;
+
+                switch (result.outcome) {
+                  case RenameOutcome.cancelled:
+                    return;
+                  case RenameOutcome.failed:
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content:
+                            Text('${localT.rename.failed}: ${result.error}'),
+                      ),
+                    );
+                    return;
+                  case RenameOutcome.renamed:
+                  case RenameOutcome.savedElsewhere:
                     // 更新当前文件状态为新路径，触发重新解析。
-                    _openFile(newPath, navigate: false);
+                    _openFile(result.path!, navigate: false);
                     navigator.pop();
                     messenger.showSnackBar(
                       SnackBar(content: Text(localT.rename.success)),
                     );
-                  }
                 }
               },
               child: Text(localT.base.confirm),

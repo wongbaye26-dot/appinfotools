@@ -23,6 +23,7 @@ import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
+import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -1774,47 +1775,37 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           ),
           TextButton(
             onPressed: () async {
-              if (formKey.currentState?.validate() ?? false) {
-                final newName = controller.text;
-                final oldFile = File(filePath);
-                final directory = oldFile.parent;
-                final newPath =
-                    '${directory.path}${Platform.pathSeparator}$newName';
+              if (!(formKey.currentState?.validate() ?? false)) return;
 
-                try {
-                  // 优先使用异步 rename，它在跨文件系统时会自动回退到
-                  // 复制+删除。renameSync 在 macOS 跨卷或 Windows 占用时
-                  // 会无条件抛 FileSystemException。
-                  await oldFile.rename(newPath);
-                } catch (e) {
-                  // macOS 上文件被占用时可能抛出 OSError 等非
-                  // FileSystemException 异常，因此必须捕获所有异常。
-                  // 回退：复制 + 删除。这在跨文件系统或文件被锁定时
-                  // 是最后的可靠手段。
-                  log.info('rename failed ($e), falling back to copy+delete');
-                  try {
-                    await oldFile.copy(newPath);
-                    await oldFile.delete();
-                  } catch (fallbackError) {
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content:
-                            Text('${t.rename.rename_file}失败: $fallbackError'),
-                      ),
-                    );
-                    return;
-                  }
-                }
+              // 三级回退（就地改名 → 复制+删除 → 保存对话框）都封在
+              // `renameFile` 里：macOS 沙箱只授予「用户选中的那个文件」的
+              // 写权限，不含它所在的目录，前两条都会 EPERM 失败。
+              final result = await renameFile(
+                File(filePath),
+                newName: controller.text,
+                saveDialogTitle: t.rename.rename_file,
+              );
 
-                if (mounted) {
+              if (!mounted) return;
+
+              switch (result.outcome) {
+                case RenameOutcome.cancelled:
+                  return;
+                case RenameOutcome.failed:
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${t.rename.failed}: ${result.error}'),
+                    ),
+                  );
+                  return;
+                case RenameOutcome.renamed:
+                case RenameOutcome.savedElsewhere:
                   // 重新打开新路径的文件，更新 UI 状态。
-                  openApk(newPath);
+                  openApk(result.path!);
                   Navigator.of(context, rootNavigator: true).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(t.rename.success)),
                   );
-                }
               }
             },
             child: Text(t.base.confirm),

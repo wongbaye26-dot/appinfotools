@@ -143,6 +143,32 @@ void main() {
     });
   });
 
+  group('Hero 图标是正方形', () {
+    // 真实的 App 图标是**圆角正方形**。Hero 行是按右侧文字列的高度拉伸的
+    // （实测 92 宽 × 109 高），图标若跟着拉伸，`BoxFit` 就会在上下各留出
+    // 一条 `colorScheme.surface` 的深色带 —— 用户看到的就是图标外那一圈
+    // 「黑边」。因此这里钉住「图标框必须是正方形」。
+    for (final entry in {
+      '默认窗口': _defaultWindow,
+      '最小窗口（紧凑模式）': _minWindow,
+    }.entries) {
+      testWidgets(entry.key, (tester) async {
+        await _pump(tester, entry.value);
+
+        final size = tester.getSize(
+          find.byKey(const ValueKey('overview_hero_icon')),
+        );
+
+        expect(
+          size.width,
+          size.height,
+          reason: '图标框必须是正方形（实测 ${size.width}×${size.height}）',
+        );
+        expect(size.width, greaterThan(0), reason: '图标框不能是零尺寸');
+      });
+    }
+  });
+
   group('Hero 区每个字段都能复制', () {
     testWidgets('复制按钮数量与字段数量一致', (tester) async {
       await _pump(tester, _defaultWindow);

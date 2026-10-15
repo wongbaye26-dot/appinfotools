@@ -2,11 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!--
+	  与 Release.entitlements 一致：**不开启** App Sandbox。
+	  原因见 Release.entitlements 的注释（沙箱下改名会在同目录新建文件，
+	  而沙箱只授予「用户选中的那一个文件」的权限，必然 EPERM）。
+	-->
+	<!-- Flutter Debug 需要 JIT。 -->
 	<key>com.apple.security.cs.allow-jit</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<!-- 下载 platform-tools / build-tools 需要出站网络。
 	     此前该文件误授 network.server（本应用不监听任何端口），

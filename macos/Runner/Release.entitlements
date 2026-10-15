@@ -2,10 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
+	<!--
+	  刻意**不开启** App Sandbox（`com.apple.security.app-sandbox`）。
+
+	  应用的核心操作之一是「在用户选中的文件旁边改名」，而沙箱下的
+	  `com.apple.security.files.user-selected.read-write` 只把读写权限授予
+	  用户选中的**那一个文件**，不含它所在的目录 —— 改名要在同一个目录里
+	  **新建**一个文件，于是 `rename(2)` 与 `copy` 都会以 EPERM 失败。
+	  实测报错：
+
+	    PathAccessException: Cannot copy file to
+	    '/Users/…/ipa/33-v8.5.5.ipa', path = '/Users/…/ipa/33ZB_nosigned.ipa'
+	    (OS Error: Operation not permitted, errno = 1)
+
+	  导报告、导图标一直正常，是因为它们走的是保存对话框 —— 保存对话框会把
+	  权限授予用户**选定的目标路径**。重命名做不到这一步（用户只想改个名字，
+	  不该再让他挑一次目录），所以只能不要沙箱。
+
+	  本应用是自签名分发（GitHub Releases）的开发者工具，不上架 App Store；
+	  需要分析任意路径下的包、在包旁边写文件、下载 SDK 组件，沙箱与这些
+	  需求直接冲突。
+	-->
 	<!-- 下载 platform-tools / build-tools 需要出站网络。 -->
 	<key>com.apple.security.network.client</key>
 	<true/>
