@@ -528,7 +528,33 @@
       "android_native_symbols": "原生库导入了 {count} 项有具体含义的系统能力：{symbols}。只证明这些库**有能力**使用它们，不证明被调用过，也不说明调用的参数。",
       "android_native_symbols_relationship": "符号来自 ELF `.dynsym` 的**未定义**（导入）条目 —— 它们由动态链接器在加载时解析。库自己定义一个同名函数不会被算进来。",
       "android_native_symbols_limitation": "导入不等于调用：未反汇编原生代码，因此不知道这些函数在哪些代码路径上被调用。使用 `syscall()` 直接发起系统调用、或经 libc 内部间接调用的实现不会出现在符号表里。",
-      "android_native_symbols_manual_review": "如需确认实际行为，请在隔离环境中动态分析（`strace` / Frida 等）；仅凭导入 `system` / `dlopen` 不构成风险判定 —— 崩溃上报、热修复、插件化框架都会用到它们。"
+      "android_native_symbols_manual_review": "如需确认实际行为，请在隔离环境中动态分析（`strace` / Frida 等）；仅凭导入 `system` / `dlopen` 不构成风险判定 —— 崩溃上报、热修复、插件化框架都会用到它们。",
+      "android_ocr_capability": "发现图像文字识别能力：{parts}。仅发现能力本身，不判定恶意。",
+      "android_upload_api": "发现上传相关 API 或代码：{parts}。只证明存在上传能力，不证明上传了敏感数据。",
+      "android_network_endpoints": "从静态字符串中提取到 {parts}。静态提取不等于运行时实际访问过 —— 域名出现在字符串里可能是配置项、SDK 地址或从未连接的备用端点。",
+      "android_network_client": "发现网络客户端相关代码（{parts}）。只证明存在网络通信能力，不证明发生过数据传输，也不说明数据去向。",
+      "android_rule_b": "同时发现图像输入来源与文字识别能力：权限/代码线索（{inputClues}）与识别能力（{ocrClues}）。该组合可能对应正常功能（文档扫描、翻译、名片识别）。",
+      "android_rule_c": "发现「图像输入 + 文字识别 + 上传调用」三段线索同现，存在敏感数据外传的疑似链路。这是高风险**候选项**，静态分析未能证实数据确实流入上传请求。",
+      "android_ocr_capability_check_pipeline": "确认识别功能的输入来源（用户主动提供 / 相册扫描）与结果去向（本地处理 / 网络发送）。",
+      "android_upload_api_manual_review": "人工确认上传的内容、触发条件与目的地。",
+      "android_network_endpoints_verify": "对陌生域名结合证书固定、流量观察进一步核实；仅凭域名陌生、使用 CDN 或加密不构成恶意证据。",
+      "android_network_client_manual_review": "如需确认实际外联，请结合证书固定、网络抓包或企业侧流量审计；仅凭使用了某个网络库不构成风险判定。",
+      "android_rule_b_confirm_pipeline": "确认识别的输入来源与用户授权方式（是否走系统照片选择器）。",
+      "android_rule_c_manual_review": "优先人工复核；可在隔离环境中抓包验证实际外联内容（需动态测试，本版本不提供）。",
+      "android_ocr_capability_relationship_code_refs": "「代码引用」来自 method_ids：字节码引用过这些方法，但不证明它们在运行时被调用（未遍历 code_item 的指令）。",
+      "android_ocr_capability_relationship_strings_only": "全部命中只出现在字符串里，没有任何 method_ids 条目引用它们。",
+      "android_upload_api_relationship_code_refs": "「代码引用」来自 method_ids：字节码引用过这些方法/类型，但不证明它们在运行时被调用。",
+      "android_upload_api_relationship_strings_only": "全部命中只出现在字符串里（例如 multipart/form-data 是请求头的取值，本来就只会以字面量形式出现）。",
+      "android_network_client_relationship_code_refs": "「代码引用」来自 method_ids：它证明字节码引用过这些方法/类型，但不证明它们在运行时被调用（未遍历 code_item 的指令）。「仅字符串提及」可能是配置项、注释式字面量或从未使用的 SDK。",
+      "android_network_client_relationship_strings_only": "全部命中都只出现在字符串里，没有任何 method_ids 条目引用它们 —— 存在这些字面量不等于存在对应实现。",
+      "android_rule_b_relationship": "图像输入 → 文字识别：两段线索同现，但未被证实位于同一条调用路径上。",
+      "android_rule_c_relationship_package": "文字识别与上传的调用指令**不在同一个方法体内**（同现发生在整个包的层面）。读取照片 → 图像文字识别 → 构建上传请求：三段分别有证据，但「同一代码路径上的数据流」未被证实 —— 未证实的环节是识别结果进入上传请求这一跳。",
+      "android_rule_c_relationship_method": "文字识别与上传的调用指令出现在**同一个方法体内**（{caller}）；但同一方法内共现不等于数据流：识别结果是否被送进上传请求未被证实。读取照片 → 图像文字识别 → 构建上传请求：三段分别有证据，但「同一代码路径上的数据流」未被证实。",
+      "android_ocr_capability_limitation": "代码引用与字符串命中都**不等于调用发生**：代码路径未被反汇编验证。",
+      "android_network_endpoints_limitation": "字符串表不包含全部构造式 URL（拼接、加密配置），也不反映实际连接。",
+      "android_network_client_limitation": "使用反射、动态加载或加固壳的 HTTP 实现不会出现在 method_ids 里，因此「没有代码引用」不等于「没有网络通信」。",
+      "android_rule_b_limitation": "未反汇编，无法确认识别模块实际处理的是用户主动选择的图片还是批量扫描的媒体文件。",
+      "android_rule_c_limitation": "关联来自多标记同现，不是调用图分析；反射、动态加载与加固均可能使真实链路不同。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -541,7 +567,8 @@
       "code_reference": "{marker}（引用）: {samples}",
       "code_call_site": "{marker}（调用点）: {samples}",
       "native_symbol_imported": "{symbol}（导入）: {description}",
-      "native_symbol_imported_raw": "{symbol}（导入）: {description} ｜ 符号：{rawNames}"
+      "native_symbol_imported_raw": "{symbol}（导入）: {description} ｜ 符号：{rawNames}",
+      "dex_strings_location": "{count} 个 DEX 的字符串"
     },
     "native_symbols": {
       "line": "{text}（{symbol}）",
@@ -559,6 +586,14 @@
       "recv": "接收数据",
       "resolve": "域名解析",
       "system_property": "读取 Android 系统属性"
+    },
+    "parts": {
+      "code_refs": "代码引用 {names}",
+      "string_clues": "字符串提及 {names}",
+      "string_clues_only": "仅字符串提及：{names}",
+      "domains": "域名 {count} 个：{names}",
+      "ips": "IP {count} 个：{names}",
+      "join": "；"
     },
     "findings": "发现项"
   },

@@ -450,7 +450,8 @@ class _EvidenceTile extends StatelessWidget {
             // 位置信息
             if (evidence.location.isNotEmpty)
               Text(
-                evidence.location,
+                // 少数位置是给人读的描述（「N 个 DEX 的字符串」），要本地化。
+                AnalysisReport.locationText(evidence, t),
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w500,

@@ -438,92 +438,132 @@ class AndroidSecurityAudit {
     // `dexMethodReference` 是 method_ids 命中。后者强得多（字符串常量可以
     // 随便写），但两者都**不等于**「调用发生了」。
     if (ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty) {
-      final sources = <String>[
-        if (ocrCodeRefs.isNotEmpty)
-          '代码引用 ${ocrCodeRefs.map((r) => r.description).join('、')}',
-        if (ocrClues.isNotEmpty)
-          '字符串提及 ${ocrClues.map((c) => c.description).join('、')}',
-      ];
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-OCR-CAPABILITY',
         platform: SecurityPlatform.android,
         category: SecurityCategory.ocrImage,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.independentCapability,
-        finding: '发现图像文字识别能力：${sources.join('；')}。'
-            '仅发现能力本身，不判定恶意。',
+        finding: 'Image text recognition capability found: '
+            '${_sourceParts(ocrCodeRefs, ocrClues)}. This only reports the '
+            'capability itself; it is not a malicious verdict.',
+        messageCode: 'android.ocr_capability',
+        // 只传**名字列表**：标签与分隔符都取自语言包。标记说明本来就是英文
+        // （`codeMarkers` 里就是英文），因此不需要再查表。
+        messageArgs: {
+          'parts': {
+            'codeRefs': ocrCodeRefs.map((r) => r.description).toList(),
+            'stringClues': ocrClues.map((c) => c.description).toList(),
+          },
+        },
         evidence: [
           ..._referenceEvidence(ocrCodeRefs),
           ..._clueEvidence(ocrClues),
         ],
         relationship: ocrCodeRefs.isNotEmpty
-            ? '「代码引用」来自 method_ids：字节码引用过这些方法，'
-                '但不证明它们在运行时被调用（未遍历 code_item 的指令）。'
-            : '全部命中只出现在字符串里，没有任何 method_ids 条目引用它们。',
-        limitation: '代码引用与字符串命中都**不等于调用发生**：'
-            '代码路径未被反汇编验证。',
-        recommendation: '确认识别功能的输入来源（用户主动提供 / 相册扫描）'
-            '与结果去向（本地处理 / 网络发送）。',
+            ? 'The "code reference" comes from method_ids: the bytecode '
+                'references these methods, but that does not prove they are '
+                'called at runtime (the instructions in code_item were not '
+                'walked).'
+            : 'All hits appear only in strings; no method_ids entry '
+                'references them.',
+        relationshipCode: ocrCodeRefs.isNotEmpty
+            ? 'android.ocr_capability.relationship_code_refs'
+            : 'android.ocr_capability.relationship_strings_only',
+        limitation: 'Both code references and string hits **are not the same '
+            'as a call happening**: the code paths were not verified by '
+            'disassembly.',
+        limitationCode: 'android.ocr_capability.limitation',
+        recommendation: 'Confirm the input source of the recognition feature '
+            '(user-provided / library scan) and where the result goes '
+            '(processed locally / sent over the network).',
+        recommendationCode: 'android.ocr_capability.check_pipeline',
       ));
     }
 
     if (uploadClues.isNotEmpty || uploadCodeRefs.isNotEmpty) {
-      final sources = <String>[
-        if (uploadCodeRefs.isNotEmpty)
-          '代码引用 ${uploadCodeRefs.map((r) => r.description).join('、')}',
-        if (uploadClues.isNotEmpty)
-          '字符串提及 ${uploadClues.map((c) => c.description).join('、')}',
-      ];
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-UPLOAD-API',
         platform: SecurityPlatform.android,
         category: SecurityCategory.dataExfiltration,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.independentCapability,
-        finding: '发现上传相关 API 或代码：${sources.join('；')}。'
-            '只证明存在上传能力，不证明上传了敏感数据。',
+        finding: 'Upload-related APIs or code found: '
+            '${_sourceParts(uploadCodeRefs, uploadClues)}. This only proves '
+            'the upload capability exists; it does not prove sensitive data '
+            'was uploaded.',
+        messageCode: 'android.upload_api',
+        messageArgs: {
+          'parts': {
+            'codeRefs': uploadCodeRefs.map((r) => r.description).toList(),
+            'stringClues': uploadClues.map((c) => c.description).toList(),
+          },
+        },
         evidence: [
           ..._referenceEvidence(uploadCodeRefs),
           ..._clueEvidence(uploadClues),
         ],
         relationship: uploadCodeRefs.isNotEmpty
-            ? '「代码引用」来自 method_ids：字节码引用过这些方法/类型，'
-                '但不证明它们在运行时被调用。'
-            : '全部命中只出现在字符串里（例如 multipart/form-data 是请求头的'
-                '取值，本来就只会以字面量形式出现）。',
-        recommendation: '人工确认上传的内容、触发条件与目的地。',
+            ? 'The "code reference" comes from method_ids: the bytecode '
+                'references these methods/types, but that does not prove they '
+                'are called at runtime.'
+            : 'All hits appear only in strings (for example '
+                'multipart/form-data is a request-header value, so it can '
+                'only ever appear as a literal).',
+        relationshipCode: uploadCodeRefs.isNotEmpty
+            ? 'android.upload_api.relationship_code_refs'
+            : 'android.upload_api.relationship_strings_only',
+        recommendation: 'Manually confirm what is uploaded, what triggers it '
+            'and the destination.',
+        recommendationCode: 'android.upload_api.manual_review',
       ));
     }
 
     if (scan.domains.isNotEmpty || scan.ips.isNotEmpty) {
-      final parts = <String>[
-        if (scan.domains.isNotEmpty)
-          '域名 ${scan.domains.length} 个：${scan.domains.take(12).join(', ')}'
-              '${scan.domains.length > 12 ? ' …' : ''}',
-        if (scan.ips.isNotEmpty)
-          'IP ${scan.ips.length} 个：${scan.ips.take(8).join(', ')}'
-              '${scan.ips.length > 8 ? ' …' : ''}',
-      ];
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-NETWORK-ENDPOINTS',
         platform: SecurityPlatform.android,
         category: SecurityCategory.network,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: '从静态字符串中提取到 ${parts.join('；')}。'
-            '静态提取不等于运行时实际访问过 —— 域名出现在字符串里'
-            '可能是配置项、SDK 地址或从未连接的备用端点。',
+        finding: 'Extracted from static strings: '
+            '${_endpointParts(scan.domains, scan.ips)}. Static extraction '
+            'does not mean these were actually visited at runtime — a domain '
+            'in a string may be a configuration value, an SDK address or a '
+            'fallback endpoint that is never contacted.',
+        messageCode: 'android.network_endpoints',
+        messageArgs: {
+          'parts': {
+            'domains': [
+              ...scan.domains.take(12),
+              if (scan.domains.length > 12) '…',
+            ],
+            'domainCount': scan.domains.length,
+            'ips': [
+              ...scan.ips.take(8),
+              if (scan.ips.length > 8) '…',
+            ],
+            'ipCount': scan.ips.length,
+          },
+        },
         evidence: [
           SecurityEvidence(
             source: SecurityEvidenceSource.dexString,
-            location: '${scan.scannedDexCount} 个 DEX 的字符串',
+            location: 'strings of ${scan.scannedDexCount} DEX file(s)',
+            locationCode: 'dex.strings',
+            locationArgs: {'count': scan.scannedDexCount},
             detail: [...scan.domains.take(12), ...scan.ips.take(8)].join(', '),
           ),
         ],
-        limitation: '字符串表不包含全部构造式 URL（拼接、加密配置）'
-            '，也不反映实际连接。',
-        recommendation: '对陌生域名结合证书固定、流量观察进一步核实；'
-            '仅凭域名陌生、使用 CDN 或加密不构成恶意证据。',
+        limitation: 'The string table does not contain every constructed URL '
+            '(concatenation, encrypted configuration), nor does it reflect '
+            'actual connections.',
+        limitationCode: 'android.network_endpoints.limitation',
+        recommendation: 'For unfamiliar domains, verify further with '
+            'certificate pinning and traffic observation; an unfamiliar '
+            'domain, the use of a CDN or encryption is not malicious '
+            'evidence by itself.',
+        recommendationCode: 'android.network_endpoints.verify',
       ));
     }
 
@@ -532,14 +572,6 @@ class AndroidSecurityAudit {
     // 这一条同时补上了两处「只产出不消费」：网络类别的字符串线索此前没有任何
     // 规则读取，而方法引用是本次新增的产出。
     if (networkClues.isNotEmpty || networkCodeRefs.isNotEmpty) {
-      final parts = <String>[
-        if (networkCodeRefs.isNotEmpty)
-          '代码引用：'
-              '${networkCodeRefs.map((r) => r.description).join('、')}',
-        if (networkClues.isNotEmpty)
-          '仅字符串提及：'
-              '${networkClues.map((c) => c.description).join('、')}',
-      ];
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-NETWORK-CLIENT',
         platform: SecurityPlatform.android,
@@ -550,23 +582,43 @@ class AndroidSecurityAudit {
         // 代码引用比字符串强，但那是**证据来源**上的差别，由 evidence 的
         // source 与 relationship 陈述，不靠抬高置信度来表达。
         confidence: SecurityConfidence.independentCapability,
-        finding: '发现网络客户端相关代码（${parts.join('；')}）。'
-            '只证明存在网络通信能力，不证明发生过数据传输，'
-            '也不说明数据去向。',
+        finding: 'Network client related code found '
+            '(${_sourceParts(networkCodeRefs, networkClues)}). This only '
+            'proves the network communication capability exists; it does not '
+            'prove data was transferred, nor does it say where the data '
+            'went.',
+        messageCode: 'android.network_client',
+        messageArgs: {
+          'parts': {
+            'codeRefs': networkCodeRefs.map((r) => r.description).toList(),
+            'stringCluesOnly': networkClues.map((c) => c.description).toList(),
+          },
+        },
         evidence: [
           ..._referenceEvidence(networkCodeRefs),
           ..._clueEvidence(networkClues),
         ],
         relationship: networkCodeRefs.isNotEmpty
-            ? '「代码引用」来自 method_ids：它证明字节码引用过这些方法/类型，'
-                '但不证明它们在运行时被调用（未遍历 code_item 的指令）。'
-                '「仅字符串提及」可能是配置项、注释式字面量或从未使用的 SDK。'
-            : '全部命中都只出现在字符串里，没有任何 method_ids 条目引用它们 —— '
-                '存在这些字面量不等于存在对应实现。',
-        limitation: '使用反射、动态加载或加固壳的 HTTP 实现不会出现在 '
-            'method_ids 里，因此「没有代码引用」不等于「没有网络通信」。',
-        recommendation: '如需确认实际外联，请结合证书固定、网络抓包或'
-            '企业侧流量审计；仅凭使用了某个网络库不构成风险判定。',
+            ? 'The "code reference" comes from method_ids: it proves the '
+                'bytecode references these methods/types, but not that they '
+                'are called at runtime (the instructions in code_item were '
+                'not walked). "String mention only" may be a configuration '
+                'value, a commented-out literal or an SDK that is never used.'
+            : 'All hits appear only in strings; no method_ids entry '
+                'references them — the presence of these literals does not '
+                'mean the implementation exists.',
+        relationshipCode: networkCodeRefs.isNotEmpty
+            ? 'android.network_client.relationship_code_refs'
+            : 'android.network_client.relationship_strings_only',
+        limitation: 'HTTP implementations using reflection, dynamic loading '
+            'or a hardened shell do not appear in method_ids, so "no code '
+            'reference" does not mean "no network communication".',
+        limitationCode: 'android.network_client.limitation',
+        recommendation: 'To confirm actual outbound traffic, combine this '
+            'with certificate pinning, packet capture or enterprise-side '
+            'traffic auditing; using some networking library is not a risk '
+            'verdict by itself.',
+        recommendationCode: 'android.network_client.manual_review',
       ));
     }
 
@@ -613,38 +665,60 @@ class AndroidSecurityAudit {
         category: SecurityCategory.ocrImage,
         severity: SecuritySeverity.p2,
         confidence: SecurityConfidence.suspected,
-        finding: '同时发现图像输入来源与文字识别能力：'
-            '权限/代码线索（${[
+        finding: 'Both an image input source and text recognition capability '
+            'were found: permission/code clues '
+            '(${[
           ...effectivePhotoAccess.map((r) => r.shortName),
           ...photoClues.map((c) => c.description),
-        ].join('、')}）与识别能力（${ocrClues.map((c) => c.description).join('、')}）。'
-            '该组合可能对应正常功能（文档扫描、翻译、名片识别）。',
+        ].join(', ')}) and recognition capability '
+            '(${ocrClues.map((c) => c.description).join(', ')}). This '
+            'combination may correspond to a normal feature (document '
+            'scanning, translation, business card reading).',
+        messageCode: 'android.rule_b',
+        messageArgs: {
+          'inputClues': [
+            ...effectivePhotoAccess.map((r) => r.shortName),
+            ...photoClues.map((c) => c.description),
+          ],
+          'ocrClues': ocrClues.map((c) => c.description).toList(),
+        },
         evidence: [
           for (final request in effectivePhotoAccess)
             _manifestEvidence(request),
           ..._referenceEvidence(ocrCodeRefs),
           ..._clueEvidence([...photoClues, ...ocrClues]),
         ],
-        relationship: '图像输入 → 文字识别：两段线索同现，但未被证实位于'
-            '同一条调用路径上。',
-        limitation: '未反汇编，无法确认识别模块实际处理的是用户主动选择的'
-            '图片还是批量扫描的媒体文件。',
-        recommendation: '确认识别的输入来源与用户授权方式（是否走系统'
-            '照片选择器）。',
+        relationship: 'Image input → text recognition: the two clues '
+            'co-occur, but they are not proven to lie on the same call path.',
+        relationshipCode: 'android.rule_b.relationship',
+        limitation: 'No disassembly was performed, so it cannot be determined '
+            'whether the recognition module actually handles user-selected '
+            'images or batch-scanned media files.',
+        limitationCode: 'android.rule_b.limitation',
+        recommendation: 'Confirm the recognition input source and how the '
+            'user authorises it (whether it goes through the system photo '
+            'picker).',
+        recommendationCode: 'android.rule_b.confirm_pipeline',
       ));
     }
 
     // ---- 规则 C：相册 + OCR + 上传 ----
     if (hasImageInput && hasOcrCapability && hasUploadCapability) {
+      // 关联说明有两种措辞（同方法体 / 整包层面），因此先把 code 与回退
+      // 一起算出来 —— 引擎不能只产出一句中文再让呈现层猜。
+      final note = _coOccurrenceNote(methodScan, ocrCodeRefs, uploadCodeRefs);
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-RULE-C',
         platform: SecurityPlatform.android,
         category: SecurityCategory.dataExfiltration,
         severity: SecuritySeverity.p1,
         confidence: SecurityConfidence.suspected,
-        finding: '发现「图像输入 + 文字识别 + 上传调用」三段线索同现，'
-            '存在敏感数据外传的疑似链路。这是高风险**候选项**，'
-            '静态分析未能证实数据确实流入上传请求。',
+        finding: 'Image input, text recognition and upload call clues all '
+            'appear together: a suspected path for sensitive data leaving '
+            'the device. This is a high-risk **candidate**; static analysis '
+            'could not prove that data actually flows into an upload '
+            'request.',
+        messageCode: 'android.rule_c',
         evidence: [
           for (final request in effectivePhotoAccess)
             _manifestEvidence(request),
@@ -653,15 +727,17 @@ class AndroidSecurityAudit {
         ],
         dataSource: '照片/媒体文件与其中的识别文本',
         dataSink: '上传请求（multipart / upload API）',
-        relationship:
-            '${_coOccurrenceNote(methodScan, ocrCodeRefs, uploadCodeRefs)}'
-            '读取照片 → 图像文字识别 → 构建上传请求：三段分别有证据，'
-            '但「同一代码路径上的数据流」未被证实 —— 未证实的环节是'
-            '识别结果进入上传请求这一跳。',
-        limitation: '关联来自多标记同现，不是调用图分析；反射、动态加载与'
-            '加固均可能使真实链路不同。',
-        recommendation: '优先人工复核；可在隔离环境中抓包验证实际外联内容'
-            '（需动态测试，本版本不提供）。',
+        relationship: note.fallback,
+        relationshipCode: note.code,
+        relationshipArgs: note.args,
+        limitation: 'The association comes from multiple markers co-occurring, '
+            'not from call-graph analysis; reflection, dynamic loading and '
+            'hardening may all make the real path different.',
+        limitationCode: 'android.rule_c.limitation',
+        recommendation: 'Review manually first; you can capture and verify '
+            'the actual outbound content in an isolated environment '
+            '(requires dynamic testing, not provided in this version).',
+        recommendationCode: 'android.rule_c.manual_review',
       ));
     }
 
@@ -1048,7 +1124,43 @@ class AndroidSecurityAudit {
   /// 这是调用点分析带来的新信息：字符串同现只能说「两个词都出现在这个包里」。
   /// 但措辞必须守住界线 —— **同一个方法里既有识别又有上传，不等于识别结果被
   /// 送进了上传请求**，那要看寄存器与参数传递，属于数据流分析。
-  static String _coOccurrenceNote(
+  /// 英文回退里的「代码引用 / 字符串提及」分项。
+  ///
+  /// 呈现层用**同一份列表**按语言包组装（见
+  /// `AnalysisReport._evidencePartsText`），因此这里只需要保证**元素与顺序
+  /// 一致**；标签与分隔符都在语言包里，不在引擎里。
+  static String _sourceParts(
+    List<CodeReference> references,
+    List<CodeClue> clues,
+  ) {
+    final parts = <String>[
+      if (references.isNotEmpty)
+        'code references: ${references.map((r) => r.description).join(', ')}',
+      if (clues.isNotEmpty)
+        'string mentions: ${clues.map((c) => c.description).join(', ')}',
+    ];
+    return parts.join('; ');
+  }
+
+  /// 英文回退里的「域名 / IP」分项。
+  static String _endpointParts(List<String> domains, List<String> ips) {
+    final parts = <String>[
+      if (domains.isNotEmpty)
+        'domains (${domains.length}): ${[
+          ...domains.take(12),
+          if (domains.length > 12) '…',
+        ].join(', ')}',
+      if (ips.isNotEmpty)
+        'IP addresses (${ips.length}): ${[
+          ...ips.take(8),
+          if (ips.length > 8) '…',
+        ].join(', ')}',
+    ];
+    return parts.join('; ');
+  }
+
+  static ({String code, String fallback, Map<String, Object> args})
+      _coOccurrenceNote(
     DexMethodScanResult scan,
     List<CodeReference> ocrReferences,
     List<CodeReference> uploadReferences,
@@ -1058,13 +1170,30 @@ class AndroidSecurityAudit {
       uploadReferences.map((r) => r.markerId),
     );
     if (occurrence == null) {
-      return '文字识别与上传的调用指令**不在同一个方法体内**'
-          '（同现发生在整个包的层面）。';
+      return (
+        code: 'android.rule_c.relationship_package',
+        fallback: 'The call instructions for text recognition and upload are '
+            '**not in the same method body** (the co-occurrence is at the '
+            'whole-package level). Reading a photo → image text recognition → '
+            'building an upload request: there is evidence for each of the '
+            'three stages, but "the data flow along the same code path" is '
+            'not proven — the unproven hop is the recognition result entering '
+            'the upload request.',
+        args: const {},
+      );
     }
-    return '文字识别与上传的调用指令出现在**同一个方法体内**'
-        '（${occurrence.callerDisplayName}）；'
-        '但同一方法内共现不等于数据流：识别结果是否被送进上传请求'
-        '未被证实。';
+    return (
+      code: 'android.rule_c.relationship_method',
+      fallback: 'The call instructions for text recognition and upload '
+          'appear **in the same method body** '
+          '(${occurrence.callerDisplayName}); but co-occurrence within one '
+          'method is not data flow: whether the recognition result is fed '
+          'into the upload request is not proven. Reading a photo → image '
+          'text recognition → building an upload request: there is evidence '
+          'for each of the three stages, but "the data flow along the same '
+          'code path" is not proven.',
+      args: {'caller': occurrence.callerDisplayName},
+    );
   }
 
   /// 把方法引用转成证据条目。

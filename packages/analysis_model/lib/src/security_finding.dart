@@ -208,7 +208,15 @@ class SecurityEvidence {
   final SecurityEvidenceSource source;
 
   /// 证据在文件中的位置描述。
+  ///
+  /// 绝大多数位置是**机器可读的事实**（`AndroidManifest.xml / manifest`、
+  /// `Payload/App.app/Info.plist`），不需要本地化。少数是给人读的描述
+  /// （如「N 个 DEX 的字符串」）—— 那些带 [locationCode]。
   final String location;
+
+  /// [location] 的稳定标识与参数；`null` 表示无需本地化（直接显示原文）。
+  final String? locationCode;
+  final Map<String, Object> locationArgs;
 
   /// 原文或摘录（可能很长，由产出方自行截断，但不得改写含义）。
   ///
@@ -228,6 +236,8 @@ class SecurityEvidence {
     required this.source,
     required this.location,
     required this.detail,
+    this.locationCode,
+    this.locationArgs = const {},
     this.detailCode,
     this.detailArgs = const {},
   });
@@ -299,12 +309,16 @@ class SecurityFinding {
   /// [relationship] 的稳定标识，语义同 [messageCode]。
   ///
   /// 与 [messageCode] 分开的理由同上：关联说明是**独立的一句话**。
-  /// 这里没有配套的 `relationshipArgs` —— 目前所有关联说明都不带占位符，
-  /// **加了没人读的参数表只会让「漏传」编译通过**（本项目为此踩过多次），
-  /// 真需要时再加。
+  ///
+  /// 起初刻意没配参数表（「加了没人读的参数表只会让漏传编译通过」）。
+  /// Android 规则 C 的关联说明要嵌「识别与上传的调用指令出现在哪个方法体里」，
+  /// 于是补上了 [relationshipArgs] —— **有真实消费者才加**，不是预留。
   final String? relationshipCode;
+  final Map<String, Object> relationshipArgs;
 
   /// [limitation] 的稳定标识，语义同 [relationshipCode]。
+  ///
+  /// 同样**没有**参数表：目前所有局限都不带占位符。
   final String? limitationCode;
 
   const SecurityFinding({
@@ -325,6 +339,7 @@ class SecurityFinding {
     this.recommendationCode,
     this.recommendationArgs = const {},
     this.relationshipCode,
+    this.relationshipArgs = const {},
     this.limitationCode,
   });
 
@@ -363,6 +378,7 @@ class SecurityFinding {
       recommendationCode: recommendationCode,
       recommendationArgs: recommendationArgs,
       relationshipCode: relationshipCode,
+      relationshipArgs: relationshipArgs,
       limitationCode: limitationCode,
     );
   }

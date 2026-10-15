@@ -528,7 +528,33 @@
       "android_native_symbols": "原生函式庫匯入了 {count} 項有具體含義的系統能力：{symbols}。只證明這些函式庫**有能力**使用它們，不證明被呼叫過，也不說明呼叫的參數。",
       "android_native_symbols_relationship": "符號來自 ELF `.dynsym` 的**未定義**（匯入）條目 —— 它們由動態連結器在載入時解析。函式庫自己定義一個同名函式不會被算進來。",
       "android_native_symbols_limitation": "匯入不等於呼叫：未反組譯原生程式碼，因此不知道這些函式在哪些程式碼路徑上被呼叫。使用 `syscall()` 直接發起系統呼叫、或經 libc 內部間接呼叫的實作不會出現在符號表裡。",
-      "android_native_symbols_manual_review": "如需確認實際行為，請在隔離環境中動態分析（`strace` / Frida 等）；僅憑匯入 `system` / `dlopen` 不構成風險判定 —— 當機回報、熱修復、外掛框架都會用到它們。"
+      "android_native_symbols_manual_review": "如需確認實際行為，請在隔離環境中動態分析（`strace` / Frida 等）；僅憑匯入 `system` / `dlopen` 不構成風險判定 —— 當機回報、熱修復、外掛框架都會用到它們。",
+      "android_ocr_capability": "發現圖像文字辨識能力：{parts}。僅發現能力本身，不判定惡意。",
+      "android_upload_api": "發現上傳相關 API 或程式碼：{parts}。只證明存在上傳能力，不證明上傳了敏感資料。",
+      "android_network_endpoints": "從靜態字串中擷取到 {parts}。靜態擷取不等於執行時實際存取過 —— 網域出現在字串裡可能是設定項、SDK 位址或從未連線的備用端點。",
+      "android_network_client": "發現網路客戶端相關程式碼（{parts}）。只證明存在網路通訊能力，不證明發生過資料傳輸，也不說明資料去向。",
+      "android_rule_b": "同時發現圖像輸入來源與文字辨識能力：權限/程式碼線索（{inputClues}）與辨識能力（{ocrClues}）。該組合可能對應正常功能（文件掃描、翻譯、名片辨識）。",
+      "android_rule_c": "發現「圖像輸入 + 文字辨識 + 上傳呼叫」三段線索同現，存在敏感資料外傳的疑似鏈路。這是高風險**候選項**，靜態分析未能證實資料確實流入上傳請求。",
+      "android_ocr_capability_check_pipeline": "確認辨識功能的輸入來源（使用者主動提供 / 相簿掃描）與結果去向（本機處理 / 網路傳送）。",
+      "android_upload_api_manual_review": "人工確認上傳的內容、觸發條件與目的地。",
+      "android_network_endpoints_verify": "對陌生網域結合憑證固定、流量觀察進一步核實；僅憑網域陌生、使用 CDN 或加密不構成惡意證據。",
+      "android_network_client_manual_review": "如需確認實際外聯，請結合憑證固定、網路擷取封包或企業側流量稽核；僅憑使用了某個網路函式庫不構成風險判定。",
+      "android_rule_b_confirm_pipeline": "確認辨識的輸入來源與使用者授權方式（是否走系統照片選擇器）。",
+      "android_rule_c_manual_review": "優先人工複核；可在隔離環境中擷取封包驗證實際外聯內容（需動態測試，本版本不提供）。",
+      "android_ocr_capability_relationship_code_refs": "「程式碼引用」來自 method_ids：位元碼引用過這些方法，但不證明它們在執行時被呼叫（未走訪 code_item 的指令）。",
+      "android_ocr_capability_relationship_strings_only": "全部命中只出現在字串裡，沒有任何 method_ids 條目引用它們。",
+      "android_upload_api_relationship_code_refs": "「程式碼引用」來自 method_ids：位元碼引用過這些方法/類型，但不證明它們在執行時被呼叫。",
+      "android_upload_api_relationship_strings_only": "全部命中只出現在字串裡（例如 multipart/form-data 是請求標頭的取值，本來就只會以字面量形式出現）。",
+      "android_network_client_relationship_code_refs": "「程式碼引用」來自 method_ids：它證明位元碼引用過這些方法/類型，但不證明它們在執行時被呼叫（未走訪 code_item 的指令）。「僅字串提及」可能是設定項、註解式字面量或從未使用的 SDK。",
+      "android_network_client_relationship_strings_only": "全部命中都只出現在字串裡，沒有任何 method_ids 條目引用它們 —— 存在這些字面量不等於存在對應實作。",
+      "android_rule_b_relationship": "圖像輸入 → 文字辨識：兩段線索同現，但未被證實位於同一條呼叫路徑上。",
+      "android_rule_c_relationship_package": "文字辨識與上傳的呼叫指令**不在同一個方法體內**（同現發生在整個套件的層面）。讀取照片 → 圖像文字辨識 → 建構上傳請求：三段分別有證據，但「同一程式碼路徑上的資料流」未被證實 —— 未證實的環節是辨識結果進入上傳請求這一跳。",
+      "android_rule_c_relationship_method": "文字辨識與上傳的呼叫指令出現在**同一個方法體內**（{caller}）；但同一方法內共現不等於資料流：辨識結果是否被送進上傳請求未被證實。讀取照片 → 圖像文字辨識 → 建構上傳請求：三段分別有證據，但「同一程式碼路徑上的資料流」未被證實。",
+      "android_ocr_capability_limitation": "程式碼引用與字串命中都**不等於呼叫發生**：程式碼路徑未被反組譯驗證。",
+      "android_network_endpoints_limitation": "字串表不包含全部構造式 URL（拼接、加密設定），也不反映實際連線。",
+      "android_network_client_limitation": "使用反射、動態載入或加固外殼的實作不會出現在 method_ids 裡，因此「沒有程式碼引用」不等於「沒有網路通訊」。",
+      "android_rule_b_limitation": "未反組譯，無法確認辨識模組實際處理的是使用者主動選擇的圖片還是批次掃描的媒體檔案。",
+      "android_rule_c_limitation": "關聯來自多標記同現，不是呼叫圖分析；反射、動態載入與加固均可能使真實鏈路不同。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",
@@ -541,7 +567,8 @@
       "code_reference": "{marker}（引用）: {samples}",
       "code_call_site": "{marker}（呼叫點）: {samples}",
       "native_symbol_imported": "{symbol}（匯入）: {description}",
-      "native_symbol_imported_raw": "{symbol}（匯入）: {description} ｜ 符號：{rawNames}"
+      "native_symbol_imported_raw": "{symbol}（匯入）: {description} ｜ 符號：{rawNames}",
+      "dex_strings_location": "{count} 個 DEX 的字串"
     },
     "native_symbols": {
       "line": "{text}（{symbol}）",
@@ -559,6 +586,14 @@
       "recv": "接收資料",
       "resolve": "網域名稱解析",
       "system_property": "讀取 Android 系統屬性"
+    },
+    "parts": {
+      "code_refs": "程式碼引用 {names}",
+      "string_clues": "字串提及 {names}",
+      "string_clues_only": "僅字串提及：{names}",
+      "domains": "網域 {count} 個：{names}",
+      "ips": "IP {count} 個：{names}",
+      "join": "；"
     },
     "findings": "發現項"
   },

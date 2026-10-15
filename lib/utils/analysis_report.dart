@@ -349,7 +349,7 @@ class AnalysisReport {
       if (finding.evidence.isNotEmpty) {
         sb.writeln('- **Evidence:**');
         for (final ev in finding.evidence) {
-          sb.writeln('  - ${ev.source.name} (${ev.location}): '
+          sb.writeln('  - ${ev.source.name} (${locationText(ev, t)}): '
               '${detailText(ev, t)}');
         }
       }
@@ -631,6 +631,9 @@ class AnalysisReport {
     final sources = _sourcesText(finding.messageArgs['sources'], t);
     final names = _joinNames(finding.messageArgs['names'], t);
     final symbols = _nativeSymbolsText(finding.messageArgs['symbols'], t);
+    final parts = _evidencePartsText(finding.messageArgs['parts'], t);
+    final inputClues = _joinNames(finding.messageArgs['inputClues'], t);
+    final ocrClues = _joinNames(finding.messageArgs['ocrClues'], t);
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -687,6 +690,18 @@ class AnalysisReport {
       'android.native_symbols' => (count == null || symbols == null)
           ? null
           : f.android_native_symbols(count: count, symbols: symbols),
+      'android.ocr_capability' =>
+        parts == null ? null : f.android_ocr_capability(parts: parts),
+      'android.upload_api' =>
+        parts == null ? null : f.android_upload_api(parts: parts),
+      'android.network_endpoints' =>
+        parts == null ? null : f.android_network_endpoints(parts: parts),
+      'android.network_client' =>
+        parts == null ? null : f.android_network_client(parts: parts),
+      'android.rule_b' => (inputClues == null || ocrClues == null)
+          ? null
+          : f.android_rule_b(inputClues: inputClues, ocrClues: ocrClues),
+      'android.rule_c' => f.android_rule_c,
       _ => null,
     };
     return localized ?? finding.finding;
@@ -728,6 +743,14 @@ class AnalysisReport {
       'android.rule_d.manual_review' => f.android_rule_d_manual_review,
       'android.rule_e.manual_review' => f.android_rule_e_manual_review,
       'android.rule_f.runtime_traffic' => f.android_rule_f_runtime_traffic,
+      'android.ocr_capability.check_pipeline' =>
+        f.android_ocr_capability_check_pipeline,
+      'android.upload_api.manual_review' => f.android_upload_api_manual_review,
+      'android.network_endpoints.verify' => f.android_network_endpoints_verify,
+      'android.network_client.manual_review' =>
+        f.android_network_client_manual_review,
+      'android.rule_b.confirm_pipeline' => f.android_rule_b_confirm_pipeline,
+      'android.rule_c.manual_review' => f.android_rule_c_manual_review,
       _ => null,
     };
     return localized ?? finding.recommendation;
@@ -742,12 +765,33 @@ class AnalysisReport {
     if (code == null) return raw;
 
     final f = t.security.finding_texts;
+    // 规则 C 的关联说明要嵌「出现在哪个方法体里」—— 这是目前唯一带参数的
+    // 关联说明，因此 relationshipArgs 是**有真实消费者才加**的。
+    final caller = finding.relationshipArgs['caller'];
     final String? localized = switch (code) {
       'ios.rule_a.relationship' => f.ios_rule_a_relationship,
       'ios.rule_b.relationship' => f.ios_rule_b_relationship,
       'ios.rule_c.relationship' => f.ios_rule_c_relationship,
       'ios.rule_e.relationship' => f.ios_rule_e_relationship,
       'android.rule_e.relationship' => f.android_rule_e_relationship,
+      'android.ocr_capability.relationship_code_refs' =>
+        f.android_ocr_capability_relationship_code_refs,
+      'android.ocr_capability.relationship_strings_only' =>
+        f.android_ocr_capability_relationship_strings_only,
+      'android.upload_api.relationship_code_refs' =>
+        f.android_upload_api_relationship_code_refs,
+      'android.upload_api.relationship_strings_only' =>
+        f.android_upload_api_relationship_strings_only,
+      'android.network_client.relationship_code_refs' =>
+        f.android_network_client_relationship_code_refs,
+      'android.network_client.relationship_strings_only' =>
+        f.android_network_client_relationship_strings_only,
+      'android.rule_b.relationship' => f.android_rule_b_relationship,
+      'android.rule_c.relationship_package' =>
+        f.android_rule_c_relationship_package,
+      'android.rule_c.relationship_method' => caller == null
+          ? null
+          : f.android_rule_c_relationship_method(caller: caller),
       _ => null,
     };
     return localized ?? raw;
@@ -778,6 +822,14 @@ class AnalysisReport {
       'android.rule_e.limitation' => f.android_rule_e_limitation,
       'android.rule_f.limitation_no_dex' => f.android_rule_f_limitation_no_dex,
       'android.rule_f.limitation_scope' => f.android_rule_f_limitation_scope,
+      'android.ocr_capability.limitation' =>
+        f.android_ocr_capability_limitation,
+      'android.network_endpoints.limitation' =>
+        f.android_network_endpoints_limitation,
+      'android.network_client.limitation' =>
+        f.android_network_client_limitation,
+      'android.rule_b.limitation' => f.android_rule_b_limitation,
+      'android.rule_c.limitation' => f.android_rule_c_limitation,
       _ => null,
     };
     return localized ?? raw;
@@ -864,6 +916,55 @@ class AnalysisReport {
       _ => null,
     };
     return localized ?? evidence.detail;
+  }
+
+  /// 证据**位置**的本地化正文。
+  ///
+  /// 绝大多数位置是机器可读的事实（清单路径、`Info.plist` 键），不需要本地化；
+  /// 少数是给人读的描述（「N 个 DEX 的字符串」）—— 那些带 `locationCode`。
+  static String locationText(SecurityEvidence evidence, Translations t) {
+    final code = evidence.locationCode;
+    if (code == null) return evidence.location;
+
+    final count = evidence.locationArgs['count'];
+    final String? localized = switch (code) {
+      'dex.strings' => count == null
+          ? null
+          : t.security.evidence_texts.dex_strings_location(count: count),
+      _ => null,
+    };
+    return localized ?? evidence.location;
+  }
+
+  /// 组装「代码引用 / 字符串提及 / 域名 / IP」这类**证据来源分项**。
+  ///
+  /// 引擎此前把标签和名字一起拼成一句中文（`'代码引用 A、B'`），再把分项用
+  /// 中文分号连起来 —— 英文界面里就出现中文标签和中文标点。现在只传**名字列表**
+  /// （它们本来就是终值：权限短名、标记说明都是英文），标签与两个分隔符都取自
+  /// 语言包。
+  static String? _evidencePartsText(Object? arg, Translations t) {
+    if (arg is! Map) return null;
+    final p = t.security.parts;
+    final parts = <String>[];
+
+    final codeRefs = _joinNames(arg['codeRefs'], t);
+    if (codeRefs != null) parts.add(p.code_refs(names: codeRefs));
+
+    final stringClues = _joinNames(arg['stringClues'], t);
+    if (stringClues != null) parts.add(p.string_clues(names: stringClues));
+
+    final domains = _joinNames(arg['domains'], t);
+    if (domains != null) {
+      parts.add(p.domains(count: arg['domainCount'] ?? 0, names: domains));
+    }
+
+    final ips = _joinNames(arg['ips'], t);
+    if (ips != null) {
+      parts.add(p.ips(count: arg['ipCount'] ?? 0, names: ips));
+    }
+
+    if (parts.isEmpty) return null;
+    return parts.join(p.join);
   }
 
   /// 把「来源 id 列表」组装成**本地化**的一句话片段。

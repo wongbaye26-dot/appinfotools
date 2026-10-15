@@ -212,7 +212,10 @@ void main() {
       expect(ocr, isNotNull);
       expect(ocr!.severity, SecuritySeverity.info);
       expect(ocr.confidence, SecurityConfidence.independentCapability);
-      expect(ocr.finding, contains('不判定恶意'));
+      expect(
+        AnalysisReport.findingText(ocr, t),
+        contains('not a malicious verdict'),
+      );
       // 没有相册访问 → 不触发规则 B/C。
       expect(_byId(result, 'ANDROID-RULE-B'), isNull);
       expect(_byId(result, 'ANDROID-RULE-C'), isNull);
@@ -234,8 +237,14 @@ void main() {
       expect(ruleB, isNotNull);
       expect(ruleB!.severity, SecuritySeverity.p2);
       expect(ruleB.confidence, SecurityConfidence.suspected);
-      expect(ruleB.finding, contains('可能'));
-      expect(ruleB.relationship, contains('未被证实'));
+      expect(
+        AnalysisReport.findingText(ruleB, t),
+        contains('may correspond'),
+      );
+      expect(
+        AnalysisReport.relationshipText(ruleB, t),
+        contains('not proven'),
+      );
       expect(ruleB.evidence.length, greaterThanOrEqualTo(2));
     });
 
@@ -261,7 +270,10 @@ void main() {
       expect(ruleC.confidence, SecurityConfidence.suspected);
       expect(ruleC.dataSource, contains('照片'));
       expect(ruleC.dataSink, contains('上传'));
-      expect(ruleC.relationship, contains('未被证实'));
+      expect(
+        AnalysisReport.relationshipText(ruleC, t),
+        contains('is not proven'),
+      );
       expect(result.highestRiskFinding!.ruleId, 'ANDROID-RULE-C');
     });
   });
@@ -369,7 +381,10 @@ void main() {
 
       final endpoints = _byId(result, 'ANDROID-NETWORK-ENDPOINTS');
       expect(endpoints, isNotNull);
-      expect(endpoints!.finding, contains('不等于运行时实际访问'));
+      expect(
+        AnalysisReport.findingText(endpoints!, t),
+        contains('does not mean these were actually visited'),
+      );
       expect(endpoints.finding, contains('cdn.example.com'));
       expect(endpoints.severity, SecuritySeverity.info);
     });
@@ -569,8 +584,8 @@ void main() {
       final finding = _byId(result, 'ANDROID-NETWORK-CLIENT');
       expect(finding, isNotNull);
       expect(
-        finding!.relationship,
-        contains('只出现在字符串里'),
+        AnalysisReport.relationshipText(finding!, t),
+        contains('only in strings'),
         reason: '实际 relationship：${finding.relationship}',
       );
       expect(
@@ -657,14 +672,17 @@ void main() {
       final ruleC = _byId(result, 'ANDROID-RULE-C')!;
 
       expect(
-        ruleC.relationship,
-        contains('同一个方法体内'),
+        AnalysisReport.relationshipText(ruleC, t),
+        contains('in the same method body'),
         reason: 'dexdump -d 显示 recognizeText 在 0x254、uploadImage 在 0x25a，'
             '相邻且同属 Pipeline.run。实际说明：${ruleC.relationship}',
       );
       expect(ruleC.relationship, contains('run'));
       // 但必须同时说清「共现 ≠ 数据流」。
-      expect(ruleC.relationship, contains('未被证实'));
+      expect(
+        AnalysisReport.relationshipText(ruleC, t),
+        contains('not proven'),
+      );
     });
 
     test('识别与上传在不同方法里时，明确说「不在同一个方法体内」', () {
@@ -672,8 +690,8 @@ void main() {
       final ruleC = _byId(result, 'ANDROID-RULE-C')!;
 
       expect(
-        ruleC.relationship,
-        contains('不在同一个方法体内'),
+        AnalysisReport.relationshipText(ruleC, t),
+        contains('not in the same method body'),
         reason: 'dexdump -d 显示两者分别在 Separate.doOcr 与 Separate.doUpload。'
             '实际说明：${ruleC.relationship}',
       );
@@ -708,6 +726,298 @@ void main() {
         reason: '证据要能落到具体偏移：'
             '${callSiteEvidence.map((e) => e.detail).toList()}',
       );
+    });
+  });
+
+  // B11 第七批：Android 剩余 6 条里**不需要改数据表**的那批
+  // （OCR / UPLOAD / NETWORK-ENDPOINTS / NETWORK-CLIENT / RULE-B / RULE-C）。
+  //
+  // 这批的特点是：文案里嵌的不是数据表的中文，而是**引擎自己拼的中文标签**
+  // （「代码引用」「字符串提及」「域名 N 个」「IP N 个」）。做法是把标签与
+  // 分隔符全部挪进语言包，引擎只传名字列表。
+  group('发现项文案本地化（B11 第七批：Android 标签类 6 条）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    /// 一次触发这 6 条：相册权限 + OCR 标记 + 上传标记 + 网络库 + 域名。
+    SecurityAnalysisResult rich() => AndroidSecurityAudit.audit(
+          meta: _meta(
+            targetSdk: 34,
+            permissions: [_perm('android.permission.READ_MEDIA_IMAGES')],
+          ),
+          dexEntries: [
+            DexBytes(
+                'classes.dex',
+                _blob([
+                  'Lcom/google/mlkit/vision/text/TextRecognizer;',
+                  'multipart/form-data',
+                  'okhttp3.OkHttpClient',
+                  'https://cdn.example.com/api',
+                ])),
+          ],
+        );
+
+    const rules = [
+      'ANDROID-OCR-CAPABILITY',
+      'ANDROID-UPLOAD-API',
+      'ANDROID-NETWORK-ENDPOINTS',
+      'ANDROID-NETWORK-CLIENT',
+      'ANDROID-RULE-B',
+      'ANDROID-RULE-C',
+    ];
+
+    test('引擎真的把 code 挂上去了（否则等于没迁）', () {
+      final result = rich();
+      for (final rule in rules) {
+        final f = _byId(result, rule);
+        expect(f, isNotNull,
+            reason: '测试输入没有触发 $rule：'
+                '${result.findings.map((e) => e.ruleId).toList()}');
+        expect(f!.messageCode, isNotNull, reason: rule);
+        expect(f.recommendationCode, isNotNull, reason: rule);
+        expect(RegExp(cjk).hasMatch(f.finding), isFalse,
+            reason: '$rule 的英文回退里还有中文：${f.finding}');
+        expect(RegExp(cjk).hasMatch(f.recommendation), isFalse,
+            reason: '$rule 的建议没有一起迁移：${f.recommendation}');
+        if (f.relationship != null) {
+          expect(RegExp(cjk).hasMatch(f.relationship!), isFalse,
+              reason: '$rule 的关联说明没有一起迁移：${f.relationship}');
+        }
+        if (f.limitation != null) {
+          expect(RegExp(cjk).hasMatch(f.limitation!), isFalse,
+              reason: '$rule 的局限没有一起迁移：${f.limitation}');
+        }
+      }
+    });
+
+    test('证据的位置也能本地化（「N 个 DEX 的字符串」）', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      final endpoints = _byId(rich(), 'ANDROID-NETWORK-ENDPOINTS')!;
+      final evidence = endpoints.evidence.single;
+      expect(evidence.locationCode, 'dex.strings');
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      expect(AnalysisReport.locationText(evidence, t), contains('个 DEX 的字符串'));
+
+      await LocaleSettings.setLocaleRaw('en');
+      expect(
+        AnalysisReport.locationText(evidence, t),
+        contains('DEX file(s)'),
+      );
+    });
+
+    test('四个维护中的语言包都能取到文案，且不留占位符', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      // (code, args) —— 逐条列出，避免「漏了一条没测」。
+      const findings = [
+        (
+          rule: 'ANDROID-OCR-CAPABILITY',
+          code: 'android.ocr_capability',
+          args: <String, Object>{
+            'parts': <String, Object>{
+              'codeRefs': <String>['A'],
+              'stringClues': <String>['B'],
+            },
+          },
+        ),
+        (
+          rule: 'ANDROID-UPLOAD-API',
+          code: 'android.upload_api',
+          args: <String, Object>{
+            'parts': <String, Object>{
+              'codeRefs': <String>['A'],
+            },
+          },
+        ),
+        (
+          rule: 'ANDROID-NETWORK-ENDPOINTS',
+          code: 'android.network_endpoints',
+          args: <String, Object>{
+            'parts': <String, Object>{
+              'domains': <String>['a.example.com'],
+              'domainCount': 1,
+            },
+          },
+        ),
+        (
+          rule: 'ANDROID-NETWORK-CLIENT',
+          code: 'android.network_client',
+          args: <String, Object>{
+            'parts': <String, Object>{
+              'codeRefs': <String>['A'],
+              'stringCluesOnly': <String>['B'],
+            },
+          },
+        ),
+        (
+          rule: 'ANDROID-RULE-B',
+          code: 'android.rule_b',
+          args: <String, Object>{
+            'inputClues': <String>['A'],
+            'ocrClues': <String>['B'],
+          },
+        ),
+        (
+          rule: 'ANDROID-RULE-C',
+          code: 'android.rule_c',
+          args: <String, Object>{},
+        ),
+      ];
+
+      const relationships = [
+        'android.ocr_capability.relationship_code_refs',
+        'android.upload_api.relationship_strings_only',
+        'android.network_client.relationship_code_refs',
+        'android.rule_b.relationship',
+        'android.rule_c.relationship_package',
+      ];
+
+      const limitations = [
+        'android.ocr_capability.limitation',
+        'android.network_endpoints.limitation',
+        'android.network_client.limitation',
+        'android.rule_b.limitation',
+        'android.rule_c.limitation',
+      ];
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+
+        for (final m in findings) {
+          final f = SecurityFinding(
+            ruleId: m.rule,
+            platform: SecurityPlatform.android,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'fallback finding',
+            evidence: const [],
+            recommendation: 'fallback recommendation',
+            messageCode: m.code,
+            messageArgs: m.args,
+            recommendationCode: 'android.rule_c.manual_review',
+          );
+          final text = AnalysisReport.findingText(f, t);
+          expect(text, isNot('fallback finding'),
+              reason: '$locale 下 ${m.code} 没取到本地化文案');
+          expect(text, isNot(contains('{')), reason: '$locale / ${m.code}');
+          expect(text, isNot(contains('}')), reason: '$locale / ${m.code}');
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text), isTrue,
+                reason: '$locale 下 ${m.code} 不是中文：$text');
+          }
+        }
+
+        for (final code in relationships) {
+          final f = SecurityFinding(
+            ruleId: 'X',
+            platform: SecurityPlatform.android,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'f',
+            evidence: const [],
+            relationship: 'fallback relationship',
+            recommendation: 'r',
+            relationshipCode: code,
+          );
+          final text = AnalysisReport.relationshipText(f, t);
+          expect(text, isNot('fallback relationship'),
+              reason: '$locale 下 $code 没取到本地化文案');
+          expect(text, isNot(contains('{')));
+        }
+
+        for (final code in limitations) {
+          final f = SecurityFinding(
+            ruleId: 'X',
+            platform: SecurityPlatform.android,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'f',
+            evidence: const [],
+            limitation: 'fallback limitation',
+            recommendation: 'r',
+            limitationCode: code,
+          );
+          final text = AnalysisReport.limitationText(f, t);
+          expect(text, isNot('fallback limitation'),
+              reason: '$locale 下 $code 没取到本地化文案');
+          expect(text, isNot(contains('{')));
+        }
+      }
+    });
+
+    test('标签与分隔符都来自语言包：英文冒号分号、中文顿号分号', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      final result = rich();
+      final ocr = _byId(result, 'ANDROID-OCR-CAPABILITY')!;
+
+      await LocaleSettings.setLocaleRaw('en');
+      final en = AnalysisReport.findingText(ocr, t);
+      expect(en, contains('string mentions: '));
+      expect(en, isNot(contains('字符串提及')));
+      expect(en, isNot(contains('、')));
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.findingText(ocr, t);
+      expect(zh, contains('字符串提及 '));
+      expect(zh, isNot(contains('string mentions')));
+
+      // 分项之间用语言包的分号，不是写死的。
+      final endpoints = _byId(result, 'ANDROID-NETWORK-ENDPOINTS')!;
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zhEndpoints = AnalysisReport.findingText(endpoints, t);
+      expect(zhEndpoints, contains('域名 '));
+      expect(zhEndpoints, contains(' 个：'));
+      expect(zhEndpoints, isNot(contains('domains (')));
+
+      await LocaleSettings.setLocaleRaw('en');
+      final enEndpoints = AnalysisReport.findingText(endpoints, t);
+      expect(enEndpoints, contains('domains ('));
+      expect(enEndpoints, isNot(contains('域名')));
+    });
+
+    test('规则 C 的关联说明带参数：点出具体方法体', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      const f = SecurityFinding(
+        ruleId: 'ANDROID-RULE-C',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.p1,
+        confidence: SecurityConfidence.suspected,
+        finding: 'f',
+        evidence: [],
+        relationship: 'fallback relationship',
+        recommendation: 'r',
+        relationshipCode: 'android.rule_c.relationship_method',
+        relationshipArgs: <String, Object>{'caller': 'Lcom/a/B;.run()V'},
+      );
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.relationshipText(f, t);
+      expect(zh, contains('Lcom/a/B;.run()V'));
+      expect(zh, contains('同一个方法体内'));
+      expect(zh, isNot(contains('{caller}')));
+
+      // 参数缺失时回退原文，绝不渲染出 `{caller}`。
+      const noArgs = SecurityFinding(
+        ruleId: 'ANDROID-RULE-C',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.p1,
+        confidence: SecurityConfidence.suspected,
+        finding: 'f',
+        evidence: [],
+        relationship: 'fallback relationship',
+        recommendation: 'r',
+        relationshipCode: 'android.rule_c.relationship_method',
+      );
+      expect(
+          AnalysisReport.relationshipText(noArgs, t), 'fallback relationship');
     });
   });
 

@@ -529,7 +529,33 @@
       "android_native_symbols": "The native libraries import {count} system capabilities with a specific meaning: {symbols}. This only proves these libraries **have the ability** to use them; it does not prove they are called, nor does it say anything about the arguments used.",
       "android_native_symbols_relationship": "The symbols come from **undefined** (imported) entries in the ELF `.dynsym` — the dynamic linker resolves them at load time. A function the library defines itself under the same name is not counted.",
       "android_native_symbols_limitation": "Import does not mean call: the native code was not disassembled, so it is unknown which code paths call these functions. Implementations that issue system calls directly via `syscall()` or call indirectly inside libc do not appear in the symbol table.",
-      "android_native_symbols_manual_review": "To confirm the actual behaviour, analyse dynamically in an isolated environment (`strace` / Frida and similar). Importing `system` / `dlopen` alone is not a risk verdict — crash reporting, hot-fix and plugin frameworks all use them."
+      "android_native_symbols_manual_review": "To confirm the actual behaviour, analyse dynamically in an isolated environment (`strace` / Frida and similar). Importing `system` / `dlopen` alone is not a risk verdict — crash reporting, hot-fix and plugin frameworks all use them.",
+      "android_ocr_capability": "Image text recognition capability found: {parts}. This only reports the capability itself; it is not a malicious verdict.",
+      "android_upload_api": "Upload-related APIs or code found: {parts}. This only proves the upload capability exists; it does not prove sensitive data was uploaded.",
+      "android_network_endpoints": "Extracted from static strings: {parts}. Static extraction does not mean these were actually visited at runtime — a domain in a string may be a configuration value, an SDK address or a fallback endpoint that is never contacted.",
+      "android_network_client": "Network client related code found ({parts}). This only proves the network communication capability exists; it does not prove data was transferred, nor does it say where the data went.",
+      "android_rule_b": "Both an image input source and text recognition capability were found: permission/code clues ({inputClues}) and recognition capability ({ocrClues}). This combination may correspond to a normal feature (document scanning, translation, business card reading).",
+      "android_rule_c": "Image input, text recognition and upload call clues all appear together: a suspected path for sensitive data leaving the device. This is a high-risk **candidate**; static analysis could not prove that data actually flows into an upload request.",
+      "android_ocr_capability_check_pipeline": "Confirm the input source of the recognition feature (user-provided / library scan) and where the result goes (processed locally / sent over the network).",
+      "android_upload_api_manual_review": "Manually confirm what is uploaded, what triggers it and the destination.",
+      "android_network_endpoints_verify": "For unfamiliar domains, verify further with certificate pinning and traffic observation; an unfamiliar domain, the use of a CDN or encryption is not malicious evidence by itself.",
+      "android_network_client_manual_review": "To confirm actual outbound traffic, combine this with certificate pinning, packet capture or enterprise-side traffic auditing; using some networking library is not a risk verdict by itself.",
+      "android_rule_b_confirm_pipeline": "Confirm the recognition input source and how the user authorises it (whether it goes through the system photo picker).",
+      "android_rule_c_manual_review": "Review manually first; you can capture and verify the actual outbound content in an isolated environment (requires dynamic testing, not provided in this version).",
+      "android_ocr_capability_relationship_code_refs": "The “code reference” comes from method_ids: the bytecode references these methods, but that does not prove they are called at runtime (the instructions in code_item were not walked).",
+      "android_ocr_capability_relationship_strings_only": "All hits appear only in strings; no method_ids entry references them.",
+      "android_upload_api_relationship_code_refs": "The “code reference” comes from method_ids: the bytecode references these methods/types, but that does not prove they are called at runtime.",
+      "android_upload_api_relationship_strings_only": "All hits appear only in strings (for example multipart/form-data is a request-header value, so it can only ever appear as a literal).",
+      "android_network_client_relationship_code_refs": "The “code reference” comes from method_ids: it proves the bytecode references these methods/types, but not that they are called at runtime (the instructions in code_item were not walked). “String mention only” may be a configuration value, a commented-out literal or an SDK that is never used.",
+      "android_network_client_relationship_strings_only": "All hits appear only in strings; no method_ids entry references them — the presence of these literals does not mean the implementation exists.",
+      "android_rule_b_relationship": "Image input → text recognition: the two clues co-occur, but they are not proven to lie on the same call path.",
+      "android_rule_c_relationship_package": "The call instructions for text recognition and upload are **not in the same method body** (the co-occurrence is at the whole-package level). Reading a photo → image text recognition → building an upload request: there is evidence for each of the three stages, but “the data flow along the same code path” is not proven — the unproven hop is the recognition result entering the upload request.",
+      "android_rule_c_relationship_method": "The call instructions for text recognition and upload appear **in the same method body** ({caller}); but co-occurrence within one method is not data flow: whether the recognition result is fed into the upload request is not proven. Reading a photo → image text recognition → building an upload request: there is evidence for each of the three stages, but “the data flow along the same code path” is not proven.",
+      "android_ocr_capability_limitation": "Both code references and string hits **are not the same as a call happening**: the code paths were not verified by disassembly.",
+      "android_network_endpoints_limitation": "The string table does not contain every constructed URL (concatenation, encrypted configuration), nor does it reflect actual connections.",
+      "android_network_client_limitation": "HTTP implementations using reflection, dynamic loading or a hardened shell do not appear in method_ids, so “no code reference” does not mean “no network communication”.",
+      "android_rule_b_limitation": "No disassembly was performed, so it cannot be determined whether the recognition module actually handles user-selected images or batch-scanned media files.",
+      "android_rule_c_limitation": "The association comes from multiple markers co-occurring, not from call-graph analysis; reflection, dynamic loading and hardening may all make the real path different."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -542,7 +568,8 @@
       "code_reference": "{marker} (reference): {samples}",
       "code_call_site": "{marker} (call site): {samples}",
       "native_symbol_imported": "{symbol} (imported): {description}",
-      "native_symbol_imported_raw": "{symbol} (imported): {description} | raw symbol: {rawNames}"
+      "native_symbol_imported_raw": "{symbol} (imported): {description} | raw symbol: {rawNames}",
+      "dex_strings_location": "strings of {count} DEX file(s)"
     },
     "native_symbols": {
       "line": "{text} ({symbol})",
@@ -560,6 +587,14 @@
       "recv": "receive data",
       "resolve": "resolve a domain name",
       "system_property": "read an Android system property"
+    },
+    "parts": {
+      "code_refs": "code references: {names}",
+      "string_clues": "string mentions: {names}",
+      "string_clues_only": "string mentions only: {names}",
+      "domains": "domains ({count}): {names}",
+      "ips": "IP addresses ({count}): {names}",
+      "join": "; "
     },
     "findings": "Findings"
   },
