@@ -184,8 +184,10 @@ class IosPrivacyAudit {
             detail: urlSchemes.value!.join(', '),
           ),
         ],
-        limitation: '本次未检查 scheme 的处理代码（未反汇编）；'
-            '「入口存在」与「入口安全」是两件事。',
+        limitation: 'The scheme handling code was not inspected (no '
+            'disassembly); "the entry point exists" and "the entry point is '
+            'safe" are two different things.',
+        limitationCode: 'ios.url_schemes.limitation',
         recommendation: 'To assess the attack surface, manually check whether '
             'the scheme handling logic validates the caller and whether it '
             'concatenates parameters straight into paths or SQL.',
@@ -370,9 +372,10 @@ class IosPrivacyAudit {
               detail: 'NOT scanned',
             ),
         ],
-        limitation: '扫描仅提取可打印 ASCII 字符串：'
-            'dyld 共享缓存里的系统框架符号、非 ASCII 字面量'
-            '以及被加密/加固的段都会漏掉。',
+        limitation: 'The scan only extracts printable ASCII strings: system '
+            'framework symbols in the dyld shared cache, non-ASCII literals '
+            'and encrypted/hardened sections are all missed.',
+        limitationCode: 'ios.scan_coverage.limitation',
         recommendation: 'For a more complete conclusion, manually inspect '
             'the executables that were not covered.',
         recommendationCode: 'ios.scan_coverage.manual_review',
@@ -467,8 +470,10 @@ class IosPrivacyAudit {
               detail: 'NSPhotoLibraryUsageDescription not found',
             ),
         ],
-        limitation: 'API 符号存在不等于运行时会调用；'
-            '符号也可能来自未使用的框架引用。',
+        limitation: 'The presence of an API symbol does not mean it is '
+            'called at runtime; the symbol may also come from an unused '
+            'framework reference.',
+        limitationCode: 'ios.photo_library.limitation',
         recommendation: missingUsage
             ? 'Manually check the call sites and the build configuration; add '
                 'a usage description as Apple requires, or remove the '
@@ -531,11 +536,15 @@ class IosPrivacyAudit {
           'photo-full-library',
           'photo-asset',
         ]),
-        relationship: '「缺少选择器路径」是**静态推断**：选择器也可能通过'
-            'SwiftUI 的 `PhotosPicker` 或动态加载使用，'
-            '而它们不一定会留下可扫描的符号。',
-        limitation: '符号存在不等于运行时会调用；'
-            '符号缺失也不等于功能不存在（动态加载、反射、SwiftUI 包装）。',
+        relationship: '"The picker path is missing" is a **static '
+            'inference**: the picker may also be used through the SwiftUI '
+            '`PhotosPicker` or loaded dynamically, and those do not '
+            'necessarily leave a scannable symbol.',
+        relationshipCode: 'ios.rule_a.relationship',
+        limitation: 'The presence of a symbol does not mean it is called at '
+            'runtime, and the absence of a symbol does not mean the feature '
+            'is missing (dynamic loading, reflection, SwiftUI wrappers).',
+        limitationCode: 'ios.rule_a.limitation',
         recommendation: 'Manual review: can the system photo picker replace '
             'full library access? This item is a candidate for review, not a '
             'malicious verdict.',
@@ -597,10 +606,13 @@ class IosPrivacyAudit {
           ]),
           ..._clueEvidence(clues, const ['ocr', 'ocr-image-request']),
         ],
-        relationship: '图像输入 → 文字识别：两段线索同现，但未被证实位于'
-            '同一条调用路径上。',
-        limitation: '未反汇编，无法确认识别模块实际处理的是用户主动选择的'
-            '图片还是批量扫描的媒体文件。',
+        relationship: 'Image input → text recognition: the two clues '
+            'co-occur, but they are not proven to lie on the same call path.',
+        relationshipCode: 'ios.rule_b.relationship',
+        limitation: 'No disassembly was performed, so it cannot be '
+            'determined whether the recognition module actually handles '
+            'user-selected images or batch-scanned media files.',
+        limitationCode: 'ios.rule_b.limitation',
         recommendation: 'Confirm the recognition input source and how the '
             'user authorises it (whether it goes through the system photo '
             'picker).',
@@ -641,9 +653,13 @@ class IosPrivacyAudit {
         ],
         dataSource: '照片/媒体文件与其中的识别文本',
         dataSink: '网络请求（NSURLSession / 上传）',
-        relationship: '图像输入 → 文字识别 → 网络发送：三段分别有证据，'
-            '「识别结果进入请求体」这一跳未被证实。',
-        limitation: '未反汇编、未观察流量；框架引用不等于被调用。',
+        relationship: 'Image input → text recognition → network send: there '
+            'is evidence for each of the three stages, but the hop "the '
+            'recognition result enters the request body" is not proven.',
+        relationshipCode: 'ios.rule_c.relationship',
+        limitation: 'No disassembly and no traffic observation; a framework '
+            'reference does not mean the code is called.',
+        limitationCode: 'ios.rule_c.limitation',
         recommendation: 'Manual review; if necessary, capture and verify '
             'traffic in an isolated environment.',
         recommendationCode: 'ios.rule_c.manual_review',
@@ -706,11 +722,16 @@ class IosPrivacyAudit {
         ],
         dataSource: '相册 / 相机 / 剪贴板中的敏感内容',
         dataSink: '网络请求（后台执行期间）',
-        relationship: '后台执行声明 → 敏感数据读取 → 网络回传：三段分别有'
-            '证据，但**没有任何一跳被证实** —— 既没有证明敏感读取发生在后台，'
-            '也没有证明读取的内容进入了请求体。',
-        limitation: '`UIBackgroundModes` 是**声明**，不等于运行时的实际后台'
-            '行为；未反汇编、未观察流量。',
+        relationship: 'Background execution declaration → sensitive data '
+            'read → network upload: there is evidence for each of the three '
+            'stages, but **not a single hop is proven** — it is not shown '
+            'that the sensitive read happens in the background, nor that '
+            'what was read reaches the request body.',
+        relationshipCode: 'ios.rule_e.relationship',
+        limitation: '`UIBackgroundModes` is a **declaration** and does not '
+            'equal actual background behaviour at runtime; no disassembly and '
+            'no traffic observation.',
+        limitationCode: 'ios.rule_e.limitation',
         recommendation: 'Manually review what is uploaded in the background '
             'and what triggers it; if necessary, observe network behaviour '
             'while the app is backgrounded in an isolated environment.',
@@ -745,8 +766,10 @@ class IosPrivacyAudit {
             detail: 'NSAllowsArbitraryLoads = true',
           ),
         ],
-        limitation: '配置允许明文不等同于实际使用明文；'
-            '例外域内的具体例外设置未展开。',
+        limitation: 'Allowing cleartext in the configuration is not the same '
+            'as actually using cleartext; the per-domain exception settings '
+            'are not expanded.',
+        limitationCode: 'ios.rule_d.limitation',
         recommendation: 'Confirm whether cleartext requests exist, and turn '
             'the switch off if necessary.',
         recommendationCode: 'ios.rule_d.manual_review',
@@ -783,8 +806,10 @@ class IosPrivacyAudit {
             ].join('；'),
           ),
         ],
-        limitation: '隐私清单不记录实际行为；'
-            '运行时的数据访问需依赖系统的 App Privacy Report（本版本不提供）。',
+        limitation: 'The privacy manifest does not record actual behaviour; '
+            'runtime data access would require the system App Privacy Report '
+            '(not provided in this version).',
+        limitationCode: 'ios.privacy_info.limitation',
         recommendation: 'Manually compare the declarations against the API '
             'clues and the privacy policy.',
         recommendationCode: 'ios.privacy_info.cross_check',
@@ -836,8 +861,10 @@ class IosPrivacyAudit {
             'has no network behaviour; it only means this scan found none.',
         messageCode: 'ios.rule_f',
         evidence: const [],
-        limitation: '只扫描主可执行文件的 ASCII 字符串；'
-            'Frameworks 与共享缓存内的网络实现不在覆盖范围内。',
+        limitation: 'Only ASCII strings from the main executable are '
+            'scanned; network implementations inside Frameworks and the '
+            'shared cache are outside the coverage.',
+        limitationCode: 'ios.rule_f.limitation',
         recommendation: 'To confirm, combine this with runtime traffic '
             'observation (not provided in this version).',
         recommendationCode: 'ios.rule_f.runtime_traffic',

@@ -163,6 +163,43 @@ void main() {
       expect(f.evidence, hasLength(2));
     });
 
+    test('去重后必须保留迁移用的 code（否则本地化会悄悄退回原文）', () {
+      // 回归：`withDedupedEvidence` 是手工重建对象的，加字段时最容易漏。
+      // Android 侧对**每条**发现都调它，漏了就等于整批迁移白做。
+      const dup = SecurityEvidence(
+        source: SecurityEvidenceSource.manifest,
+        location: 'AndroidManifest.xml:12',
+        detail: 'READ_MEDIA_IMAGES',
+      );
+      const f = SecurityFinding(
+        ruleId: 'TEST-RULE',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.photoAccess,
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: 'fallback finding',
+        evidence: [dup, dup],
+        relationship: 'fallback relationship',
+        limitation: 'fallback limitation',
+        recommendation: 'fallback recommendation',
+        messageCode: 'test.finding',
+        messageArgs: <String, Object>{'n': 1},
+        recommendationCode: 'test.recommendation',
+        recommendationArgs: <String, Object>{'m': 2},
+        relationshipCode: 'test.relationship',
+        limitationCode: 'test.limitation',
+      );
+
+      final deduped = f.withDedupedEvidence();
+      expect(deduped.evidence, hasLength(1), reason: '去重本身要生效');
+      expect(deduped.messageCode, 'test.finding');
+      expect(deduped.messageArgs, <String, Object>{'n': 1});
+      expect(deduped.recommendationCode, 'test.recommendation');
+      expect(deduped.recommendationArgs, <String, Object>{'m': 2});
+      expect(deduped.relationshipCode, 'test.relationship');
+      expect(deduped.limitationCode, 'test.limitation');
+    });
+
     test('三元组任一项不同就不算重复', () {
       final f = findingWith(const [
         SecurityEvidence(

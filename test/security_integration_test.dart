@@ -162,6 +162,40 @@ void main() {
       expect(report, isNot(contains('Instance of')));
     });
 
+    test('报告里的局限也走本地化，不直接打印原文', () {
+      // 回归：`limitation` 曾经是直接插值 `finding.limitation`，
+      // 于是英文界面下的报告里会出现中文。
+      const result = PackageAnalysisResult(
+        platform: PackagePlatform.ios,
+        fileName: FieldValue<String>.extracted('test.ipa',
+            source: FieldSource.fileSystem),
+        security: SecurityAnalysisResult(
+          engineVersion: 'test',
+          rulesVersion: 'test',
+          findings: [
+            SecurityFinding(
+              ruleId: 'IOS-RULE-F',
+              platform: SecurityPlatform.ios,
+              category: SecurityCategory.dataExfiltration,
+              severity: SecuritySeverity.info,
+              confidence: SecurityConfidence.confirmed,
+              finding: 'placeholder',
+              evidence: [],
+              limitation: '只扫描主可执行文件的 ASCII 字符串（旧的中文原文）',
+              limitationCode: 'ios.rule_f.limitation',
+              recommendation: 'review',
+            ),
+          ],
+          limitations: [],
+        ),
+      );
+
+      final report = AnalysisReport.render(result, t, generatedAt: _at);
+
+      expect(report, contains('Only ASCII strings from the main executable'));
+      expect(report, isNot(contains('旧的中文原文')));
+    });
+
     test('无发现项时报告明确说明', () {
       const result = PackageAnalysisResult(
         platform: PackagePlatform.android,

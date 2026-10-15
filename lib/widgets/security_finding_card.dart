@@ -177,6 +177,11 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
     final theme = Theme.of(context);
     final finding = widget.finding;
     final evidence = finding.evidence;
+    // 关联 / 建议 / 局限都要走呈现层的本地化：引擎产出的是稳定 code +
+    // 英文回退，直接读裸字段会在英文界面下显示中文（B11）。
+    final relationship = AnalysisReport.relationshipText(finding, t);
+    final recommendation = AnalysisReport.recommendationText(finding, t);
+    final limitation = AnalysisReport.limitationText(finding, t);
 
     return Padding(
       padding: const EdgeInsets.only(top: 16),
@@ -204,20 +209,19 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
           // 与下面的「局限」是两件事：局限说的是**能力边界**（没做反汇编），
           // 关联说的是**这条结论自己的证据链**。只说「有风险」而不说依据到
           // 哪一步，读者无从复核 —— 这正是本项目可信度表达的核心。
-          if (finding.relationship != null) ...[
+          if (relationship != null && relationship.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _buildRelationship(context, finding.relationship!),
+            _buildRelationship(context, relationship),
           ],
           // 建议
-          if (AnalysisReport.recommendationText(finding, t).isNotEmpty) ...[
+          if (recommendation.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _buildRecommendation(
-                context, AnalysisReport.recommendationText(finding, t)),
+            _buildRecommendation(context, recommendation),
           ],
           // 局限
-          if (finding.limitation != null) ...[
+          if (limitation != null && limitation.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _buildLimitation(context, finding.limitation!),
+            _buildLimitation(context, limitation),
           ],
         ],
       ),

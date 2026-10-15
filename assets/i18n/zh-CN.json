@@ -486,7 +486,21 @@
       "ios_rule_e_manual_review": "人工复核后台上传的内容与触发条件；必要时在隔离环境中观察后台期间的网络行为。",
       "ios_rule_d_manual_review": "确认是否存在明文请求，必要时关闭该开关。",
       "ios_privacy_info_cross_check": "将声明内容与 API 线索、隐私政策人工比对。",
-      "ios_privacy_tracking_confirm_att": "确认跟踪用途与 ATT 授权流程是否符合预期。"
+      "ios_privacy_tracking_confirm_att": "确认跟踪用途与 ATT 授权流程是否符合预期。",
+      "ios_url_schemes_limitation": "本次未检查 scheme 的处理代码（未反汇编）；「入口存在」与「入口安全」是两件事。",
+      "ios_scan_coverage_limitation": "扫描仅提取可打印 ASCII 字符串：dyld 共享缓存里的系统框架符号、非 ASCII 字面量以及被加密/加固的段都会漏掉。",
+      "ios_photo_library_limitation": "API 符号存在不等于运行时会调用；符号也可能来自未使用的框架引用。",
+      "ios_rule_a_relationship": "「缺少选择器路径」是**静态推断**：选择器也可能通过 SwiftUI 的 `PhotosPicker` 或动态加载使用，而它们不一定会留下可扫描的符号。",
+      "ios_rule_a_limitation": "符号存在不等于运行时会调用；符号缺失也不等于功能不存在（动态加载、反射、SwiftUI 包装）。",
+      "ios_rule_b_relationship": "图像输入 → 文字识别：两段线索同现，但未被证实位于同一条调用路径上。",
+      "ios_rule_b_limitation": "未反汇编，无法确认识别模块实际处理的是用户主动选择的图片还是批量扫描的媒体文件。",
+      "ios_rule_c_relationship": "图像输入 → 文字识别 → 网络发送：三段分别有证据，「识别结果进入请求体」这一跳未被证实。",
+      "ios_rule_c_limitation": "未反汇编、未观察流量；框架引用不等于被调用。",
+      "ios_rule_e_relationship": "后台执行声明 → 敏感数据读取 → 网络回传：三段分别有证据，但**没有任何一跳被证实** —— 既没有证明敏感读取发生在后台，也没有证明读取的内容进入了请求体。",
+      "ios_rule_e_limitation": "`UIBackgroundModes` 是**声明**，不等于运行时的实际后台行为；未反汇编、未观察流量。",
+      "ios_rule_d_limitation": "配置允许明文不等同于实际使用明文；例外域内的具体例外设置未展开。",
+      "ios_privacy_info_limitation": "隐私清单不记录实际行为；运行时的数据访问需依赖系统的 App Privacy Report（本版本不提供）。",
+      "ios_rule_f_limitation": "只扫描主可执行文件的 ASCII 字符串；Frameworks 与共享缓存内的网络实现不在覆盖范围内。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",

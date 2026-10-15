@@ -487,7 +487,21 @@
       "ios_rule_e_manual_review": "Manually review what is uploaded in the background and what triggers it; if necessary, observe network behaviour while the app is backgrounded in an isolated environment.",
       "ios_rule_d_manual_review": "Confirm whether cleartext requests exist, and turn the switch off if necessary.",
       "ios_privacy_info_cross_check": "Manually compare the declarations against the API clues and the privacy policy.",
-      "ios_privacy_tracking_confirm_att": "Confirm that the tracking purpose and the ATT authorisation flow match expectations."
+      "ios_privacy_tracking_confirm_att": "Confirm that the tracking purpose and the ATT authorisation flow match expectations.",
+      "ios_url_schemes_limitation": "The scheme handling code was not inspected (no disassembly); “the entry point exists” and “the entry point is safe” are two different things.",
+      "ios_scan_coverage_limitation": "The scan only extracts printable ASCII strings: system framework symbols in the dyld shared cache, non-ASCII literals and encrypted/hardened sections are all missed.",
+      "ios_photo_library_limitation": "The presence of an API symbol does not mean it is called at runtime; the symbol may also come from an unused framework reference.",
+      "ios_rule_a_relationship": "“The picker path is missing” is a **static inference**: the picker may also be used through the SwiftUI `PhotosPicker` or loaded dynamically, and those do not necessarily leave a scannable symbol.",
+      "ios_rule_a_limitation": "The presence of a symbol does not mean it is called at runtime, and the absence of a symbol does not mean the feature is missing (dynamic loading, reflection, SwiftUI wrappers).",
+      "ios_rule_b_relationship": "Image input → text recognition: the two clues co-occur, but they are not proven to lie on the same call path.",
+      "ios_rule_b_limitation": "No disassembly was performed, so it cannot be determined whether the recognition module actually handles user-selected images or batch-scanned media files.",
+      "ios_rule_c_relationship": "Image input → text recognition → network send: there is evidence for each of the three stages, but the hop “the recognition result enters the request body” is not proven.",
+      "ios_rule_c_limitation": "No disassembly and no traffic observation; a framework reference does not mean the code is called.",
+      "ios_rule_e_relationship": "Background execution declaration → sensitive data read → network upload: there is evidence for each of the three stages, but **not a single hop is proven** — it is not shown that the sensitive read happens in the background, nor that what was read reaches the request body.",
+      "ios_rule_e_limitation": "`UIBackgroundModes` is a **declaration** and does not equal actual background behaviour at runtime; no disassembly and no traffic observation.",
+      "ios_rule_d_limitation": "Allowing cleartext in the configuration is not the same as actually using cleartext; the per-domain exception settings are not expanded.",
+      "ios_privacy_info_limitation": "The privacy manifest does not record actual behaviour; runtime data access would require the system App Privacy Report (not provided in this version).",
+      "ios_rule_f_limitation": "Only ASCII strings from the main executable are scanned; network implementations inside Frameworks and the shared cache are outside the coverage."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",

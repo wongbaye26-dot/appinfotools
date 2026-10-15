@@ -408,4 +408,68 @@ void main() {
       expect(split.uncheckedCount, 0);
     });
   });
+
+  // 文案本地化用的 code 字段（B11）。
+  //
+  // 这些字段**没有默认值就编译不过**，但**有默认值就会让「漏传」静默通过** ——
+  // 手工重建对象的方法（这里是 `withDedupedEvidence`）最容易漏掉它们。
+  // Android 侧对每条发现都调这个方法，漏掉等于整批本地化白做。
+  group('SecurityFinding 的本地化 code 字段', () {
+    const dup = SecurityEvidence(
+      source: SecurityEvidenceSource.manifest,
+      location: 'AndroidManifest.xml:12',
+      detail: 'READ_MEDIA_IMAGES',
+    );
+
+    const coded = SecurityFinding(
+      ruleId: 'TEST-RULE',
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.photoAccess,
+      severity: SecuritySeverity.p2,
+      confidence: SecurityConfidence.suspected,
+      finding: 'fallback finding',
+      evidence: [dup, dup],
+      relationship: 'fallback relationship',
+      limitation: 'fallback limitation',
+      recommendation: 'fallback recommendation',
+      messageCode: 'test.finding',
+      messageArgs: <String, Object>{'n': 1},
+      recommendationCode: 'test.recommendation',
+      recommendationArgs: <String, Object>{'m': 2},
+      relationshipCode: 'test.relationship',
+      limitationCode: 'test.limitation',
+    );
+
+    test('withDedupedEvidence 保留全部 code 与参数', () {
+      final deduped = coded.withDedupedEvidence();
+
+      expect(deduped.evidence, hasLength(1), reason: '去重本身要生效');
+      expect(deduped.messageCode, 'test.finding');
+      expect(deduped.messageArgs, <String, Object>{'n': 1});
+      expect(deduped.recommendationCode, 'test.recommendation');
+      expect(deduped.recommendationArgs, <String, Object>{'m': 2});
+      expect(deduped.relationshipCode, 'test.relationship');
+      expect(deduped.limitationCode, 'test.limitation');
+    });
+
+    test('没填 code 时全部为 null / 空表（迁移是增量的）', () {
+      const plain = SecurityFinding(
+        ruleId: 'TEST-RULE',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.unknown,
+        finding: '原文',
+        evidence: [],
+        recommendation: '原文建议',
+      );
+
+      expect(plain.messageCode, isNull);
+      expect(plain.messageArgs, isEmpty);
+      expect(plain.recommendationCode, isNull);
+      expect(plain.recommendationArgs, isEmpty);
+      expect(plain.relationshipCode, isNull);
+      expect(plain.limitationCode, isNull);
+    });
+  });
 }

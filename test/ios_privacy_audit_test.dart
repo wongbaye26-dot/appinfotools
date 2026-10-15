@@ -254,7 +254,10 @@ void main() {
       expect(ruleC, isNotNull);
       expect(ruleC!.severity, SecuritySeverity.p1);
       expect(ruleC.confidence, SecurityConfidence.suspected);
-      expect(ruleC.relationship, contains('未被证实'));
+      expect(
+        AnalysisReport.relationshipText(ruleC, t),
+        contains('is not proven'),
+      );
       expect(ruleC.dataSink, contains('网络'));
       expect(result.highestRiskFinding!.ruleId, 'IOS-RULE-C');
     });
@@ -442,7 +445,10 @@ void main() {
       final schemeText = AnalysisReport.findingText(finding, t);
       expect(schemeText, contains('example'));
       expect(schemeText, contains('external callers'));
-      expect(finding.limitation, contains('未反汇编'));
+      expect(
+        AnalysisReport.limitationText(finding, t),
+        contains('no disassembly'),
+      );
     });
   });
 
@@ -462,7 +468,10 @@ void main() {
         AnalysisReport.findingText(ruleA, t),
         contains('more restrained path'),
       );
-      expect(ruleA.relationship, contains('静态推断'));
+      expect(
+        AnalysisReport.relationshipText(ruleA, t),
+        contains('static inference'),
+      );
       expect(
         AnalysisReport.recommendationText(ruleA, t),
         contains('not a malicious verdict'),
@@ -500,7 +509,10 @@ void main() {
       expect(ruleB, isNotNull);
       expect(ruleB!.severity, SecuritySeverity.p2);
       expect(ruleB.confidence, SecurityConfidence.suspected);
-      expect(ruleB.relationship, contains('未被证实'));
+      expect(
+        AnalysisReport.relationshipText(ruleB, t),
+        contains('not proven'),
+      );
       expect(
         AnalysisReport.findingText(ruleB, t),
         contains('may correspond'),
@@ -545,8 +557,14 @@ void main() {
       expect(ruleE.confidence, SecurityConfidence.suspected);
       expect(ruleE.dataSource, contains('相册'));
       expect(ruleE.dataSink, contains('网络'));
-      expect(ruleE.relationship, contains('没有任何一跳被证实'));
-      expect(ruleE.limitation, contains('声明'));
+      expect(
+        AnalysisReport.relationshipText(ruleE, t),
+        contains('not a single hop is proven'),
+      );
+      expect(
+        AnalysisReport.limitationText(ruleE, t),
+        contains('declaration'),
+      );
       expect(
         ruleE.evidence.any((e) =>
             e.source == SecurityEvidenceSource.infoPlist &&
@@ -1216,6 +1234,195 @@ void main() {
       expect(text, contains('fetch'));
       expect(text, contains('clipboard'));
       expect(text, isNot(contains('{')));
+    });
+  });
+
+  // B11 第四批：`relationship` / `limitation` 也纳入。
+  //
+  // 这两个字段**会渲染**（卡片展开区 + Markdown 报告），只迁 finding /
+  // recommendation 的话，英文界面下的展开区仍然是中文 ——
+  // 那等于「发现项文案已本地化」这句话只对正文成立。
+  group('发现项文案本地化（B11 第四批：relationship / limitation）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    const limitationCodes = {
+      'IOS-URL-SCHEMES': 'ios.url_schemes.limitation',
+      'IOS-SCAN-COVERAGE': 'ios.scan_coverage.limitation',
+      'IOS-PHOTO-LIBRARY': 'ios.photo_library.limitation',
+      'IOS-RULE-A': 'ios.rule_a.limitation',
+      'IOS-RULE-B': 'ios.rule_b.limitation',
+      'IOS-RULE-C': 'ios.rule_c.limitation',
+      'IOS-RULE-E': 'ios.rule_e.limitation',
+      'IOS-RULE-D': 'ios.rule_d.limitation',
+      'IOS-PRIVACY-INFO': 'ios.privacy_info.limitation',
+      'IOS-RULE-F': 'ios.rule_f.limitation',
+    };
+
+    const relationshipCodes = {
+      'IOS-RULE-A': 'ios.rule_a.relationship',
+      'IOS-RULE-B': 'ios.rule_b.relationship',
+      'IOS-RULE-C': 'ios.rule_c.relationship',
+      'IOS-RULE-E': 'ios.rule_e.relationship',
+    };
+
+    const emptyPlist = '<?xml version="1.0" encoding="UTF-8"?>'
+        '<plist version="1.0"><dict></dict></plist>';
+
+    const atsOnlyPlist = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+</dict></plist>
+''';
+
+    const backgroundPlist = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>UIBackgroundModes</key>
+  <array><string>fetch</string></array>
+</dict></plist>
+''';
+
+    const urlSchemePlist = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLSchemes</key>
+    <array><string>example</string></array>
+  </dict></array>
+</dict></plist>
+''';
+
+    test('引擎真的把 relationship / limitation 的 code 挂上去了', () {
+      // 四轮输入，覆盖到全部 10 条 limitation 与 4 条 relationship。
+      final scheme = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: urlSchemePlist),
+        executableBytes: const Utf8Encoder().convert('unrelated\n'),
+      );
+      final photoOnly = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: _usageOnlyPlist),
+        executableBytes:
+            const Utf8Encoder().convert('PHPhotoLibrary\nVNRecognizeText\n'),
+      );
+      final exfil = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: _usageOnlyPlist),
+        executableBytes: const Utf8Encoder().convert(
+          'PHPhotoLibrary\nVNRecognizeText\nNSURLSession\n',
+        ),
+      );
+      final background = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: backgroundPlist),
+        executableBytes: const Utf8Encoder().convert(
+          'UIPasteboard\nNSURLSession\n',
+        ),
+      );
+      final plainAts = IosPrivacyAudit.audit(
+        infoPlist: _plist(infoPlist: atsOnlyPlist),
+        executableBytes: const Utf8Encoder().convert('unrelated\n'),
+      );
+      // 隐私清单要单独一轮：`PrivacyInfo.xcprivacy` 不在 Info.plist 里。
+      final privacy = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+          infoPlist: emptyPlist,
+          xcprivacy: '<?xml version="1.0" encoding="UTF-8"?>'
+              '<plist version="1.0"><dict>'
+              '<key>NSPrivacyTracking</key><false/>'
+              '</dict></plist>',
+        ),
+        executableBytes: const Utf8Encoder().convert('unrelated\n'),
+      );
+
+      SecurityFinding? find(String rule) =>
+          _byId(scheme, rule) ??
+          _byId(photoOnly, rule) ??
+          _byId(exfil, rule) ??
+          _byId(background, rule) ??
+          _byId(plainAts, rule) ??
+          _byId(privacy, rule);
+
+      limitationCodes.forEach((rule, code) {
+        final f = find(rule);
+        expect(f, isNotNull, reason: '测试输入没有触发 $rule');
+        expect(f!.limitationCode, code, reason: rule);
+        expect(
+          RegExp(cjk).hasMatch(f.limitation!),
+          isFalse,
+          reason: '$rule 的局限英文回退里还有中文：${f.limitation}',
+        );
+      });
+
+      relationshipCodes.forEach((rule, code) {
+        final f = find(rule);
+        expect(f, isNotNull, reason: '测试输入没有触发 $rule');
+        expect(f!.relationshipCode, code, reason: rule);
+        expect(
+          RegExp(cjk).hasMatch(f.relationship!),
+          isFalse,
+          reason: '$rule 的关联说明英文回退里还有中文：${f.relationship}',
+        );
+      });
+    });
+
+    test('四个维护中的语言包都能取到，且中文变体确实是中文', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      SecurityFinding build({String? rel, String? lim}) => SecurityFinding(
+            ruleId: 'X',
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'fallback finding',
+            evidence: const [],
+            relationship: 'fallback relationship',
+            limitation: 'fallback limitation',
+            recommendation: 'fallback recommendation',
+            relationshipCode: rel,
+            limitationCode: lim,
+          );
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final code in limitationCodes.values) {
+          final text = AnalysisReport.limitationText(build(lim: code), t);
+          expect(text, isNot('fallback limitation'),
+              reason: '$locale 下 $code 没取到本地化文案');
+          expect(text, isNot(contains('{')));
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text!), isTrue,
+                reason: '$locale 下 $code 不是中文：$text');
+          }
+        }
+        for (final code in relationshipCodes.values) {
+          final text = AnalysisReport.relationshipText(build(rel: code), t);
+          expect(text, isNot('fallback relationship'),
+              reason: '$locale 下 $code 没取到本地化文案');
+          expect(text, isNot(contains('{')));
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text!), isTrue,
+                reason: '$locale 下 $code 不是中文：$text');
+          }
+        }
+      }
+    });
+
+    test('没填 code 的关联 / 局限仍按原文返回（迁移是增量的）', () {
+      const f = SecurityFinding(
+        ruleId: 'X',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.unknown,
+        finding: '未迁移',
+        evidence: [],
+        relationship: '尚未迁移的关联',
+        limitation: '尚未迁移的局限',
+        recommendation: '尚未迁移的建议',
+      );
+      expect(AnalysisReport.relationshipText(f, t), '尚未迁移的关联');
+      expect(AnalysisReport.limitationText(f, t), '尚未迁移的局限');
     });
   });
 }

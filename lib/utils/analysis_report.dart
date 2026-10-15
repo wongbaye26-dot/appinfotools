@@ -356,8 +356,9 @@ class AnalysisReport {
       if (recommendation.isNotEmpty) {
         sb.writeln('- **Recommendation:** $recommendation');
       }
-      if (finding.limitation != null && finding.limitation!.isNotEmpty) {
-        sb.writeln('- **Limitation:** ${finding.limitation}');
+      final limitation = limitationText(finding, t);
+      if (limitation != null && limitation.isNotEmpty) {
+        sb.writeln('- **Limitation:** $limitation');
       }
       sb.writeln();
     }
@@ -703,6 +704,48 @@ class AnalysisReport {
     return localized ?? finding.recommendation;
   }
 
+  /// 发现项**关联说明**的本地化正文，语义同 [findingText]。
+  ///
+  /// 返回 `null` 表示这条发现项没有关联说明（或没填 code 时原文为空）。
+  static String? relationshipText(SecurityFinding finding, Translations t) {
+    final raw = finding.relationship;
+    final code = finding.relationshipCode;
+    if (code == null) return raw;
+
+    final f = t.security.finding_texts;
+    final String? localized = switch (code) {
+      'ios.rule_a.relationship' => f.ios_rule_a_relationship,
+      'ios.rule_b.relationship' => f.ios_rule_b_relationship,
+      'ios.rule_c.relationship' => f.ios_rule_c_relationship,
+      'ios.rule_e.relationship' => f.ios_rule_e_relationship,
+      _ => null,
+    };
+    return localized ?? raw;
+  }
+
+  /// 发现项**检测局限**的本地化正文，语义同 [findingText]。
+  static String? limitationText(SecurityFinding finding, Translations t) {
+    final raw = finding.limitation;
+    final code = finding.limitationCode;
+    if (code == null) return raw;
+
+    final f = t.security.finding_texts;
+    final String? localized = switch (code) {
+      'ios.url_schemes.limitation' => f.ios_url_schemes_limitation,
+      'ios.scan_coverage.limitation' => f.ios_scan_coverage_limitation,
+      'ios.photo_library.limitation' => f.ios_photo_library_limitation,
+      'ios.rule_a.limitation' => f.ios_rule_a_limitation,
+      'ios.rule_b.limitation' => f.ios_rule_b_limitation,
+      'ios.rule_c.limitation' => f.ios_rule_c_limitation,
+      'ios.rule_d.limitation' => f.ios_rule_d_limitation,
+      'ios.rule_e.limitation' => f.ios_rule_e_limitation,
+      'ios.privacy_info.limitation' => f.ios_privacy_info_limitation,
+      'ios.rule_f.limitation' => f.ios_rule_f_limitation,
+      _ => null,
+    };
+    return localized ?? raw;
+  }
+
   /// 把「来源 id 列表」组装成**本地化**的一句话片段。
   ///
   /// 引擎只能产出 id（`photo_library` / `photo_picker` / `camera` / `clipboard`）
@@ -936,6 +979,8 @@ class AnalysisReport {
             'limitation': f.limitation,
             'messageCode': f.messageCode,
             'recommendationCode': f.recommendationCode,
+            'relationshipCode': f.relationshipCode,
+            'limitationCode': f.limitationCode,
             'recommendation': f.recommendation,
           },
     ];

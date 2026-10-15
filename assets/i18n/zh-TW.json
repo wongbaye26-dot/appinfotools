@@ -486,7 +486,21 @@
       "ios_rule_e_manual_review": "人工複核背景上傳的內容與觸發條件；必要時在隔離環境中觀察背景期間的網路行為。",
       "ios_rule_d_manual_review": "確認是否存在明文請求，必要時關閉該開關。",
       "ios_privacy_info_cross_check": "將宣告內容與 API 線索、隱私政策人工比對。",
-      "ios_privacy_tracking_confirm_att": "確認追蹤用途與 ATT 授權流程是否符合預期。"
+      "ios_privacy_tracking_confirm_att": "確認追蹤用途與 ATT 授權流程是否符合預期。",
+      "ios_url_schemes_limitation": "本次未檢查 scheme 的處理程式碼（未反組譯）；「入口存在」與「入口安全」是兩件事。",
+      "ios_scan_coverage_limitation": "掃描僅擷取可列印 ASCII 字串：dyld 共享快取裡的系統框架符號、非 ASCII 字面量以及被加密/加固的區段都會漏掉。",
+      "ios_photo_library_limitation": "API 符號存在不等於執行時會呼叫；符號也可能來自未使用的框架引用。",
+      "ios_rule_a_relationship": "「缺少選擇器路徑」是**靜態推斷**：選擇器也可能透過 SwiftUI 的 `PhotosPicker` 或動態載入使用，而它們不一定會留下可掃描的符號。",
+      "ios_rule_a_limitation": "符號存在不等於執行時會呼叫；符號缺失也不等於功能不存在（動態載入、反射、SwiftUI 包裝）。",
+      "ios_rule_b_relationship": "圖像輸入 → 文字辨識：兩段線索同現，但未被證實位於同一條呼叫路徑上。",
+      "ios_rule_b_limitation": "未反組譯，無法確認辨識模組實際處理的是使用者主動選擇的圖片還是批次掃描的媒體檔案。",
+      "ios_rule_c_relationship": "圖像輸入 → 文字辨識 → 網路傳送：三段分別有證據，「辨識結果進入請求主體」這一跳未被證實。",
+      "ios_rule_c_limitation": "未反組譯、未觀察流量；框架引用不等於被呼叫。",
+      "ios_rule_e_relationship": "背景執行宣告 → 敏感資料讀取 → 網路回傳：三段分別有證據，但**沒有任何一跳被證實** —— 既沒有證明敏感讀取發生在背景，也沒有證明讀取的內容進入了請求主體。",
+      "ios_rule_e_limitation": "`UIBackgroundModes` 是**宣告**，不等於執行時的實際背景行為；未反組譯、未觀察流量。",
+      "ios_rule_d_limitation": "設定允許明文不等同於實際使用明文；例外網域內的具體例外設定未展開。",
+      "ios_privacy_info_limitation": "隱私清單不記錄實際行為；執行時的資料存取需依賴系統的 App Privacy Report（本版本不提供）。",
+      "ios_rule_f_limitation": "只掃描主可執行檔的 ASCII 字串；Frameworks 與共享快取內的網路實作不在涵蓋範圍內。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",

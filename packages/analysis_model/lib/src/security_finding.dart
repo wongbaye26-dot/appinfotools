@@ -283,6 +283,17 @@ class SecurityFinding {
   final String? recommendationCode;
   final Map<String, Object> recommendationArgs;
 
+  /// [relationship] 的稳定标识，语义同 [messageCode]。
+  ///
+  /// 与 [messageCode] 分开的理由同上：关联说明是**独立的一句话**。
+  /// 这里没有配套的 `relationshipArgs` —— 目前所有关联说明都不带占位符，
+  /// **加了没人读的参数表只会让「漏传」编译通过**（本项目为此踩过多次），
+  /// 真需要时再加。
+  final String? relationshipCode;
+
+  /// [limitation] 的稳定标识，语义同 [relationshipCode]。
+  final String? limitationCode;
+
   const SecurityFinding({
     required this.ruleId,
     required this.platform,
@@ -300,6 +311,8 @@ class SecurityFinding {
     this.messageArgs = const {},
     this.recommendationCode,
     this.recommendationArgs = const {},
+    this.relationshipCode,
+    this.limitationCode,
   });
 
   /// 去掉**本 finding 内**完全相同的证据条目，返回新的 finding。
@@ -330,6 +343,14 @@ class SecurityFinding {
       relationship: relationship,
       limitation: limitation,
       recommendation: recommendation,
+      // 迁移用的 code **必须一起带上**：漏掉它们会让去重后的发现项
+      // 悄悄退回原文（Android 侧对每条发现都调这个方法）。
+      messageCode: messageCode,
+      messageArgs: messageArgs,
+      recommendationCode: recommendationCode,
+      recommendationArgs: recommendationArgs,
+      relationshipCode: relationshipCode,
+      limitationCode: limitationCode,
     );
   }
 
