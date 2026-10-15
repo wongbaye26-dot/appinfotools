@@ -1,5 +1,8 @@
 import 'dart:typed_data';
 
+import 'der.dart';
+import 'x509.dart';
+
 /// CMS/PKCS#7 `SignedData` 载荷定位的结果。
 class CmsContentResult {
   /// 定位到的载荷；失败时为 `null`。
@@ -44,6 +47,12 @@ class CmsContentExtractor {
 
   /// 嵌套深度上限 —— 防止构造出来的深嵌套把栈打穿。
   static const int maxDepth = 32;
+
+  /// 证书集合里最多解析多少张。
+  ///
+  /// 真实签名链是 2–4 张。上限只是防「畸形输入声称有几十万张」，
+  /// 不是业务约束。
+  static const int maxCertificates = 64;
 
   /// `pkcs7-signedData`：1.2.840.113549.1.7.2。
   static const List<int> signedDataOid = [
@@ -162,6 +171,100 @@ class CmsContentExtractor {
     return const CmsContentResult.failure(
       'no encapContentInfo with the pkcs7-data content type was found',
     );
+  }
+
+  /// 从 CMS 里提取**签名者证书的公开信息**。
+  ///
+  /// 只回答「签名里带了哪些证书、各自自称是谁签的、什么时候过期」——
+  /// **不验证证书，也不做信任链判断**（规范 5.5）。畸形输入返回失败原因，
+  /// 不抛异常。
+  static CmsCertificateInfo extractCertificates(Uint8List der) {
+    if (der.isEmpty) {
+      return const CmsCertificateInfo(failure: 'input is empty');
+    }
+    if (der.length > maxInputBytes) {
+      return CmsCertificateInfo(
+        failure: 'input is ${der.length} bytes, above the '
+            '$maxInputBytes byte limit',
+      );
+    }
+
+    final signedData = _findSignedData(der);
+    if (signedData == null) {
+      return const CmsCertificateInfo(
+        failure: 'the SignedData structure could not be located',
+      );
+    }
+
+    final children = _children(der, signedData, 0);
+    if (children == null) {
+      return const CmsCertificateInfo(
+          failure: 'SignedData could not be walked');
+    }
+
+    // `certificates` 是 `[0] IMPLICIT SET OF CertificateChoices`。
+    // 没有它**不是错误** —— 证书可以放在 CMS 之外（`-detached`），
+    // 这里如实返回「零张」，而不是报失败。
+    _Tlv? certificates;
+    for (final child in children) {
+      if (child.tag == _context0) {
+        certificates = child;
+        break;
+      }
+    }
+    if (certificates == null) {
+      return const CmsCertificateInfo();
+    }
+
+    final certBytes = Uint8List.sublistView(
+      der,
+      certificates.contentStart,
+      certificates.contentEnd,
+    );
+    final reader = DerReader(certBytes);
+    final entries = <DerElement>[];
+    var cursor = 0;
+    while (cursor < certBytes.length && entries.length < maxCertificates) {
+      final element = reader.at(cursor);
+      if (element == null || element.end <= cursor) break;
+      entries.add(element);
+      cursor = element.end;
+    }
+
+    final parsed = <X509CertificateInfo>[];
+    for (final entry in entries) {
+      // 只认 SEQUENCE（X.509 证书一定是）；其余形态（如属性证书）如实跳过。
+      if (!entry.isUniversalTag(DerTag.sequence)) continue;
+      final info = X509Parser.parse(
+        Uint8List.sublistView(certBytes, entry.start, entry.end),
+      );
+      if (info != null) parsed.add(info);
+    }
+
+    return CmsCertificateInfo(
+      certificates: parsed,
+      entryCount: entries.length,
+    );
+  }
+
+  /// 定位 `SignedData`（`[0] EXPLICIT` 里的那个 SEQUENCE）。
+  static _Tlv? _findSignedData(Uint8List der) {
+    final outer = _read(der, 0, der.length, 0);
+    if (outer == null || outer.tag != _sequence) return null;
+    final outerChildren = _children(der, outer, 0);
+    if (outerChildren == null || outerChildren.isEmpty) return null;
+    final contentType = outerChildren.first;
+    if (contentType.tag != _oid || !_matches(der, contentType, signedDataOid)) {
+      return null;
+    }
+    for (final child in outerChildren.skip(1)) {
+      if (child.tag != _context0) continue;
+      final wrapperChildren = _children(der, child, 0);
+      if (wrapperChildren == null || wrapperChildren.isEmpty) continue;
+      final signedData = wrapperChildren.first;
+      if (signedData.tag == _sequence) return signedData;
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -317,4 +420,34 @@ class _Tlv {
   const _Tlv(this.tag, this.contentStart, this.contentEnd, this.nextOffset);
 
   bool get isConstructed => (tag & 0x20) != 0;
+}
+
+/// CMS 里签名者证书的**公开信息**。
+///
+/// 与 [CmsContentResult] 分开：那个回答「载荷是什么」，这个回答「带了哪些证书」。
+/// 两者都是**静态材料**，都不能说明签名有效。
+class CmsCertificateInfo {
+  /// 能解析出公开字段的证书，顺序与 CMS 里一致。
+  final List<X509CertificateInfo> certificates;
+
+  /// 证书集合里的原始条目数（含解析不出公开字段的那些）。
+  final int entryCount;
+
+  /// 读不出来时的原因；能读出（哪怕零张）时为 `null`。
+  final String? failure;
+
+  const CmsCertificateInfo({
+    this.certificates = const [],
+    this.entryCount = 0,
+    this.failure,
+  });
+
+  bool get isEmpty => entryCount == 0;
+
+  /// 有证书，但一张都没能解析出公开字段。
+  bool get hasUnparsableCertificates => entryCount > 0 && certificates.isEmpty;
+
+  @override
+  String toString() =>
+      'CmsCertificateInfo(${certificates.length}/$entryCount parsed)';
 }

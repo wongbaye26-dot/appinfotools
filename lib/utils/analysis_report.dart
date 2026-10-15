@@ -879,6 +879,33 @@ class AnalysisReport {
             'toolExecuted': c.toolExecuted,
             'exitCode': c.exitCode,
           },
+          // 签名材料的**静态**概况：密封清单条目数与证书链公开字段。
+          // 与 codesign 的结论并列而不是合并 —— 材料存在 ≠ 签名有效。
+          if (result.ios?.signatureMaterials case final m?) ...{
+            'hasCodeSignatureDirectory': m.hasCodeSignatureDirectory,
+            'codeSignatureEntries': m.codeSignatureEntries,
+            if (m.codeResources case final cr?)
+              'codeResources': {
+                'sealedFileCount': cr.sealedFileCount,
+                'ruleCount': cr.ruleCount,
+                'isV2': cr.isV2,
+                'parsed': cr.isParsed,
+                if (cr.parseFailure != null) 'parseFailure': cr.parseFailure,
+              },
+            if (m.certificateChain case final chain?)
+              'certificates': [
+                for (final certificate in chain.certificates)
+                  {
+                    'subjectCommonName': certificate.subjectCommonName,
+                    'issuerCommonName': certificate.issuerCommonName,
+                    'notBefore':
+                        certificate.notBefore?.toUtc().toIso8601String(),
+                    'notAfter': certificate.notAfter?.toUtc().toIso8601String(),
+                    'serialNumber': certificate.serialNumberHex,
+                    'issuerLooksLikeApple': certificate.issuerLooksLikeApple,
+                  },
+              ],
+          },
         },
       },
 

@@ -363,6 +363,17 @@
     "target_platform": "目标平台",
     "unavailable": "iOS 分析不可用",
     "uuid": "UUID"
+  ,
+    "code_resources": "密封清单（CodeResources）",
+    "code_resources_sealed": "密封 {count} 个文件",
+    "code_resources_rules": "规则 {count} 条",
+    "code_resources_v2": "v2 格式",
+    "code_resources_failed": "读不出来：{reason}",
+    "certificate_chain": "证书链（静态材料）",
+    "certificate_count": "{count} 张证书",
+    "certificate_entry": "{subject}（签发者 {issuer}）",
+    "certificate_valid_until": "有效期至 {date}",
+    "certificate_material_note": "这些只是材料：只说明证书自称是谁签的，不代表证书可信，也不代表签名有效。"
   },
   "report": {
     "android_section": "Android 专属信息",

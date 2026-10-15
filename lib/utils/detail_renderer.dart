@@ -430,6 +430,43 @@ class DetailRenderer {
       sb.writeln('  ${t.ios_info.embedded_provision}: $provision');
     }
 
+    // 密封清单：**只数条目**。重算哈希并与签名比对属于验证，本工具不做。
+    final codeResources = materials?.codeResources;
+    if (codeResources != null) {
+      if (!codeResources.isParsed) {
+        sb.writeln('  ${t.ios_info.code_resources}: '
+            '${t.ios_info.code_resources_failed(reason: codeResources.parseFailure ?? '')}');
+      } else {
+        final parts = <String>[
+          t.ios_info
+              .code_resources_sealed(count: codeResources.sealedFileCount),
+          t.ios_info.code_resources_rules(count: codeResources.ruleCount),
+          if (codeResources.isV2) t.ios_info.code_resources_v2,
+        ];
+        sb.writeln('  ${t.ios_info.code_resources}: ${parts.join(' · ')}');
+      }
+    }
+
+    // 证书链：**静态材料**。这里说的「签发者」是证书自称的，不是验证结论。
+    final chain = materials?.certificateChain;
+    if (chain != null && chain.certificates.isNotEmpty) {
+      sb.writeln('  ${t.ios_info.certificate_chain}: '
+          '${t.ios_info.certificate_count(count: chain.certificates.length)}');
+      for (final certificate in chain.certificates) {
+        sb.writeln('    ${t.ios_info.certificate_entry(
+          subject: certificate.subjectCommonName ?? '-',
+          issuer: certificate.issuerCommonName ?? '-',
+        )}');
+        final notAfter = certificate.notAfter;
+        if (notAfter != null) {
+          sb.writeln('      ${t.ios_info.certificate_valid_until(
+            date: notAfter.toIso8601String().split('T').first,
+          )}');
+        }
+      }
+      sb.writeln('    ${t.ios_info.certificate_material_note}');
+    }
+
     // 2. 描述文件字段
     final profile = materials?.profile;
     if (profile != null && profile.hasValue) {

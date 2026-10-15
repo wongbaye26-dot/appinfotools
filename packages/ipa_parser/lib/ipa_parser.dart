@@ -18,6 +18,8 @@
 
 export 'src/cgbi_png.dart';
 export 'src/cms.dart';
+export 'src/der.dart';
+export 'src/x509.dart';
 export 'src/ipa_container.dart';
 export 'src/ipa_icon.dart';
 export 'src/ipa_info_plist.dart';

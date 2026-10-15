@@ -23,3 +23,23 @@ security cms -S -N "Probe" -k tmp.keychain -i provision.plist -o embedded.mobile
 **注意**：样本由自签证书签名，因此 `codesign` / `security` 的**信任链**校验会失败。
 这是刻意的 —— 本项目**不做**签名验证（规范 5.5 禁止自行实现并宣称权威结论），
 只做静态提取，所以自签样本足以覆盖被测逻辑。
+
+## CodeResources
+
+一份 `_CodeSignature/CodeResources` 的**结构样本**，用 macOS 自带的 `plutil` 生成：
+
+```sh
+cat > cr.json <<'JSON'
+{"files":{"Info.plist":{"hash":"AA…="}},"files2":{"Info.plist":{"hash2":"CC…="}},
+ "rules":{"^.*":true},"rules2":{"^(.*)$":{"weight":1}}}
+JSON
+plutil -convert xml1 cr.json -o CodeResources
+```
+
+**它是手工写的内容 + 真实工具生成的格式**：`CodeResources` 只是一个 plist，
+被测的是「能不能数出密封清单里的条目」，而不是「哈希对不对」—— 后者需要
+逐文件重算并与签名比对，属于签名验证，本项目不做（规范 5.5）。
+条目数（files 2 / files2 3 / rules 2 / rules2 2）是刻意选的**互不相等**的数，
+这样「读错了哪个键」会立刻暴露。
+
+参照值取自 `plutil -p CodeResources`（同一条命令即可核对）。

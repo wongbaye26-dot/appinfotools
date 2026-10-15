@@ -9,6 +9,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:ipa_parser/ipa_parser.dart';
 import 'package:test/test.dart';
 
@@ -200,6 +201,184 @@ void main() {
 
     test('空输入不抛异常', () {
       expect(() => CmsContentExtractor.extract(Uint8List(0)), returnsNormally);
+    });
+  });
+
+  // iOS-B（第一批）：CMS 证书链的**公开信息**提取。
+  //
+  // 期望值全部取自**独立工具** `openssl pkcs7 -print_certs`（见
+  // fixtures/ipa/README.md 的生成命令），不从本项目解析器取 ——
+  // 否则就是自证。
+  group('X.509 / CMS 证书链 — 只取公开信息', () {
+    /// 夹具里的 CMS。
+    Uint8List provision() => _bytes('ipa/embedded.mobileprovision');
+
+    test('从真实描述文件里解出证书链（openssl 说只有 1 张）', () {
+      final info = CmsContentExtractor.extractCertificates(provision());
+
+      expect(info.failure, isNull, reason: info.failure ?? '');
+      expect(info.entryCount, 1);
+      expect(info.certificates, hasLength(1));
+      expect(info.isEmpty, isFalse);
+    });
+
+    test('主体与签发者 CN 与 openssl 一致（CN=Probe）', () {
+      final cert = CmsContentExtractor.extractCertificates(provision())
+          .certificates
+          .single;
+
+      expect(cert.subjectCommonName, 'Probe');
+      expect(cert.issuerCommonName, 'Probe');
+    });
+
+    test('有效期与 openssl 一致（精确到秒）', () {
+      final cert = CmsContentExtractor.extractCertificates(provision())
+          .certificates
+          .single;
+
+      expect(cert.notBefore, DateTime.utc(2026, 10, 13, 15, 34, 7));
+      expect(cert.notAfter, DateTime.utc(2026, 10, 15, 15, 34, 7));
+    });
+
+    test('序列号与 openssl 一致（9D872EE17763407E）', () {
+      final cert = CmsContentExtractor.extractCertificates(provision())
+          .certificates
+          .single;
+
+      expect(cert.serialNumberHex, '9D872EE17763407E');
+    });
+
+    test('自签证书的签发者 CN 里没有 Apple —— 启发式如实反映', () {
+      final cert = CmsContentExtractor.extractCertificates(provision())
+          .certificates
+          .single;
+
+      // 夹具是自签的（CN=Probe），因此这个启发式必须为 false。
+      // 它回答的是「自称是谁签的」，**不是**「证书可信」。
+      expect(cert.issuerLooksLikeApple, isFalse);
+    });
+
+    test('畸形输入返回失败原因，不抛异常', () {
+      final junk =
+          Uint8List.fromList(List.generate(256, (i) => (i * 13) % 251));
+
+      late CmsCertificateInfo info;
+      expect(
+        () => info = CmsContentExtractor.extractCertificates(junk),
+        returnsNormally,
+      );
+      expect(info.failure, isNotNull);
+      expect(info.certificates, isEmpty);
+
+      expect(
+        () => CmsContentExtractor.extractCertificates(Uint8List(0)),
+        returnsNormally,
+      );
+    });
+
+    test('超限输入被拒绝，不分配内存', () {
+      final huge = Uint8List(
+        CmsContentExtractor.maxInputBytes + 1,
+      );
+      final info = CmsContentExtractor.extractCertificates(huge);
+      expect(info.failure, contains('above the'));
+    });
+  });
+
+  group('DER 读取器 — 越界一律返回 null，不抛', () {
+    test('截断的长度字段不崩', () {
+      // SEQUENCE 声称长度 200，但只有 4 字节内容。
+      final bytes = Uint8List.fromList([0x30, 0x81, 0xC8, 1, 2, 3, 4]);
+      expect(DerReader(bytes).at(0), isNull);
+    });
+
+    test('不定长（BER 0x80）被拒绝 —— 证书里不该出现', () {
+      final bytes = Uint8List.fromList([0x30, 0x80, 1, 2, 0x00, 0x00]);
+      expect(DerReader(bytes).at(0), isNull);
+    });
+
+    test('OID 解出点分形式', () {
+      // 2.5.4.3 的 DER 编码：06 03 55 04 03
+      final bytes = Uint8List.fromList([0x06, 0x03, 0x55, 0x04, 0x03]);
+      final reader = DerReader(bytes);
+      final element = reader.at(0)!;
+      expect(reader.oid(element), '2.5.4.3');
+    });
+
+    test('随机字节不抛异常', () {
+      final random =
+          Uint8List.fromList(List.generate(128, (i) => (i * 37) % 251));
+      expect(() => DerReader(random).at(0), returnsNormally);
+      final element = DerReader(random).at(0);
+      if (element != null) {
+        expect(() => DerReader(random).children(element), returnsNormally);
+      }
+    });
+  });
+
+  // iOS-B：`_CodeSignature/CodeResources` 的**结构**概况。
+  //
+  // 只回答「密封清单里列了多少个文件与规则」，**不回答密封是否有效**。
+  group('CodeResources — 只数条目，不重算哈希', () {
+    const bundlePath = 'Payload/Example.app';
+
+    /// 把一段 CodeResources 字节放进一个最小归档里。
+    IosSignatureMaterials readWith(Uint8List? codeResources) {
+      final archive = Archive();
+      if (codeResources != null) {
+        archive.addFile(ArchiveFile(
+          '$bundlePath/_CodeSignature/CodeResources',
+          codeResources.length,
+          codeResources,
+        ));
+      }
+      return IpaSignatureMaterialReader.read(
+        archive,
+        const IosBundle(
+          kind: IosBundleKind.mainApp,
+          path: bundlePath,
+          name: 'Example.app',
+        ),
+      );
+    }
+
+    test('数出 files / files2 / rules / rules2 的条目数', () {
+      final materials = readWith(_bytes('ipa/CodeResources'));
+      final cr = materials.codeResources;
+
+      expect(cr, isNotNull, reason: '夹具里确实有 CodeResources');
+      // 夹具刻意用了四个互不相等的数：读错键会立刻暴露。
+      expect(cr!.fileCount, 2);
+      expect(cr.file2Count, 3);
+      expect(cr.ruleCount, 4, reason: 'rules(2) + rules2(2)');
+      expect(cr.sealedFileCount, 5, reason: 'files + files2');
+      expect(cr.isV2, isTrue);
+      expect(cr.isParsed, isTrue);
+    });
+
+    test('没有 CodeResources 时是 null，不是空概况', () {
+      final materials = readWith(null);
+      expect(materials.codeResources, isNull, reason: '「没有这个文件」与「有但 0 条」必须分开');
+    });
+
+    test('畸形字节不抛异常，记诊断并给出 parseFailure', () {
+      final junk =
+          Uint8List.fromList(List.generate(128, (i) => (i * 17) % 251));
+
+      late IosSignatureMaterials materials;
+      expect(() => materials = readWith(junk), returnsNormally);
+
+      final cr = materials.codeResources;
+      expect(cr, isNotNull);
+      expect(cr!.isParsed, isFalse);
+      expect(cr.parseFailure, isNotNull);
+      expect(cr.sealedFileCount, 0);
+      expect(
+        materials.diagnostics
+            .any((d) => d.code.startsWith('ios.coderesources')),
+        isTrue,
+        reason: '畸形密封清单要留下诊断，而不是静默',
+      );
     });
   });
 }

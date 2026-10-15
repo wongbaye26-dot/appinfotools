@@ -364,6 +364,17 @@
     "target_platform": "Target platform",
     "unavailable": "iOS analysis is unavailable",
     "uuid": "UUID"
+  ,
+    "code_resources": "CodeResources (sealed manifest)",
+    "code_resources_sealed": "{count} file(s) sealed",
+    "code_resources_rules": "{count} rule(s)",
+    "code_resources_v2": "v2 format",
+    "code_resources_failed": "could not be read: {reason}",
+    "certificate_chain": "Certificate chain (static material)",
+    "certificate_count": "{count} certificate(s)",
+    "certificate_entry": "{subject} (issuer {issuer})",
+    "certificate_valid_until": "valid until {date}",
+    "certificate_material_note": "These are materials only: they say who the certificates claim to be signed by. They do not make the certificates trusted, and they do not make the signature valid."
   },
   "report": {
     "android_section": "Android",

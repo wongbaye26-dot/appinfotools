@@ -172,6 +172,18 @@ class IosSignatureMaterials {
   /// [verificationStatus] 的人类可读说明。
   final String? verificationDetail;
 
+  /// `_CodeSignature/CodeResources` 的**结构**概况；没有该文件时为 `null`。
+  ///
+  /// 它回答「这个 bundle 声称密封了多少个文件」——**不回答密封是否有效**。
+  /// 后者要逐文件重算哈希并与签名比对，属于签名验证，本包不做。
+  final IosCodeResourcesSummary? codeResources;
+
+  /// 描述文件 CMS 里的**证书链公开信息**；没有描述文件或读不出来时为 `null`。
+  ///
+  /// 同样只是材料：它说明「签名里带了哪些证书、自称是谁签的」，
+  /// **不能**说明证书可信，更不能说明签名有效。
+  final CmsCertificateInfo? certificateChain;
+
   final List<AnalysisDiagnostic> diagnostics;
 
   const IosSignatureMaterials({
@@ -184,6 +196,8 @@ class IosSignatureMaterials {
         source: FieldSource.signatureMaterials),
     this.verificationStatus = SignatureStatus.unknown,
     this.verificationDetail,
+    this.codeResources,
+    this.certificateChain,
     this.diagnostics = const [],
   });
 
@@ -341,6 +355,12 @@ class IpaSignatureMaterialReader {
   /// 而不是继续分配内存。
   static const int maxProvisionBytes = 16 * 1024 * 1024;
 
+  /// `CodeResources` 的大小上限（8 MiB）。
+  ///
+  /// 真实的大应用也就几百 KB。超过说明这不是一份正常的密封清单，
+  /// 拒绝解析而不是继续分配内存。
+  static const int maxCodeResourcesBytes = 8 * 1024 * 1024;
+
   static const String _codeSignatureDir = '_CodeSignature/';
 
   static const String _provisionName = 'embedded.mobileprovision';
@@ -368,6 +388,10 @@ class IpaSignatureMaterialReader {
     final hasProvision = provisionEntry != null;
 
     final diagnostics = <AnalysisDiagnostic>[];
+    final codeResources = _readCodeResources(archive, prefix, diagnostics);
+    final certificateChain = hasProvision
+        ? _readCertificates(archive, provisionPath, diagnostics)
+        : null;
     final profile = hasProvision
         ? _readProfile(archive, provisionPath, diagnostics)
         : const FieldValue<IosProvisioningProfile>.absent(
@@ -404,10 +428,115 @@ class IpaSignatureMaterialReader {
       hasEmbeddedProvision: hasProvision,
       embeddedProvisionSize: provisionEntry?.size,
       profile: profile,
+      codeResources: codeResources,
+      certificateChain: certificateChain,
       verificationStatus: status,
       verificationDetail: detail,
       diagnostics: diagnostics,
     );
+  }
+
+  /// 读取并解析 `_CodeSignature/CodeResources`。
+  ///
+  /// 它是一个 plist：`files` / `files2` 是**密封清单**（路径 → 哈希信息），
+  /// `rules` / `rules2` 是匹配规则。这里只数条目，**不重算哈希** ——
+  /// 重算并与签名比对属于验证，本包不做（规范 5.5）。
+  static IosCodeResourcesSummary? _readCodeResources(
+    Archive archive,
+    String prefix,
+    List<AnalysisDiagnostic> diagnostics,
+  ) {
+    const name = 'CodeResources';
+    final entry = archive.findFile('$prefix$_codeSignatureDir$name');
+    if (entry == null) return null;
+
+    final bytes = entry.content;
+    if (bytes.length > maxCodeResourcesBytes) {
+      const message =
+          'CodeResources is above the size limit and was not parsed';
+      diagnostics.add(
+        AnalysisDiagnostic.warning(
+          'ios.coderesources.too_large',
+          message,
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+      return const IosCodeResourcesSummary(parseFailure: message);
+    }
+
+    try {
+      final value = PlistParser.parse(bytes);
+      if (value is! PlistDict) {
+        const message = 'CodeResources is not a plist dictionary';
+        diagnostics.add(
+          AnalysisDiagnostic.warning(
+            'ios.coderesources.not_a_dict',
+            message,
+            source: FieldSource.signatureMaterials,
+          ),
+        );
+        return const IosCodeResourcesSummary(parseFailure: message);
+      }
+      final files = value.value['files'];
+      final files2 = value.value['files2'];
+      final rules = value.value['rules'];
+      final rules2 = value.value['rules2'];
+      int sizeOf(Object? node) => node is PlistDict ? node.value.length : 0;
+
+      return IosCodeResourcesSummary(
+        fileCount: sizeOf(files),
+        file2Count: sizeOf(files2),
+        ruleCount: sizeOf(rules) + sizeOf(rules2),
+        isV2: files2 is PlistDict,
+      );
+    } catch (e) {
+      // 畸形 plist 不该让整个解析失败 —— 记一条诊断，其余材料照常给出。
+      final message = 'CodeResources could not be parsed: $e';
+      diagnostics.add(
+        AnalysisDiagnostic.warning(
+          'ios.coderesources.unparsable',
+          message,
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+      return IosCodeResourcesSummary(parseFailure: message);
+    }
+  }
+
+  /// 读取描述文件 CMS 里的证书链公开信息。
+  static CmsCertificateInfo? _readCertificates(
+    Archive archive,
+    String path,
+    List<AnalysisDiagnostic> diagnostics,
+  ) {
+    final entry = archive.findFile(path);
+    if (entry == null) return null;
+    final bytes = entry.content;
+
+    // 注意：这里喂进去的必须是**CMS 原文**，不是 `extract` 出来的载荷。
+    // 载荷是描述文件 plist，里面当然没有证书 —— 早先写成
+    // `extractCertificates(extracted.content!)`，于是真实 Apple 描述文件
+    // （openssl 说链上有 3 张证书）在这里恒定解出 0 张。
+    final info = CmsContentExtractor.extractCertificates(bytes);
+    if (info.failure != null) {
+      diagnostics.add(
+        AnalysisDiagnostic.info(
+          'ios.provision.certificates_unreadable',
+          'the certificate chain could not be read: ${info.failure}',
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+    } else if (info.hasUnparsableCertificates) {
+      diagnostics.add(
+        AnalysisDiagnostic.info(
+          'ios.provision.certificates_unparsable',
+          '${info.entryCount} certificate(s) were present but their public '
+              'fields could not be read',
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+    }
+    return info;
   }
 
   /// 读取并解析 `embedded.mobileprovision`。
@@ -587,4 +716,42 @@ class IpaSignatureMaterialReader {
       entitlementsRaw: entitlementsDict,
     );
   }
+}
+
+/// `_CodeSignature/CodeResources` 的结构概况。
+///
+/// **这是材料，不是结论**：它说明「密封清单里列了多少个文件与规则」。
+/// 「这些文件的哈希是否与签名一致」需要逐文件重算，本包不做。
+class IosCodeResourcesSummary {
+  /// `files` 里的条目数（v1 密封清单）。
+  final int fileCount;
+
+  /// `files2` 里的条目数（v2 密封清单，带规则）。
+  final int file2Count;
+
+  /// `rules` 与 `rules2` 的规则数之和。
+  final int ruleCount;
+
+  /// 是否含 `files2`（v2 格式）。
+  final bool isV2;
+
+  /// 解析失败的原因；成功时为 `null`。
+  final String? parseFailure;
+
+  const IosCodeResourcesSummary({
+    this.fileCount = 0,
+    this.file2Count = 0,
+    this.ruleCount = 0,
+    this.isV2 = false,
+    this.parseFailure,
+  });
+
+  /// 密封清单里的文件总数。
+  int get sealedFileCount => fileCount + file2Count;
+
+  bool get isParsed => parseFailure == null;
+
+  @override
+  String toString() => 'IosCodeResourcesSummary(sealed: $sealedFileCount, '
+      'rules: $ruleCount, v2: $isV2${isParsed ? '' : ', failed'})';
 }
