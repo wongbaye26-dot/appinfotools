@@ -639,6 +639,7 @@ class AnalysisReport {
       finding.messageArgs['noteArgs'],
       t,
     );
+    final rule = name is String ? _permissionRuleText(name, t) : null;
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -713,6 +714,15 @@ class AnalysisReport {
       'android.permission_inert' => (name == null || note == null)
           ? null
           : f.android_permission_inert(name: name, note: note),
+      'android.permission_rule' => rule == null
+          ? null
+          : f.android_permission_rule(description: rule.description),
+      'android.permission_rule_with_note' => (rule == null || note == null)
+          ? null
+          : f.android_permission_rule_with_note(
+              description: rule.description,
+              note: note,
+            ),
       _ => null,
     };
     return localized ?? finding.finding;
@@ -724,6 +734,8 @@ class AnalysisReport {
     if (code == null) return finding.recommendation;
 
     final f = t.security.finding_texts;
+    final ruleName = finding.messageArgs['name'];
+    final rule = ruleName is String ? _permissionRuleText(ruleName, t) : null;
     final String? localized = switch (code) {
       'ios.usage_description.cross_check' =>
         f.ios_usage_description_cross_check,
@@ -766,6 +778,9 @@ class AnalysisReport {
         f.android_permission_expired_keep_observing,
       'android.permission_inert.check_legacy' =>
         f.android_permission_inert_check_legacy,
+      'android.permission_rule.risk_note' => rule == null
+          ? null
+          : f.android_permission_rule_risk_note(riskNote: rule.riskNote),
       _ => null,
     };
     return localized ?? finding.recommendation;
@@ -849,6 +864,8 @@ class AnalysisReport {
       'android.permission_expired.limitation' => targetSdk == null
           ? null
           : f.android_permission_expired_limitation(targetSdk: targetSdk),
+      'android.permission_rule.limitation' =>
+        f.android_permission_rule_limitation,
       _ => null,
     };
     return localized ?? raw;
@@ -1018,6 +1035,123 @@ class AnalysisReport {
       'max_api_effective_above' => (targetSdk == null || maxApi == null)
           ? null
           : v.max_api_effective_above(targetSdk: targetSdk, maxApi: maxApi),
+      _ => null,
+    };
+  }
+
+  /// 权限目录里一条规则的**本地化文本**（说明 + 风险说明）。
+  ///
+  /// 表里（`PermissionCatalog.rules`）存的是**英文回退**，本地化文案按
+  /// 权限短名取 —— **短名本身就是这张表的稳定 id**，因此不需要额外的 code 字段。
+  ///
+  /// 24 个分支看着笨，但比「把两张表按索引对齐」安全：加权限时编译器会提醒
+  /// 这个 switch 少了分支（Dart 的穷尽性检查管不到字符串，但
+  /// `test/security_integration_test.dart` 里有一条「每个目录条目都有文案」
+  /// 的测试兜着）。
+  ///
+  /// 认不出返回 `null`，调用方据此回退到英文原文。
+  static ({String description, String riskNote})? _permissionRuleText(
+    String name,
+    Translations t,
+  ) {
+    final p = t.security.permission_rules;
+    return switch (name) {
+      'READ_MEDIA_IMAGES' => (
+          description: p.read_media_images_description,
+          riskNote: p.read_media_images_risk_note,
+        ),
+      'READ_MEDIA_VIDEO' => (
+          description: p.read_media_video_description,
+          riskNote: p.read_media_video_risk_note,
+        ),
+      'READ_MEDIA_AUDIO' => (
+          description: p.read_media_audio_description,
+          riskNote: p.read_media_audio_risk_note,
+        ),
+      'READ_MEDIA_VISUAL_USER_SELECTED' => (
+          description: p.read_media_visual_user_selected_description,
+          riskNote: p.read_media_visual_user_selected_risk_note,
+        ),
+      'READ_EXTERNAL_STORAGE' => (
+          description: p.read_external_storage_description,
+          riskNote: p.read_external_storage_risk_note,
+        ),
+      'WRITE_EXTERNAL_STORAGE' => (
+          description: p.write_external_storage_description,
+          riskNote: p.write_external_storage_risk_note,
+        ),
+      'MANAGE_EXTERNAL_STORAGE' => (
+          description: p.manage_external_storage_description,
+          riskNote: p.manage_external_storage_risk_note,
+        ),
+      'CAMERA' => (
+          description: p.camera_description,
+          riskNote: p.camera_risk_note,
+        ),
+      'INTERNET' => (
+          description: p.internet_description,
+          riskNote: p.internet_risk_note,
+        ),
+      'ACCESS_NETWORK_STATE' => (
+          description: p.access_network_state_description,
+          riskNote: p.access_network_state_risk_note,
+        ),
+      'ACCESS_WIFI_STATE' => (
+          description: p.access_wifi_state_description,
+          riskNote: p.access_wifi_state_risk_note,
+        ),
+      'CHANGE_WIFI_STATE' => (
+          description: p.change_wifi_state_description,
+          riskNote: p.change_wifi_state_risk_note,
+        ),
+      'FOREGROUND_SERVICE' => (
+          description: p.foreground_service_description,
+          riskNote: p.foreground_service_risk_note,
+        ),
+      'FOREGROUND_SERVICE_DATA_SYNC' => (
+          description: p.foreground_service_data_sync_description,
+          riskNote: p.foreground_service_data_sync_risk_note,
+        ),
+      'RECEIVE_BOOT_COMPLETED' => (
+          description: p.receive_boot_completed_description,
+          riskNote: p.receive_boot_completed_risk_note,
+        ),
+      'WAKE_LOCK' => (
+          description: p.wake_lock_description,
+          riskNote: p.wake_lock_risk_note,
+        ),
+      'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' => (
+          description: p.request_ignore_battery_optimizations_description,
+          riskNote: p.request_ignore_battery_optimizations_risk_note,
+        ),
+      'SCHEDULE_EXACT_ALARM' => (
+          description: p.schedule_exact_alarm_description,
+          riskNote: p.schedule_exact_alarm_risk_note,
+        ),
+      'QUERY_ALL_PACKAGES' => (
+          description: p.query_all_packages_description,
+          riskNote: p.query_all_packages_risk_note,
+        ),
+      'READ_PHONE_STATE' => (
+          description: p.read_phone_state_description,
+          riskNote: p.read_phone_state_risk_note,
+        ),
+      'ACCESS_FINE_LOCATION' => (
+          description: p.access_fine_location_description,
+          riskNote: p.access_fine_location_risk_note,
+        ),
+      'ACCESS_COARSE_LOCATION' => (
+          description: p.access_coarse_location_description,
+          riskNote: p.access_coarse_location_risk_note,
+        ),
+      'READ_CONTACTS' => (
+          description: p.read_contacts_description,
+          riskNote: p.read_contacts_risk_note,
+        ),
+      'READ_CLIPBOARD' => (
+          description: p.read_clipboard_description,
+          riskNote: p.read_clipboard_risk_note,
+        ),
       _ => null,
     };
   }

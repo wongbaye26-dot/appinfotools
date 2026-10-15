@@ -271,11 +271,26 @@ class AndroidSecurityAudit {
           category: rule.category,
           severity: rule.baseSeverity,
           confidence: SecurityConfidence.confirmed,
-          finding:
-              '${rule.description}${verdict.note.isEmpty ? '' : '（${verdict.note}）'}',
+          finding: verdict.note.isEmpty
+              ? rule.description
+              : '${rule.description} (${verdict.note})',
+          // 有版本说明时用带 note 的变体。呈现层按 `noteCode` 能否解析出
+          // 本地化文本来决定用哪个 —— 解析不出就整条回退，不渲染半句话。
+          messageCode: verdict.note.isEmpty
+              ? 'android.permission_rule'
+              : 'android.permission_rule_with_note',
+          messageArgs: {
+            'name': rule.name,
+            'noteCode': verdict.noteCode,
+            'noteArgs': verdict.noteArgs,
+          },
           evidence: [_manifestEvidence(request)],
-          limitation: '权限声明本身只是意图，不证明运行时一定访问了对应数据。',
+          limitation: 'A permission declaration is only an intent; it does '
+              'not prove the app actually accessed the corresponding data at '
+              'runtime.',
+          limitationCode: 'android.permission_rule.limitation',
           recommendation: rule.riskNote,
+          recommendationCode: 'android.permission_rule.risk_note',
         ));
       }
     }

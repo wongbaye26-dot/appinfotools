@@ -93,8 +93,9 @@ void main() {
           _byId(result, 'ANDROID-PERMISSION-READ_MEDIA_VISUAL_USER_SELECTED');
       expect(finding, isNotNull);
       // 规格 3.1：不得与完整图库访问一概而论。
-      expect(finding!.finding, contains('用户主动选中'));
-      expect(finding.finding, isNot(contains('完整图库')));
+      final text = AnalysisReport.findingText(finding!, t);
+      expect(text, contains('the user explicitly selected'));
+      expect(text, isNot(contains('full library access (PhotoKit)')));
       expect(finding.severity, SecuritySeverity.info);
     });
 
@@ -1363,6 +1364,110 @@ void main() {
       expect(zh, contains('targetSdk=34'));
       expect(zh, isNot(contains('{')));
       expect(RegExp(cjk).hasMatch(zh!), isTrue);
+    });
+  });
+
+  // B11 第九批（最后一块）：权限目录 24 条规则 × 2 个字段。
+  //
+  // 这张表的 id 就是权限短名本身，所以**没有加 code 字段** —— 但代价是
+  // 呈现层要有一张按短名查的表。下面这条「**每个目录条目都有文案**」
+  // 是那张表的兜底：新增权限却忘了补文案时，它会红。
+  group('发现项文案本地化（B11 第九批：权限目录）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    SecurityFinding ruleFinding(String name) => SecurityFinding(
+          ruleId: 'ANDROID-PERMISSION-$name',
+          platform: SecurityPlatform.android,
+          category: SecurityCategory.other,
+          severity: SecuritySeverity.info,
+          confidence: SecurityConfidence.confirmed,
+          finding: 'fallback finding',
+          evidence: const [],
+          limitation: 'fallback limitation',
+          recommendation: 'fallback recommendation',
+          messageCode: 'android.permission_rule',
+          messageArgs: <String, Object>{'name': name},
+          limitationCode: 'android.permission_rule.limitation',
+          recommendationCode: 'android.permission_rule.risk_note',
+        );
+
+    test('目录里每一条规则在四个语言包里都有说明与风险说明', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      expect(PermissionCatalog.rules, isNotEmpty);
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final rule in PermissionCatalog.rules) {
+          final f = ruleFinding(rule.name);
+
+          final text = AnalysisReport.findingText(f, t);
+          expect(text, isNot('fallback finding'),
+              reason: '$locale 下 ${rule.name} 的说明没取到本地化文案');
+          expect(text, isNot(contains('{')), reason: '$locale / ${rule.name}');
+
+          final rec = AnalysisReport.recommendationText(f, t);
+          expect(rec, isNot('fallback recommendation'),
+              reason: '$locale 下 ${rule.name} 的风险说明没取到本地化文案');
+          expect(rec, isNot(contains('{')), reason: '$locale / ${rule.name}');
+
+          expect(
+              AnalysisReport.limitationText(f, t), isNot('fallback limitation'),
+              reason: '$locale 下 ${rule.name} 的局限没取到本地化文案');
+
+          if (locale != 'en') {
+            // 与英文回退**不同**才说明真的走了查表；相同就是漏了这条。
+            expect(text, isNot(rule.description),
+                reason: '$locale 下 ${rule.name} 退回了英文回退');
+            expect(rec, isNot(rule.riskNote),
+                reason: '$locale 下 ${rule.name} 退回了英文回退');
+            expect(RegExp(cjk).hasMatch(text), isTrue,
+                reason: '$locale 下 ${rule.name} 不是中文：$text');
+            expect(RegExp(cjk).hasMatch(rec), isTrue,
+                reason: '$locale 下 ${rule.name} 的风险说明不是中文：$rec');
+          }
+        }
+      }
+    });
+
+    test('带版本说明时用另一种句式，且说明本身也本地化', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      const f = SecurityFinding(
+        ruleId: 'ANDROID-PERMISSION-READ_EXTERNAL_STORAGE',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'fallback finding',
+        evidence: [],
+        recommendation: 'r',
+        messageCode: 'android.permission_rule_with_note',
+        messageArgs: <String, Object>{
+          'name': 'READ_EXTERNAL_STORAGE',
+          'noteCode': 'max_sdk',
+          'noteArgs': <String, Object>{'max': 32, 'targetSdk': 34, 'next': 33},
+        },
+      );
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.findingText(f, t);
+      expect(zh, contains('读取共享存储'));
+      expect(zh, contains('系统不再授予'));
+      expect(zh, isNot(contains('{')));
+      expect(RegExp(cjk).hasMatch(zh), isTrue);
+
+      await LocaleSettings.setLocaleRaw('en');
+      final en = AnalysisReport.findingText(f, t);
+      expect(en, contains('Read shared storage'));
+      expect(en, contains('no longer grants'));
+    });
+
+    test('目录里认不出的权限名整条回退，不渲染半句话', () {
+      final f = ruleFinding('NOT_IN_CATALOG');
+      expect(AnalysisReport.findingText(f, t), 'fallback finding');
+      expect(
+          AnalysisReport.recommendationText(f, t), 'fallback recommendation');
     });
   });
 }
