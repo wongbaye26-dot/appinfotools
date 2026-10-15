@@ -26,6 +26,9 @@ export 'src/apk_reader.dart';
 // 产出的是 `analysis_model` 里的平台中立发现项模型，与平台自身的解析结果
 // 分开导出 ——「解析出了什么」和「据此判断有什么风险」是两个问题。
 export 'src/security/android_security_audit.dart';
+// 组合规则表：与 `permission_catalog.dart` 一样是**数据**，因此一并导出 ——
+// 测试要能逐条驱动它，应用层也可能要按 ruleId 反查规则说明。
+export 'src/security/android_security_rules.dart';
 export 'src/security/dex_clue_scanner.dart';
 export 'src/security/dex_method_scanner.dart';
 export 'src/security/code_markers.dart';

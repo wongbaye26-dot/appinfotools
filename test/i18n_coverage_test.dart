@@ -10,6 +10,7 @@
 // 变成假通过或假失败。
 
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _use(String locale) => LocaleSettings.setLocaleRaw(locale);
@@ -91,6 +92,84 @@ void main() {
       expect(
         t.overview.last_analyzed(name: 'demo.apk'),
         '最近分析：demo.apk',
+      );
+    });
+  });
+
+  // 覆盖维度名（阶段 1.3 / 阶段 3.3 的验收条件）。
+  //
+  // 引擎产出的是**机器 id**（`android.dex.strings` 这类，JSON 里保留它给程序读），
+  // 但 UI 与 Markdown 必须显示可读文案。两个引擎合计 15 个维度。
+  group('覆盖维度名', () {
+    /// 引擎产出的全部维度 id。新增维度时**必须**同步这里 ——
+    /// 这条测试的意义正是「新增了维度却忘了补文案」会红。
+    const ids = [
+      'android.manifest',
+      'android.permissions',
+      'android.dex.structure',
+      'android.dex.strings',
+      'android.dex.methodReferences',
+      'android.dex.callSites',
+      'android.nativeSymbols',
+      'android.arsc',
+      'ios.infoPlist',
+      'ios.usageDescriptions',
+      'ios.executables',
+      'ios.macho.strings',
+      'ios.nativeSymbols',
+      'ios.signature',
+      'ios.privacyManifest',
+    ];
+
+    test('每个维度在四个维护中的语言包里都有名字，且不留占位符', () async {
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await _use(locale);
+        for (final id in ids) {
+          final label = AnalysisReport.coverageDimensionLabel(id, t);
+          expect(
+            label,
+            isNot(id),
+            reason: '$locale 下 $id 没有本地化名字，回退成了机器 id',
+          );
+          expect(label, isNot(contains('{')), reason: '$locale / $id');
+          expect(label.trim(), isNotEmpty, reason: '$locale / $id');
+        }
+      }
+      await _use('en');
+    });
+
+    test('中文语言包里是中文，英文语言包里没有中文', () async {
+      const cjk = r'[\u4e00-\u9fff]';
+
+      await _use('zh-CN');
+      final zhLabels = ids
+          .map((id) => AnalysisReport.coverageDimensionLabel(id, t))
+          .toList();
+      // **允许**个别维度不翻译：`ios.infoPlist` 的名字就是 `Info.plist`，
+      // 那是文件名而不是术语，硬翻反而对不上原文。
+      final zhChinese = zhLabels.where((l) => RegExp(cjk).hasMatch(l)).length;
+      expect(
+        zhChinese,
+        greaterThanOrEqualTo(ids.length - 1),
+        reason: 'zh-CN 下只有 $zhChinese/${ids.length} 个维度是中文：'
+            '${zhLabels.join(' / ')}',
+      );
+
+      await _use('en');
+      for (final id in ids) {
+        final label = AnalysisReport.coverageDimensionLabel(id, t);
+        expect(
+          RegExp(cjk).hasMatch(label),
+          isFalse,
+          reason: 'en 下 $id 混进了中文：$label',
+        );
+      }
+    });
+
+    test('认不出的维度 id 原样返回，不显示空白', () {
+      expect(
+        AnalysisReport.coverageDimensionLabel('future.dimension', t),
+        'future.dimension',
       );
     });
   });

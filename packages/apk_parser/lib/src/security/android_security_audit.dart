@@ -2,6 +2,7 @@ import 'package:analysis_model/analysis_model.dart';
 
 import '../dex/dex_structure.dart';
 import '../models.dart';
+import 'android_security_rules.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
 import 'native_symbol_scanner.dart';
@@ -302,7 +303,7 @@ class AndroidSecurityAudit {
             'noteCode': verdict.noteCode,
             'noteArgs': verdict.noteArgs,
           },
-          evidence: [_manifestEvidence(request)],
+          evidence: [manifestEvidence(request)],
           limitation: 'The version condition is judged against '
               'targetSdk=$targetSdk; if the actual device version differs, '
               'the device is authoritative.',
@@ -330,7 +331,7 @@ class AndroidSecurityAudit {
             'noteCode': verdict.noteCode,
             'noteArgs': verdict.noteArgs,
           },
-          evidence: [_manifestEvidence(request)],
+          evidence: [manifestEvidence(request)],
           recommendation: 'Confirm whether the app still relies on the legacy '
               'behaviour of this permission; on a high targetSdk it is '
               'usually superseded by scoped storage.',
@@ -368,7 +369,7 @@ class AndroidSecurityAudit {
             'noteCode': verdict.noteCode,
             'noteArgs': verdict.noteArgs,
           },
-          evidence: [_manifestEvidence(request)],
+          evidence: [manifestEvidence(request)],
           limitation: 'A permission declaration is only an intent; it does '
               'not prove the app actually accessed the corresponding data at '
               'runtime.',
@@ -404,7 +405,7 @@ class AndroidSecurityAudit {
           ],
         },
         evidence:
-            uncatalogued.take(20).map((r) => _manifestEvidence(r)).toList(),
+            uncatalogued.take(20).map((r) => manifestEvidence(r)).toList(),
         recommendation: 'Not being catalogued does not mean there is no '
             'risk: to assess these permissions, check them against the '
             'Android permission documentation manually.',
@@ -425,7 +426,7 @@ class AndroidSecurityAudit {
             'statically from the package.',
         messageCode: 'android.permission_sdk23_conditional',
         messageArgs: {'name': request.shortName},
-        evidence: [_manifestEvidence(request)],
+        evidence: [manifestEvidence(request)],
         limitation: 'targetSdk is not a substitute for the device API level: '
             'the two can differ.',
         limitationCode: 'android.permission_sdk23_conditional.limitation',
@@ -618,8 +619,8 @@ class AndroidSecurityAudit {
           },
         },
         evidence: [
-          ..._referenceEvidence(ocrCodeRefs),
-          ..._clueEvidence(ocrClues),
+          ...referenceEvidence(ocrCodeRefs),
+          ...clueEvidence(ocrClues),
         ],
         relationship: ocrCodeRefs.isNotEmpty
             ? 'The "code reference" comes from method_ids: the bytecode '
@@ -661,8 +662,8 @@ class AndroidSecurityAudit {
           },
         },
         evidence: [
-          ..._referenceEvidence(uploadCodeRefs),
-          ..._clueEvidence(uploadClues),
+          ...referenceEvidence(uploadCodeRefs),
+          ...clueEvidence(uploadClues),
         ],
         relationship: uploadCodeRefs.isNotEmpty
             ? 'The "code reference" comes from method_ids: the bytecode '
@@ -756,8 +757,8 @@ class AndroidSecurityAudit {
           },
         },
         evidence: [
-          ..._referenceEvidence(networkCodeRefs),
-          ..._clueEvidence(networkClues),
+          ...referenceEvidence(networkCodeRefs),
+          ...clueEvidence(networkClues),
         ],
         relationship: networkCodeRefs.isNotEmpty
             ? 'The "code reference" comes from method_ids: it proves the '
@@ -783,249 +784,31 @@ class AndroidSecurityAudit {
       ));
     }
 
-    // ---- 规则 A：广泛相册访问 + 未见明显业务用途 ----
-    if (broadStorage.isNotEmpty) {
-      findings.add(SecurityFinding(
-        ruleId: 'ANDROID-RULE-A',
-        platform: SecurityPlatform.android,
-        category: SecurityCategory.photoAccess,
-        severity: SecuritySeverity.p2,
-        confidence: SecurityConfidence.suspected,
-        finding: 'Broad storage / photo library access found: '
-            '${broadStorage.map((r) => r.shortName).join(', ')}, listed as a '
-            'medium-risk candidate for manual review. This analysis found no '
-            'obvious image-related feature clues in the package that would '
-            'explain it (such as system photo picker calls or image list '
-            'screens).',
-        messageCode: 'android.rule_a',
-        messageArgs: {
-          'names': broadStorage.map((r) => r.shortName).toList(),
-        },
-        evidence: [
-          for (final request in broadStorage) _manifestEvidence(request),
-        ],
-        limitation: '"The business purpose is missing" is a static '
-            'inference: the business code may live in unscanned native '
-            'libraries, a hardened shell or a dynamically loaded module.',
-        limitationCode: 'android.rule_a.limitation',
-        recommendation: 'Manually check whether the app really needs '
-            'whole-disk file access; if not, consider the system photo picker '
-            '(Photo Picker) instead. This item is a candidate for review, not '
-            'a malicious verdict.',
-        recommendationCode: 'android.rule_a.manual_review',
-      ));
-    }
-
-    // ---- 规则 B：相册访问 + OCR ----
-    final hasImageInput =
-        effectivePhotoAccess.isNotEmpty || photoClues.isNotEmpty;
-    if (hasImageInput && hasOcrCapability) {
-      findings.add(SecurityFinding(
-        ruleId: 'ANDROID-RULE-B',
-        platform: SecurityPlatform.android,
-        category: SecurityCategory.ocrImage,
-        severity: SecuritySeverity.p2,
-        confidence: SecurityConfidence.suspected,
-        finding: 'Both an image input source and text recognition capability '
-            'were found: permission/code clues '
-            '(${[
-          ...effectivePhotoAccess.map((r) => r.shortName),
-          ...photoClues.map((c) => c.description),
-        ].join(', ')}) and recognition capability '
-            '(${ocrClues.map((c) => c.description).join(', ')}). This '
-            'combination may correspond to a normal feature (document '
-            'scanning, translation, business card reading).',
-        messageCode: 'android.rule_b',
-        messageArgs: {
-          'inputClues': [
-            ...effectivePhotoAccess.map((r) => r.shortName),
-            ...photoClues.map((c) => c.description),
-          ],
-          'ocrClues': ocrClues.map((c) => c.description).toList(),
-        },
-        evidence: [
-          for (final request in effectivePhotoAccess)
-            _manifestEvidence(request),
-          ..._referenceEvidence(ocrCodeRefs),
-          ..._clueEvidence([...photoClues, ...ocrClues]),
-        ],
-        relationship: 'Image input → text recognition: the two clues '
-            'co-occur, but they are not proven to lie on the same call path.',
-        relationshipCode: 'android.rule_b.relationship',
-        limitation: 'No disassembly was performed, so it cannot be determined '
-            'whether the recognition module actually handles user-selected '
-            'images or batch-scanned media files.',
-        limitationCode: 'android.rule_b.limitation',
-        recommendation: 'Confirm the recognition input source and how the '
-            'user authorises it (whether it goes through the system photo '
-            'picker).',
-        recommendationCode: 'android.rule_b.confirm_pipeline',
-      ));
-    }
-
-    // ---- 规则 C：相册 + OCR + 上传 ----
-    if (hasImageInput && hasOcrCapability && hasUploadCapability) {
-      // 关联说明有两种措辞（同方法体 / 整包层面），因此先把 code 与回退
-      // 一起算出来 —— 引擎不能只产出一句中文再让呈现层猜。
-      final note = _coOccurrenceNote(methodScan, ocrCodeRefs, uploadCodeRefs);
-      findings.add(SecurityFinding(
-        ruleId: 'ANDROID-RULE-C',
-        platform: SecurityPlatform.android,
-        category: SecurityCategory.dataExfiltration,
-        severity: SecuritySeverity.p1,
-        confidence: SecurityConfidence.suspected,
-        finding: 'Image input, text recognition and upload call clues all '
-            'appear together: a suspected path for sensitive data leaving '
-            'the device. This is a high-risk **candidate**; static analysis '
-            'could not prove that data actually flows into an upload '
-            'request.',
-        messageCode: 'android.rule_c',
-        evidence: [
-          for (final request in effectivePhotoAccess)
-            _manifestEvidence(request),
-          ..._referenceEvidence([...ocrCodeRefs, ...uploadCodeRefs]),
-          ..._clueEvidence([...ocrClues, ...uploadClues]),
-        ],
-        dataSource: '照片/媒体文件与其中的识别文本',
-        dataSink: '上传请求（multipart / upload API）',
-        relationship: note.fallback,
-        relationshipCode: note.code,
-        relationshipArgs: note.args,
-        limitation: 'The association comes from multiple markers co-occurring, '
-            'not from call-graph analysis; reflection, dynamic loading and '
-            'hardening may all make the real path different.',
-        limitationCode: 'android.rule_c.limitation',
-        recommendation: 'Review manually first; you can capture and verify '
-            'the actual outbound content in an isolated environment '
-            '(requires dynamic testing, not provided in this version).',
-        recommendationCode: 'android.rule_c.manual_review',
-      ));
-    }
-
-    // ---- 规则 D：敏感数据 + 明文通信 ----
-    if (meta.applicationUsesCleartextTraffic == true) {
-      final withSensitive = hasImageInput ||
-          hasOcrCapability ||
-          hasUploadCapability ||
-          scan.domains.isNotEmpty;
-      findings.add(SecurityFinding(
-        ruleId: withSensitive ? 'ANDROID-RULE-D-ESCALATED' : 'ANDROID-RULE-D',
-        platform: SecurityPlatform.android,
-        category: SecurityCategory.configuration,
-        severity: withSensitive ? SecuritySeverity.p1 : SecuritySeverity.p2,
-        confidence: SecurityConfidence.confirmed,
-        finding: withSensitive
-            ? 'The app allows cleartext traffic '
-                '(usesCleartextTraffic=true), and image / recognition / '
-                'upload clues are present at the same time: sensitive data '
-                'may travel over an unencrypted channel.'
-            : 'The app allows cleartext traffic '
-                '(usesCleartextTraffic=true).',
-        messageCode:
-            withSensitive ? 'android.rule_d_escalated' : 'android.rule_d',
-        evidence: [
-          SecurityEvidence(
-            source: SecurityEvidenceSource.manifest,
-            location: 'AndroidManifest.xml / manifest / application',
-            detail: 'android:usesCleartextTraffic="true"',
-          ),
-        ],
-        limitation: 'Allowing cleartext in the configuration is not the same '
-            'as actually using cleartext; the specific requests would need '
-            'packet capture to confirm. The exception domains in '
-            'networkSecurityConfig are not expanded.',
-        limitationCode: 'android.rule_d.limitation',
-        recommendation: 'Confirm whether cleartext requests actually exist; '
-            'turn the switch off if it is not needed.',
-        recommendationCode: 'android.rule_d.manual_review',
-      ));
-    }
-
-    // ---- 规则 E：后台 + 敏感数据 + 回传 ----
-    final hasBackground = backgroundPermissions.isNotEmpty ||
-        backgroundClues.isNotEmpty ||
-        meta.components.any((c) =>
-            c.type == ComponentType.service ||
-            c.type == ComponentType.receiver);
-    if (hasBackground &&
-        (hasImageInput || hasOcrCapability) &&
-        hasUploadCapability) {
-      findings.add(SecurityFinding(
-        ruleId: 'ANDROID-RULE-E',
-        platform: SecurityPlatform.android,
-        category: SecurityCategory.backgroundTask,
-        severity: SecuritySeverity.p1,
-        confidence: SecurityConfidence.suspected,
-        finding: 'Background task, sensitive data access and upload call '
-            'clues all appear together and corroborate each other: further '
-            'verification at runtime is needed. Finding only a background '
-            'task or a network permission is not malicious evidence.',
-        messageCode: 'android.rule_e',
-        evidence: [
-          for (final clue in backgroundClues)
-            SecurityEvidence(
-              source: SecurityEvidenceSource.dexString,
-              location: clue.dexNames.join(', '),
-              detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
-            ),
-          if (backgroundPermissions.isNotEmpty)
-            SecurityEvidence(
-              source: SecurityEvidenceSource.manifest,
-              location: 'AndroidManifest.xml / manifest / uses-permission',
-              detail: backgroundPermissions
-                  .map((r) => r.shortName)
-                  .take(8)
-                  .join(', '),
-            ),
-          for (final request in effectivePhotoAccess)
-            _manifestEvidence(request),
-        ],
-        relationship: 'Background entry point + sensitive data source + '
-            'upload sink: the three kinds of evidence co-occur, but "whether '
-            'the app actually processes and uploads media data in the '
-            'background" is not proven.',
-        relationshipCode: 'android.rule_e.relationship',
-        limitation: 'No dynamic analysis was run, so the actual triggering '
-            'and execution of background tasks cannot be observed.',
-        limitationCode: 'android.rule_e.limitation',
-        recommendation: 'Run it in an isolated environment and confirm after '
-            'observing the network behaviour.',
-        recommendationCode: 'android.rule_e.manual_review',
-      ));
-    }
-
-    // ---- 规则 F：未发现上传特征 ----
+    // ---- 组合规则（数据驱动的规则表）----
     //
-    // 规格规则 F：只能输出「当前分析范围内未发现相关特征」，不能输出
-    // 「确认不存在恶意行为」。因此没有上传线索时**必须显式产出这一条**，
-    // 而不是留一个空列表让人以为查过了就等于安全。
-    if (uploadClues.isEmpty) {
-      findings.add(SecurityFinding(
-        ruleId: 'ANDROID-RULE-F',
-        platform: SecurityPlatform.android,
-        category: SecurityCategory.dataExfiltration,
-        severity: SecuritySeverity.info,
-        confidence: dexEntries.isEmpty
-            ? SecurityConfidence.unknown
-            : SecurityConfidence.confirmed,
-        finding: 'No upload-related code characteristics were found within '
-            'the current analysis scope (no hits for multipart upload, file '
-            'upload APIs or similar markers). This does not mean the app has '
-            'no upload behaviour — it only means this static scan found none.',
-        messageCode: 'android.rule_f',
-        evidence: const [],
-        limitation: dexEntries.isEmpty
-            ? 'No DEX content was read this time, so the confidence of the '
-                '"not found" conclusion is incomplete.'
-            : 'String scanning does not cover native libraries, resources or '
-                'code inside a hardened shell.',
-        limitationCode: dexEntries.isEmpty
-            ? 'android.rule_f.limitation_no_dex'
-            : 'android.rule_f.limitation_scope',
-        recommendation: 'To rule out upload behaviour, combine this with '
-            'dynamic traffic observation (not provided in this version).',
-        recommendationCode: 'android.rule_f.runtime_traffic',
-      ));
+    // 规则本身在 `android_security_rules.dart`：**判定与构造分开**，
+    // 每条只从 `AndroidRuleFacts` 取输入，互不读取对方的产物 ——
+    // 抽表前「规则 B 里算出 `hasImageInput`，再由 C / D / E 读取」那种
+    // 隐式顺序依赖没有了：调换表里两行的顺序只改变输出顺序，不改变结论。
+    final facts = AndroidRuleFacts(
+      meta: meta,
+      scan: scan,
+      methodScan: methodScan,
+      effectivePhotoAccess: effectivePhotoAccess,
+      broadStorage: broadStorage,
+      backgroundPermissions: backgroundPermissions,
+      photoClues: photoClues,
+      ocrClues: ocrClues,
+      uploadClues: uploadClues,
+      backgroundClues: backgroundClues,
+      ocrCodeRefs: ocrCodeRefs,
+      uploadCodeRefs: uploadCodeRefs,
+      hasOcrCapability: hasOcrCapability,
+      hasUploadCapability: hasUploadCapability,
+      hasDexContent: dexEntries.isNotEmpty,
+    );
+    for (final rule in androidSecurityRules) {
+      if (rule.matches(facts)) findings.add(rule.build(facts));
     }
 
     limitations.add(AnalysisNote(
@@ -1295,15 +1078,6 @@ class AndroidSecurityAudit {
     return const _Verdict(effective: true, partial: false, note: '');
   }
 
-  static SecurityEvidence _manifestEvidence(AndroidPermissionRequest request) {
-    return SecurityEvidence(
-      source: SecurityEvidenceSource.manifest,
-      location: 'AndroidManifest.xml / manifest / uses-permission'
-          '[@name="${request.name}"]',
-      detail: '$request',
-    );
-  }
-
   /// 描述「识别与上传的调用指令是否位于同一个方法体内」。
   ///
   /// 这是调用点分析带来的新信息：字符串同现只能说「两个词都出现在这个包里」。
@@ -1344,43 +1118,6 @@ class AndroidSecurityAudit {
     return parts.join('; ');
   }
 
-  static ({String code, String fallback, Map<String, Object> args})
-      _coOccurrenceNote(
-    DexMethodScanResult scan,
-    List<CodeReference> ocrReferences,
-    List<CodeReference> uploadReferences,
-  ) {
-    final occurrence = scan.firstCoOccurrenceAcross(
-      ocrReferences.map((r) => r.markerId),
-      uploadReferences.map((r) => r.markerId),
-    );
-    if (occurrence == null) {
-      return (
-        code: 'android.rule_c.relationship_package',
-        fallback: 'The call instructions for text recognition and upload are '
-            '**not in the same method body** (the co-occurrence is at the '
-            'whole-package level). Reading a photo → image text recognition → '
-            'building an upload request: there is evidence for each of the '
-            'three stages, but "the data flow along the same code path" is '
-            'not proven — the unproven hop is the recognition result entering '
-            'the upload request.',
-        args: const {},
-      );
-    }
-    return (
-      code: 'android.rule_c.relationship_method',
-      fallback: 'The call instructions for text recognition and upload '
-          'appear **in the same method body** '
-          '(${occurrence.callerDisplayName}); but co-occurrence within one '
-          'method is not data flow: whether the recognition result is fed '
-          'into the upload request is not proven. Reading a photo → image '
-          'text recognition → building an upload request: there is evidence '
-          'for each of the three stages, but "the data flow along the same '
-          'code path" is not proven.',
-      args: {'caller': occurrence.callerDisplayName},
-    );
-  }
-
   /// 把方法引用转成证据条目。
   ///
   /// **引用与调用点分成两条证据**，因为它们回答的不是同一个问题：
@@ -1389,51 +1126,6 @@ class AndroidSecurityAudit {
   /// - 「调用点」来自 `code_item` 的 `invoke-*` 指令，能落到具体方法名与
   ///   指令偏移。
   ///
-  /// 合成一条会丢掉「是引用还是真的有一条调用指令」这个区别。
-  static List<SecurityEvidence> _referenceEvidence(
-    List<CodeReference> references,
-  ) {
-    return [
-      for (final reference in references) ...[
-        if (reference.samples.isNotEmpty)
-          SecurityEvidence(
-            source: SecurityEvidenceSource.dexMethodReference,
-            location: reference.dexNames.join(', '),
-            detail: '${reference.markerId} (reference): '
-                '${reference.samples.join(' | ')}',
-            detailCode: 'code.reference',
-            detailArgs: {
-              'marker': reference.markerId,
-              'samples': reference.samples.join(' | '),
-            },
-          ),
-        if (reference.callSiteSamples.isNotEmpty)
-          SecurityEvidence(
-            source: SecurityEvidenceSource.dexMethodReference,
-            location: reference.dexNames.join(', '),
-            detail: '${reference.markerId} (call site): '
-                '${reference.callSiteSamples.join(' | ')}',
-            detailCode: 'code.call_site',
-            detailArgs: {
-              'marker': reference.markerId,
-              'samples': reference.callSiteSamples.join(' | '),
-            },
-          ),
-      ],
-    ];
-  }
-
-  /// 把字符串线索转成证据条目。
-  static List<SecurityEvidence> _clueEvidence(List<CodeClue> clues) {
-    return [
-      for (final clue in clues)
-        SecurityEvidence(
-          source: SecurityEvidenceSource.dexString,
-          location: clue.dexNames.join(', '),
-          detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
-        ),
-    ];
-  }
 }
 
 class _Verdict {
