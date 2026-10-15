@@ -363,7 +363,7 @@ void main() {
       expect(result.hasCoverageGaps, isTrue);
       expect(
         // 措辞在阶段 5b 改成「任何」—— 扫描范围不再只有主应用。
-        result.limitations.any((l) => l.contains('未能读取任何 Mach-O')),
+        result.limitations.any((l) => l.code == 'ios.executable.none_readable'),
         isTrue,
         reason: '实际局限：${result.limitations}',
       );
@@ -675,11 +675,11 @@ void main() {
         reason: '未覆盖的要逐条列出，不能只报覆盖到的',
       );
       expect(
-        result.limitations.any((l) => l.contains('未参与扫描')),
+        result.limitations.any((l) => l.code == 'ios.executable.unscanned'),
         isTrue,
       );
       expect(
-        result.limitations.any((l) => l.contains('不是「没有」')),
+        result.limitations.any((l) => l.code == 'ios.executable.unscanned'),
         isTrue,
         reason: '「没查到」与「没有」结论相反',
       );
@@ -769,7 +769,9 @@ void main() {
         ],
       );
 
-      expect(result.limitations.any((l) => l.contains('没读到')), isTrue,
+      expect(
+          result.limitations.any((l) => l.code == 'ios.nested_plist.missing'),
+          isTrue,
           reason: '「没读到」与「没有」必须分开');
     });
 

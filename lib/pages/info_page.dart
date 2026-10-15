@@ -872,7 +872,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                       Text('·  ', style: Theme.of(context).textTheme.bodySmall),
                       Expanded(
                         child: Text(
-                          l,
+                          // 结果级局限也走本地化：引擎给的是稳定 code +
+                          // 英文回退，直接打印会在英文界面里显示中文。
+                          AnalysisReport.limitationNoteText(l, t),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),

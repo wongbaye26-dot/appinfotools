@@ -230,7 +230,7 @@ void main() {
       const withLimitation = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
-        limitations: ['只扫了主应用'],
+        limitations: [AnalysisNote('test.base_only', '只扫了主应用')],
       );
       expect(withLimitation.hasCoverageGaps, isTrue);
     });

@@ -126,7 +126,7 @@ class IosPrivacyAudit {
     List<IosNestedExecutableInput> nestedExecutables = const [],
   }) {
     final findings = <SecurityFinding>[];
-    final limitations = <String>[];
+    final limitations = <AnalysisNote>[];
 
     // ---- 用途说明键：逐条事实记录 ----
     final usage = infoPlist.privacyUsageDescriptions;
@@ -196,9 +196,13 @@ class IosPrivacyAudit {
     } else if (urlSchemes.status == FieldStatus.wrongType ||
         urlSchemes.status == FieldStatus.failed) {
       // 读不出来就说出来 —— 不能让「读不到」长得像「没注册」。
-      limitations.add('CFBundleURLTypes 读不出来'
-          '（${urlSchemes.diagnostic ?? urlSchemes.status.name}）：'
-          '注册的 URL scheme 未覆盖。');
+      limitations.add(AnalysisNote(
+        'ios.url_schemes.unreadable',
+        'CFBundleURLTypes could not be read '
+            '(${urlSchemes.diagnostic ?? urlSchemes.status.name}): the '
+            'registered URL schemes are not covered.',
+        {'reason': urlSchemes.diagnostic ?? urlSchemes.status.name},
+      ));
     }
 
     // ---- 嵌套 bundle 的用途说明 ----
@@ -248,8 +252,13 @@ class IosPrivacyAudit {
       }
     }
     if (nestedWithoutDescriptions.isNotEmpty) {
-      limitations.add('${nestedWithoutDescriptions.length} 个嵌套 bundle 的 '
-          'Info.plist 没读到，其中的用途说明未覆盖。');
+      limitations.add(AnalysisNote(
+        'ios.nested_plist.missing',
+        'The Info.plist of ${nestedWithoutDescriptions.length} nested '
+            'bundle(s) could not be read, so their usage descriptions are '
+            'not covered.',
+        {'count': nestedWithoutDescriptions.length},
+      ));
     }
 
     // ---- Mach-O 符号线索（主可执行文件 + 嵌套 bundle）----
@@ -295,10 +304,18 @@ class IosPrivacyAudit {
 
       if (bytes.length > _Budget.maxBytes) {
         truncated = true;
-        limitations.add('${target.path} 有 ${bytes.length} 字节，'
-            '超过 ${_Budget.maxBytes} 字节扫描预算：'
-            '只扫描了前 ${_Budget.maxBytes} 字节，未覆盖部分可能存在'
-            '未被发现的线索。');
+        limitations.add(AnalysisNote(
+          'ios.executable.over_budget',
+          '${target.path} is ${bytes.length} bytes, over the '
+              '${_Budget.maxBytes}-byte scan budget: only the first '
+              '${_Budget.maxBytes} bytes were scanned, and the uncovered '
+              'part may contain clues that were not found.',
+          {
+            'path': target.path,
+            'bytes': bytes.length,
+            'limit': _Budget.maxBytes,
+          },
+        ));
       }
       final limit =
           bytes.length < _Budget.maxBytes ? bytes.length : _Budget.maxBytes;
@@ -333,9 +350,13 @@ class IosPrivacyAudit {
     // 审计报告明确要求覆盖率本身进报告：「本次覆盖了 N 个可执行文件中的 M 个」。
     // 只报覆盖到的、不报没覆盖的，等于让读者以为结论是完整的。
     if (scannedPaths.isEmpty) {
-      limitations.add('未能读取任何 Mach-O 可执行文件的内容：'
-          'API 使用线索无法检查。用途说明与隐私清单结论不受影响，'
-          '但不构成完整分析。');
+      limitations.add(AnalysisNote(
+        'ios.executable.none_readable',
+        'No Mach-O executable content could be read: API usage clues cannot '
+            'be checked. The usage-description and privacy-manifest '
+            'conclusions are unaffected, but this is not a complete '
+            'analysis.',
+      ));
     } else {
       findings.add(SecurityFinding(
         ruleId: 'IOS-SCAN-COVERAGE',
@@ -381,14 +402,30 @@ class IosPrivacyAudit {
         recommendationCode: 'ios.scan_coverage.manual_review',
       ));
       if (unscanned.isNotEmpty) {
-        limitations.add('${unscanned.length} 个可执行文件未参与扫描'
-            '（${unscanned.take(4).join('、')}'
-            '${unscanned.length > 4 ? ' …' : ''}）：'
-            '这些文件上的「没发现线索」是「没查到」，不是「没有」。');
+        limitations.add(AnalysisNote(
+          'ios.executable.unscanned',
+          '${unscanned.length} executable(s) were not scanned '
+              '(${[
+            ...unscanned.take(4),
+            if (unscanned.length > 4) '…',
+          ].join(', ')}): "no clues found" on these files means "not looked '
+              'at", not "none".',
+          {
+            'count': unscanned.length,
+            'names': [
+              ...unscanned.take(4),
+              if (unscanned.length > 4) '…',
+            ],
+          },
+        ));
       }
-      limitations.add('Mach-O 扫描共 $scanned 字节，'
-          '且仅提取可打印 ASCII 字符串：dyld 共享缓存中的符号'
-          '不在覆盖范围内，非 ASCII 字面量也会漏掉。');
+      limitations.add(AnalysisNote(
+        'ios.macho.scan_summary',
+        'The Mach-O scan covered $scanned bytes in total and only extracted '
+            'printable ASCII strings: symbols in the dyld shared cache are '
+            'outside the coverage, and non-ASCII literals are missed too.',
+        {'bytes': scanned},
+      ));
     }
 
     final hasPhotoLibrary = clues.containsKey('photo-full-library') ||
@@ -837,12 +874,20 @@ class IosPrivacyAudit {
         ));
       }
     } else if (privacy.status == FieldStatus.failed) {
-      limitations.add('隐私清单存在但解析失败：${privacy.diagnostic}。'
-          '声明性内容无法核对。');
+      limitations.add(AnalysisNote(
+        'ios.privacy_info.unparsable',
+        'A privacy manifest exists but failed to parse: '
+            '${privacy.diagnostic ?? 'reason not recorded'}. The '
+            'declarations cannot be cross-checked.',
+        {'reason': privacy.diagnostic ?? 'reason not recorded'},
+      ));
     } else {
-      limitations.add('未发现隐私清单（PrivacyInfo.xcprivacy）：'
-          '这本身不是异常（仅部分应用提供），但意味着无法核对声明的'
-          '数据收集类型。');
+      limitations.add(AnalysisNote(
+        'ios.privacy_info.absent',
+        'No privacy manifest (PrivacyInfo.xcprivacy) was found: this is not '
+            'anomalous by itself (only some apps provide one), but it means '
+            'the declared data collection types cannot be cross-checked.',
+      ));
     }
 
     // ---- 规则 F：未发现上传/网络特征 ----
@@ -871,11 +916,19 @@ class IosPrivacyAudit {
       ));
     }
 
-    limitations.add('本次为离线静态分析：未安装、未运行、未观察网络流量。'
-        '运行时证据（includesRuntimeEvidence）恒为 false。');
+    limitations.add(AnalysisNote(
+      'ios.offline_static_analysis',
+      'This is an offline static analysis: the app was not installed, not '
+          'run, and no network traffic was observed. Runtime evidence '
+          '(includesRuntimeEvidence) is always false.',
+    ));
     if (truncated) {
       // 已在上面记录具体截断信息，这里只做归类提示。
-      limitations.add('存在因预算被截断的扫描范围，结论完整性受影响。');
+      limitations.add(AnalysisNote(
+        'ios.scan.truncated',
+        'Some scan ranges were truncated because of the budget, so the '
+            'conclusions are not complete.',
+      ));
     }
 
     // ---- 原生符号（Mach-O 的 LC_SYMTAB）----

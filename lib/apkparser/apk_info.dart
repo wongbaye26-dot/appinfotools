@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/adaptive_icon_renderer.dart';
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
@@ -10,8 +11,6 @@ import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
-import 'package:analysis_model/analysis_model.dart'
-    show AnalysisDiagnostic, FieldSource, SecurityAnalysisResult;
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
 import 'package:apk_parser/apk_parser.dart'
@@ -638,12 +637,15 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
         for (final obs in reader.scanHardeningSignals()) obs.evidence,
       ],
     );
-    return result.withLimitation(
-      '这是分包安装包，安全审计**仅覆盖 base APK**；'
-      '各分包（语言 / 密度 / ABI）携带的 DEX 与资源未参与分析，'
-      '因此本结果不代表整个安装集合。'
-      '原生库尤其如此 —— ABI 分包里往往才是真正被加载的那份。',
-    );
+    return result.withLimitation(const AnalysisNote(
+      'android.split_apk.base_only',
+      'This is a split package: the security audit **only covers the base '
+          'APK**; the DEX and resources carried by the split APKs (language '
+          '/ density / ABI) were not analysed, so this result does not '
+          'represent the whole installation set. Native libraries '
+          'especially — the ABI split usually holds the copy that is '
+          'actually loaded.',
+    ));
   } catch (e) {
     log.warning('_auditExtractedBaseApk failed: $e');
     return null;

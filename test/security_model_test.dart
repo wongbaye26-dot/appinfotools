@@ -109,7 +109,7 @@ void main() {
       const result = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
-        limitations: ['DEX 未读取'],
+        limitations: [AnalysisNote('test.no_dex', 'DEX 未读取')],
       );
       expect(result.hasCoverageGaps, isTrue);
     });

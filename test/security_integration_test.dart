@@ -12,6 +12,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
+import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final _at = DateTime.utc(2026, 10, 14, 12, 0, 0);
@@ -40,7 +41,9 @@ void main() {
             recommendation: 'manual review recommended',
           ),
         ],
-        limitations: ['DEX budget: skipped 1 file'],
+        limitations: [
+          AnalysisNote('test.dex_budget', 'DEX budget: skipped 1 file')
+        ],
       );
 
       final result = AnalysisBuilder.buildAndroid(
@@ -224,7 +227,7 @@ void main() {
           engineVersion: 'test',
           rulesVersion: 'test',
           findings: [],
-          limitations: ['DEX budget exceeded'],
+          limitations: [AnalysisNote('test.dex_budget', 'DEX budget exceeded')],
         ),
       );
 
@@ -442,6 +445,125 @@ void main() {
         detail: '原始详情',
       );
       expect(AnalysisReport.detailText(plain, t), '原始详情');
+    });
+  });
+
+  // B11 第十批：**结果级**局限（`SecurityAnalysisResult.limitations`）。
+  //
+  // 它与单条发现项的局限不是一回事：那个挂在 `SecurityFinding` 上，
+  // 这个挂在结果上（报告里整段列出「覆盖局限」）。
+  group('B11 第十批：结果级局限本地化', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    /// 全部 code + 参数。逐条列出，避免「漏了一条没测」。
+    const notes = <AnalysisNote>[
+      AnalysisNote('ios.url_schemes.unreadable', 'f', {'reason': 'r'}),
+      AnalysisNote('ios.nested_plist.missing', 'f', {'count': 1}),
+      AnalysisNote('ios.executable.over_budget', 'f',
+          {'path': 'P', 'bytes': 1, 'limit': 2}),
+      AnalysisNote('ios.executable.none_readable', 'f'),
+      AnalysisNote('ios.executable.unscanned', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('ios.macho.scan_summary', 'f', {'bytes': 1}),
+      AnalysisNote('ios.privacy_info.unparsable', 'f', {'reason': 'r'}),
+      AnalysisNote('ios.privacy_info.absent', 'f'),
+      AnalysisNote('ios.offline_static_analysis', 'f'),
+      AnalysisNote('ios.scan.truncated', 'f'),
+      AnalysisNote('ios.native_symbols.unreadable', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('ios.native_symbols.stripped', 'f'),
+      AnalysisNote('ios.native_symbols.semantics', 'f'),
+      AnalysisNote('android.manifest.unparsed', 'f', {'reason': 'r'}),
+      AnalysisNote('android.dex.budget', 'f', {'name': 'n'}),
+      AnalysisNote('android.dex.no_content', 'f'),
+      AnalysisNote(
+          'android.dex.scan_summary', 'f', {'dexCount': 1, 'bytes': 2}),
+      AnalysisNote('android.dex.structure_anomaly', 'f',
+          {'name': 'n', 'code': 'c', 'message': 'm'}),
+      AnalysisNote('android.dex.checksum_not_verified', 'f',
+          {'name': 'n', 'limitMiB': 1}),
+      AnalysisNote('android.dex.structure_untrusted', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('android.dex.method_not_traversable', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('android.dex.method_budget', 'f', {
+        'names': ['a']
+      }),
+      AnalysisNote('android.dex.method_entries_unreadable', 'f', {'count': 1}),
+      AnalysisNote('android.dex.desynced_bodies', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('android.dex.method_semantics', 'f'),
+      AnalysisNote('android.dex.invoke_custom', 'f', {'count': 1}),
+      AnalysisNote('android.container.anomaly', 'f', {'anomaly': 'a'}),
+      AnalysisNote('android.native_symbols.budget', 'f', {'name': 'n'}),
+      AnalysisNote('android.native_symbols.not_traversable', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('android.native_symbols.skipped', 'f', {'count': 1}),
+      AnalysisNote('android.native_symbols.truncated', 'f'),
+      AnalysisNote('android.native_symbols.semantics', 'f'),
+      AnalysisNote('android.native_symbols.unstripped', 'f', {
+        'count': 1,
+        'names': ['a']
+      }),
+      AnalysisNote('android.offline_static_analysis', 'f'),
+      AnalysisNote('android.analysis.based_on_cooccurrence', 'f'),
+      AnalysisNote('android.split_apk.base_only', 'f'),
+    ];
+
+    test('每个 code 在四个语言包里都能取到，且不留占位符', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final note in notes) {
+          final text = AnalysisReport.limitationNoteText(note, t);
+          // `f` 是英文回退；取到它就说明没命中查表。
+          expect(text, isNot('f'), reason: '$locale 下 ${note.code} 没取到文案');
+          expect(text, isNot(contains('{')), reason: '$locale / ${note.code}');
+          expect(text, isNot(contains('}')), reason: '$locale / ${note.code}');
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text), isTrue,
+                reason: '$locale 下 ${note.code} 不是中文：$text');
+          }
+        }
+      }
+    });
+
+    test('认不出的 code 回退英文原文，不显示空白', () {
+      const unknown = AnalysisNote('future.note', 'fallback text');
+      expect(AnalysisReport.limitationNoteText(unknown, t), 'fallback text');
+    });
+
+    test('参数缺失时回退原文，不渲染半句话', () {
+      // 缺 names：`{names}` 替换不了，必须整条回退。
+      const partial = AnalysisNote('android.dex.method_budget', 'fallback');
+      expect(AnalysisReport.limitationNoteText(partial, t), 'fallback');
+    });
+
+    test('真实审计产出的局限全都带 code，且英文回退里没有中文', () {
+      // 引擎侧的兜底：新加一条局限却忘了给 code 时，这里会红。
+      final result = AndroidSecurityAudit.audit(
+        meta: ApkMeta(),
+        dexEntries: const [],
+      );
+      expect(result.limitations, isNotEmpty);
+      for (final note in result.limitations) {
+        expect(note.code, isNotEmpty, reason: '缺 code：${note.fallback}');
+        expect(RegExp(cjk).hasMatch(note.fallback), isFalse,
+            reason: '英文回退里还有中文：${note.fallback}');
+      }
     });
   });
 }

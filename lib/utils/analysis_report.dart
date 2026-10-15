@@ -368,7 +368,7 @@ class AnalysisReport {
       sb.writeln('### ${t.security.limitations}');
       sb.writeln();
       for (final limit in security.limitations) {
-        sb.writeln('- $limit');
+        sb.writeln('- ${limitationNoteText(limit, t)}');
       }
       sb.writeln();
     }
@@ -1156,6 +1156,115 @@ class AnalysisReport {
     };
   }
 
+  /// **结果级局限**的本地化文本。
+  ///
+  /// 与 [coverageNote] 同构：引擎产出 `AnalysisNote`（稳定 code + 英文回退 +
+  /// 参数），这里按 code 取本地化文案，**认不出来就回退英文** ——
+  /// 宁可显示英文，也不要显示空白或未替换的 `{count}`。
+  ///
+  /// 与 [limitationText] 的分工：那个是**单条发现项**的局限（挂在
+  /// `SecurityFinding` 上），这个是**整个结果**的覆盖不足说明（挂在
+  /// `SecurityAnalysisResult` 上）。
+  static String limitationNoteText(AnalysisNote note, Translations t) {
+    final n = t.security.limitation_notes;
+    final a = note.args;
+    final reason = a['reason'];
+    final count = a['count'];
+    final path = a['path'];
+    final bytes = a['bytes'];
+    final limit = a['limit'];
+    final names = _joinNames(a['names'], t);
+    final name = a['name'];
+    final dexCount = a['dexCount'];
+    final codeValue = a['code'];
+    final message = a['message'];
+    final limitMiB = a['limitMiB'];
+    final anomaly = a['anomaly'];
+
+    final String? localized = switch (note.code) {
+      'ios.url_schemes.unreadable' =>
+        reason == null ? null : n.ios_url_schemes_unreadable(reason: reason),
+      'ios.nested_plist.missing' =>
+        count == null ? null : n.ios_nested_plist_missing(count: count),
+      'ios.executable.over_budget' =>
+        (path == null || bytes == null || limit == null)
+            ? null
+            : n.ios_executable_over_budget(
+                path: path, bytes: bytes, limit: limit),
+      'ios.executable.none_readable' => n.ios_executable_none_readable,
+      'ios.executable.unscanned' => (count == null || names == null)
+          ? null
+          : n.ios_executable_unscanned(count: count, names: names),
+      'ios.macho.scan_summary' =>
+        bytes == null ? null : n.ios_macho_scan_summary(bytes: bytes),
+      'ios.privacy_info.unparsable' =>
+        reason == null ? null : n.ios_privacy_info_unparsable(reason: reason),
+      'ios.privacy_info.absent' => n.ios_privacy_info_absent,
+      'ios.offline_static_analysis' => n.ios_offline_static_analysis,
+      'ios.scan.truncated' => n.ios_scan_truncated,
+      'ios.native_symbols.unreadable' => (count == null || names == null)
+          ? null
+          : n.ios_native_symbols_unreadable(count: count, names: names),
+      'ios.native_symbols.stripped' => n.ios_native_symbols_stripped,
+      'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
+      'android.split_apk.base_only' => n.android_split_apk_base_only,
+      'android.manifest.unparsed' =>
+        reason == null ? null : n.android_manifest_unparsed(reason: reason),
+      'android.dex.budget' =>
+        name == null ? null : n.android_dex_budget(name: name),
+      'android.dex.no_content' => n.android_dex_no_content,
+      'android.dex.scan_summary' => (dexCount == null || bytes == null)
+          ? null
+          : n.android_dex_scan_summary(dexCount: dexCount, bytes: bytes),
+      'android.dex.structure_anomaly' =>
+        (name == null || codeValue == null || message == null)
+            ? null
+            : n.android_dex_structure_anomaly(
+                name: name, code: codeValue, message: message),
+      'android.dex.checksum_not_verified' => (name == null || limitMiB == null)
+          ? null
+          : n.android_dex_checksum_not_verified(name: name, limitMiB: limitMiB),
+      'android.dex.structure_untrusted' => (count == null || names == null)
+          ? null
+          : n.android_dex_structure_untrusted(count: count, names: names),
+      'android.dex.method_not_traversable' => (count == null || names == null)
+          ? null
+          : n.android_dex_method_not_traversable(count: count, names: names),
+      'android.dex.method_budget' =>
+        names == null ? null : n.android_dex_method_budget(names: names),
+      'android.dex.method_entries_unreadable' => count == null
+          ? null
+          : n.android_dex_method_entries_unreadable(count: count),
+      'android.dex.desynced_bodies' => (count == null || names == null)
+          ? null
+          : n.android_dex_desynced_bodies(count: count, names: names),
+      'android.dex.method_semantics' => n.android_dex_method_semantics,
+      'android.dex.invoke_custom' =>
+        count == null ? null : n.android_dex_invoke_custom(count: count),
+      'android.container.anomaly' =>
+        anomaly == null ? null : n.android_container_anomaly(anomaly: anomaly),
+      'android.native_symbols.budget' =>
+        name == null ? null : n.android_native_symbols_budget(name: name),
+      'android.native_symbols.not_traversable' =>
+        (count == null || names == null)
+            ? null
+            : n.android_native_symbols_not_traversable(
+                count: count, names: names),
+      'android.native_symbols.skipped' =>
+        count == null ? null : n.android_native_symbols_skipped(count: count),
+      'android.native_symbols.truncated' => n.android_native_symbols_truncated,
+      'android.native_symbols.semantics' => n.android_native_symbols_semantics,
+      'android.native_symbols.unstripped' => (count == null || names == null)
+          ? null
+          : n.android_native_symbols_unstripped(count: count, names: names),
+      'android.offline_static_analysis' => n.android_offline_static_analysis,
+      'android.analysis.based_on_cooccurrence' =>
+        n.android_analysis_based_on_cooccurrence,
+      _ => null,
+    };
+    return localized ?? note.fallback;
+  }
+
   /// 把「来源 id 列表」组装成**本地化**的一句话片段。
   ///
   /// 引擎只能产出 id（`photo_library` / `photo_picker` / `camera` / `clipboard`）
@@ -1564,7 +1673,10 @@ class AnalysisReport {
               'note': entry.note,
             },
         ],
-        'limitations': security?.limitations ?? const <String>[],
+        // JSON 里仍是**一串给人读的句子**（英文回退），schema 不变 ——
+        // 机器可读的结构化覆盖在 `coverage` 里，那里有稳定 id。
+        'limitations': security?.limitations.map((l) => l.fallback).toList() ??
+            const <String>[],
       },
 
       if (!securityOnly)

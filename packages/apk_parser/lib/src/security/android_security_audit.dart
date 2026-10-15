@@ -36,14 +36,17 @@ class AndroidSecurityAudit {
     List<String> containerAnomalies = const [],
   }) {
     final findings = <SecurityFinding>[];
-    final limitations = <String>[];
+    final limitations = <AnalysisNote>[];
 
     if (!manifestParsed) {
-      limitations.add(
-        'AndroidManifest.xml 未能解析（${manifestFailureReason ?? '原因未记录'}）：'
-        '权限与组件审计无法进行，本次结果仅包含可读取的部分，'
-        '不能作为完整结论。',
-      );
+      limitations.add(AnalysisNote(
+        'android.manifest.unparsed',
+        'AndroidManifest.xml could not be parsed '
+            '(${manifestFailureReason ?? 'reason not recorded'}): the permission '
+            'and component audit cannot run, so this result only contains the '
+            'readable part and is not a complete conclusion.',
+        {'reason': manifestFailureReason ?? 'reason not recorded'},
+      ));
     }
 
     final targetSdk = meta.targetSdkVersion;
@@ -51,17 +54,33 @@ class AndroidSecurityAudit {
     // ---- DEX 字符串扫描（第一层取证）----
     final scan = DexClueScanner.scan(dexEntries);
     for (final skipped in scan.skippedForBudget) {
-      limitations.add('DEX 扫描预算：$skipped —— 该文件只扫描了部分内容，'
-          '未覆盖的字节中可能存在未被发现的线索。');
+      limitations.add(AnalysisNote(
+        'android.dex.budget',
+        'DEX scan budget: $skipped — this file was only partially scanned, and '
+            'the uncovered bytes may contain clues that were not found.',
+        {'name': skipped},
+      ));
     }
     if (dexEntries.isEmpty) {
-      limitations.add('未读取到任何 classes.dex 内容：OCR、上传、网络域名等'
-          '代码线索无法检查。权限与配置结论不受影响，但不构成完整分析。');
+      limitations.add(AnalysisNote(
+        'android.dex.no_content',
+        'No classes.dex content was read: OCR, upload and network-domain code '
+            'clues cannot be checked. The permission and configuration '
+            'conclusions are unaffected, but this is not a complete analysis.',
+      ));
     } else {
-      limitations.add('DEX 字符串扫描只覆盖 ${scan.scannedDexCount} 个文件、'
-          '共 ${scan.scannedBytes} 字节，且仅提取可打印 ASCII 字符串：'
-          '非 ASCII 字面量、原生库（lib/**.so）、资源文件与加固壳内的代码'
-          '均不在覆盖范围内。');
+      limitations.add(AnalysisNote(
+        'android.dex.scan_summary',
+        'The DEX string scan only covered ${scan.scannedDexCount} file(s), '
+            '${scan.scannedBytes} bytes in total, and only extracted printable '
+            'ASCII strings: non-ASCII literals, native libraries (lib/**.so), '
+            'resource files and code inside a hardened shell are all outside the '
+            'coverage.',
+        {
+          'dexCount': scan.scannedDexCount,
+          'bytes': scan.scannedBytes,
+        },
+      ));
     }
 
     // ---- DEX 结构（第二层取证：先看结构是否可信）----
@@ -75,14 +94,29 @@ class AndroidSecurityAudit {
     ];
     for (final structure in structures) {
       for (final anomaly in structure.anomalies) {
-        limitations.add(
-          '${structure.name} 结构异常（${anomaly.code}）：${anomaly.message}',
-        );
+        limitations.add(AnalysisNote(
+          'android.dex.structure_anomaly',
+          '${structure.name} has a structural anomaly (${anomaly.code}): '
+              '${anomaly.message}',
+          {
+            'name': structure.name,
+            'code': anomaly.code,
+            'message': anomaly.message,
+          },
+        ));
       }
       if (!structure.checksumVerified) {
-        limitations.add('${structure.name} 超过 '
-            '${kDexMaxChecksumBytes ~/ (1024 * 1024)} MiB，'
-            '本次**未验证**校验和 —— 不要把「没报校验和异常」读成「校验和正确」。');
+        limitations.add(AnalysisNote(
+          'android.dex.checksum_not_verified',
+          '${structure.name} is over '
+              '${kDexMaxChecksumBytes ~/ (1024 * 1024)} MiB, so the checksum was '
+              '**not verified** — do not read "no checksum anomaly reported" as '
+              '"the checksum is correct".',
+          {
+            'name': structure.name,
+            'limitMiB': kDexMaxChecksumBytes ~/ (1024 * 1024),
+          },
+        ));
       }
     }
     final untraversable = [
@@ -90,10 +124,17 @@ class AndroidSecurityAudit {
         if (!s.isTraversable) s,
     ];
     if (untraversable.isNotEmpty) {
-      limitations.add('${untraversable.length} 个 DEX 的结构不可信'
-          '（${untraversable.map((s) => s.name).join('、')}）：'
-          '这些文件上的字符串线索**不构成完整结论**，'
-          '未覆盖的字节中可能存在未被发现的线索。');
+      limitations.add(AnalysisNote(
+        'android.dex.structure_untrusted',
+        '${untraversable.length} DEX file(s) have an untrustworthy structure '
+            '(${untraversable.map((s) => s.name).join(', ')}): the string clues '
+            'from these files **are not a complete conclusion**, and the '
+            'uncovered bytes may contain clues that were not found.',
+        {
+          'count': untraversable.length,
+          'names': untraversable.map((s) => s.name).toList(),
+        },
+      ));
     }
 
     // ---- DEX 方法引用（第三层取证：把「代码引用了」与「字符串提到了」分开）----
@@ -103,41 +144,84 @@ class AndroidSecurityAudit {
     // 但**仍然不等于「调用了」**：那要遍历 code_item 里的指令。
     final methodScan = DexMethodScanner.scan(dexEntries);
     if (methodScan.notTraversable.isNotEmpty) {
-      limitations.add('${methodScan.notTraversable.length} 个 DEX 结构不可信，'
-          '未做方法引用分析（${methodScan.notTraversable.join('、')}）：'
-          '这些文件上的「没发现代码引用」是「没查到」，不是「没有」。');
+      limitations.add(AnalysisNote(
+        'android.dex.method_not_traversable',
+        '${methodScan.notTraversable.length} DEX file(s) have an untrustworthy '
+            'structure, so no method reference analysis was done '
+            '(${methodScan.notTraversable.join(', ')}): "no code reference found" '
+            'on these files means "not looked at", not "none".',
+        {
+          'count': methodScan.notTraversable.length,
+          'names': methodScan.notTraversable,
+        },
+      ));
     }
     if (methodScan.truncatedForBudget.isNotEmpty) {
-      limitations.add('方法引用遍历达到预算上限，'
-          '${methodScan.truncatedForBudget.join('、')} 只分析了部分条目。');
+      limitations.add(AnalysisNote(
+        'android.dex.method_budget',
+        'The method reference walk hit the budget limit; '
+            '${methodScan.truncatedForBudget.join(', ')} were only partially '
+            'analysed.',
+        {'names': methodScan.truncatedForBudget},
+      ));
     }
     if (methodScan.skippedEntries > 0) {
-      limitations.add('方法引用遍历中有 ${methodScan.skippedEntries} 个 '
-          'method_ids 条目解析不出来（索引越界或字符串读不出来），'
-          '这些条目里的引用未被看到。');
+      limitations.add(AnalysisNote(
+        'android.dex.method_entries_unreadable',
+        '${methodScan.skippedEntries} method_ids entries could not be parsed '
+            'during the method reference walk (index out of bounds or the string '
+            'could not be read), so the references in those entries were not '
+            'seen.',
+        {'count': methodScan.skippedEntries},
+      ));
     }
     if (methodScan.desyncedBodies.isNotEmpty) {
-      limitations.add('有 ${methodScan.desyncedBodies.length} 个方法体的指令'
-          '遍历没有正好走到末尾（${methodScan.desyncedBodies.take(3).join('、')}'
-          '${methodScan.desyncedBodies.length > 3 ? ' …' : ''}）：'
-          '这些方法体上的**调用点不可信**，宽度表或载荷长度可能与该文件的'
-          '实际形态不符。');
+      limitations.add(AnalysisNote(
+        'android.dex.desynced_bodies',
+        '${methodScan.desyncedBodies.length} method body(ies) were not '
+            'instruction-aligned (${[
+          ...methodScan.desyncedBodies.take(3),
+          if (methodScan.desyncedBodies.length > 3) '…',
+        ].join(', ')}): the **call sites in these method bodies are not '
+            'trustworthy** — the width table or the payload length may not match '
+            'the actual shape of the file.',
+        {
+          'count': methodScan.desyncedBodies.length,
+          'names': [
+            ...methodScan.desyncedBodies.take(3),
+            if (methodScan.desyncedBodies.length > 3) '…',
+          ],
+        },
+      ));
     }
     if (dexEntries.isNotEmpty && methodScan.scannedDexCount > 0) {
-      limitations.add('方法引用来自 method_ids（证明代码**引用**了这些方法），'
-          '调用点来自 code_item 里的 invoke 指令（证明**存在调用指令**）。'
-          '两者都**不证明运行时执行过** —— 本次没有数据流分析，'
-          '因此不知道参数与返回值是怎么传递的。');
+      limitations.add(AnalysisNote(
+        'android.dex.method_semantics',
+        'Method references come from method_ids (proving the code **references** '
+            'these methods) and call sites come from the invoke instructions in '
+            'code_item (proving a **call instruction exists**). Neither **proves '
+            'it ran at runtime** — no data flow analysis was done, so how '
+            'arguments and return values are passed is unknown.',
+      ));
     }
     if (methodScan.invokeCustomCount > 0) {
-      limitations.add('有 ${methodScan.invokeCustomCount} 条 invoke-custom 指令：'
-          '它们引用 call_site_ids 而不是 method_ids，本次未解析，'
-          '因此这些调用**不在**调用点覆盖范围内。');
+      limitations.add(AnalysisNote(
+        'android.dex.invoke_custom',
+        'There are ${methodScan.invokeCustomCount} invoke-custom instruction(s): '
+            'they reference call_site_ids rather than method_ids and were not '
+            'parsed, so these calls are **not** within call-site coverage.',
+        {'count': methodScan.invokeCustomCount},
+      ));
     }
 
     // 加固特征直接转化为覆盖不足说明（HardeningScanner 的输出）。
     for (final anomaly in containerAnomalies) {
-      limitations.add('容器/解析异常可能影响覆盖完整性：$anomaly');
+      limitations.add(AnalysisNote(
+        'android.container.anomaly',
+        'Container/parse anomalies may affect the completeness of the coverage: '
+            '$anomaly',
+        {'anomaly': anomaly},
+      ));
     }
 
     final ocrClues = scan.clues
@@ -363,31 +447,73 @@ class AndroidSecurityAudit {
     // 判不出来时如实标 notCovered 并说明。
     final arscEntryCount = meta.locales.length + meta.densities.length;
     for (final skipped in nativeScan.skippedForBudget) {
-      limitations.add('原生库扫描预算：$skipped —— 该库未参与分析。');
+      limitations.add(AnalysisNote(
+        'android.native_symbols.budget',
+        'Native library scan budget: $skipped — this library was not analysed.',
+        {'name': skipped},
+      ));
     }
     if (nativeScan.notTraversable.isNotEmpty) {
-      limitations.add('${nativeScan.notTraversable.length} 个原生库的结构不可信，'
-          '未读取符号表（${nativeScan.notTraversable.take(3).join('、')}'
-          '${nativeScan.notTraversable.length > 3 ? ' …' : ''}）：'
-          '这些库上的「没发现符号」是「没查到」，不是「没有」。');
+      limitations.add(AnalysisNote(
+        'android.native_symbols.not_traversable',
+        '${nativeScan.notTraversable.length} native library(ies) have an '
+            'untrustworthy structure, so their symbol tables were not read '
+            '(${[
+          ...nativeScan.notTraversable.take(3),
+          if (nativeScan.notTraversable.length > 3) '…',
+        ].join(', ')}): "no symbols found" on these libraries means "not looked '
+            'at", not "none".',
+        {
+          'count': nativeScan.notTraversable.length,
+          'names': [
+            ...nativeScan.notTraversable.take(3),
+            if (nativeScan.notTraversable.length > 3) '…',
+          ],
+        },
+      ));
     }
     if (nativeScan.skippedSymbols > 0) {
-      limitations.add('原生符号表里有 ${nativeScan.skippedSymbols} 个条目读不出来'
-          '（名字越界或条目跨出节外），这些条目里的符号未被看到。');
+      limitations.add(AnalysisNote(
+        'android.native_symbols.skipped',
+        '${nativeScan.skippedSymbols} entries in the native symbol tables could '
+            'not be read (name out of bounds or the entry crosses outside its '
+            'section), so the symbols in those entries were not seen.',
+        {'count': nativeScan.skippedSymbols},
+      ));
     }
     if (nativeScan.truncated) {
-      limitations.add('部分原生库的符号表读取达到预算上限，只分析了部分条目。');
+      limitations.add(AnalysisNote(
+        'android.native_symbols.truncated',
+        'Reading the symbol tables of some native libraries hit the budget '
+            'limit, so only part of the entries were analysed.',
+      ));
     }
     if (nativeEntries.isNotEmpty) {
-      limitations.add('原生符号来自 ELF 的 `.dynsym` 节：它说明这个库**导入**'
-          '了哪些系统能力，**不说明**这些能力被调用过、更不说明调用的参数。'
-          '本次未反汇编原生代码。');
+      limitations.add(AnalysisNote(
+        'android.native_symbols.semantics',
+        'The native symbols come from the ELF `.dynsym` section: they show which '
+            'system capabilities the library **imports**, and **do not show** '
+            'that those capabilities were called, let alone with what arguments. '
+            'The native code was not disassembled.',
+      ));
     }
     if (nativeScan.unstrippedLibraries.isNotEmpty) {
-      limitations.add('${nativeScan.unstrippedLibraries.length} 个原生库**没有剥离**'
-          '符号表（${nativeScan.unstrippedLibraries.take(3).map((l) => l.name).join('、')}'
-          '${nativeScan.unstrippedLibraries.length > 3 ? ' …' : ''}）：'
-          '能读到内部函数名。发布版本通常会剥离，这是一条事实，不是风险判定。');
+      limitations.add(AnalysisNote(
+        'android.native_symbols.unstripped',
+        '${nativeScan.unstrippedLibraries.length} native library(ies) have **not '
+            'stripped** their symbol table (${[
+          ...nativeScan.unstrippedLibraries.take(3).map((l) => l.name),
+          if (nativeScan.unstrippedLibraries.length > 3) '…',
+        ].join(', ')}): internal function names can be read. Release builds are '
+            'usually stripped; this is a fact, not a risk verdict.',
+        {
+          'count': nativeScan.unstrippedLibraries.length,
+          'names': [
+            ...nativeScan.unstrippedLibraries.take(3).map((l) => l.name),
+            if (nativeScan.unstrippedLibraries.length > 3) '…',
+          ],
+        },
+      ));
     }
 
     // ---- 原生库导入的系统能力 ----
@@ -902,11 +1028,19 @@ class AndroidSecurityAudit {
       ));
     }
 
-    limitations.add('本次为离线静态分析：未安装、未运行、未观察网络流量。'
-        '运行时证据（includesRuntimeEvidence）恒为 false，'
-        '报告不得据此声称已完成行为确认。');
-    limitations.add('OCR / 上传 / 后台的判定基于字符串标记同现，'
-        '未做反汇编与跨方法数据流还原；混淆与动态加载可能改变结论。');
+    limitations.add(AnalysisNote(
+      'android.offline_static_analysis',
+      'This is an offline static analysis: the app was not installed, not run, '
+          'and no network traffic was observed. Runtime evidence '
+          '(includesRuntimeEvidence) is always false, and the report must not '
+          'claim that behaviour has been confirmed on this basis.',
+    ));
+    limitations.add(AnalysisNote(
+      'android.analysis.based_on_cooccurrence',
+      'The OCR / upload / background conclusions are based on string markers '
+          'co-occurring; no disassembly or cross-method data flow recovery was '
+          'done, and obfuscation or dynamic loading may change the conclusions.',
+    ));
 
     // ---- 结构化覆盖 ----
     //

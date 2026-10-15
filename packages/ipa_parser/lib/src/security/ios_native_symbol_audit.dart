@@ -154,26 +154,43 @@ class IosNativeSymbolAudit {
   ///
   /// 分成两个返回值而不是直接拼 `SecurityAnalysisResult`：调用方
   /// （`IosPrivacyAudit`）要把它并进自己的结果里，而不是替换掉。
-  static ({List<SecurityFinding> findings, List<String> limitations}) report({
+  static ({List<SecurityFinding> findings, List<AnalysisNote> limitations})
+      report({
     required IosNativeSymbolResult result,
     required String? executablePath,
   }) {
     final findings = <SecurityFinding>[];
-    final limitations = <String>[];
+    final limitations = <AnalysisNote>[];
 
     if (result.unreadableImages.isNotEmpty) {
-      limitations.add('${result.unreadableImages.length} 个 Mach-O 镜像的'
-          '`LC_SYMTAB` 越界，未读出符号（${result.unreadableImages.join('、')}）：'
-          '这些镜像上的「没发现导入符号」是「没查到」，不是「没有」。');
+      limitations.add(AnalysisNote(
+        'ios.native_symbols.unreadable',
+        'The `LC_SYMTAB` of ${result.unreadableImages.length} Mach-O '
+            'image(s) is out of bounds, so no symbols were read '
+            '(${result.unreadableImages.join(', ')}): "no imported symbols '
+            'found" on these images means "not looked at", not "none".',
+        {
+          'count': result.unreadableImages.length,
+          'names': result.unreadableImages,
+        },
+      ));
     }
     if (result.hasImageWithoutSymtab) {
-      limitations.add('部分 Mach-O 镜像没有 `LC_SYMTAB`（符号表被剥离）：'
-          '这些镜像的导入符号无法检查。App Store 处理的二进制通常会剥离符号表。');
+      limitations.add(AnalysisNote(
+        'ios.native_symbols.stripped',
+        'Some Mach-O images have no `LC_SYMTAB` (the symbol table was '
+            'stripped): their imported symbols cannot be checked. Binaries '
+            'processed by the App Store are usually stripped.',
+      ));
     }
     if (result.scannedImages > 0) {
-      limitations.add('原生符号来自 Mach-O 的 `LC_SYMTAB`：它说明二进制**导入**'
-          '了哪些系统能力，**不说明**这些能力被调用过、更不说明调用的参数。'
-          '本次未反汇编原生代码。');
+      limitations.add(AnalysisNote(
+        'ios.native_symbols.semantics',
+        'The native symbols come from the Mach-O `LC_SYMTAB`: they show '
+            'which system capabilities the binary **imports**, and **do not '
+            'show** that those capabilities were called, let alone with what '
+            'arguments. The native code was not disassembled.',
+      ));
     }
 
     if (result.symbols.isEmpty) {

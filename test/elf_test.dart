@@ -553,7 +553,8 @@ void main() {
       );
 
       expect(
-        result.limitations.any((l) => l.contains('未反汇编原生代码')),
+        result.limitations
+            .any((l) => l.code == 'android.native_symbols.semantics'),
         isTrue,
         reason: '实际局限：${result.limitations}',
       );

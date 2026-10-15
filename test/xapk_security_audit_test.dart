@@ -27,10 +27,11 @@ void main() {
         rulesVersion: 'test-rules',
       );
 
-      final extended = original.withLimitation('仅覆盖 base APK');
+      const note = AnalysisNote('test.note', '仅覆盖 base APK');
+      final extended = original.withLimitation(note);
 
       expect(original.limitations, isEmpty, reason: '原对象必须保持不变');
-      expect(extended.limitations, ['仅覆盖 base APK']);
+      expect(extended.limitations, [note]);
       expect(extended.engineVersion, original.engineVersion);
       expect(extended.rulesVersion, original.rulesVersion);
       expect(extended.findings, original.findings);
@@ -42,12 +43,15 @@ void main() {
       const base = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
-        limitations: ['第一条'],
+        limitations: [AnalysisNote('t.1', '第一条')],
       );
-      final result = base.withLimitation('第二条').withLimitation('第三条');
+      final result = base
+          .withLimitation(const AnalysisNote('t.2', '第二条'))
+          .withLimitation(const AnalysisNote('t.3', '第三条'));
 
-      expect(result.limitations, ['第一条', '第二条', '第三条']);
-      expect(base.limitations, ['第一条'], reason: 'base 不应被污染');
+      expect(result.limitations.map((l) => l.code), ['t.1', 't.2', 't.3']);
+      expect(base.limitations.map((l) => l.code), ['t.1'],
+          reason: 'base 不应被污染');
     });
 
     test('追加后 hasCoverageGaps 变为 true', () {
@@ -57,7 +61,12 @@ void main() {
       );
       expect(noGaps.hasCoverageGaps, isFalse);
 
-      expect(noGaps.withLimitation('覆盖不足').hasCoverageGaps, isTrue);
+      expect(
+        noGaps
+            .withLimitation(const AnalysisNote('t.gap', '覆盖不足'))
+            .hasCoverageGaps,
+        isTrue,
+      );
     });
   });
 

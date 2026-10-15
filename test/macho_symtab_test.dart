@@ -340,7 +340,7 @@ void main() {
         contains('is not a risk verdict'),
       );
       expect(
-        report.limitations.any((l) => l.contains('未反汇编原生代码')),
+        report.limitations.any((l) => l.code == 'ios.native_symbols.semantics'),
         isTrue,
       );
     });
@@ -359,7 +359,7 @@ void main() {
       expect(result.symbols, isEmpty);
       expect(report.findings, isEmpty);
       expect(
-        report.limitations.any((l) => l.contains('未反汇编原生代码')),
+        report.limitations.any((l) => l.code == 'ios.native_symbols.semantics'),
         isTrue,
         reason: '「没发现」也必须说清是查过了没发现',
       );

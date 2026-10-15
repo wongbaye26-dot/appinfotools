@@ -366,7 +366,7 @@ void main() {
       final ruleF = _byId(result, 'ANDROID-RULE-F');
       expect(ruleF!.confidence, SecurityConfidence.unknown);
       expect(
-        result.limitations.any((l) => l.contains('未读取到任何 classes.dex')),
+        result.limitations.any((l) => l.code == 'android.dex.no_content'),
         isTrue,
       );
     });
@@ -418,7 +418,7 @@ void main() {
         expect(finding.evidence, isNotEmpty, reason: '${finding.ruleId} 缺少证据');
       }
       expect(
-        result.limitations.any((l) => l.contains('未读取到任何 classes.dex')),
+        result.limitations.any((l) => l.code == 'android.dex.no_content'),
         isTrue,
       );
     });
@@ -465,7 +465,7 @@ void main() {
       expect(result.findings.any((f) => f.severity.isRisk), isFalse);
       expect(result.hasCoverageGaps, isTrue);
       expect(
-        result.limitations.any((l) => l.contains('未能解析')),
+        result.limitations.any((l) => l.code == 'android.manifest.unparsed'),
         isTrue,
       );
     });
@@ -486,11 +486,16 @@ void main() {
       );
 
       expect(
-        result.limitations.any((l) => l.contains('结构异常')),
+        result.limitations
+            .any((l) => l.code == 'android.dex.structure_anomaly'),
         isFalse,
         reason: '实际说明：${result.limitations}',
       );
-      expect(result.limitations.any((l) => l.contains('结构不可信')), isFalse);
+      expect(
+        result.limitations
+            .any((l) => l.code == 'android.dex.structure_untrusted'),
+        isFalse,
+      );
     });
 
     test('结构畸形的 DEX 会写明是哪一项对不上', () {
@@ -501,12 +506,17 @@ void main() {
 
       expect(
         result.limitations.any((l) =>
-            l.contains('classes.dex') && l.contains('dex.file_size_mismatch')),
+            l.code == 'android.dex.structure_anomaly' &&
+            l.args['name'] == 'classes.dex' &&
+            l.args['code'] == 'dex.file_size_mismatch'),
         isTrue,
         reason: '实际说明：${result.limitations}',
       );
       expect(
-        result.limitations.any((l) => l.contains('1624') && l.contains('800')),
+        result.limitations.any((l) =>
+            l.code == 'android.dex.structure_anomaly' &&
+            '${l.args['message']}'.contains('1624') &&
+            '${l.args['message']}'.contains('800')),
         isTrue,
         reason: '要说清声明与实际各是多少，否则无从排查',
       );
@@ -520,10 +530,11 @@ void main() {
 
       expect(result.hasCoverageGaps, isTrue);
       expect(
-        result.limitations.any((l) => l.contains('结构不可信')),
+        result.limitations
+            .any((l) => l.code == 'android.dex.structure_untrusted'),
         isTrue,
         reason: '「没扫到」与「没有」结论相反，必须说清是前者：'
-            '${result.limitations}',
+            '${result.limitations.map((l) => l.code).toList()}',
       );
     });
 
@@ -537,10 +548,12 @@ void main() {
       );
 
       // 只有坏的那个进「结构不可信」名单。
-      final summary = result.limitations
-          .firstWhere((l) => l.contains('结构不可信'), orElse: () => '');
-      expect(summary, contains('classes2.dex'));
-      expect(summary, isNot(contains('classes.dex 的结构')));
+      final summary = result.limitations.firstWhere(
+        (l) => l.code == 'android.dex.structure_untrusted',
+        orElse: () => const AnalysisNote('', ''),
+      );
+      expect('${summary.args['names']}', contains('classes2.dex'));
+      expect('${summary.args['names']}', isNot(contains('classes.dex,')));
     });
   });
 
@@ -620,13 +633,16 @@ void main() {
 
       // 措辞要同时覆盖两层：method_ids 的「引用」与 code_item 的「调用点」，
       // 两者都不等于「运行时执行过」。
-      final note = result.limitations
-          .firstWhere((l) => l.contains('method_ids'), orElse: () => '');
-      expect(note, isNotEmpty, reason: '实际局限：${result.limitations}');
-      expect(note, contains('invoke'));
+      final note = result.limitations.firstWhere(
+        (l) => l.code == 'android.dex.method_semantics',
+        orElse: () => const AnalysisNote('', ''),
+      );
+      expect(note.code, isNotEmpty,
+          reason: '实际局限：${result.limitations.map((l) => l.code).toList()}');
+      expect(note.fallback, contains('invoke'));
       expect(
-        note,
-        contains('不证明运行时执行过'),
+        note.fallback,
+        contains('proves it ran at runtime'),
         reason: '不能只说「引用」，也不能让读者以为调用点等于执行',
       );
     });
@@ -638,8 +654,9 @@ void main() {
       );
 
       expect(
-        result.limitations
-            .any((l) => l.contains('未做方法引用分析') && l.contains('classes.dex')),
+        result.limitations.any((l) =>
+            l.code == 'android.dex.method_not_traversable' &&
+            '${l.args['names']}'.contains('classes.dex')),
         isTrue,
         reason: '「没查到」与「没有」结论相反，必须说清：${result.limitations}',
       );

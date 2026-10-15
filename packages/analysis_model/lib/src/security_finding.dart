@@ -389,6 +389,30 @@ class SecurityFinding {
       '${confidence.name}${category.name}: $finding)';
 }
 
+/// 一条**结果级局限**：稳定 code + 英文回退 + 参数。
+///
+/// 与 `CoverageEntry.noted` 的三件套同构：引擎层不依赖 slang，产不出本地化
+/// 文案，因此给的是**可映射的 id + 英文回退**；呈现层按 [code] 取本地化文本
+///（`AnalysisReport.limitationNoteText`），认不出来才回退到 [fallback]。
+///
+/// 此前这里是裸 `String` 且写的是中文 —— 英文/日文/韩文报告里会混进中文。
+class AnalysisNote {
+  /// 稳定标识（`ios.offline_static_analysis` 这类），给程序读。
+  final String code;
+
+  /// 英文回退，给人读。呈现层认不出 [code] 时用它。
+  final String fallback;
+
+  /// 占位符实参。
+  final Map<String, Object> args;
+
+  const AnalysisNote(this.code, this.fallback, [this.args = const {}]);
+
+  /// 返回英文回退 —— 日志与调试输出不该出现 `Instance of ...`。
+  @override
+  String toString() => fallback;
+}
+
 /// 一次安全分析的结果。
 ///
 /// 与 findings 并列的 [limitations] 是关键设计：规格第十章要求「无法解析、加固或
@@ -405,7 +429,9 @@ class SecurityAnalysisResult {
   final List<SecurityFinding> findings;
 
   /// 未覆盖范围、被预算截断的部分、以及「因为加固/混淆读不到」的说明。
-  final List<String> limitations;
+  ///
+  /// 每一条是 [AnalysisNote]（稳定 code + 英文回退 + 参数），由呈现层本地化。
+  final List<AnalysisNote> limitations;
 
   /// 本版本是否包含运行时证据。当前恒为 `false`（规格：不得把未实现的
   /// 动态检测包装成已实现功能）。
@@ -452,7 +478,7 @@ class SecurityAnalysisResult {
   /// 用于「审计本身跑完了，但调用方知道还有没覆盖到的范围」—— 例如分包
   /// 安装包只审计了 base APK。**不能直接改 `limitations` 列表**：它是
   /// `const` 默认值，共享实例被就地修改会污染其他结果。
-  SecurityAnalysisResult withLimitation(String limitation) {
+  SecurityAnalysisResult withLimitation(AnalysisNote limitation) {
     return SecurityAnalysisResult(
       engineVersion: engineVersion,
       rulesVersion: rulesVersion,
