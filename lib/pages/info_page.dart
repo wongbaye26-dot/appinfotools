@@ -1786,13 +1786,25 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   // 复制+删除。renameSync 在 macOS 跨卷或 Windows 占用时
                   // 会无条件抛 FileSystemException。
                   await oldFile.rename(newPath);
-                } on FileSystemException catch (e) {
+                } catch (e) {
+                  // macOS 上文件被占用时可能抛出 OSError 等非
+                  // FileSystemException 异常，因此必须捕获所有异常。
                   // 回退：复制 + 删除。这在跨文件系统或文件被锁定时
                   // 是最后的可靠手段。
-                  log.info(
-                      'rename failed (${e.message}), falling back to copy+delete');
-                  await oldFile.copy(newPath);
-                  await oldFile.delete();
+                  log.info('rename failed ($e), falling back to copy+delete');
+                  try {
+                    await oldFile.copy(newPath);
+                    await oldFile.delete();
+                  } catch (fallbackError) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content:
+                            Text('${t.rename.rename_file}失败: $fallbackError'),
+                      ),
+                    );
+                    return;
+                  }
                 }
 
                 if (mounted) {

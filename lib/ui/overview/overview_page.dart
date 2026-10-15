@@ -66,8 +66,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   /// 页面是**固定一屏**布局，Hero 长高了就必须有东西让位，否则底部会被
   /// 直接裁掉 —— 用户看到的是一个残缺的界面，而不是「内容有点多」。
   ///
-  /// 630 是在两档真实尺寸上量出来的（内容区 = 窗口宽 − 侧栏 240 − 内边距）：
-  /// - 1280×800（默认窗口，内容区 1040×800）→ 网格 170px，正好三行铺满 iOS
+  /// 660 是在两档真实尺寸上量出来的（内容区 = 窗口宽 − 侧栏 240 − 内边距）：
+  /// - 1280×800（默认窗口，内容区 1040×800）→ 网格 140px，正好三行铺满 iOS
   ///   的全部字段；
   /// - 900×600（允许的最小窗口，内容区 660×600）→ 减去后为负，网格收起，
   ///   统计与最近文件都放得下。
@@ -124,7 +124,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
     final filePath = result?.files.single.path;
     if (filePath != null) {
-      _openFile(filePath);
+      _openFile(filePath, navigate: false);
     }
   }
 
@@ -519,25 +519,36 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   ),
                 ),
                 SizedBox(width: compact ? 10 : 16),
-                // 操作按钮（竖排，避免窄窗口挤成一团）
+                // 操作按钮（竖排，避免窄窗口挤成一团）。
+                // 窗口极窄时收紧间距并使用更紧凑的按钮，防止 Hero 溢出。
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    OutlinedButton.icon(
+                    _HeroActionButton(
+                      compact: compact,
+                      onPressed: _pickFile,
+                      icon: Icons.folder_open,
+                      label: t.overview.open_file,
+                      filled: true,
+                    ),
+                    SizedBox(height: compact ? 4 : 8),
+                    _HeroActionButton(
+                      compact: compact,
                       onPressed: () => ref
                           .read(shellNavigationProvider.notifier)
                           .navigate('analysis'),
-                      icon: const Icon(Icons.analytics_outlined, size: 16),
-                      label: Text(t.overview.view_details),
+                      icon: Icons.analytics_outlined,
+                      label: t.overview.view_details,
                     ),
-                    const SizedBox(height: 8),
-                    FilledButton.icon(
+                    SizedBox(height: compact ? 4 : 8),
+                    _HeroActionButton(
+                      compact: compact,
                       onPressed: fileState.analysis == null
                           ? null
                           : () => _exportReport(fileState),
-                      icon: const Icon(Icons.description_outlined, size: 16),
-                      label: Text(t.overview.export_report),
+                      icon: Icons.description_outlined,
+                      label: t.overview.export_report,
                     ),
                   ],
                 ),
@@ -567,6 +578,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             context,
             fileState: fileState,
             fileName: fileName,
+            displayName: appName.isNotEmpty ? appName : fileName,
             filePath: filePath,
             version: version,
             build: build,
@@ -577,9 +589,12 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                 isIos ? t.overview.field_min_os : t.overview.field_min_sdk,
             maxHeight: gridHeight,
           ),
-          const SizedBox(height: 10),
-          // 拖放提示：原先底部有一张占满宽度的大卡片，去掉后收成这里一行。
-          const _DropHint(),
+          if (!compact) ...[
+            const SizedBox(height: 10),
+            // 拖放提示：原先底部有一张占满宽度的大卡片，去掉后收成这里一行。
+            // 窄窗口高度紧张时不显示，把空间留给最近文件列表。
+            const _DropHint(),
+          ],
         ],
       ),
     );
@@ -776,22 +791,45 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   }
 
   /// 文件路径字段旁的重命名按钮。
-  Widget _buildRenameButton(String filePath) => IconButton(
+  Widget _buildRenameButton({
+    required String filePath,
+    required String displayName,
+    required String versionName,
+  }) =>
+      IconButton(
         icon: const Icon(Icons.drive_file_rename_outline, size: 13),
         color: Theme.of(context).colorScheme.primary,
         tooltip: t.rename.rename_file,
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-        onPressed: () => _showRenameDialog(filePath),
+        onPressed: () => _showRenameDialog(
+          filePath: filePath,
+          displayName: displayName,
+          versionName: versionName,
+        ),
       );
 
   /// 弹出重命名对话框。
   ///
-  /// 默认文件名为当前文件名，用户可直接修改。
-  void _showRenameDialog(String filePath) {
+  /// 与分析页保持一致：默认文件名按「应用名-版本号.后缀」生成，
+  /// 并提供「默认名称 / 仅应用名 / 名称+版本号」三个快捷按钮。
+  void _showRenameDialog({
+    required String filePath,
+    required String displayName,
+    required String versionName,
+  }) {
     final file = File(filePath);
-    final originalName = p.basename(filePath);
-    final controller = TextEditingController(text: originalName);
+    final extension = p.extension(filePath).toLowerCase();
+    final targetExtension = extension.isNotEmpty
+        ? extension
+        : (filePath.toLowerCase().endsWith('.ipa') ? '.ipa' : '.apk');
+    final defaultName = '$displayName-$versionName$targetExtension';
+
+    final controller = TextEditingController(
+      text: displayName.isNotEmpty && versionName.isNotEmpty
+          ? defaultName
+          : p.basename(filePath),
+    );
     final formKey = GlobalKey<FormFieldState<String>>();
     final localT = t;
 
@@ -803,27 +841,53 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
 
         return AlertDialog(
           title: Text(localT.rename.rename_file),
-          content: TextFormField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: localT.rename.new_file_name,
-            ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return localT.rename.name_cannot_be_empty;
-              }
-              final lower = value.toLowerCase();
-              final valid = lower.endsWith('.apk') ||
-                  lower.endsWith('.xapk') ||
-                  lower.endsWith('.apkm') ||
-                  lower.endsWith('.apks') ||
-                  lower.endsWith('.ipa');
-              if (!valid) {
-                return localT.rename.must_end_with_apk;
-              }
-              return null;
-            },
-            key: formKey,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: localT.rename.new_file_name,
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return localT.rename.name_cannot_be_empty;
+                  }
+                  final lower = value.toLowerCase();
+                  final valid = lower.endsWith('.apk') ||
+                      lower.endsWith('.xapk') ||
+                      lower.endsWith('.apkm') ||
+                      lower.endsWith('.apks') ||
+                      lower.endsWith('.ipa');
+                  if (!valid) {
+                    return localT.rename.must_end_with_apk;
+                  }
+                  return null;
+                },
+                key: formKey,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => controller.text = defaultName,
+                    child: Text(localT.rename.default_name),
+                  ),
+                  OutlinedButton(
+                    onPressed: () =>
+                        controller.text = '$displayName$targetExtension',
+                    child: Text(localT.rename.app_name_only),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => controller.text =
+                        '$displayName-v$versionName$targetExtension',
+                    child: Text(localT.rename.name_with_version),
+                  ),
+                ],
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -840,11 +904,23 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
 
                   try {
                     await file.rename(newPath);
-                  } on FileSystemException catch (e) {
-                    log.info(
-                        'rename failed (${e.message}), falling back to copy+delete');
-                    await file.copy(newPath);
-                    await file.delete();
+                  } catch (e) {
+                    // macOS 上文件被占用或跨文件系统时可能抛出
+                    // OSError 等非 FileSystemException 异常，
+                    // 因此必须捕获所有异常而非仅 FileSystemException。
+                    log.info('rename failed ($e), falling back to copy+delete');
+                    try {
+                      await file.copy(newPath);
+                      await file.delete();
+                    } catch (fallbackError) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              '${localT.rename.rename_file}失败: $fallbackError'),
+                        ),
+                      );
+                      return;
+                    }
                   }
 
                   if (mounted) {
@@ -880,6 +956,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     BuildContext context, {
     required FileState fileState,
     required String fileName,
+    required String displayName,
     required String filePath,
     required String version,
     required String build,
@@ -907,7 +984,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         _CopyField(
           label: t.overview.field_file_path,
           value: filePath,
-          trailing: _buildRenameButton(filePath),
+          trailing: _buildRenameButton(
+            filePath: filePath,
+            displayName: displayName,
+            versionName: version,
+          ),
         ),
       if (version.isNotEmpty)
         _CopyField(
@@ -1427,6 +1508,55 @@ class _CopyableLine extends StatelessWidget {
         ),
         CopyIconButton(text: text),
       ],
+    );
+  }
+}
+
+/// Hero 区竖排操作按钮的共享封装。
+///
+/// 窄窗口时自动收紧内边距和字号，防止 Hero 卡片溢出。
+class _HeroActionButton extends StatelessWidget {
+  final bool compact;
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final String label;
+  final bool filled;
+
+  const _HeroActionButton({
+    required this.compact,
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = compact
+        ? ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            minimumSize: const Size(0, 28),
+            textStyle: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
+          )
+        : null;
+
+    final effectiveIcon = Icon(icon, size: compact ? 14 : 16);
+    final effectiveLabel = Text(label);
+
+    if (filled) {
+      return FilledButton.icon(
+        onPressed: onPressed,
+        icon: effectiveIcon,
+        label: effectiveLabel,
+        style: style,
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: effectiveIcon,
+      label: effectiveLabel,
+      style: style,
     );
   }
 }
