@@ -271,13 +271,25 @@ class AndroidSecurityAudit {
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: '另有 ${uncatalogued.length} 项权限未纳入风险目录，'
-            '仅作事实记录：${uncatalogued.map((r) => r.shortName).take(20).join(', ')}'
-            '${uncatalogued.length > 20 ? ' …' : ''}',
+        finding: 'Another ${uncatalogued.length} permission(s) are not in the '
+            'risk catalogue. Recorded as fact only: ${[
+          ...uncatalogued.take(20).map((r) => r.shortName),
+          if (uncatalogued.length > 20) '…',
+        ].join(', ')}',
+        messageCode: 'android.permission_uncategorized',
+        messageArgs: {
+          'count': uncatalogued.length,
+          'names': [
+            ...uncatalogued.take(20).map((r) => r.shortName),
+            if (uncatalogued.length > 20) '…',
+          ],
+        },
         evidence:
             uncatalogued.take(20).map((r) => _manifestEvidence(r)).toList(),
-        recommendation: '未编目不等于无风险：如需评估这些权限，'
-            '请对照 Android 权限文档人工确认。',
+        recommendation: 'Not being catalogued does not mean there is no '
+            'risk: to assess these permissions, check them against the '
+            'Android permission documentation manually.',
+        recommendationCode: 'android.permission_uncategorized.manual_review',
       ));
     }
     for (final request in meta.permissionRequests.where((r) => r.sdk23Only)) {
@@ -288,11 +300,19 @@ class AndroidSecurityAudit {
             SecurityCategory.other,
         severity: SecuritySeverity.unknown,
         confidence: SecurityConfidence.unknown,
-        finding: '${request.shortName} 声明于 <uses-permission-sdk-23>，'
-            '只在设备 API < 23 时授予；设备版本无法从安装包静态判定。',
+        finding: '${request.shortName} is declared with '
+            '<uses-permission-sdk-23>, so it is only granted on devices '
+            'running API < 23; the device version cannot be determined '
+            'statically from the package.',
+        messageCode: 'android.permission_sdk23_conditional',
+        messageArgs: {'name': request.shortName},
         evidence: [_manifestEvidence(request)],
-        limitation: 'targetSdk 不能代替设备 API 级别：两者可能不同。',
-        recommendation: '如需结论，请在目标系统版本的设备上验证。',
+        limitation: 'targetSdk is not a substitute for the device API level: '
+            'the two can differ.',
+        limitationCode: 'android.permission_sdk23_conditional.limitation',
+        recommendation: 'For a conclusion, verify on a device running the '
+            'target system version.',
+        recommendationCode: 'android.permission_sdk23_conditional.verify',
       ));
     }
 
@@ -541,19 +561,28 @@ class AndroidSecurityAudit {
         category: SecurityCategory.photoAccess,
         severity: SecuritySeverity.p2,
         confidence: SecurityConfidence.suspected,
-        finding: '发现广泛存储/相册访问：'
-            '${broadStorage.map((r) => r.shortName).join('、')}，'
-            '列为待人工复核的中风险候选项。'
-            '本次分析未从安装包中发现与之对应的明显图片业务功能线索'
-            '（如系统照片选择器调用、图片列表界面等）。',
+        finding: 'Broad storage / photo library access found: '
+            '${broadStorage.map((r) => r.shortName).join(', ')}, listed as a '
+            'medium-risk candidate for manual review. This analysis found no '
+            'obvious image-related feature clues in the package that would '
+            'explain it (such as system photo picker calls or image list '
+            'screens).',
+        messageCode: 'android.rule_a',
+        messageArgs: {
+          'names': broadStorage.map((r) => r.shortName).toList(),
+        },
         evidence: [
           for (final request in broadStorage) _manifestEvidence(request),
         ],
-        limitation: '「缺少业务用途」是静态推断：业务代码可能位于未扫描的'
-            '原生库、加固外壳或动态加载模块中。',
-        recommendation: '人工复核该应用是否真的需要全盘文件访问；'
-            '如不需要，建议改用系统照片选择器（Photo Picker）。'
-            '本项为待复核候选项，不是恶意判定。',
+        limitation: '"The business purpose is missing" is a static '
+            'inference: the business code may live in unscanned native '
+            'libraries, a hardened shell or a dynamically loaded module.',
+        limitationCode: 'android.rule_a.limitation',
+        recommendation: 'Manually check whether the app really needs '
+            'whole-disk file access; if not, consider the system photo picker '
+            '(Photo Picker) instead. This item is a candidate for review, not '
+            'a malicious verdict.',
+        recommendationCode: 'android.rule_a.manual_review',
       ));
     }
 
@@ -632,9 +661,14 @@ class AndroidSecurityAudit {
         severity: withSensitive ? SecuritySeverity.p1 : SecuritySeverity.p2,
         confidence: SecurityConfidence.confirmed,
         finding: withSensitive
-            ? '应用允许明文流量（usesCleartextTraffic=true），且同时存在'
-                '图像/识别/上传相关线索：敏感数据可能经未加密链路传输。'
-            : '应用允许明文流量（usesCleartextTraffic=true）。',
+            ? 'The app allows cleartext traffic '
+                '(usesCleartextTraffic=true), and image / recognition / '
+                'upload clues are present at the same time: sensitive data '
+                'may travel over an unencrypted channel.'
+            : 'The app allows cleartext traffic '
+                '(usesCleartextTraffic=true).',
+        messageCode:
+            withSensitive ? 'android.rule_d_escalated' : 'android.rule_d',
         evidence: [
           SecurityEvidence(
             source: SecurityEvidenceSource.manifest,
@@ -642,10 +676,14 @@ class AndroidSecurityAudit {
             detail: 'android:usesCleartextTraffic="true"',
           ),
         ],
-        limitation: '配置允许明文不等同于实际使用了明文；具体请求需抓包确认'
-            '。networkSecurityConfig 的例外域未被展开。',
-        recommendation: '确认是否存在明文传输的实际请求；'
-            '如无必要应关闭该开关。',
+        limitation: 'Allowing cleartext in the configuration is not the same '
+            'as actually using cleartext; the specific requests would need '
+            'packet capture to confirm. The exception domains in '
+            'networkSecurityConfig are not expanded.',
+        limitationCode: 'android.rule_d.limitation',
+        recommendation: 'Confirm whether cleartext requests actually exist; '
+            'turn the switch off if it is not needed.',
+        recommendationCode: 'android.rule_d.manual_review',
       ));
     }
 
@@ -664,9 +702,11 @@ class AndroidSecurityAudit {
         category: SecurityCategory.backgroundTask,
         severity: SecuritySeverity.p1,
         confidence: SecurityConfidence.suspected,
-        finding: '后台任务、敏感数据访问与上传调用三类线索同时存在，'
-            '且相互印证：需在运行时进一步验证。仅发现后台任务或网络权限'
-            '不构成恶意证据。',
+        finding: 'Background task, sensitive data access and upload call '
+            'clues all appear together and corroborate each other: further '
+            'verification at runtime is needed. Finding only a background '
+            'task or a network permission is not malicious evidence.',
+        messageCode: 'android.rule_e',
         evidence: [
           for (final clue in backgroundClues)
             SecurityEvidence(
@@ -686,10 +726,17 @@ class AndroidSecurityAudit {
           for (final request in effectivePhotoAccess)
             _manifestEvidence(request),
         ],
-        relationship: '后台入口 + 敏感数据来源 + 上传去路：三类证据同现，'
-            '「后台是否实际处理并上传媒体数据」未获证实。',
-        limitation: '未运行动态分析，后台任务的真实触发与执行无法观察。',
-        recommendation: '在隔离环境执行并观察网络行为后确认。',
+        relationship: 'Background entry point + sensitive data source + '
+            'upload sink: the three kinds of evidence co-occur, but "whether '
+            'the app actually processes and uploads media data in the '
+            'background" is not proven.',
+        relationshipCode: 'android.rule_e.relationship',
+        limitation: 'No dynamic analysis was run, so the actual triggering '
+            'and execution of background tasks cannot be observed.',
+        limitationCode: 'android.rule_e.limitation',
+        recommendation: 'Run it in an isolated environment and confirm after '
+            'observing the network behaviour.',
+        recommendationCode: 'android.rule_e.manual_review',
       ));
     }
 
@@ -707,14 +754,23 @@ class AndroidSecurityAudit {
         confidence: dexEntries.isEmpty
             ? SecurityConfidence.unknown
             : SecurityConfidence.confirmed,
-        finding: '当前分析范围内未发现上传相关代码特征'
-            '（未命中 multipart 上传、文件上传接口等标记）。'
-            '这不表示应用不存在上传行为 —— 只说明本次静态扫描没有发现。',
+        finding: 'No upload-related code characteristics were found within '
+            'the current analysis scope (no hits for multipart upload, file '
+            'upload APIs or similar markers). This does not mean the app has '
+            'no upload behaviour — it only means this static scan found none.',
+        messageCode: 'android.rule_f',
         evidence: const [],
         limitation: dexEntries.isEmpty
-            ? '本次未读取到 DEX 内容，「未发现」的置信度是不完整的。'
-            : '字符串扫描不覆盖原生库、资源与加固壳内代码。',
-        recommendation: '如需排除上传行为，请结合动态流量观察（本版本不提供）。',
+            ? 'No DEX content was read this time, so the confidence of the '
+                '"not found" conclusion is incomplete.'
+            : 'String scanning does not cover native libraries, resources or '
+                'code inside a hardened shell.',
+        limitationCode: dexEntries.isEmpty
+            ? 'android.rule_f.limitation_no_dex'
+            : 'android.rule_f.limitation_scope',
+        recommendation: 'To rule out upload behaviour, combine this with '
+            'dynamic traffic observation (not provided in this version).',
+        recommendationCode: 'android.rule_f.runtime_traffic',
       ));
     }
 

@@ -11,6 +11,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -108,10 +110,12 @@ void main() {
       final ruleA = _byId(result, 'ANDROID-RULE-A');
       expect(ruleA, isNotNull);
       expect(ruleA!.severity, SecuritySeverity.p2);
-      expect(ruleA.finding, contains('人工复核'));
+      // 迁移后要看**本地化后的正文**（B11），断言也跟着换成英文措辞。
+      final ruleAText = AnalysisReport.findingText(ruleA, t);
+      expect(ruleAText, contains('manual review'));
       // 不得出现任何绝对化措辞。
-      expect(ruleA.finding, isNot(contains('恶意')));
-      expect(ruleA.finding, isNot(contains('窃取')));
+      expect(ruleAText, isNot(contains('malicious')));
+      expect(ruleAText, isNot(contains('steal')));
     });
 
     test('未编目权限汇总一条，不逐条刷屏', () {
@@ -301,7 +305,10 @@ void main() {
       final ruleE = _byId(result, 'ANDROID-RULE-E');
       expect(ruleE, isNotNull);
       expect(ruleE!.severity, SecuritySeverity.p1);
-      expect(ruleE.finding, contains('需在运行时进一步验证'));
+      expect(
+        AnalysisReport.findingText(ruleE, t),
+        contains('further verification at runtime'),
+      );
 
       // 去掉上传线索：不得升级（规格规则 E 的关键前提）。
       final withoutUpload = AndroidSecurityAudit.audit(
@@ -328,11 +335,12 @@ void main() {
       final ruleF = _byId(result, 'ANDROID-RULE-F');
       expect(ruleF, isNotNull);
       expect(ruleF!.severity, SecuritySeverity.info);
-      expect(ruleF.finding, contains('未发现'));
+      final ruleFText = AnalysisReport.findingText(ruleF, t);
+      expect(ruleFText, contains('No upload-related code characteristics'));
       // 规格红线：不得输出「确认不存在恶意行为」这类结论。
-      expect(ruleF.finding, isNot(contains('确认安全')));
-      expect(ruleF.finding, isNot(contains('不存在恶意')));
-      expect(ruleF.finding, contains('这不表示'));
+      expect(ruleFText, isNot(contains('is safe')));
+      expect(ruleFText, isNot(contains('no malicious')));
+      expect(ruleFText, contains('does not mean'));
     });
 
     test('完全没有 DEX 时「未发现」的置信度是不完整的', () {
@@ -700,6 +708,201 @@ void main() {
         reason: '证据要能落到具体偏移：'
             '${callSiteEvidence.map((e) => e.detail).toList()}',
       );
+    });
+  });
+
+  // B11 第五批：Android 侧**不依赖数据表中文描述**的 6 条。
+  //
+  // 剩下 10 条（权限目录的 `description` / `riskNote` / `verdict.note`、
+  // 线索表与方法引用表的 `description`、`nativeSymbolMarkers`、
+  // `_coOccurrenceNote`）都嵌了数据表的中文，要先把那些表改成暴露稳定 id，
+  // 属另一批 —— 因此这里只覆盖能独立成立的部分。
+  group('发现项文案本地化（B11 第五批：Android 6 条）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    const expected = [
+      (
+        rule: 'ANDROID-PERMISSION-UNCATEGORIZED',
+        message: 'android.permission_uncategorized',
+        recommendation: 'android.permission_uncategorized.manual_review',
+        args: <String, Object>{
+          'count': 2,
+          'names': <String>['A', 'B'],
+        },
+      ),
+      (
+        rule: 'ANDROID-PERMISSION-SDK23-CONDITIONAL',
+        message: 'android.permission_sdk23_conditional',
+        recommendation: 'android.permission_sdk23_conditional.verify',
+        args: <String, Object>{'name': 'READ_EXTERNAL_STORAGE'},
+      ),
+      (
+        rule: 'ANDROID-RULE-A',
+        message: 'android.rule_a',
+        recommendation: 'android.rule_a.manual_review',
+        args: <String, Object>{
+          'names': <String>['MANAGE_EXTERNAL_STORAGE'],
+        },
+      ),
+      (
+        rule: 'ANDROID-RULE-D',
+        message: 'android.rule_d',
+        recommendation: 'android.rule_d.manual_review',
+        args: <String, Object>{},
+      ),
+      (
+        rule: 'ANDROID-RULE-E',
+        message: 'android.rule_e',
+        recommendation: 'android.rule_e.manual_review',
+        args: <String, Object>{},
+      ),
+      (
+        rule: 'ANDROID-RULE-F',
+        message: 'android.rule_f',
+        recommendation: 'android.rule_f.runtime_traffic',
+        args: <String, Object>{},
+      ),
+    ];
+
+    test('引擎真的把 code 挂上去了（否则等于没迁）', () {
+      // 一轮输入尽量多触发：未编目权限 + sdk23 声明 + 明文流量 + 无上传线索。
+      final broad = AndroidSecurityAudit.audit(
+        meta: _meta(
+          targetSdk: 34,
+          usesCleartextTraffic: true,
+          permissions: [
+            _perm('com.example.app.permission.CUSTOM'),
+            _perm('com.example.app.permission.CUSTOM2'),
+            _perm('android.permission.READ_EXTERNAL_STORAGE', sdk23: true),
+          ],
+        ),
+        dexEntries: [
+          DexBytes('classes.dex', _blob(['okhttp3.OkHttpClient']))
+        ],
+      );
+
+      // 规则 A：只有全盘存储访问、没有图片业务线索。
+      final ruleA = AndroidSecurityAudit.audit(
+        meta: _meta(
+          targetSdk: 34,
+          permissions: [_perm('android.permission.MANAGE_EXTERNAL_STORAGE')],
+        ),
+        dexEntries: const [],
+      );
+
+      // 规则 E：后台 + 敏感 + 上传三项齐备。
+      final ruleE = AndroidSecurityAudit.audit(
+        meta: _meta(
+          targetSdk: 34,
+          permissions: [
+            _perm('android.permission.READ_MEDIA_IMAGES'),
+            _perm('android.permission.RECEIVE_BOOT_COMPLETED'),
+          ],
+        ),
+        dexEntries: [
+          DexBytes('classes.dex', _blob(['multipart/form-data'])),
+        ],
+      );
+
+      SecurityFinding? find(String rule) =>
+          _byId(broad, rule) ?? _byId(ruleA, rule) ?? _byId(ruleE, rule);
+
+      for (final m in expected) {
+        final f = find(m.rule);
+        expect(f, isNotNull, reason: '测试输入没有触发 ${m.rule}');
+        expect(f!.messageCode, m.message, reason: m.rule);
+        expect(f.recommendationCode, m.recommendation, reason: m.rule);
+        expect(
+          RegExp(cjk).hasMatch(f.finding),
+          isFalse,
+          reason: '${m.rule} 的英文回退里还有中文：${f.finding}',
+        );
+        expect(
+          RegExp(cjk).hasMatch(f.recommendation),
+          isFalse,
+          reason: '${m.rule} 的建议没有一起迁移：${f.recommendation}',
+        );
+      }
+
+      // 局限与关联也要有 code（本批迁了 4 条局限 + 1 条关联）。
+      expect(
+          _byId(broad, 'ANDROID-PERMISSION-SDK23-CONDITIONAL')!.limitationCode,
+          'android.permission_sdk23_conditional.limitation');
+      expect(_byId(ruleA, 'ANDROID-RULE-A')!.limitationCode,
+          'android.rule_a.limitation');
+      expect(_byId(broad, 'ANDROID-RULE-D')!.limitationCode,
+          'android.rule_d.limitation');
+      expect(_byId(ruleE, 'ANDROID-RULE-E')!.relationshipCode,
+          'android.rule_e.relationship');
+      expect(_byId(ruleE, 'ANDROID-RULE-E')!.limitationCode,
+          'android.rule_e.limitation');
+    });
+
+    test('四个维护中的语言包都能取到文案，且不留占位符', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final m in expected) {
+          final finding = SecurityFinding(
+            ruleId: m.rule,
+            platform: SecurityPlatform.android,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'fallback finding',
+            evidence: const [],
+            recommendation: 'fallback recommendation',
+            messageCode: m.message,
+            messageArgs: m.args,
+            recommendationCode: m.recommendation,
+          );
+
+          final text = AnalysisReport.findingText(finding, t);
+          expect(text, isNot('fallback finding'),
+              reason: '$locale 下 ${m.message} 没取到本地化文案');
+          expect(text, isNot(contains('{')), reason: '$locale / ${m.message}');
+          expect(text, isNot(contains('}')), reason: '$locale / ${m.message}');
+          if (locale != 'en') {
+            expect(RegExp(cjk).hasMatch(text), isTrue,
+                reason: '$locale 下 ${m.message} 不是中文：$text');
+          }
+
+          final rec = AnalysisReport.recommendationText(finding, t);
+          expect(rec, isNot('fallback recommendation'),
+              reason: '$locale 下 ${m.recommendation} 没取到本地化文案');
+          expect(rec, isNot(contains('{')),
+              reason: '$locale / ${m.recommendation}');
+        }
+      }
+    });
+
+    test('名字列表用本地化分隔符：英文逗号、中文顿号', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      // 引擎此前直接 `join('、')`，于是英文界面里出现中文顿号。
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(
+          targetSdk: 34,
+          permissions: [
+            _perm('android.permission.MANAGE_EXTERNAL_STORAGE'),
+            _perm('android.permission.MANAGE_EXTERNAL_STORAGE_ALT'),
+          ],
+        ),
+        dexEntries: const [],
+      );
+      final ruleA = _byId(result, 'ANDROID-RULE-A');
+      expect(ruleA, isNotNull, reason: '两个广泛存储权限应当触发规则 A');
+
+      await LocaleSettings.setLocaleRaw('en');
+      final en = AnalysisReport.findingText(ruleA!, t);
+      expect(en, contains(', '));
+      expect(en, isNot(contains('、')));
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.findingText(ruleA, t);
+      expect(zh, contains('、'));
+      expect(zh, isNot(contains(', ')));
     });
   });
 }

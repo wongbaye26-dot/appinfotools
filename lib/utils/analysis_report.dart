@@ -626,7 +626,9 @@ class AnalysisReport {
     final bytes = finding.messageArgs['bytes'];
     final uncovered = finding.messageArgs['uncovered'];
     final modes = finding.messageArgs['modes'];
+    final name = finding.messageArgs['name'];
     final sources = _sourcesText(finding.messageArgs['sources'], t);
+    final names = _joinNames(finding.messageArgs['names'], t);
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -666,6 +668,17 @@ class AnalysisReport {
       'ios.rule_d_escalated' => f.ios_rule_d_escalated,
       'ios.privacy_info' => f.ios_privacy_info,
       'ios.privacy_tracking' => f.ios_privacy_tracking,
+      'android.permission_uncategorized' => (count == null || names == null)
+          ? null
+          : f.android_permission_uncategorized(count: count, names: names),
+      'android.permission_sdk23_conditional' => name == null
+          ? null
+          : f.android_permission_sdk23_conditional(name: name),
+      'android.rule_a' => names == null ? null : f.android_rule_a(names: names),
+      'android.rule_d' => f.android_rule_d,
+      'android.rule_d_escalated' => f.android_rule_d_escalated,
+      'android.rule_e' => f.android_rule_e,
+      'android.rule_f' => f.android_rule_f,
       _ => null,
     };
     return localized ?? finding.finding;
@@ -699,6 +712,14 @@ class AnalysisReport {
       'ios.rule_d.manual_review' => f.ios_rule_d_manual_review,
       'ios.privacy_info.cross_check' => f.ios_privacy_info_cross_check,
       'ios.privacy_tracking.confirm_att' => f.ios_privacy_tracking_confirm_att,
+      'android.permission_uncategorized.manual_review' =>
+        f.android_permission_uncategorized_manual_review,
+      'android.permission_sdk23_conditional.verify' =>
+        f.android_permission_sdk23_conditional_verify,
+      'android.rule_a.manual_review' => f.android_rule_a_manual_review,
+      'android.rule_d.manual_review' => f.android_rule_d_manual_review,
+      'android.rule_e.manual_review' => f.android_rule_e_manual_review,
+      'android.rule_f.runtime_traffic' => f.android_rule_f_runtime_traffic,
       _ => null,
     };
     return localized ?? finding.recommendation;
@@ -718,6 +739,7 @@ class AnalysisReport {
       'ios.rule_b.relationship' => f.ios_rule_b_relationship,
       'ios.rule_c.relationship' => f.ios_rule_c_relationship,
       'ios.rule_e.relationship' => f.ios_rule_e_relationship,
+      'android.rule_e.relationship' => f.android_rule_e_relationship,
       _ => null,
     };
     return localized ?? raw;
@@ -741,6 +763,13 @@ class AnalysisReport {
       'ios.rule_e.limitation' => f.ios_rule_e_limitation,
       'ios.privacy_info.limitation' => f.ios_privacy_info_limitation,
       'ios.rule_f.limitation' => f.ios_rule_f_limitation,
+      'android.permission_sdk23_conditional.limitation' =>
+        f.android_permission_sdk23_conditional_limitation,
+      'android.rule_a.limitation' => f.android_rule_a_limitation,
+      'android.rule_d.limitation' => f.android_rule_d_limitation,
+      'android.rule_e.limitation' => f.android_rule_e_limitation,
+      'android.rule_f.limitation_no_dex' => f.android_rule_f_limitation_no_dex,
+      'android.rule_f.limitation_scope' => f.android_rule_f_limitation_scope,
       _ => null,
     };
     return localized ?? raw;
@@ -770,6 +799,21 @@ class AnalysisReport {
               _ => id,
             })
         .join(t.security.list_join);
+  }
+
+  /// 用**本地化的分隔符**连接一串已经是终值的名字（权限短名等）。
+  ///
+  /// 与 [_sourcesText] 的分工：那里的元素是**稳定 id**、要查表换成名字；
+  /// 这里的元素本身已经是终值（`READ_MEDIA_IMAGES`），只有**分隔符**随语言变
+  /// （en `", "` / 中文 `"、"`）。此前引擎直接 `join('、')`，于是英文界面里
+  /// 出现中文顿号。
+  ///
+  /// 参数缺失或列表为空时返回 `null`，调用方据此回退英文原文。
+  static String? _joinNames(Object? arg, Translations t) {
+    if (arg is! List) return null;
+    final names = arg.whereType<String>().toList();
+    if (names.isEmpty) return null;
+    return names.join(t.security.list_join);
   }
 
   /// 覆盖说明的**本地化文本**。
