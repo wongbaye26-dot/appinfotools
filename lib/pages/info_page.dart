@@ -1708,7 +1708,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final defaultName = '$displayName-$versionName$targetExtension';
 
     final controller = TextEditingController(text: defaultName);
-    final formKey = GlobalKey<FormFieldState>();
+    final formKey = GlobalKey<FormFieldState<String>>();
 
     showDialog(
       context: context,

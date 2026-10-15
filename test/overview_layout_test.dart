@@ -122,14 +122,24 @@ void main() {
       expect(text, contains(t.file_info.md5));
     });
 
-    testWidgets('网格自身的滚动上限不会把统计挤没', (tester) async {
+    testWidgets('网格不含内部滚动器（用户要求固定显示）', (tester) async {
       await _pump(tester, _defaultWindow);
 
-      // 统计卡片的三项必须真的在树里，而不是被 Hero 顶出去。
+      // 去掉 SingleChildScrollView 后，网格直接展开，字段不会藏在滚动器里。
+      final hero = find.byType(OverviewPage);
+      expect(
+        find.descendant(of: hero, matching: find.byType(SingleChildScrollView)),
+        findsNothing,
+        reason: '详细信息网格不应包含内部滚动器',
+      );
+    });
+
+    testWidgets('没有解析结果时不显示架构标签', (tester) async {
+      await _pump(tester, _defaultWindow);
+
       final text = _visibleText(tester);
-      expect(text, contains('Android'));
-      expect(text, contains('iOS'));
-      expect(text, contains(t.overview.stat_analyzed));
+      expect(text, isNot(contains('64-bit')), reason: '无 analysis 结果时不应有架构标签');
+      expect(text, isNot(contains('32-bit')), reason: '无 analysis 结果时不应有架构标签');
     });
   });
 

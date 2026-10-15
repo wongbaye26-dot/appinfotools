@@ -389,6 +389,40 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     // 「未加载文件」，等于把「正在读」说成了「什么都没有」。
     final title = appName.isNotEmpty ? appName : fileName;
 
+    // 架构位数（从 Mach-O / ABI 推断）。
+    final String? architectureLabel;
+    if (isIos) {
+      final macho = analysis?.ios?.executable;
+      if (macho != null && macho.images.isNotEmpty) {
+        final has64 = macho.images.any((img) => img.is64Bit);
+        final has32 = macho.images.any((img) => !img.is64Bit);
+        if (has64 && has32) {
+          architectureLabel = '64/32-bit';
+        } else if (has64) {
+          architectureLabel = '64-bit';
+        } else {
+          architectureLabel = '32-bit';
+        }
+      } else {
+        architectureLabel = null;
+      }
+    } else {
+      final abis = analysis?.android?.structure?.abis ?? [];
+      if (abis.isNotEmpty) {
+        final has64 = abis.any((a) => a.contains('64'));
+        final has32 = abis.any((a) => !a.contains('64'));
+        if (has64 && has32) {
+          architectureLabel = '64/32-bit';
+        } else if (has64) {
+          architectureLabel = '64-bit';
+        } else {
+          architectureLabel = '32-bit';
+        }
+      } else {
+        architectureLabel = null;
+      }
+    }
+
     final (String signatureText, Color signatureColor) =
         _signatureStatus(fileState, analysis, isIos);
     final (String securityText, Color securityColor) =
@@ -430,7 +464,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // 第 1 行：平台 + 「当前文件」
+                      // 第 1 行：平台 + 「当前文件」+ 架构位数
                       Row(
                         children: [
                           Icon(
@@ -446,6 +480,10 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          if (architectureLabel != null) ...[
+                            const SizedBox(width: 8),
+                            _ArchChip(label: architectureLabel),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -845,34 +883,28 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           ],
         ),
         const SizedBox(height: 6),
-        // 高度受限 + 内部滚动：窗口够高时它就是完整的一屏内容，
-        // 窗口矮时用户仍能滚到每一项，而不是被裁掉。
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight - 26),
-          child: SingleChildScrollView(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // **单元格等宽，列数由可用宽度决定。**
-                //
-                // 早先给每个单元一个 `maxWidth`，`Wrap` 会把单元撑到那个
-                // 上限，于是在 1000px 宽的内容区里一行只放得下一个 ——
-                // 十来个字段排成一条竖线，把 Hero 顶到两倍高。
-                const spacing = 8.0;
-                final width = constraints.maxWidth;
-                final columns = width >= 900 ? 3 : (width >= 560 ? 2 : 1);
-                final cellWidth = (width - (columns - 1) * spacing) / columns;
+        // 详细信息网格：直接展开，不内部滚动。窗口矮时由最近文件让位。
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // **单元格等宽，列数由可用宽度决定。**
+            //
+            // 早先给每个单元一个 `maxWidth`，`Wrap` 会把单元撑到那个
+            // 上限，于是在 1000px 宽的内容区里一行只放得下一个 ——
+            // 十来个字段排成一条竖线，把 Hero 顶到两倍高。
+            const spacing = 8.0;
+            final width = constraints.maxWidth;
+            final columns = width >= 900 ? 3 : (width >= 560 ? 2 : 1);
+            final cellWidth = (width - (columns - 1) * spacing) / columns;
 
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: [
-                    for (final cell in cells)
-                      SizedBox(width: cellWidth, child: cell),
-                  ],
-                );
-              },
-            ),
-          ),
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final cell in cells)
+                  SizedBox(width: cellWidth, child: cell),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -1257,6 +1289,34 @@ class _CopyableLine extends StatelessWidget {
         ),
         CopyIconButton(text: text),
       ],
+    );
+  }
+}
+
+/// Hero 区平台标识旁的小标签：64-bit / 32-bit / 64/32-bit。
+class _ArchChip extends StatelessWidget {
+  final String label;
+
+  const _ArchChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: colorScheme.primary,
+        ),
+      ),
     );
   }
 }
