@@ -1,5 +1,7 @@
 import 'package:apk_info_tool/pages/home_page.dart';
 import 'package:apk_info_tool/pages/setting_page.dart';
+import 'package:apk_info_tool/providers/parsed_file_cache.dart';
+import 'package:apk_info_tool/ui/diff/diff_page.dart';
 import 'package:apk_info_tool/ui/overview/overview_page.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/ui/shell/sidebar.dart';
@@ -34,7 +36,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   // 「安装」原先在这里占了一个导航项，但对应的 `APKInstallPage` 只是一个
   // 「开发中」占位，点进去什么也做不了 —— 用户要求把没有的功能去掉，
   // 因此连同页面一起移除。真正的安装入口在分析页顶栏（`InstallDialog`）。
-  static const _pageKeys = ['overview', 'analysis', 'settings'];
+  static const _pageKeys = ['overview', 'analysis', 'diff', 'settings'];
 
   late final List<Widget> _pages;
 
@@ -44,8 +46,15 @@ class _AppShellState extends ConsumerState<AppShell> {
     _pages = [
       const OverviewPage(),
       const HomePage(),
+      const DiffPage(),
       const SettingPage(),
     ];
+
+    // 差异页的数据源（`parsedFileCacheProvider`）靠**监听解析结果**来累积，
+    // 而监听只在它被创建之后才生效。若直到用户点进差异页才第一次读它，
+    // 「解析 A → 解析 B → 进差异页」这条路径上缓存从没活过，两个包都会丢。
+    // 在这里先读一次把它唤醒 —— 只读一次，之后由解析流程驱动。
+    ref.read(parsedFileCacheProvider);
   }
 
   void _onNavSelected(String id) {

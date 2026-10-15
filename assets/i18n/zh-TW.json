@@ -12,7 +12,8 @@
   "nav": {
     "overview": "概覽",
     "analysis": "分析",
-    "settings": "設定"
+    "settings": "設定",
+    "diff": "版本對比"
   },
   "overview": {
     "subtitle": "解析 Android 與 iOS 應用程式套件，並提供安全洞察",
@@ -764,5 +765,73 @@
       "ios_native_symbols_stripped": "部分映像沒有 LC_SYMTAB（符號表被剝離）",
       "ios_signature_separate_step": "簽名驗證由 codesign 單獨執行，見簽名資訊卡片"
     }
+  },
+  "diff": {
+    "title": "版本對比",
+    "subtitle": "逐欄位、逐集合比較兩個已解析的應用程式套件。",
+    "slot_left": "左側套件",
+    "slot_right": "右側套件",
+    "select": "選擇套件",
+    "change": "更換",
+    "pick_title": "選擇已解析的套件",
+    "pick_empty": "還沒有已解析的套件。",
+    "pick_hint": "這裡只列出在「分析」頁解析過的套件。",
+    "need_two": "至少需要兩個已解析的套件。",
+    "go_analysis": "前往分析",
+    "need_both": "兩側都選好套件才能比較。",
+    "platform_mismatch": "兩側必須是同一個平台 —— 拿 Android 和 iOS 比只會得到雜訊。",
+    "summary_changes": "差異：{count} 項",
+    "summary_same": "沒有差異",
+    "summary_unknown": "無法比較的欄位：{count} 項",
+    "section_fields": "欄位差異",
+    "section_sets": "集合差異",
+    "section_unknown": "無法比較",
+    "kind_added": "新增",
+    "kind_removed": "刪除",
+    "kind_changed": "變更",
+    "kind_unknown": "無法比較",
+    "added_count": "新增：{count} 項",
+    "removed_count": "刪除：{count} 項",
+    "common_count": "未變：{count} 項",
+    "value_absent": "檔案裡沒有",
+    "unknown_field_hint": "有一側沒讀到，這些欄位說明不了改了什麼。",
+    "unknown_set_hint": "有一側沒讀到，這些集合的成員沒法比較。",
+    "fields": {
+      "file_fileName": "檔案名稱",
+      "file_fileSize": "檔案大小",
+      "file_sha256": "SHA-256",
+      "app_name": "應用程式名稱",
+      "app_id": "包名 / Bundle ID",
+      "app_version": "版本號",
+      "app_buildNumber": "建置編號",
+      "android_minSdkVersion": "最低 SDK",
+      "android_targetSdkVersion": "目標 SDK",
+      "android_maxSdkVersion": "最高 SDK",
+      "android_debuggable": "可偵錯",
+      "android_archiveType": "封存類型",
+      "ios_bundleIdentifier": "Bundle ID",
+      "ios_displayName": "顯示名稱",
+      "ios_shortVersion": "短版本號",
+      "ios_buildNumber": "建置編號",
+      "ios_minimumOSVersion": "最低系統版本",
+      "ios_executableName": "可執行檔",
+      "signature_verdict": "簽名結論"
+    },
+    "sets": {
+      "android_permissions": "權限",
+      "android_nativeCodes": "ABI",
+      "android_locales": "語言",
+      "android_densities": "螢幕密度",
+      "ios_urlSchemes": "已註冊 URL Scheme",
+      "ios_queriesSchemes": "可查詢 URL Scheme",
+      "ios_backgroundModes": "背景模式",
+      "ios_requiredDeviceCapabilities": "所需裝置能力",
+      "network_domains": "網路網域",
+      "network_ips": "網路 IP",
+      "android_components": "組件",
+      "android_nativeSymbols": "匯入的原生符號",
+      "ios_nativeSymbols": "匯入的原生符號"
+    },
+    "truncated_members": "還有 {count} 項未顯示"
   }
 }

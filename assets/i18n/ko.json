@@ -12,7 +12,8 @@
   "nav": {
     "overview": "개요",
     "analysis": "분석",
-    "settings": "설정"
+    "settings": "설정",
+    "diff": "버전 비교"
   },
   "overview": {
     "subtitle": "Android 및 iOS 앱 패키지를 분석하고 보안 인사이트를 제공합니다",

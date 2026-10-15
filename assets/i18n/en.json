@@ -12,7 +12,8 @@
   "nav": {
     "overview": "Overview",
     "analysis": "Analysis",
-    "settings": "Settings"
+    "settings": "Settings",
+    "diff": "Compare"
   },
   "overview": {
     "subtitle": "Analyze Android and iOS packages with security insights",
@@ -765,5 +766,73 @@
       "ios_native_symbols_stripped": "Some images have no LC_SYMTAB (symbol table stripped)",
       "ios_signature_separate_step": "Signature verification is performed separately by codesign; see the signature card"
     }
+  },
+  "diff": {
+    "title": "Version comparison",
+    "subtitle": "Compare two analysed packages — field by field, and set by set.",
+    "slot_left": "Left package",
+    "slot_right": "Right package",
+    "select": "Select a package",
+    "change": "Change",
+    "pick_title": "Select an analysed package",
+    "pick_empty": "No analysed packages yet.",
+    "pick_hint": "Only packages analysed on the Analysis page appear here.",
+    "need_two": "At least two analysed packages are needed.",
+    "go_analysis": "Go to Analysis",
+    "need_both": "Pick a package for both sides to compare.",
+    "platform_mismatch": "Both sides must be the same platform — comparing Android with iOS only produces noise.",
+    "summary_changes": "Differences: {count}",
+    "summary_same": "No differences",
+    "summary_unknown": "Fields not comparable: {count}",
+    "section_fields": "Field differences",
+    "section_sets": "Collection differences",
+    "section_unknown": "Could not compare",
+    "kind_added": "Added",
+    "kind_removed": "Removed",
+    "kind_changed": "Changed",
+    "kind_unknown": "Cannot compare",
+    "added_count": "Added: {count}",
+    "removed_count": "Removed: {count}",
+    "common_count": "Unchanged: {count}",
+    "value_absent": "Not present in the file",
+    "unknown_field_hint": "One side was not read, so these fields say nothing about what changed.",
+    "unknown_set_hint": "One side was not read, so the members of these collections cannot be compared.",
+    "fields": {
+      "file_fileName": "File name",
+      "file_fileSize": "File size",
+      "file_sha256": "SHA-256",
+      "app_name": "App name",
+      "app_id": "Package / bundle ID",
+      "app_version": "Version",
+      "app_buildNumber": "Build number",
+      "android_minSdkVersion": "Min SDK",
+      "android_targetSdkVersion": "Target SDK",
+      "android_maxSdkVersion": "Max SDK",
+      "android_debuggable": "Debuggable",
+      "android_archiveType": "Archive type",
+      "ios_bundleIdentifier": "Bundle identifier",
+      "ios_displayName": "Display name",
+      "ios_shortVersion": "Short version",
+      "ios_buildNumber": "Build number",
+      "ios_minimumOSVersion": "Minimum OS version",
+      "ios_executableName": "Executable",
+      "signature_verdict": "Signature"
+    },
+    "sets": {
+      "android_permissions": "Permissions",
+      "android_nativeCodes": "ABIs",
+      "android_locales": "Languages",
+      "android_densities": "Screen densities",
+      "ios_urlSchemes": "Registered URL schemes",
+      "ios_queriesSchemes": "Queryable URL schemes",
+      "ios_backgroundModes": "Background modes",
+      "ios_requiredDeviceCapabilities": "Required device capabilities",
+      "network_domains": "Network domains",
+      "network_ips": "Network IP addresses",
+      "android_components": "Components",
+      "android_nativeSymbols": "Imported native symbols",
+      "ios_nativeSymbols": "Imported native symbols"
+    },
+    "truncated_members": "{count} more not shown"
   }
 }

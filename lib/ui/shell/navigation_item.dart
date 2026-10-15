@@ -42,6 +42,17 @@ class AppNavigation {
         selectedIcon: Icons.analytics,
       );
 
+  /// 版本差异页。
+  ///
+  /// 排在「分析」之后、「设置」之前：它是分析的下游动作（先解析两个包，
+  /// 再比较），放在设置前面才符合「常用功能靠上」的顺序。
+  static NavigationItem diff() => NavigationItem(
+        id: 'diff',
+        label: t.nav.diff,
+        icon: Icons.compare_arrows_outlined,
+        selectedIcon: Icons.compare_arrows,
+      );
+
   static NavigationItem settings() => NavigationItem(
         id: 'settings',
         label: t.nav.settings,
@@ -52,6 +63,7 @@ class AppNavigation {
   static List<NavigationItem> items() => [
         overview(),
         analysis(),
+        diff(),
         settings(),
       ];
 }

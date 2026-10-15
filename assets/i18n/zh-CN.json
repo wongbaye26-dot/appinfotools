@@ -12,7 +12,8 @@
   "nav": {
     "overview": "概览",
     "analysis": "分析",
-    "settings": "设置"
+    "settings": "设置",
+    "diff": "版本对比"
   },
   "overview": {
     "subtitle": "解析 Android 与 iOS 应用包，并给出安全洞察",
@@ -764,5 +765,73 @@
       "ios_native_symbols_stripped": "部分镜像没有 LC_SYMTAB（符号表被剥离）",
       "ios_signature_separate_step": "签名验证由 codesign 单独执行，见签名信息卡片"
     }
+  },
+  "diff": {
+    "title": "版本对比",
+    "subtitle": "逐字段、逐集合地比较两个已解析的应用包。",
+    "slot_left": "左侧包",
+    "slot_right": "右侧包",
+    "select": "选择应用包",
+    "change": "更换",
+    "pick_title": "选择已解析的应用包",
+    "pick_empty": "还没有已解析的应用包。",
+    "pick_hint": "这里只列出在「分析」页解析过的包。",
+    "need_two": "至少需要两个已解析的应用包。",
+    "go_analysis": "前往分析",
+    "need_both": "两侧都选好包才能比较。",
+    "platform_mismatch": "两侧必须是同一个平台 —— 拿 Android 和 iOS 比只会得到噪音。",
+    "summary_changes": "差异：{count} 项",
+    "summary_same": "没有差异",
+    "summary_unknown": "无法比较的字段：{count} 项",
+    "section_fields": "字段差异",
+    "section_sets": "集合差异",
+    "section_unknown": "无法比较",
+    "kind_added": "新增",
+    "kind_removed": "删除",
+    "kind_changed": "变更",
+    "kind_unknown": "无法比较",
+    "added_count": "新增：{count} 项",
+    "removed_count": "删除：{count} 项",
+    "common_count": "未变：{count} 项",
+    "value_absent": "文件里没有",
+    "unknown_field_hint": "有一侧没读到，这些字段说明不了改了什么。",
+    "unknown_set_hint": "有一侧没读到，这些集合的成员没法比较。",
+    "fields": {
+      "file_fileName": "文件名",
+      "file_fileSize": "文件大小",
+      "file_sha256": "SHA-256",
+      "app_name": "应用名称",
+      "app_id": "包名 / Bundle ID",
+      "app_version": "版本号",
+      "app_buildNumber": "构建号",
+      "android_minSdkVersion": "最低 SDK",
+      "android_targetSdkVersion": "目标 SDK",
+      "android_maxSdkVersion": "最高 SDK",
+      "android_debuggable": "可调试",
+      "android_archiveType": "归档类型",
+      "ios_bundleIdentifier": "Bundle ID",
+      "ios_displayName": "显示名称",
+      "ios_shortVersion": "短版本号",
+      "ios_buildNumber": "构建号",
+      "ios_minimumOSVersion": "最低系统版本",
+      "ios_executableName": "可执行文件",
+      "signature_verdict": "签名结论"
+    },
+    "sets": {
+      "android_permissions": "权限",
+      "android_nativeCodes": "ABI",
+      "android_locales": "语言",
+      "android_densities": "屏幕密度",
+      "ios_urlSchemes": "已注册 URL Scheme",
+      "ios_queriesSchemes": "可查询 URL Scheme",
+      "ios_backgroundModes": "后台模式",
+      "ios_requiredDeviceCapabilities": "所需设备能力",
+      "network_domains": "网络域名",
+      "network_ips": "网络 IP",
+      "android_components": "组件",
+      "android_nativeSymbols": "导入的原生符号",
+      "ios_nativeSymbols": "导入的原生符号"
+    },
+    "truncated_members": "还有 {count} 项未显示"
   }
 }

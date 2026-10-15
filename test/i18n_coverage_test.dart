@@ -9,8 +9,12 @@
 // loaded」，不 await 则拿到的还是上一个语言 —— 两种情况都会让这类断言
 // 变成假通过或假失败。
 
+import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/models/analysis/package_diff_adapter.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
+import 'package:apk_info_tool/utils/diff_labels.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _use(String locale) => LocaleSettings.setLocaleRaw(locale);
@@ -171,6 +175,129 @@ void main() {
         AnalysisReport.coverageDimensionLabel('future.dimension', t),
         'future.dimension',
       );
+    });
+  });
+
+  // 差异页 / 差异报告的字段名与集合名（阶段 5.2 的验收条件）。
+  //
+  // 与覆盖维度同一套做法：差异模型里保留**机器 id**（`android.minSdkVersion`），
+  // 界面与报告必须显示本地化名字。这里刻意**不写死 id 清单**，而是从适配层
+  // 实际产出的 id 里取 —— 适配层加了字段却忘了补文案，这条就会红。
+  group('差异的字段名与集合名', () {
+    /// 两个平台的 `DiffSubject`，覆盖全部 id（Android 专属 + iOS 专属 + 通用）。
+    List<DiffSubject> subjects() => [
+          diffSubjectOf(
+            AnalysisBuilder.buildAndroid(
+              filePath: '/tmp/a.apk',
+              fileSize: 1024,
+              manifestSource: FieldSource.builtinParser,
+              // 带上安全结果，让 `network.*` 两个集合也出现在清单里。
+              security: SecurityAnalysisResult(
+                engineVersion: 'e',
+                rulesVersion: 'r',
+                network: NetworkFacts(domains: ['a.example']),
+              ),
+            ),
+          ),
+          diffSubjectOf(
+            AnalysisBuilder.buildIos(
+              filePath: '/tmp/a.ipa',
+              fileSize: 1024,
+            ),
+          ),
+        ];
+
+    test('适配层产出的每个 id 在四个语言包里都有名字，且不留占位符', () async {
+      final ids = {
+        for (final s in subjects()) ...s.fields.map((f) => 'field:${f.id}'),
+        for (final s in subjects()) ...s.sets.keys.map((k) => 'set:$k'),
+      };
+      expect(ids.length, greaterThanOrEqualTo(25), reason: 'id 清单不该缩水');
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await _use(locale);
+        for (final entry in ids) {
+          final isField = entry.startsWith('field:');
+          final id = entry.substring(entry.indexOf(':') + 1);
+          final label =
+              isField ? DiffLabels.field(id, t) : DiffLabels.set(id, t);
+          expect(
+            label,
+            isNot(id),
+            reason: '$locale 下 $id 没有本地化名字，回退成了机器 id',
+          );
+          expect(label, isNot(contains('{')), reason: '$locale / $id');
+          expect(label.trim(), isNotEmpty, reason: '$locale / $id');
+        }
+      }
+      await _use('en');
+    });
+
+    test('中文语言包里是中文，英文语言包里没有中文', () async {
+      const cjk = r'[\u4e00-\u9fff]';
+      // 字段与集合分开取：id 空间是两套，混在一起会让「集合 id 拿去查字段名」
+      // 落到「认不出就原样返回」那条分支上，断言随即失去意义（第一版就是这么错的）。
+      final fieldIds = {
+        for (final s in subjects()) ...s.fields.map((f) => f.id),
+      };
+      final setIds = {
+        for (final s in subjects()) ...s.sets.keys,
+      };
+
+      await _use('zh-CN');
+      final zhLabels = [
+        for (final id in fieldIds) DiffLabels.field(id, t),
+        for (final id in setIds) DiffLabels.set(id, t),
+      ];
+      // 允许**个别**名字不翻：`SHA-256` 是哈希名、`Bundle ID` 与 `ABI` 是
+      // 通用技术缩写，硬翻反而对不上原文。但**允许清单是写死的** ——
+      // 新冒出一个没翻的名字会立刻失败，而不是被「允许个别不翻」放过去。
+      const untranslated = {'SHA-256', 'Bundle ID', 'ABI'};
+      expect(
+        zhLabels.where((l) => !RegExp(cjk).hasMatch(l)).toSet(),
+        untranslated,
+        reason: 'zh-CN 下未翻译的名字应当**只有**这几个公认缩写：'
+            '${zhLabels.join(' / ')}',
+      );
+
+      await _use('en');
+      for (final id in fieldIds) {
+        final label = DiffLabels.field(id, t);
+        expect(
+          RegExp(cjk).hasMatch(label),
+          isFalse,
+          reason: 'en 下字段 $id 混进了中文：$label',
+        );
+      }
+      for (final id in setIds) {
+        final label = DiffLabels.set(id, t);
+        expect(
+          RegExp(cjk).hasMatch(label),
+          isFalse,
+          reason: 'en 下集合 $id 混进了中文：$label',
+        );
+      }
+    });
+
+    test('三态标签与页面文案确实随语言切换', () async {
+      await _use('en');
+      expect(t.diff.kind_added, 'Added');
+      expect(t.diff.kind_removed, 'Removed');
+      expect(t.diff.kind_changed, 'Changed');
+      expect(DiffLabels.kind(DiffKind.unknown, t), 'Cannot compare');
+
+      await _use('zh-CN');
+      expect(t.diff.kind_added, '新增');
+      expect(t.diff.kind_removed, '删除');
+      expect(t.diff.kind_changed, '变更');
+      expect(DiffLabels.kind(DiffKind.unknown, t), '无法比较');
+      // 「没读到」与「文件里没有」在文案上必须分开 —— 这是本页的核心口径。
+      expect(t.diff.value_absent, isNot(t.diff.kind_added));
+    });
+
+    test('认不出的 id 原样返回，不显示空白', () {
+      expect(DiffLabels.field('future.field', t), 'future.field');
+      expect(DiffLabels.set('future.set', t), 'future.set');
     });
   });
 }
