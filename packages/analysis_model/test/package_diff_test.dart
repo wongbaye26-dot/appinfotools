@@ -14,9 +14,14 @@ const _unsupported = FieldValue<Object?>.unsupported(
   diagnostic: 'aapt2 does not report this field',
 );
 
+/// 集合也要带状态：`absent`（文件里确实没有）与 `unsupported`（来源不报）
+/// 对差异的含义完全相反。
+FieldValue<List<String>> _members(List<String> v) =>
+    FieldValue<List<String>>.extracted(v, source: FieldSource.builtinParser);
+
 DiffSubject _subject({
   List<({String id, FieldValue<Object?> value})> fields = const [],
-  Map<String, List<String>> sets = const {},
+  Map<String, FieldValue<List<String>>> sets = const {},
 }) =>
     DiffSubject(fields: fields, sets: sets);
 
@@ -118,10 +123,10 @@ void main() {
     test('added / removed / common 各就位', () {
       final diff = diffSubjects(
           _subject(sets: {
-            'permissions': ['A', 'B', 'C'],
+            'permissions': _members(['A', 'B', 'C']),
           }),
           _subject(sets: {
-            'permissions': ['B', 'C', 'D'],
+            'permissions': _members(['B', 'C', 'D']),
           }));
 
       final s = diff.sets.single;
@@ -136,10 +141,10 @@ void main() {
       // 域名是按扫描到的顺序来的；重排会让「同一个包两次比较」输出不一致。
       final diff = diffSubjects(
           _subject(sets: {
-            'domains': ['z.example', 'a.example'],
+            'domains': _members(['z.example', 'a.example']),
           }),
           _subject(sets: {
-            'domains': ['a.example', 'z.example'],
+            'domains': _members(['a.example', 'z.example']),
           }));
       final s = diff.sets.single;
       expect(s.isSame, isTrue);
@@ -149,24 +154,48 @@ void main() {
     test('集合相同 → isSame，且不算差异', () {
       final diff = diffSubjects(
         _subject(sets: {
-          'x': ['A']
+          'x': _members(['A'])
         }),
         _subject(sets: {
-          'x': ['A']
+          'x': _members(['A'])
         }),
       );
       expect(diff.sets.single.isSame, isTrue);
       expect(diff.hasChanges, isFalse);
     });
 
+    test('一侧「没读到」→ comparable 为 false，且不给 added/removed', () {
+      // 左边读到了权限、右边这个来源不报权限。**绝不能**说成
+      // 「右边的这些权限被删掉了」—— 那是把「没查到」当成「没有」。
+      final diff = diffSubjects(
+          _subject(sets: {
+            'permissions': _members(['A', 'B']),
+          }),
+          _subject(sets: {
+            'permissions': const FieldValue<List<String>>.unsupported(
+              diagnostic: 'this source does not report permissions',
+            ),
+          }));
+
+      final s = diff.sets.single;
+      expect(s.comparable, isFalse);
+      expect(s.added, isEmpty, reason: '不能把「没读到」算成对方新增');
+      expect(s.removed, isEmpty, reason: '不能把「没读到」算成对方删除');
+      expect(
+        diff.hasChanges,
+        isFalse,
+        reason: '不可比不是差异 —— 它是「这次说不清」',
+      );
+    });
+
     test('右侧独有的集合维度也出现，不被静默丢掉', () {
       final diff = diffSubjects(
         _subject(sets: {
-          'a': ['1']
+          'a': _members(['1'])
         }),
         _subject(sets: {
-          'a': ['1'],
-          'b': ['2']
+          'a': _members(['1']),
+          'b': _members(['2'])
         }),
       );
       expect(diff.sets.map((s) => s.id), ['a', 'b']);

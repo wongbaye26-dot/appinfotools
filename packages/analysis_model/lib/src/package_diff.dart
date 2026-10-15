@@ -89,9 +89,17 @@ class SetDiff {
     required this.added,
     required this.removed,
     required this.common,
+    this.comparable = true,
   });
 
-  /// 两侧是否完全一致。
+  /// 两侧是否**可比**：至少一侧「没读到」时为 `false`。
+  ///
+  /// 与 [FieldDiff] 的 `unknown` 同一条原则 —— 集合差异同样不能把
+  /// 「另一边没读到」算成「对方新增了这些成员」。`comparable == false` 时
+  /// [added] / [removed] 一律为空，调用方必须单独呈现「这次说不清」。
+  final bool comparable;
+
+  /// 两侧是否完全一致。**只在 [comparable] 为 true 时有意义。**
   bool get isSame => added.isEmpty && removed.isEmpty;
 
   @override
@@ -108,7 +116,7 @@ class DiffSubject {
   final List<({String id, FieldValue<Object?> value})> fields;
 
   /// 集合 id → 成员（成员顺序即 [SetDiff] 里各列表的顺序）。
-  final Map<String, List<String>> sets;
+  final Map<String, FieldValue<List<String>>> sets;
 
   const DiffSubject({this.fields = const [], this.sets = const {}});
 }
@@ -129,7 +137,8 @@ class PackageDiff {
           f.kind == DiffKind.added ||
           f.kind == DiffKind.removed ||
           f.kind == DiffKind.changed) ||
-      sets.any((s) => !s.isSame);
+      // `comparable == false` 的集合不算差异（它是「这次说不清」）。
+      sets.any((s) => s.comparable && !s.isSame);
 
   /// 无法比较的字段数。**必须单独报出来**，不能并进「无差异」。
   int get unknownFieldCount =>
@@ -174,8 +183,11 @@ PackageDiff diffSubjects(DiffSubject left, DiffSubject right) {
   final seen = <String>{};
   for (final id in [...left.sets.keys, ...right.sets.keys]) {
     if (!seen.add(id)) continue;
-    sets.add(
-        _diffSet(id, left.sets[id] ?? const [], right.sets[id] ?? const []));
+    sets.add(_diffSet(
+      id,
+      left.sets[id] ?? const FieldValue<List<String>>.absent(),
+      right.sets[id] ?? const FieldValue<List<String>>.absent(),
+    ));
   }
 
   return PackageDiff(fields: fields, sets: sets);
@@ -212,21 +224,41 @@ DiffKind _kindOf(FieldValue<Object?> left, FieldValue<Object?>? right) {
 /// 顺序：`added` 按右侧顺序、`removed` 按左侧顺序、`common` 按左侧顺序 ——
 /// 各自沿用**它自己的来源顺序**，不重排。重排会让「同一个包两次比较」的
 /// 输出不一致（例如域名是按扫描到的顺序来的）。
-SetDiff _diffSet(String id, List<String> left, List<String> right) {
-  final leftSet = left.toSet();
-  final rightSet = right.toSet();
+SetDiff _diffSet(
+  String id,
+  FieldValue<List<String>> left,
+  FieldValue<List<String>> right,
+) {
+  bool known(FieldValue<List<String>> v) =>
+      v.status == FieldStatus.extracted || v.status == FieldStatus.absent;
+  if (!known(left) || !known(right)) {
+    // 至少一侧「没读到」：**不给 added / removed** —— 那会把「没查到」
+    // 说成「对方新增了」。标成不可比，由调用方单独呈现。
+    return SetDiff(
+      id: id,
+      added: const [],
+      removed: const [],
+      common: const [],
+      comparable: false,
+    );
+  }
+
+  final leftMembers = left.value ?? const <String>[];
+  final rightMembers = right.value ?? const <String>[];
+  final leftSet = leftMembers.toSet();
+  final rightSet = rightMembers.toSet();
   return SetDiff(
     id: id,
     added: [
-      for (final m in right)
+      for (final m in rightMembers)
         if (!leftSet.contains(m)) m
     ],
     removed: [
-      for (final m in left)
+      for (final m in leftMembers)
         if (!rightSet.contains(m)) m
     ],
     common: [
-      for (final m in left)
+      for (final m in leftMembers)
         if (rightSet.contains(m)) m
     ],
   );
