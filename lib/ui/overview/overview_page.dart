@@ -8,6 +8,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
+import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
@@ -19,6 +20,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ipa_parser/ipa_parser.dart' show IosIconResolution;
 import 'package:path/path.dart' as p;
 
 /// 应用概览页。
@@ -606,7 +608,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       child: GestureDetector(
         // 右键打开导出菜单
         onSecondaryTapUp: isIos
-            ? null
+            ? (_) => _exportIosIcon(analysis?.ios?.icon)
             : (details) => _showIconExportMenu(
                   context,
                   details.globalPosition,
@@ -647,8 +649,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                           ),
                         )),
             ),
-            // 导出角标（仅 Android：iOS 的图标来源不支持多候选导出）
-            if (!isIos && apkInfo != null)
+            // 导出角标（Android / iOS 都支持）
+            if ((isIos && analysis?.ios?.icon != null) ||
+                (!isIos && apkInfo != null))
               Positioned(
                 right: 3,
                 bottom: 3,
@@ -661,11 +664,13 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     borderRadius: BorderRadius.circular(7),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(7),
-                      onTap: () => _showIconExportMenu(
-                        context,
-                        _anchorOf(btnContext),
-                        apkInfo,
-                      ),
+                      onTap: () => isIos
+                          ? _exportIosIcon(analysis?.ios?.icon)
+                          : _showIconExportMenu(
+                              context,
+                              _anchorOf(btnContext),
+                              apkInfo,
+                            ),
                       child: Padding(
                         padding: const EdgeInsets.all(3),
                         child: Icon(
@@ -770,6 +775,96 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
   }
 
+  /// 文件路径字段旁的重命名按钮。
+  Widget _buildRenameButton(String filePath) => IconButton(
+        icon: const Icon(Icons.drive_file_rename_outline, size: 13),
+        color: Theme.of(context).colorScheme.primary,
+        tooltip: t.rename.rename_file,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+        onPressed: () => _showRenameDialog(filePath),
+      );
+
+  /// 弹出重命名对话框。
+  ///
+  /// 默认文件名为当前文件名，用户可直接修改。
+  void _showRenameDialog(String filePath) {
+    final file = File(filePath);
+    final originalName = p.basename(filePath);
+    final controller = TextEditingController(text: originalName);
+    final formKey = GlobalKey<FormFieldState<String>>();
+    final localT = t;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final navigator = Navigator.of(dialogContext, rootNavigator: true);
+        final messenger = ScaffoldMessenger.of(dialogContext);
+
+        return AlertDialog(
+          title: Text(localT.rename.rename_file),
+          content: TextFormField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: localT.rename.new_file_name,
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return localT.rename.name_cannot_be_empty;
+              }
+              final lower = value.toLowerCase();
+              final valid = lower.endsWith('.apk') ||
+                  lower.endsWith('.xapk') ||
+                  lower.endsWith('.apkm') ||
+                  lower.endsWith('.apks') ||
+                  lower.endsWith('.ipa');
+              if (!valid) {
+                return localT.rename.must_end_with_apk;
+              }
+              return null;
+            },
+            key: formKey,
+          ),
+          actions: [
+            TextButton(
+              onPressed: navigator.pop,
+              child: Text(localT.base.cancel),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (formKey.currentState?.validate() ?? false) {
+                  final newName = controller.text;
+                  final directory = file.parent;
+                  final newPath =
+                      '${directory.path}${Platform.pathSeparator}$newName';
+
+                  try {
+                    await file.rename(newPath);
+                  } on FileSystemException catch (e) {
+                    log.info(
+                        'rename failed (${e.message}), falling back to copy+delete');
+                    await file.copy(newPath);
+                    await file.delete();
+                  }
+
+                  if (mounted) {
+                    // 更新当前文件状态为新路径，触发重新解析。
+                    _openFile(newPath, navigate: false);
+                    navigator.pop();
+                    messenger.showSnackBar(
+                      SnackBar(content: Text(localT.rename.success)),
+                    );
+                  }
+                }
+              },
+              child: Text(localT.base.confirm),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// 详细信息网格 —— 每个值都能一键复制。
   ///
   /// 用 `Wrap` 而不是手算列数：单元的最小宽度不同（哈希比构建号长得多），
@@ -812,6 +907,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         _CopyField(
           label: t.overview.field_file_path,
           value: filePath,
+          trailing: _buildRenameButton(filePath),
         ),
       if (version.isNotEmpty)
         _CopyField(
@@ -1055,6 +1151,47 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     }
   }
 
+  /// 导出 iOS 图标为 PNG。
+  ///
+  /// 与 Android 侧不同：iOS 图标只有一个候选（最高分辨率），
+  /// 因此菜单直接简化为「保存 PNG」。
+  Future<void> _exportIosIcon(IosIconResolution? resolution) async {
+    final candidates = resolution?.candidates ?? [];
+    if (candidates.isEmpty) return;
+
+    try {
+      final result = await IosIconDecoder.decode(candidates.first);
+      if (!result.hasImage) {
+        throw StateError(result.failure ?? 'decode failed');
+      }
+      final image = result.image!;
+
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: t.icon.export_icon,
+        fileName: 'icon.png',
+        type: FileType.custom,
+        allowedExtensions: ['png'],
+        lockParentWindow: true,
+      );
+      if (savePath == null) return;
+
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) throw StateError('icon encode failed');
+      await File(savePath).writeAsBytes(data.buffer.asUint8List());
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.icon.export_success)),
+      );
+    } catch (e) {
+      log.warning('export iOS icon failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.icon.export_failed(error: '$e'))),
+      );
+    }
+  }
+
   Future<void> _exportReport(FileState fileState) async {
     final analysis = fileState.analysis;
     if (analysis == null) return;
@@ -1162,7 +1299,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   itemCount: recentFiles.length,
                   itemBuilder: (context, i) => _RecentFileTile(
                     entry: recentFiles[i],
-                    onTap: () => _openFile(recentFiles[i].path),
+                    onTap: () =>
+                        _openFile(recentFiles[i].path, navigate: false),
                   ),
                 ),
         ),
@@ -1333,10 +1471,15 @@ class _CopyField extends StatelessWidget {
   final String value;
   final bool monospace;
 
+  /// 替换默认复制按钮的自定义尾部操作。
+  /// 为 `null` 时显示复制按钮。
+  final Widget? trailing;
+
   const _CopyField({
     required this.label,
     required this.value,
     this.monospace = false,
+    this.trailing,
   });
 
   @override
@@ -1389,12 +1532,13 @@ class _CopyField extends StatelessWidget {
               const SizedBox(width: 4),
               // tooltip 直接显示完整值：单元宽度有限，哈希会被截断，
               // 而截断后的哈希没有任何用。
-              CopyIconButton(
-                text: value,
-                tooltip: value,
-                iconSize: 13,
-                color: colorScheme.primary,
-              ),
+              trailing ??
+                  CopyIconButton(
+                    text: value,
+                    tooltip: value,
+                    iconSize: 13,
+                    color: colorScheme.primary,
+                  ),
             ],
           ),
         ],

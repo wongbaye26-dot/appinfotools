@@ -148,15 +148,20 @@ void main() {
       await _pump(tester, _defaultWindow);
 
       // 这个状态下有值的字段：应用名（标题行）+ 四个状态卡片 + 网格里的
-      // 文件名 / 文件路径 / SHA-256 / SHA-1 / MD5 —— 共 10 个。
+      // 文件名 / SHA-256 / SHA-1 / MD5 —— 共 9 个。
+      // 文件路径改为重命名按钮（Icons.drive_file_rename_outline），
+      // 不再计入复制按钮。
       // 标识符与版本没有值（状态里没有解析结果），因此不出现复制入口：
       // 空字段不给复制按钮，正是「取不到就不假装有」的那条约定。
       final copies = find.byIcon(Icons.content_copy).evaluate().length;
       expect(
         copies,
-        greaterThanOrEqualTo(10),
+        greaterThanOrEqualTo(9),
         reason: '有值的字段都应有复制入口（实测 $copies 个）',
       );
+
+      // 文件路径旁应有重命名按钮。
+      expect(find.byIcon(Icons.drive_file_rename_outline), findsOneWidget);
     });
 
     testWidgets('点击复制真的写入剪贴板', (tester) async {
