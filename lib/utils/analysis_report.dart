@@ -495,7 +495,7 @@ class AnalysisReport {
           '| ${t.coverage.column_amount} | ${t.coverage.column_note} |')
       ..writeln('| --- | --- | --- | --- |');
     for (final entry in coverage.entries) {
-      sb.writeln('| ${_escape(entry.id)} '
+      sb.writeln('| ${_escape(coverageDimensionLabel(entry.id, t))} '
           '| ${coverageStatusText(entry.status, t)} '
           '| ${entry.ratioText ?? '—'} '
           '| ${_escape(entry.note ?? '')} |');
@@ -514,12 +514,58 @@ class AnalysisReport {
         if (e.status == CoverageStatus.covered) e,
     ].length;
     if (applicable.isEmpty) return t.coverage.no_gaps;
+    final head =
+        t.coverage.summary(covered: covered, applicable: applicable.length);
     if (covered == applicable.length) {
-      return '${t.coverage.summary(covered: covered, applicable: applicable.length)}'
-          '（${t.coverage.all_covered}）';
+      // 分隔符与括号都走 i18n。此前这里是写死的中文全角「；」与「（）」，
+      // 英文报告里会长成 `fully covered；2 dimensions have gaps`。
+      return '$head${t.coverage.summary_join}${t.coverage.all_covered}';
     }
-    return '${t.coverage.summary(covered: covered, applicable: applicable.length)}；'
+    return '$head${t.coverage.summary_join}'
         '${t.coverage.gap_count(count: coverage.gaps.length)}';
+  }
+
+  /// 覆盖维度的**本地化名字**。
+  ///
+  /// [CoverageEntry.id] 是给程序用的稳定标识（`android.dex.strings`），
+  /// 不该直接给用户看。UI 与 Markdown 都走这一个函数 —— 两处各写一份映射，
+  /// 迟早会出现「界面是中文、报告是英文」这种互相矛盾的呈现。
+  ///
+  /// 认不出的 id **原样返回**：宁可显示一个机器标识，也不要显示空白或
+  /// 「未知维度」—— 后者会让「新增了维度但忘了补文案」变得不可见。
+  static String coverageDimensionLabel(String id, Translations t) {
+    final d = t.coverage.dimensions;
+    return switch (id) {
+      'android.manifest' => d.android_manifest,
+      'android.permissions' => d.android_permissions,
+      'android.dex.structure' => d.android_dex_structure,
+      'android.dex.strings' => d.android_dex_strings,
+      'android.dex.methodReferences' => d.android_dex_methodReferences,
+      'android.dex.callSites' => d.android_dex_callSites,
+      'android.nativeSymbols' => d.android_nativeSymbols,
+      'android.arsc' => d.android_arsc,
+      'ios.infoPlist' => d.ios_infoPlist,
+      'ios.usageDescriptions' => d.ios_usageDescriptions,
+      'ios.privacyManifest' => d.ios_privacyManifest,
+      'ios.executables' => d.ios_executables,
+      'ios.macho.strings' => d.ios_macho_strings,
+      'ios.nativeSymbols' => d.ios_nativeSymbols,
+      'ios.signature' => d.ios_signature,
+      _ => id,
+    };
+  }
+
+  /// 一条覆盖维度在界面上的单行呈现。
+  ///
+  /// 由 `AnalysisReport` 提供而不是写在页面里：状态文案、维度名、覆盖量的
+  /// 拼法都只有这一份，界面与报告不会各自漂移。
+  static String coverageEntryLine(CoverageEntry entry, Translations t) {
+    final status = coverageStatusText(entry.status, t);
+    final amount = entry.ratioText;
+    final note = entry.note;
+    return '$status  ${coverageDimensionLabel(entry.id, t)}'
+        '${amount == null ? '' : '  $amount'}'
+        '${note == null || note.isEmpty ? '' : '  —— $note'}';
   }
 
   /// 覆盖状态的本地化文本。UI 与 Markdown 共用。

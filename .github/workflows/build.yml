@@ -44,7 +44,14 @@ jobs:
       - name: Analyze
         run: flutter analyze --fatal-infos --fatal-warnings
 
-      - name: Unit tests
+      - name: Core tests (root test/ — fixtures + widget tests)
+        # 这一层**必跑**：输入全部来自仓库内的夹具或构造数据，不依赖任何
+        # 个人机器路径。
+        #
+        # 真实样本测试（`real_samples_test.dart` / `real_samples_ui_test.dart`）
+        # 也住在 `test/` 下，但它们在没配 `APPINFOTOOL_SAMPLES` 时会**显式跳过**
+        # 并打印原因 —— 跳过不等于通过。它们的执行情况由独立的
+        # `external-samples` job 单独呈现，不让「跳过」淹没在这里的 900 多项里。
         run: flutter test
 
       - name: Compile the whole app (no platform toolchain needed)
@@ -67,6 +74,70 @@ jobs:
             (cd "$pkg" && dart pub get && dart analyze --fatal-infos --fatal-warnings)
             echo "::endgroup::"
           done
+
+      - name: Package-level tests (packages/*/test)
+        # 四个核心包各有自己的 `test/`，验证「作为独立库可用」——
+        # 与根测试的分工：根测试证明「应用用对了包」，这里证明「包自己能成立」。
+        #
+        # 夹具路径写成相对包目录的 `../../test/fixtures/...`，因此
+        # **不依赖任何个人机器路径**，CI 与本地跑的是同一份。
+        #
+        # 没有测试文件的包**直接失败**，而不是悄悄跳过：门禁的价值在于
+        # 「关键测试确实执行了」，缺测试必须让 CI 红，不能让它绿着蒙混过去。
+        run: |
+          set -euo pipefail
+          for pkg in packages/*/; do
+            if ! ls "$pkg"/test/*_test.dart >/dev/null 2>&1; then
+              echo "::error::$pkg 没有包级测试（$pkg/test/*_test.dart）。\
+          新增包必须带上关键纯逻辑的测试。"
+              exit 1
+            fi
+            echo "::group::dart test $pkg"
+            (cd "$pkg" && dart pub get && dart test --reporter expanded)
+            echo "::endgroup::"
+          done
+
+  # 外部真实样本测试：**单独一个 job**，让「跑没跑 / 为什么没跑」一眼可见。
+  #
+  # 样本不进版本库（体积大、且属于用户数据），因此 CI 上必然是跳过的。
+  # 把它从 `flutter test` 里拎出来单列，是为了不让「跳过」被读成一个
+  # 不起眼的 `~11` —— 那正是「整体绿着、关键测试其实没跑」的经典形态。
+  external-samples:
+    name: External samples (needs APPINFOTOOL_SAMPLES)
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Report sample availability
+        # 缺样本是**环境限制**（不是失败），但必须显式说出来，
+        # 否则「CI 全绿」会被读成「端到端也验过了」。
+        run: |
+          if [ -n "${APPINFOTOOL_SAMPLES:-}" ]; then
+            echo "::notice::APPINFOTOOL_SAMPLES 已配置：$APPINFOTOOL_SAMPLES"
+          else
+            echo "::warning title=外部真实样本测试未执行::\
+          CI 未配置 APPINFOTOOL_SAMPLES，端到端真实样本测试将整体跳过。\
+          这是环境限制（样本体积大且属于用户数据，不入库），不是产品缺陷；\
+          但也意味着**本次 CI 没有验证过真实 APK/IPA**。\
+          本地跑法：APPINFOTOOL_SAMPLES=/path/to/samples flutter test test/real_samples_test.dart test/real_samples_ui_test.dart"
+          fi
+
+      - name: External sample tests (逐条打印跳过原因)
+        # `--reporter expanded` 会把每条 Skip 与它的原因单独打出来，
+        # 而不是汇总成一个计数。
+        run: |
+          flutter test test/real_samples_test.dart test/real_samples_ui_test.dart \
+            --reporter expanded
 
   build-windows:
     needs: quality

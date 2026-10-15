@@ -485,12 +485,22 @@ void main() {
       );
 
       expect(report, contains('## ${t.coverage.title}'));
-      expect(report, contains('android.manifest'));
+      // 维度列是**本地化名字**，不是机器标识 —— 机器标识留给 JSON（见下一条）。
+      // 这条断言此前写的是 `contains('android.manifest')` 等，等于把缺陷
+      // （把 `android.dex.strings` 直接摆给用户看）当成了正确行为。
+      for (final id in [
+        'android.manifest',
+        'android.dex.strings',
+        'android.arsc',
+      ]) {
+        expect(report, isNot(contains(id)),
+            reason: 'Markdown 不该把机器标识 $id 呈现给用户');
+        expect(report, contains(AnalysisReport.coverageDimensionLabel(id, t)),
+            reason: 'Markdown 缺 $id 的本地化名字');
+      }
       expect(report, contains(t.coverage.covered));
-      expect(report, contains('android.dex.strings'));
       expect(report, contains(t.coverage.partial));
       expect(report, contains('1024/2048'), reason: '覆盖量要能看到');
-      expect(report, contains('android.arsc'));
       expect(report, contains(t.coverage.not_covered));
       expect(report, contains('资源表缺失'), reason: '「为什么没覆盖」要带上');
       expect(report, contains(t.coverage.not_applicable));

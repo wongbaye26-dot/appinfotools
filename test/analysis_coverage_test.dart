@@ -16,6 +16,7 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -359,6 +360,168 @@ void main() {
     test('没有 coverage 时 summary 不崩、返回「没有缺口」', () {
       expect(AnalysisReport.coverageSummary(const AnalysisCoverage(), t),
           t.coverage.no_gaps);
+    });
+  });
+
+  // 缺陷 COV-1 / COV-2 的回归测试（见 docs/plans/V2.4.0_PROGRESS.md §11.5）。
+  //
+  // 背景：`CoverageEntry.id` 是给程序用的**稳定标识**（`android.dex.strings`），
+  // 而 UI 与 Markdown 都直接把它渲染给用户看。`CoverageEntry.id` 的注释写着
+  // 「UI 用它映射到本地化文案」，但那个映射此前并不存在。
+  // 另一处是汇总句用中文全角「；」硬拼接，英文报告里会出现中文标点。
+  group('覆盖维度的呈现（COV-1 / COV-2 回归）', () {
+    /// 引擎实际会产出的全部维度 id。
+    ///
+    /// 取自两个审计引擎：`android_security_audit.dart` 8 个、
+    /// `ios_privacy_audit.dart` 7 个。**故意写死在这里** —— 新增维度时
+    /// 这条断言会红，提醒补文案，而不是悄悄显示成机器标识。
+    const allDimensionIds = <String>[
+      'android.manifest',
+      'android.permissions',
+      'android.dex.structure',
+      'android.dex.strings',
+      'android.dex.methodReferences',
+      'android.dex.callSites',
+      'android.nativeSymbols',
+      'android.arsc',
+      'ios.infoPlist',
+      'ios.usageDescriptions',
+      'ios.privacyManifest',
+      'ios.executables',
+      'ios.macho.strings',
+      'ios.nativeSymbols',
+      'ios.signature',
+    ];
+
+    const sample = AnalysisCoverage(entries: [
+      CoverageEntry(id: 'android.manifest', status: CoverageStatus.covered),
+      CoverageEntry(
+        id: 'android.dex.strings',
+        status: CoverageStatus.partial,
+        covered: 1024,
+        limit: 2048,
+      ),
+      CoverageEntry(id: 'android.arsc', status: CoverageStatus.notCovered),
+      CoverageEntry(id: 'ios.signature', status: CoverageStatus.notApplicable),
+    ]);
+
+    test('每一个引擎维度 id 都有本地化名字，且不等于 id 本身', () {
+      for (final id in allDimensionIds) {
+        final label = AnalysisReport.coverageDimensionLabel(id, t);
+        expect(label, isNotEmpty, reason: '$id 没有文案');
+        expect(label, isNot(id), reason: '$id 直接显示了机器标识');
+      }
+    });
+
+    test('未知 id 原样回退，不抛异常也不显示空白', () {
+      expect(AnalysisReport.coverageDimensionLabel('android.future.thing', t),
+          'android.future.thing');
+      expect(AnalysisReport.coverageDimensionLabel('', t), '');
+    });
+
+    test('UI 的单行格式用本地化维度名，不出现机器 id', () {
+      final line = AnalysisReport.coverageEntryLine(sample.entries[1], t);
+      expect(line, isNot(contains('android.dex.strings')),
+          reason: '界面不该把机器标识给用户看');
+      expect(
+          line,
+          contains(
+              AnalysisReport.coverageDimensionLabel('android.dex.strings', t)));
+      // 覆盖量与状态仍然照旧出现。
+      expect(line, contains('1024/2048'));
+      expect(
+          line,
+          contains(
+              AnalysisReport.coverageStatusText(CoverageStatus.partial, t)));
+    });
+
+    test('Markdown 覆盖表用本地化维度名，不出现机器 id', () {
+      final result = PackageAnalysisResult(
+        platform: PackagePlatform.android,
+        fileName: const FieldValue<String>.extracted(
+          'x.apk',
+          source: FieldSource.fileSystem,
+        ),
+        fileSize: const FieldValue<int>.extracted(
+          1,
+          source: FieldSource.fileSystem,
+        ),
+        security: const SecurityAnalysisResult(
+          engineVersion: 'e',
+          rulesVersion: 'r',
+          coverage: sample,
+        ),
+      );
+
+      final md = AnalysisReport.render(result, t,
+          generatedAt: DateTime.utc(2026, 10, 15));
+      final start = md.indexOf('## ${t.coverage.title}');
+      expect(start, isNonNegative, reason: '报告里应当有覆盖一节');
+      final section = md.substring(start);
+
+      for (final id in [
+        'android.manifest',
+        'android.dex.strings',
+        'android.arsc',
+        'ios.signature',
+      ]) {
+        expect(section, isNot(contains('| $id |')), reason: '维度列不该是机器标识 $id');
+        expect(section, contains(AnalysisReport.coverageDimensionLabel(id, t)),
+            reason: '维度列缺少 $id 的本地化名字');
+      }
+    });
+
+    test('汇总句的分隔符走 i18n，而不是写死的中文全角分号', () {
+      final summary = AnalysisReport.coverageSummary(sample, t);
+
+      expect(summary, contains(t.coverage.summary_join),
+          reason: '分隔符必须来自 i18n');
+
+      // 这条是这次缺陷的直接表现：英文报告里出现中文全角「；」。
+      final enJson = jsonDecode(File('assets/i18n/en.json').readAsStringSync())
+          as Map<String, dynamic>;
+      final enJoin =
+          (enJson['coverage'] as Map<String, dynamic>)['summary_join'];
+      if (enJoin != '；') {
+        expect(summary, isNot(contains('；')), reason: 'en 的汇总句里不该出现中文全角分号');
+      }
+    });
+
+    test('维护中的语言包带齐维度名与分隔符', () {
+      // 直接读 JSON：slang 生成物只暴露当前 locale，逐个切语言代价太大，
+      // 而这里要验的恰恰是「语言文件里有没有这些键」。
+      //
+      // ja / ko 按 `fallback_strategy: base_locale` 回退到 en（它们的
+      // `coverage` 段整体不存在），因此规则是：
+      // - en 与三个中文变体**必须**带齐；
+      // - 其余语言包要么整段缺失（走回退），要么带齐 —— 不能半吊子。
+      const mustHave = ['en', 'zh-CN', 'zh-HK', 'zh-TW'];
+      const mayFallback = ['ja', 'ko'];
+
+      Map<String, dynamic> readCoverage(String locale) {
+        final file = File('assets/i18n/$locale.json');
+        expect(file.existsSync(), isTrue, reason: '缺少 $locale 语言包');
+        final json =
+            jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+        return (json['coverage'] as Map<String, dynamic>?) ?? const {};
+      }
+
+      for (final locale in [...mustHave, ...mayFallback]) {
+        final coverage = readCoverage(locale);
+        if (coverage.isEmpty) {
+          expect(mayFallback, contains(locale),
+              reason: '$locale 必须带 coverage 段，不允许回退');
+          continue;
+        }
+        expect(coverage['summary_join'], isNotEmpty,
+            reason: '$locale 缺 coverage.summary_join');
+        final dimensions = coverage['dimensions'] as Map<String, dynamic>?;
+        expect(dimensions, isNotNull, reason: '$locale 没有 coverage.dimensions');
+        for (final id in allDimensionIds) {
+          final key = id.replaceAll('.', '_');
+          expect(dimensions![key], isNotEmpty, reason: '$locale 缺维度名 $key');
+        }
+      }
     });
   });
 }

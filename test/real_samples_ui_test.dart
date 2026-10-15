@@ -31,20 +31,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-final String? _samplesDir = Platform.environment['APPINFOTOOL_SAMPLES'];
+import 'support/sample_directory.dart';
 
-File? _firstSample(String extension) {
-  final dir = _samplesDir;
-  if (dir == null || dir.isEmpty) return null;
-  final directory = Directory(dir);
-  if (!directory.existsSync()) return null;
-  final matches = directory
-      .listSync()
-      .whereType<File>()
-      .where((f) => f.path.toLowerCase().endsWith(extension))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
-  return matches.isEmpty ? null : matches.first;
+/// 样本目录扫描结果 —— 与 `real_samples_test.dart` 共用同一份发现逻辑。
+final SampleDirectory _samples = SampleDirectory.fromEnvironment();
+
+/// 取该类型的第一个样本；没有时返回 `null`（调用方据此**跳过**，而不是崩）。
+File? _firstSample(SampleKind kind) {
+  final list = _samples.samplesOf(kind);
+  return list.isEmpty ? null : list.first;
 }
 
 /// 用与界面相同的代码路径把真实 APK 解析成一个 [FileState]。
@@ -89,13 +84,17 @@ Future<ProviderContainer> _pumpInfoPage(
   WidgetTester tester,
   FileState state,
 ) async {
-  // 详情页是一个 ListView：默认 800x600 的测试视口只会构建**可见的那几张卡**，
-  // 于是哈希、加固线索、诊断这些排在后面的内容根本不会出现在 widget 树里。
-  // 断言它们就等于断言一个从没被构建过的东西。
+  // 视口用**真实桌面尺寸**（1200×800），不再靠「把视口拉到 8000/40000 高」
+  // 让整列卡片一次性进入布局范围。
   //
-  // 把视口放高，让整列卡片都进入布局范围 —— 比逐个 scrollUntilVisible 简单，
-  // 也比「只断言首屏」更不容易漏。
-  tester.view.physicalSize = const Size(1200, 8000);
+  // 那种做法的前提是「视口够高 ⇒ 所有卡片都被构建」，而详情页的滚动结构是
+  // `DetailTabView._buildTestView` 里的 `ListView` —— **懒构建**，视口外的东西
+  // 根本不会进 widget 树。视口一加高，卡片也变长（真实样本有 27 个 Framework、
+  // 截断到 24 条），阈值迟早再次失效，而且失效方式是「断言莫名其妙找不到文本」。
+  //
+  // 改为：视口固定成真实尺寸，需要深层的断言用 `_scrollToFindText` 真的滚过去。
+  // 这样测试依赖的是「内容存在且可滚动到」，而不是某个魔法像素高度。
+  tester.view.physicalSize = const Size(1200, 800);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -138,18 +137,109 @@ String _visibleText(WidgetTester tester) {
   return buffer.toString();
 }
 
+/// 向下滚动详情页，直到可见文本里出现 [needle]；返回滚过之后的可见文本。
+///
+/// 详情页最外层是 `DetailTabView._buildTestView` 里的 `ListView` —— 懒构建，
+/// 所以**必须**滚动才能让深层卡片进入 widget 树。这里不假设任何视口高度。
+///
+/// 停止条件是「滚动位置不再前进」，不是「文本长度不再变化」—— 后者在
+/// 长度恰好相等时会误判成到底。
+Future<String> _scrollToFindText(
+  WidgetTester tester,
+  String needle, {
+  int maxScrolls = 80,
+  double step = 320,
+}) async {
+  final scrollables = find.byType(Scrollable);
+  if (scrollables.evaluate().isEmpty) {
+    fail('详情页里找不到任何 Scrollable：页面可能没有构建成功（构建层失败）');
+  }
+  final outer = scrollables.first;
+  final state = tester.state<ScrollableState>(outer);
+
+  var text = _visibleText(tester);
+  if (text.contains(needle)) return text;
+
+  for (var i = 0; i < maxScrolls; i++) {
+    final before = state.position.pixels;
+    await tester.drag(outer, Offset(0, -step));
+    await tester.pump();
+    text = _visibleText(tester);
+    if (text.contains(needle)) return text;
+    // 拖不动了 = 已经到底，再滚也是白费。
+    if (state.position.pixels <= before) break;
+  }
+  return text;
+}
+
+/// 从头滚到底，把**沿途**所有可见文本拼起来。
+///
+/// 用于「页面上确实有这几项」这类断言：这些字段分散在列表不同位置，
+/// 而 `_visibleText` 只看当前视口，不滚就只看得到首屏。
+///
+/// 与旧做法的区别：旧做法把视口拉到 8000 高，指望一次建完；这里是真的滚过去，
+/// 不依赖任何像素阈值。
+Future<String> _scrollThroughAllText(
+  WidgetTester tester, {
+  int maxScrolls = 80,
+  double step = 320,
+}) async {
+  final buffer = StringBuffer()..writeln(_visibleText(tester));
+
+  final scrollables = find.byType(Scrollable);
+  if (scrollables.evaluate().isEmpty) {
+    fail('详情页里找不到任何 Scrollable：页面可能没有构建成功（构建层失败）');
+  }
+  final outer = scrollables.first;
+  final state = tester.state<ScrollableState>(outer);
+
+  for (var i = 0; i < maxScrolls; i++) {
+    final before = state.position.pixels;
+    await tester.drag(outer, Offset(0, -step));
+    await tester.pump();
+    buffer.writeln(_visibleText(tester));
+    if (state.position.pixels <= before) break;
+  }
+  return buffer.toString();
+}
+
+/// 断言「滚到出现为止」能找到 [needle]，失败时把三种原因分开说清楚。
+///
+/// - [dataPresent] 为 false → **数据层缺失**，先去查解析 / 审计，不是渲染问题；
+/// - 找不到 `Scrollable` → **构建层失败**（在 `_scrollToFindText` 里抛）；
+/// - 能滚但滚到底也没出现 → **滚动定位 / 渲染失败**，并把实际可见文本长度报出来。
+///
+/// 返回滚过之后的可见文本，便于调用方继续做别的断言。
+Future<String> _expectTextAfterScroll(
+  WidgetTester tester,
+  String needle, {
+  required bool dataPresent,
+  required String dataDescription,
+}) async {
+  if (!dataPresent) {
+    fail('数据层就缺：$dataDescription —— 这不是渲染问题，先查解析/审计');
+  }
+  final text = await _scrollToFindText(tester, needle);
+  if (!text.contains(needle)) {
+    fail('页面已构建且可滚动，但滚到底也没出现「$needle」。'
+        '数据已确认存在（$dataDescription），因此这是滚动定位或卡片渲染失败。'
+        '滚动后可见文本长度=${text.length}');
+  }
+  return text;
+}
+
 void main() {
-  final dir = _samplesDir;
-  // `group` 的 skip 接受字符串（会作为跳过原因展示），而 `testWidgets` 的
-  // skip 只接受 bool —— 因此把跳过条件放在 group 上，这样**原因不会被丢掉**。
-  final skipReason =
-      dir == null || dir.isEmpty ? '未设置 APPINFOTOOL_SAMPLES，界面端到端未执行' : null;
+  // 先把「这次扫到了什么」打进日志，便于辨别跑了什么 / 跳过了什么。
+  // ignore: avoid_print
+  print('[samples] ${_samples.summary}');
 
   group('真实 APK 的详情页', () {
-    final sample = _firstSample('.apk');
+    final sample = _firstSample(SampleKind.android);
     late FileState state;
 
     setUpAll(() async {
+      // `sample` 为 null 时这一组已被 skip 拦掉，不会走到这里；
+      // 仍然用 `!` 是为了让「skip 条件写错」立刻炸出来，而不是静默跳过。
       state = await _parseApk(sample!.path);
     });
 
@@ -161,7 +251,8 @@ void main() {
       expect(analysis.packageId.hasValue, isTrue);
       expect(analysis.sha256.hasValue, isTrue);
 
-      final text = _visibleText(tester);
+      // 哈希卡片排在列表靠后位置，必须真的滚过去才在 widget 树里。
+      final text = await _scrollThroughAllText(tester);
       expect(text, contains(analysis.packageId.value!));
       expect(text, contains(analysis.appName.value!));
       expect(text, contains(analysis.sha256.value!));
@@ -173,7 +264,7 @@ void main() {
       final hints = state.analysis!.android!.hardeningHints;
       expect(hints, isNotEmpty, reason: '这份样本应当报出加固线索');
 
-      final text = _visibleText(tester);
+      final text = await _scrollThroughAllText(tester);
       for (final hint in hints) {
         // 线索名与证据都要出现 —— 只说「可能被加固」没有排查价值。
         expect(text, contains(hint.signal.name),
@@ -186,13 +277,13 @@ void main() {
     testWidgets('未计算完哈希时说明「正在计算」，而不是显示成没有哈希', (tester) async {
       await _pumpInfoPage(tester, state.copyWith(isComputingHash: true));
 
-      final text = _visibleText(tester);
+      final text = await _scrollThroughAllText(tester);
       expect(text, contains(t.file_info.computing_hash));
     });
-  }, skip: skipReason);
+  }, skip: _samples.skipReasonFor(SampleKind.android));
 
   group('真实 IPA 的详情页', () {
-    final sample = _firstSample('.ipa');
+    final sample = _firstSample(SampleKind.ios);
     late FileState state;
 
     setUpAll(() async {
@@ -203,7 +294,7 @@ void main() {
       await _pumpInfoPage(tester, state);
 
       final ios = state.analysis!.ios!;
-      final text = _visibleText(tester);
+      final text = await _scrollThroughAllText(tester);
 
       // 平台标识：用户第一眼要能确认这是个 iOS 包。
       // 两页的版式一致，这一行是唯一的分辨依据。
@@ -221,10 +312,17 @@ void main() {
       final codeSign = state.iosCodeSign!;
       expect(codeSign.toolExecuted, isTrue, reason: 'macOS 上应当真的执行了 codesign');
 
-      final text = _visibleText(tester);
-      expect(text, contains(t.ios_info.codesign_section));
+      // 验收条件：`codesign verification` 必须能在**滚动到对应位置后**被找到。
+      // 不依赖任何固定视口高度。
+      await _expectTextAfterScroll(
+        tester,
+        t.ios_info.codesign_section,
+        dataPresent: codeSign.toolExecuted,
+        dataDescription: 'codesign 已执行（status=${codeSign.status.name}）',
+      );
 
-      // 结论文案要与状态一致。
+      // 同一张卡片里的结论文案与原始输出首行也应当在滚动过程中出现。
+      final text = await _scrollThroughAllText(tester);
       expect(
         text,
         contains(codeSign.status == SignatureStatus.verificationFailed
@@ -232,12 +330,23 @@ void main() {
             : t.signature.status_verified),
       );
 
-      // 原始输出的首行必须出现 —— 结论不是「通过」时，具体原因只在那里。
-      // 断言用**工具输出的首行**而不是写死的措辞：codesign 的文案会随系统
-      // 版本变化，写死会让测试因为无关原因变红。
+      // 原始输出的首行：**只在「不是 verified」时**才要求它出现。
+      //
+      // `DetailRenderer._iosCodeSign` 判据是 `status != verified` —— 验证通过时
+      // 刻意不展示原始输出，因为那几行里带着**解包用的临时目录路径**
+      // （`/var/folders/.../appinfo_ipa_XXXX/Runner.app: valid on disk`），
+      // 每次运行都不同，对用户也没有排查价值。
+      //
+      // 这条断言把两个方向都钉住：未通过时具体原因必须能看到，通过时不泄漏临时路径。
+      // 断言用**工具输出的首行**而不是写死的措辞：codesign 的文案会随系统版本变化。
       final firstLine = codeSign.stderr.trim().split('\n').first.trim();
       if (firstLine.isNotEmpty) {
-        expect(text, contains(firstLine));
+        if (codeSign.status == SignatureStatus.verified) {
+          expect(text, isNot(contains(firstLine)),
+              reason: '验证通过时不该把原始输出（含临时解包路径）呈现出来');
+        } else {
+          expect(text, contains(firstLine), reason: '验证未通过时，具体原因只出现在原始输出里');
+        }
       }
     });
 
@@ -272,7 +381,7 @@ void main() {
       expect(ios.icon!.unresolved, isNotEmpty,
           reason: '这份样本的图标在 Assets.car 里，应当有未解析项');
 
-      final text = _visibleText(tester);
+      final text = await _scrollThroughAllText(tester);
       expect(text, contains(t.ios_info.icon_declared_unresolved));
       expect(text, contains('Assets.car'));
     });
@@ -286,13 +395,37 @@ void main() {
         reason: '这份样本有 27 个框架，超过 24 条上限',
       );
 
-      final text = _visibleText(tester);
-      expect(text, contains('ios.nested.truncated'));
+      // 验收条件：截断说明必须能在**滚动到对应位置后**被找到。
+      await _expectTextAfterScroll(
+        tester,
+        'ios.nested.truncated',
+        dataPresent: state.analysis!.diagnostics
+            .any((d) => d.code == 'ios.nested.truncated'),
+        dataDescription: '诊断里确有 ios.nested.truncated',
+      );
     });
-  }, skip: skipReason);
+  }, skip: _samples.skipReasonFor(SampleKind.ios));
 
-  testWidgets('未设置样本目录时界面测试整体跳过', (tester) async {
-    if (skipReason == null) return;
-    expect(skipReason, contains('未执行'));
+  // 这一组是「跳过原因本身」的断言：把五种情况分别钉住，避免以后有人把
+  // 「目录里没有 IPA」又压回成「未配置」。
+  group('样本目录状态与跳过原因', () {
+    testWidgets('未配置时两类都报告「未执行」', (tester) async {
+      final scan = SampleDirectory.scan(path: null);
+      expect(scan.status, SampleDirStatus.notConfigured);
+      for (final kind in SampleKind.values) {
+        expect(scan.skipReasonFor(kind), contains('未执行'));
+      }
+    });
+
+    testWidgets('本次实际扫描到的状态与跳过原因自洽', (tester) async {
+      final reason = _samples.skipReasonFor(SampleKind.ios);
+      if (_samples.samplesOf(SampleKind.ios).isEmpty) {
+        expect(reason, isNotNull);
+        expect(reason, isNotEmpty);
+      } else {
+        expect(reason, isNull);
+      }
+      expect(_samples.summary, contains('样本目录['));
+    });
   });
 }

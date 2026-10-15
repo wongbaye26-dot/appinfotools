@@ -456,6 +456,25 @@
     "column_status": "状态",
     "column_amount": "覆盖量",
     "column_note": "说明",
-    "hint": "缺口意味着结论不覆盖全部范围：这里的「没发现」不等于「没有」。"
+    "hint": "缺口意味着结论不覆盖全部范围：这里的「没发现」不等于「没有」。",
+    "summary_join": "；",
+    "dimensions": {
+      "android_manifest": "应用清单",
+      "android_permissions": "权限",
+      "android_dex_structure": "DEX 结构",
+      "android_dex_strings": "DEX 字符串",
+      "android_dex_methodReferences": "DEX 方法引用",
+      "android_dex_callSites": "DEX 调用点",
+      "android_nativeSymbols": "原生库符号",
+      "android_arsc": "资源表",
+      "ios_infoPlist": "Info.plist",
+      "ios_usageDescriptions": "用途说明",
+      "ios_privacyManifest": "隐私清单",
+      "ios_executables": "可执行文件",
+      "ios_macho_strings": "Mach-O 字符串",
+      "ios_nativeSymbols": "原生库符号",
+      "ios_signature": "签名"
+    }
+
   }
 }

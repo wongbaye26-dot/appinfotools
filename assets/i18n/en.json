@@ -457,6 +457,25 @@
     "column_status": "Status",
     "column_amount": "Amount",
     "column_note": "Note",
-    "hint": "A gap means the conclusion does not cover everything: “not found” here does not mean “none”."
+    "hint": "A gap means the conclusion does not cover everything: “not found” here does not mean “none”.",
+    "summary_join": "; ",
+    "dimensions": {
+      "android_manifest": "App manifest",
+      "android_permissions": "Permissions",
+      "android_dex_structure": "DEX structure",
+      "android_dex_strings": "DEX strings",
+      "android_dex_methodReferences": "DEX method references",
+      "android_dex_callSites": "DEX call sites",
+      "android_nativeSymbols": "Native symbols",
+      "android_arsc": "Resource table",
+      "ios_infoPlist": "Info.plist",
+      "ios_usageDescriptions": "Usage descriptions",
+      "ios_privacyManifest": "Privacy manifest",
+      "ios_executables": "Executables",
+      "ios_macho_strings": "Mach-O strings",
+      "ios_nativeSymbols": "Native symbols",
+      "ios_signature": "Signature"
+    }
+
   }
 }

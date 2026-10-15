@@ -456,6 +456,25 @@
     "column_status": "狀態",
     "column_amount": "覆蓋量",
     "column_note": "說明",
-    "hint": "缺口意味著結論不覆蓋全部範圍：這裡的「沒發現」不等於「沒有」。"
+    "hint": "缺口意味著結論不覆蓋全部範圍：這裡的「沒發現」不等於「沒有」。",
+    "summary_join": "；",
+    "dimensions": {
+      "android_manifest": "應用清單",
+      "android_permissions": "權限",
+      "android_dex_structure": "DEX 結構",
+      "android_dex_strings": "DEX 字串",
+      "android_dex_methodReferences": "DEX 方法引用",
+      "android_dex_callSites": "DEX 呼叫點",
+      "android_nativeSymbols": "原生庫符號",
+      "android_arsc": "資源表",
+      "ios_infoPlist": "Info.plist",
+      "ios_usageDescriptions": "用途說明",
+      "ios_privacyManifest": "私隱清單",
+      "ios_executables": "可執行檔",
+      "ios_macho_strings": "Mach-O 字串",
+      "ios_nativeSymbols": "原生庫符號",
+      "ios_signature": "簽名"
+    }
+
   }
 }

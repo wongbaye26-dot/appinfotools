@@ -782,8 +782,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
   /// 覆盖情况的正文：汇总句 + 逐维度一行。
   ///
-  /// 汇总句与状态文案都从 [AnalysisReport] 取 —— Markdown 报告与界面用同一份，
-  /// 两处各写一遍必然漂移。
+  /// 汇总句、状态文案、维度名都从 [AnalysisReport] 取 —— Markdown 报告与界面
+  /// 用同一份，两处各写一遍必然漂移。维度名尤其如此：直接写 `entry.id` 会
+  /// 把 `android.dex.strings` 这种机器标识摆到用户面前。
   String _coverageBody(AnalysisCoverage coverage, Translations t) {
     final sb = StringBuffer()
       ..writeln(AnalysisReport.coverageSummary(coverage, t))
@@ -792,12 +793,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ..writeln();
 
     for (final entry in coverage.entries) {
-      final status = AnalysisReport.coverageStatusText(entry.status, t);
-      final amount = entry.ratioText;
-      final note = entry.note;
-      sb.writeln('$status  ${entry.id}'
-          '${amount == null ? '' : '  $amount'}'
-          '${note == null || note.isEmpty ? '' : '  —— $note'}');
+      sb.writeln(AnalysisReport.coverageEntryLine(entry, t));
     }
     return sb.toString().trimRight();
   }

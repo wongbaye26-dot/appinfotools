@@ -16,8 +16,6 @@
 // 解析不抛异常、平台判定正确、不产生虚构值、报告可渲染。
 // 具体解析结果由测试打印出来供人工核对（并记录进交付报告）。
 
-import 'dart:io';
-
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
@@ -31,21 +29,14 @@ import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:flutter_test/flutter_test.dart';
 
-/// 样本目录。未设置时整体跳过。
-final String? _samplesDir = Platform.environment['APPINFOTOOL_SAMPLES'];
+import 'support/sample_directory.dart';
 
-List<File> _samples(String extension) {
-  final dir = _samplesDir;
-  if (dir == null || dir.isEmpty) return const [];
-  final directory = Directory(dir);
-  if (!directory.existsSync()) return const [];
-  return directory
-      .listSync()
-      .whereType<File>()
-      .where((f) => f.path.toLowerCase().endsWith(extension))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
-}
+/// 样本目录扫描结果。
+///
+/// **不要在文件顶层直接读环境变量再压成 `const []`**：那样「目录里没有 APK」
+/// 与「根本没配环境变量」会长得一模一样，前者会让 `sample!` 崩在 null-check 上。
+/// 五种情况由 [SampleDirectory] 分别给出可理解的原因。
+final SampleDirectory _samples = SampleDirectory.fromEnvironment();
 
 /// 打印一段带标题的内容，便于人工核对。
 void _dump(String title, String body) {
@@ -54,17 +45,18 @@ void _dump(String title, String body) {
 }
 
 void main() {
-  final samplesDir = _samplesDir;
-  final skipReason = samplesDir == null || samplesDir.isEmpty
-      ? '未设置 APPINFOTOOL_SAMPLES，真实样本未执行'
-      : null;
+  // 先把「这次扫到了什么」打进日志：CI 与本地都靠这一行辨别
+  // 「跑了 / 跳过了 / 为什么跳过」，而不是从 0 个通过里猜。
+  // ignore: avoid_print
+  print('[samples] ${_samples.summary}');
 
   group('真实 APK 样本', () {
-    final samples = _samples('.apk');
+    final samples = _samples.samplesOf(SampleKind.android);
 
     test('每个样本都能解析完成，且不产生虚构值', () async {
-      expect(samples, isNotEmpty, reason: '样本目录里没有 .apk');
-
+      // 样本为空时这一组已经被 `skip` 拦掉了；走到这里就一定有样本。
+      // 不再用 `expect(samples, isNotEmpty)` 兜底 —— 那会把「环境缺样本」
+      // 报成「测试失败」。
       for (final sample in samples) {
         final apkPath = sample.path;
         final size = await sample.length();
@@ -181,15 +173,13 @@ void main() {
         expect(report, contains(t.report.column_status));
         expect(report, contains(t.report.title));
       }
-    }, skip: skipReason);
+    }, skip: _samples.skipReasonFor(SampleKind.android));
   });
 
   group('真实 IPA 样本', () {
-    final samples = _samples('.ipa');
+    final samples = _samples.samplesOf(SampleKind.ios);
 
     test('每个样本都能解析完成，且签名结论不伪造', () async {
-      expect(samples, isNotEmpty, reason: '样本目录里没有 .ipa');
-
       for (final sample in samples) {
         final ipaPath = sample.path;
         final size = await sample.length();
@@ -288,12 +278,31 @@ void main() {
             generatedAt: DateTime.utc(2026, 10, 13, 12));
         expect(report, contains(t.report.column_status));
       }
-    }, skip: skipReason);
+    }, skip: _samples.skipReasonFor(SampleKind.ios));
   });
 
-  test('未设置样本目录时明确报告「未执行」', () {
-    if (skipReason == null) return;
-    // 这一条本身就是那个声明：没有样本时，上面两组是 skipped 而不是 passed。
-    expect(skipReason, contains('未执行'));
+  // 这一组是「跳过原因本身」的断言：把五种情况分别钉住，避免以后有人把
+  // 「目录里没有 APK」又压回成「未配置」。
+  group('样本目录状态与跳过原因', () {
+    test('未配置时两类都报告「未执行」', () {
+      final scan = SampleDirectory.scan(path: null);
+      expect(scan.status, SampleDirStatus.notConfigured);
+      for (final kind in SampleKind.values) {
+        expect(scan.skipReasonFor(kind), contains('未执行'));
+      }
+    });
+
+    test('本次实际扫描到的状态可辨识', () {
+      // 无论本机有没有配样本，这一条都必须能过 —— 它断言的是「状态与原因
+      // 自洽」，不是「一定有样本」。
+      final reason = _samples.skipReasonFor(SampleKind.android);
+      if (_samples.samplesOf(SampleKind.android).isEmpty) {
+        expect(reason, isNotNull);
+        expect(reason, isNotEmpty);
+      } else {
+        expect(reason, isNull);
+      }
+      expect(_samples.summary, contains('样本目录['));
+    });
   });
 }
