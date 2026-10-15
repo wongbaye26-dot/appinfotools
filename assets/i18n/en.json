@@ -453,7 +453,17 @@
     "finding_texts": {
       "ios_usage_description": "Info.plist declares {key} (a usage description is provided). Its presence only means the app **claims** it will use this capability; it does not prove the data was actually accessed at runtime.",
       "ios_nested_usage_description": "Nested bundle {bundle} declares {key} (a usage description is provided). Its presence only means that bundle **claims** it will use this capability; it does not prove the data was actually accessed at runtime.",
-      "ios_usage_description_cross_check": "Cross-check against the APIs actually used: see the corresponding API clue entries in this report."
+      "ios_usage_description_cross_check": "Cross-check against the APIs actually used: see the corresponding API clue entries in this report.",
+      "ios_photo_picker": "Found system photo picker clues (PHPickerViewController / PhotosUI): the path where the user picks photos **does not require** full photo library authorization; this is a different access method from using PhotoKit directly.",
+      "ios_photo_picker_confirm_input_path": "Confirm the actual input path: whether the user picks photos one by one, or whether full library access also exists.",
+      "ios_rule_a": "Found full photo library access (PhotoKit) clues, but **no** system photo picker (PHPickerViewController / PhotosUI), which is the more restrained path. Listed as a medium-risk candidate for manual review — requesting full library access is not necessarily unreasonable (gallery management apps genuinely need it), but it is worth confirming whether a lower-privilege alternative exists.",
+      "ios_rule_a_manual_review": "Manual review: can the system photo picker replace full library access? This item is a candidate for review, not a malicious verdict.",
+      "ios_ocr_capability": "Image text recognition capability found: the Vision framework text recognition API. This only reports a capability; it is not a malicious verdict.",
+      "ios_ocr_capability_confirm_input_and_sink": "Confirm the source of the input (user-provided / photo library) and where the result goes.",
+      "ios_rule_c": "Image input, text recognition and network capability clues all appear together: a suspected path for sensitive data leaving the device. This is a high-risk candidate; static analysis could not prove that recognition results actually reach a network request.",
+      "ios_rule_c_manual_review": "Manual review; if necessary, capture and verify traffic in an isolated environment.",
+      "ios_rule_f": "No network upload characteristics were found within the current analysis scope (no hits for NSURLSession, multipart or common networking library markers). This does not mean the app has no network behaviour; it only means this scan found none.",
+      "ios_rule_f_runtime_traffic": "To confirm, combine this with runtime traffic observation (not provided in this version)."
     },
     "findings": "Findings"
   },

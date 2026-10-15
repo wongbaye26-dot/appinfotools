@@ -129,6 +129,39 @@ void main() {
       expect(report, contains('review photo usage'));
     });
 
+    test('发现项标签是本地化的「发现项」，不是翻译对象本身', () {
+      // 回归：B11 第一批把新映射命名成 `finding_texts` 时，报告里的标签
+      // 曾误写成 `t.security.finding_texts` —— 那是个翻译**对象**，
+      // 插值进 Markdown 会渲染成 `Instance of '...'`。
+      const result = PackageAnalysisResult(
+        platform: PackagePlatform.android,
+        fileName: FieldValue<String>.extracted('test.apk',
+            source: FieldSource.fileSystem),
+        security: SecurityAnalysisResult(
+          engineVersion: 'test',
+          rulesVersion: 'test',
+          findings: [
+            SecurityFinding(
+              ruleId: 'ANDROID-RULE-A',
+              platform: SecurityPlatform.android,
+              category: SecurityCategory.other,
+              severity: SecuritySeverity.info,
+              confidence: SecurityConfidence.confirmed,
+              finding: 'placeholder',
+              evidence: [],
+              recommendation: 'review',
+            ),
+          ],
+          limitations: [],
+        ),
+      );
+
+      final report = AnalysisReport.render(result, t, generatedAt: _at);
+
+      expect(report, contains('- **${t.security.findings}:** placeholder'));
+      expect(report, isNot(contains('Instance of')));
+    });
+
     test('无发现项时报告明确说明', () {
       const result = PackageAnalysisResult(
         platform: PackagePlatform.android,

@@ -452,7 +452,17 @@
     "finding_texts": {
       "ios_usage_description": "Info.plist 声明了 {key}（用途说明已提供）。用途说明的存在只表示应用**声称**会使用该能力，不证明运行时真的访问了对应数据。",
       "ios_nested_usage_description": "嵌套 bundle {bundle} 声明了 {key}（用途说明已提供）。用途说明只表示该 bundle **声称**会使用该能力，不证明运行时真的访问了对应数据。",
-      "ios_usage_description_cross_check": "与实际使用的 API 交叉核对：见本报告中对应的 API 线索条目。"
+      "ios_usage_description_cross_check": "与实际使用的 API 交叉核对：见本报告中对应的 API 线索条目。",
+      "ios_photo_picker": "发现系统照片选择器线索（PHPickerViewController / PhotosUI）：用户主动选取照片的路径**不需要**完整照片库授权，这与直接使用 PhotoKit 是两种不同的访问方式。",
+      "ios_photo_picker_confirm_input_path": "确认真实输入路径：是用户逐张选取，还是同时存在完整库访问。",
+      "ios_rule_a": "发现完整照片库访问（PhotoKit）线索，但**没有**发现系统照片选择器（PHPickerViewController / PhotosUI）这条更克制的路径。列为待人工复核的中风险候选项 —— 申请完整库访问不一定不合理（相册管理类应用确实需要），但值得确认是否有更小权限的替代方案。",
+      "ios_rule_a_manual_review": "人工复核：是否可以用系统照片选择器替代完整库访问；本项为待复核候选项，不是恶意判定。",
+      "ios_ocr_capability": "发现图像文字识别能力：Vision 框架文本识别 API。仅发现能力，不判定恶意。",
+      "ios_ocr_capability_confirm_input_and_sink": "确认识别输入来源（用户主动提供 / 相册）与结果去向。",
+      "ios_rule_c": "发现「图像输入 + 文字识别 + 网络能力」三段线索同现，存在敏感数据外传的疑似链路。这是高风险候选项，静态分析未能证实识别结果确实进入网络请求。",
+      "ios_rule_c_manual_review": "人工复核，必要时在隔离环境抓包验证。",
+      "ios_rule_f": "当前分析范围内未发现网络上传相关特征（未命中 NSURLSession、multipart、常见网络库等标记）。这不表示应用没有网络行为，只说明本次扫描没有发现。",
+      "ios_rule_f_runtime_traffic": "如需确认，请结合运行时流量观察（本版本不提供）。"
     },
     "findings": "发现项"
   },

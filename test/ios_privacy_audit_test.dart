@@ -175,7 +175,11 @@ void main() {
       final picker = _byId(result, 'IOS-PHOTO-PICKER');
       expect(picker, isNotNull);
       expect(picker!.severity, SecuritySeverity.info);
-      expect(picker.finding, contains('不需要'));
+      // 迁移后断言**本地化正文**，而不是英文回退（见 B11 第一批）。
+      expect(
+        AnalysisReport.findingText(picker, t),
+        contains('does not require'),
+      );
       // 只见到选择器时不得推出完整库访问结论。
       expect(_byId(result, 'IOS-PHOTO-LIBRARY'), isNull);
       expect(_byId(result, 'IOS-PHOTO-LIBRARY-NO-USAGE'), isNull);
@@ -269,7 +273,10 @@ void main() {
       final ocr = _byId(result, 'IOS-OCR-CAPABILITY');
       expect(ocr, isNotNull);
       expect(ocr!.confidence, SecurityConfidence.independentCapability);
-      expect(ocr.finding, contains('不判定恶意'));
+      expect(
+        AnalysisReport.findingText(ocr, t),
+        contains('not a malicious verdict'),
+      );
       expect(_byId(result, 'IOS-RULE-C'), isNull);
     });
 
@@ -284,9 +291,10 @@ void main() {
 
       final ruleF = _byId(result, 'IOS-RULE-F');
       expect(ruleF, isNotNull);
-      expect(ruleF!.finding, contains('未发现'));
-      expect(ruleF.finding, contains('这不表示'));
-      expect(ruleF.finding, isNot(contains('确认安全')));
+      final ruleFText = AnalysisReport.findingText(ruleF!, t);
+      expect(ruleFText, contains('No network upload characteristics'));
+      expect(ruleFText, contains('does not mean'));
+      expect(ruleFText, isNot(contains('is safe')));
     });
   });
 
@@ -448,9 +456,15 @@ void main() {
       expect(ruleA, isNotNull);
       expect(ruleA!.severity, SecuritySeverity.p2);
       expect(ruleA.confidence, SecurityConfidence.suspected);
-      expect(ruleA.finding, contains('更克制'));
+      expect(
+        AnalysisReport.findingText(ruleA, t),
+        contains('more restrained path'),
+      );
       expect(ruleA.relationship, contains('静态推断'));
-      expect(ruleA.recommendation, contains('不是恶意判定'));
+      expect(
+        AnalysisReport.recommendationText(ruleA, t),
+        contains('not a malicious verdict'),
+      );
     });
 
     test('同时有选择器时不触发规则 A', () {
@@ -804,6 +818,150 @@ void main() {
       );
       expect(AnalysisReport.findingText(finding, t), '尚未迁移的原文');
       expect(AnalysisReport.recommendationText(finding, t), '尚未迁移的建议');
+    });
+  });
+
+  // B11 第二批：iOS 侧 5 条**无参数**的发现项连同各自的建议一起迁移。
+  //
+  // 选「无参数」的一批是因为它们不需要把分支/拼接挪进参数，是纯机械替换；
+  // 带参数的（URL-SCHEMES / SCAN-COVERAGE / RULE-B / RULE-E）留到下一批。
+  //
+  // 注意本组断言的是**本地化正文**而不是英文回退：迁移的目的就是让
+  // 「英文回退」不再是用户看到的东西。
+  group('发现项文案本地化（B11 第二批：iOS 无参数 5 条）', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    const emptyPlist = '<?xml version="1.0" encoding="UTF-8"?>'
+        '<plist version="1.0"><dict></dict></plist>';
+
+    /// 每条发现项应有的 (ruleId, messageCode, recommendationCode)。
+    const migrated = [
+      (
+        rule: 'IOS-PHOTO-PICKER',
+        message: 'ios.photo_picker',
+        recommendation: 'ios.photo_picker.confirm_input_path',
+      ),
+      (
+        rule: 'IOS-RULE-A',
+        message: 'ios.rule_a',
+        recommendation: 'ios.rule_a.manual_review',
+      ),
+      (
+        rule: 'IOS-OCR-CAPABILITY',
+        message: 'ios.ocr_capability',
+        recommendation: 'ios.ocr_capability.confirm_input_and_sink',
+      ),
+      (
+        rule: 'IOS-RULE-C',
+        message: 'ios.rule_c',
+        recommendation: 'ios.rule_c.manual_review',
+      ),
+      (
+        rule: 'IOS-RULE-F',
+        message: 'ios.rule_f',
+        recommendation: 'ios.rule_f.runtime_traffic',
+      ),
+    ];
+
+    /// 触发这 5 条规则的真实输入。
+    ///
+    /// 拆成两轮是因为规则 A 要求「有 PhotoKit 且**没有**选择器」，
+    /// 而 PHOTO-PICKER 要求「有选择器」—— 同一次运行里两者互斥。
+    /// 规则 F 要求「没有网络线索」，因此挂在没有 NSURLSession 的那一轮。
+    SecurityAnalysisResult run({required String macho}) =>
+        IosPrivacyAudit.audit(
+          infoPlist: _plist(infoPlist: emptyPlist),
+          executableBytes: const Utf8Encoder().convert(macho),
+        );
+
+    test('引擎真的把 code 挂上去了（否则等于没迁）', () {
+      // 有 PhotoKit、有 OCR、有网络 → A / OCR / C；选择器缺席。
+      final withLibrary = run(
+        macho: 'PHPhotoLibrary\nVNRecognizeTextRequest\nNSURLSession\n',
+      );
+      // 有选择器、无网络 → PHOTO-PICKER / RULE-F。
+      final withPicker = run(macho: 'PHPickerViewController\n');
+
+      for (final m in migrated) {
+        final finding = _byId(withLibrary, m.rule) ?? _byId(withPicker, m.rule);
+        expect(finding, isNotNull, reason: '测试输入没有触发 ${m.rule}');
+        expect(finding!.messageCode, m.message);
+        expect(finding.recommendationCode, m.recommendation);
+
+        // 英文回退里不该再有中文 —— 否则英文界面照样显示中文。
+        expect(
+          RegExp(cjk).hasMatch(finding.finding),
+          isFalse,
+          reason: '${m.rule} 的英文回退里还有中文：${finding.finding}',
+        );
+        expect(
+          RegExp(cjk).hasMatch(finding.recommendation),
+          isFalse,
+          reason: '${m.rule} 的建议没有一起迁移：${finding.recommendation}',
+        );
+      }
+    });
+
+    test('四个维护中的语言包都能取到文案，且不留占位符', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final m in migrated) {
+          final finding = SecurityFinding(
+            ruleId: m.rule,
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.unknown,
+            finding: 'fallback finding',
+            evidence: const [],
+            recommendation: 'fallback recommendation',
+            messageCode: m.message,
+            recommendationCode: m.recommendation,
+          );
+
+          final text = AnalysisReport.findingText(finding, t);
+          expect(text, isNot('fallback finding'),
+              reason: '$locale 下 ${m.message} 没取到本地化文案');
+          // 占位符没被替换会渲染成 `{...}`；本批 5 条都没有参数，
+          // 出现花括号说明键被写成了带参数的形态。
+          expect(text, isNot(contains('{')));
+          expect(text, isNot(contains('}')));
+
+          final rec = AnalysisReport.recommendationText(finding, t);
+          expect(rec, isNot('fallback recommendation'),
+              reason: '$locale 下 ${m.recommendation} 没取到本地化文案');
+          expect(rec, isNot(contains('{')));
+        }
+      }
+    });
+
+    test('中文语言包里是中文，英文语言包里没有中文', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      final finding = SecurityFinding(
+        ruleId: 'IOS-RULE-C',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.p1,
+        confidence: SecurityConfidence.suspected,
+        finding: 'fallback finding',
+        evidence: const [],
+        recommendation: 'fallback recommendation',
+        messageCode: 'ios.rule_c',
+        recommendationCode: 'ios.rule_c.manual_review',
+      );
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.findingText(finding, t);
+      expect(RegExp(cjk).hasMatch(zh), isTrue, reason: 'zh-CN 应当是中文：$zh');
+      expect(zh, contains('敏感数据外传'));
+
+      await LocaleSettings.setLocaleRaw('en');
+      final en = AnalysisReport.findingText(finding, t);
+      expect(RegExp(cjk).hasMatch(en), isFalse, reason: 'en 不该有中文：$en');
+      expect(en, contains('suspected path'));
     });
   });
 }

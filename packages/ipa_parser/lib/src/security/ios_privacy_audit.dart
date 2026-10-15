@@ -398,15 +398,19 @@ class IosPrivacyAudit {
         category: SecurityCategory.photoAccess,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.suspected,
-        finding: '发现系统照片选择器线索（PHPickerViewController / PhotosUI）：'
-            '用户主动选取照片的路径**不需要**完整照片库授权，'
-            '这与直接使用 PhotoKit 是两种不同的访问方式。',
+        finding: 'Found system photo picker clues (PHPickerViewController / '
+            'PhotosUI): the path where the user picks photos does not require '
+            'full photo library authorization, which is a different access '
+            'method from using PhotoKit directly.',
+        messageCode: 'ios.photo_picker',
         evidence: _clueEvidence(clues, const [
           'photo-picker',
           'photos-ui',
         ]),
-        recommendation: '确认真实输入路径：是用户逐张选取，'
-            '还是同时存在完整库访问。',
+        recommendation: 'Confirm the actual input path: whether the user '
+            'picks photos one by one, or whether full library access also '
+            'exists.',
+        recommendationCode: 'ios.photo_picker.confirm_input_path',
       ));
     }
 
@@ -475,11 +479,14 @@ class IosPrivacyAudit {
         category: SecurityCategory.photoAccess,
         severity: SecuritySeverity.p2,
         confidence: SecurityConfidence.suspected,
-        finding: '发现完整照片库访问（PhotoKit）线索，'
-            '但**没有**发现系统照片选择器（PHPickerViewController / PhotosUI）'
-            '这条更克制的路径。列为待人工复核的中风险候选项 —— '
-            '申请完整库访问不一定不合理（相册管理类应用确实需要），'
-            '但值得确认是否有更小权限的替代方案。',
+        finding: 'Found full photo library access (PhotoKit) clues, but no '
+            'system photo picker (PHPickerViewController / PhotosUI) path, '
+            'which would be the more restrained alternative. Listed as a '
+            'medium-risk candidate for manual review — requesting full '
+            'library access is not necessarily unreasonable (gallery '
+            'management apps genuinely need it), but it is worth confirming '
+            'whether a lower-privilege alternative exists.',
+        messageCode: 'ios.rule_a',
         evidence: _clueEvidence(clues, const [
           'photo-full-library',
           'photo-asset',
@@ -489,8 +496,10 @@ class IosPrivacyAudit {
             '而它们不一定会留下可扫描的符号。',
         limitation: '符号存在不等于运行时会调用；'
             '符号缺失也不等于功能不存在（动态加载、反射、SwiftUI 包装）。',
-        recommendation: '人工复核：是否可以用系统照片选择器替代完整库访问；'
-            '本项为待复核候选项，不是恶意判定。',
+        recommendation: 'Manual review: can the system photo picker replace '
+            'full library access? This item is a candidate for review, not a '
+            'malicious verdict.',
+        recommendationCode: 'ios.rule_a.manual_review',
       ));
     }
 
@@ -502,10 +511,14 @@ class IosPrivacyAudit {
         category: SecurityCategory.ocrImage,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.independentCapability,
-        finding: '发现图像文字识别能力：Vision 框架文本识别 API。'
-            '仅发现能力，不判定恶意。',
+        finding: 'Image text recognition capability found: the Vision '
+            'framework text recognition API. This only reports a capability; '
+            'it is not a malicious verdict.',
+        messageCode: 'ios.ocr_capability',
         evidence: _clueEvidence(clues, const ['ocr', 'ocr-image-request']),
-        recommendation: '确认识别输入来源（用户主动提供 / 相册）与结果去向。',
+        recommendation: 'Confirm the source of the input (user-provided / '
+            'photo library) and where the result goes.',
+        recommendationCode: 'ios.ocr_capability.confirm_input_and_sink',
       ));
     }
 
@@ -555,9 +568,12 @@ class IosPrivacyAudit {
         category: SecurityCategory.dataExfiltration,
         severity: SecuritySeverity.p1,
         confidence: SecurityConfidence.suspected,
-        finding: '发现「图像输入 + 文字识别 + 网络能力」三段线索同现，'
-            '存在敏感数据外传的疑似链路。这是高风险候选项，'
-            '静态分析未能证实识别结果确实进入网络请求。',
+        finding: 'Image input, text recognition and network capability clues '
+            'all appear together: a suspected path for sensitive data leaving '
+            'the device. This is a high-risk candidate; static analysis could '
+            'not prove that recognition results actually reach a network '
+            'request.',
+        messageCode: 'ios.rule_c',
         evidence: [
           ..._clueEvidence(clues, const [
             'photo-full-library',
@@ -578,7 +594,9 @@ class IosPrivacyAudit {
         relationship: '图像输入 → 文字识别 → 网络发送：三段分别有证据，'
             '「识别结果进入请求体」这一跳未被证实。',
         limitation: '未反汇编、未观察流量；框架引用不等于被调用。',
-        recommendation: '人工复核，必要时在隔离环境抓包验证。',
+        recommendation: 'Manual review; if necessary, capture and verify '
+            'traffic in an isolated environment.',
+        recommendationCode: 'ios.rule_c.manual_review',
       ));
     }
 
@@ -739,13 +757,17 @@ class IosPrivacyAudit {
         confidence: executableBytes == null || executableBytes.isEmpty
             ? SecurityConfidence.unknown
             : SecurityConfidence.confirmed,
-        finding: '当前分析范围内未发现网络上传相关特征'
-            '（未命中 NSURLSession、multipart、常见网络库等标记）。'
-            '这不表示应用没有网络行为，只说明本次扫描没有发现。',
+        finding: 'No network upload characteristics were found within the '
+            'current analysis scope (no hits for NSURLSession, multipart or '
+            'common networking library markers). This does not mean the app '
+            'has no network behaviour; it only means this scan found none.',
+        messageCode: 'ios.rule_f',
         evidence: const [],
         limitation: '只扫描主可执行文件的 ASCII 字符串；'
             'Frameworks 与共享缓存内的网络实现不在覆盖范围内。',
-        recommendation: '如需确认，请结合运行时流量观察（本版本不提供）。',
+        recommendation: 'To confirm, combine this with runtime traffic '
+            'observation (not provided in this version).',
+        recommendationCode: 'ios.rule_f.runtime_traffic',
       ));
     }
 

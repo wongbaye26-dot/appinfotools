@@ -344,8 +344,7 @@ class AnalysisReport {
     for (final finding in security.findings) {
       sb.writeln('### ${finding.ruleId} [${finding.severity.name}]');
       sb.writeln();
-      sb.writeln(
-          '- **${t.security.finding_texts}:** ${findingText(finding, t)}');
+      sb.writeln('- **${t.security.findings}:** ${findingText(finding, t)}');
       sb.writeln('- **Confidence:** ${finding.confidence.name}');
       if (finding.evidence.isNotEmpty) {
         sb.writeln('- **Evidence:**');
@@ -626,6 +625,11 @@ class AnalysisReport {
       'ios.nested_usage_description' => (key == null || bundle == null)
           ? null
           : f.ios_nested_usage_description(bundle: bundle, key: key),
+      'ios.photo_picker' => f.ios_photo_picker,
+      'ios.rule_a' => f.ios_rule_a,
+      'ios.ocr_capability' => f.ios_ocr_capability,
+      'ios.rule_c' => f.ios_rule_c,
+      'ios.rule_f' => f.ios_rule_f,
       _ => null,
     };
     return localized ?? finding.finding;
@@ -640,6 +644,13 @@ class AnalysisReport {
     final String? localized = switch (code) {
       'ios.usage_description.cross_check' =>
         f.ios_usage_description_cross_check,
+      'ios.photo_picker.confirm_input_path' =>
+        f.ios_photo_picker_confirm_input_path,
+      'ios.rule_a.manual_review' => f.ios_rule_a_manual_review,
+      'ios.ocr_capability.confirm_input_and_sink' =>
+        f.ios_ocr_capability_confirm_input_and_sink,
+      'ios.rule_c.manual_review' => f.ios_rule_c_manual_review,
+      'ios.rule_f.runtime_traffic' => f.ios_rule_f_runtime_traffic,
       _ => null,
     };
     return localized ?? finding.recommendation;
