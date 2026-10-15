@@ -349,7 +349,8 @@ class AnalysisReport {
       if (finding.evidence.isNotEmpty) {
         sb.writeln('- **Evidence:**');
         for (final ev in finding.evidence) {
-          sb.writeln('  - ${ev.source.name} (${ev.location}): ${ev.detail}');
+          sb.writeln('  - ${ev.source.name} (${ev.location}): '
+              '${detailText(ev, t)}');
         }
       }
       final recommendation = recommendationText(finding, t);
@@ -629,6 +630,7 @@ class AnalysisReport {
     final name = finding.messageArgs['name'];
     final sources = _sourcesText(finding.messageArgs['sources'], t);
     final names = _joinNames(finding.messageArgs['names'], t);
+    final symbols = _nativeSymbolsText(finding.messageArgs['symbols'], t);
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -679,6 +681,12 @@ class AnalysisReport {
       'android.rule_d_escalated' => f.android_rule_d_escalated,
       'android.rule_e' => f.android_rule_e,
       'android.rule_f' => f.android_rule_f,
+      'ios.native_symbols' => (count == null || symbols == null)
+          ? null
+          : f.ios_native_symbols(count: count, symbols: symbols),
+      'android.native_symbols' => (count == null || symbols == null)
+          ? null
+          : f.android_native_symbols(count: count, symbols: symbols),
       _ => null,
     };
     return localized ?? finding.finding;
@@ -773,6 +781,89 @@ class AnalysisReport {
       _ => null,
     };
     return localized ?? raw;
+  }
+
+  /// 一个原生符号的**本地化说明**，形如 `执行 shell 命令（system）`。
+  ///
+  /// 表（`nativeSymbolMarkers`）里存的是「类别 id + 英文回退」，符号名单独拼 ——
+  /// 26 条记录只对应 14 类说明，逐个写会把同一句话抄十几遍，改一处措辞就会
+  /// 漏掉另外几处。
+  ///
+  /// 认不出的符号名原样返回：**宁可显示裸符号，也不要显示空白**。
+  static String nativeSymbolText(String symbol, Translations t) {
+    final marker = nativeSymbolMarkerIndex[symbol];
+    if (marker == null) return symbol;
+
+    final n = t.security.native_symbols;
+    final String? label = switch (marker.descriptionCode) {
+      'shell' => n.shell,
+      'shell_popen' => n.shell_popen,
+      'exec_image' => n.exec_image,
+      'fork' => n.fork,
+      'dlopen' => n.dlopen,
+      'dlsym' => n.dlsym,
+      'dladdr' => n.dladdr,
+      'ptrace' => n.ptrace,
+      'socket' => n.socket,
+      'connect' => n.connect,
+      'send' => n.send,
+      'recv' => n.recv,
+      'resolve' => n.resolve,
+      'system_property' => n.system_property,
+      _ => null,
+    };
+    if (label == null) return marker.description;
+    return n.line(text: label, symbol: symbol);
+  }
+
+  /// 把一串原生符号名组装成**本地化**的一句话片段。
+  static String? _nativeSymbolsText(Object? arg, Translations t) {
+    if (arg is! List) return null;
+    final symbols = arg.whereType<String>().toList();
+    if (symbols.isEmpty) return null;
+    return symbols
+        .map((symbol) => nativeSymbolText(symbol, t))
+        .join(t.security.list_join);
+  }
+
+  /// 证据详情的**本地化正文**，语义同 [findingText]。
+  ///
+  /// 详情里的标签（「引用」「调用点」「导入」）也是给人读的，此前由引擎直接
+  /// 写成中文括号 —— 英文界面里就出现 `（引用）`。没填 `detailCode` 的条目
+  /// 继续按原文渲染。
+  static String detailText(SecurityEvidence evidence, Translations t) {
+    final code = evidence.detailCode;
+    if (code == null) return evidence.detail;
+
+    final e = t.security.evidence_texts;
+    final marker = evidence.detailArgs['marker'];
+    final samples = evidence.detailArgs['samples'];
+    final symbol = evidence.detailArgs['symbol'];
+    final rawNames = evidence.detailArgs['rawNames'];
+
+    final String? localized = switch (code) {
+      'code.reference' => (marker == null || samples == null)
+          ? null
+          : e.code_reference(marker: marker, samples: samples),
+      'code.call_site' => (marker == null || samples == null)
+          ? null
+          : e.code_call_site(marker: marker, samples: samples),
+      'native_symbol.imported' => symbol == null
+          ? null
+          : e.native_symbol_imported(
+              symbol: symbol,
+              description: nativeSymbolText('$symbol', t),
+            ),
+      'native_symbol.imported_raw' => (symbol == null || rawNames == null)
+          ? null
+          : e.native_symbol_imported_raw(
+              symbol: symbol,
+              description: nativeSymbolText('$symbol', t),
+              rawNames: rawNames,
+            ),
+      _ => null,
+    };
+    return localized ?? evidence.detail;
   }
 
   /// 把「来源 id 列表」组装成**本地化**的一句话片段。

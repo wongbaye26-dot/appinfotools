@@ -11,6 +11,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -510,7 +512,10 @@ void main() {
             .any((e) => e.source == SecurityEvidenceSource.nativeSymbol),
         isTrue,
       );
-      expect(finding.finding, contains('不证明被调用过'));
+      expect(
+        AnalysisReport.findingText(finding, t),
+        contains('does not prove they are called'),
+      );
     });
 
     test('命令执行类符号给出 p3，并写明不是恶意判定', () {
@@ -527,8 +532,14 @@ void main() {
           .firstWhere((f) => f.ruleId == 'ANDROID-NATIVE-SYMBOLS');
       expect(finding.severity, SecuritySeverity.p3);
       expect(finding.confidence, SecurityConfidence.independentCapability);
-      expect(finding.recommendation, contains('不构成风险判定'));
-      expect(finding.limitation, contains('导入不等于调用'));
+      expect(
+        AnalysisReport.recommendationText(finding, t),
+        contains('is not a risk verdict'),
+      );
+      expect(
+        AnalysisReport.limitationText(finding, t),
+        contains('Import does not mean call'),
+      );
     });
 
     test('写明「未反汇编原生代码」这条局限', () {

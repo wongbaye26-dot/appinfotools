@@ -355,4 +355,93 @@ void main() {
       expect(only, contains('"reportSchemaVersion"'));
     });
   });
+
+  // B11 第六批：原生符号说明 + 证据详情标签。
+  //
+  // 两件事一起做，因为它们同源：符号的说明既出现在发现项正文里，
+  // 也出现在证据详情里 —— 只做一边会得到「正文英文、证据中文」的半成品。
+  group('B11 第六批：原生符号说明与证据详情本地化', () {
+    const cjk = r'[\u4e00-\u9fff]';
+
+    test('每个原生符号标记都有本地化说明（descriptionCode 不许拼错）', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        await LocaleSettings.setLocaleRaw(locale);
+        for (final marker in nativeSymbolMarkers) {
+          final text = AnalysisReport.nativeSymbolText(marker.symbol, t);
+          // 命中查表时返回的是「标签（符号）」，与英文回退**不同** ——
+          // 相等就说明 descriptionCode 拼错了，悄悄退回了回退文案。
+          expect(text, isNot(marker.description),
+              reason: '$locale 下 ${marker.symbol} 的 descriptionCode '
+                  '（${marker.descriptionCode}）没有对应文案');
+          expect(text, contains(marker.symbol), reason: '符号名要拼进去');
+          expect(text, isNot(contains('{')));
+        }
+      }
+    });
+
+    test('未知符号名原样返回，不显示空白', () {
+      expect(
+        AnalysisReport.nativeSymbolText('not_a_symbol', t),
+        'not_a_symbol',
+      );
+    });
+
+    test('证据详情认得 code 时给出本地化标签', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      const reference = SecurityEvidence(
+        source: SecurityEvidenceSource.dexMethodReference,
+        location: 'classes.dex',
+        detail: 'ocr-mlkit (reference): Lfoo;.bar()',
+        detailCode: 'code.reference',
+        detailArgs: {'marker': 'ocr-mlkit', 'samples': 'Lfoo;.bar()'},
+      );
+
+      await LocaleSettings.setLocaleRaw('en');
+      expect(
+        AnalysisReport.detailText(reference, t),
+        'ocr-mlkit (reference): Lfoo;.bar()',
+      );
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      final zh = AnalysisReport.detailText(reference, t);
+      expect(zh, 'ocr-mlkit（引用）: Lfoo;.bar()');
+      expect(RegExp(cjk).hasMatch(zh), isTrue);
+    });
+
+    test('符号证据的「导入」标签按语言拼，说明也查表', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+
+      const symbol = SecurityEvidence(
+        source: SecurityEvidenceSource.nativeSymbol,
+        location: 'libfoo.so',
+        detail: 'system (imported): run a shell command (system)',
+        detailCode: 'native_symbol.imported',
+        detailArgs: {'symbol': 'system'},
+      );
+
+      await LocaleSettings.setLocaleRaw('zh-CN');
+      expect(
+        AnalysisReport.detailText(symbol, t),
+        'system（导入）: 执行 shell 命令（system）',
+      );
+
+      await LocaleSettings.setLocaleRaw('en');
+      expect(
+        AnalysisReport.detailText(symbol, t),
+        'system (imported): run a shell command (system)',
+      );
+    });
+
+    test('没填 code 的证据详情原样返回（迁移是增量的）', () {
+      const plain = SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'classes.dex',
+        detail: '原始详情',
+      );
+      expect(AnalysisReport.detailText(plain, t), '原始详情');
+    });
+  });
 }

@@ -11,14 +11,32 @@ import 'security_finding.dart';
 /// 那多半是同名封装，不是 libc 调用。
 class NativeSymbolMarker {
   /// 精确的符号名（已去掉 `@版本` 后缀）。
+  ///
+  /// 它同时充当这张表的**稳定 id**：说明与符号是一一对应的，符号本身就是
+  /// 这条记录的身份。i18n 的键就是它（`security.native_symbols.<symbol>` 的
+  /// 语义由 [descriptionCode] 承载，见下）。
   final String symbol;
 
   final SecurityCategory category;
 
-  /// 面向用户的说明。
+  /// 面向用户的说明的**稳定 id**。
+  ///
+  /// **按「能力类别」收敛，不是每个符号一条**：6 个 `exec*` 都是「替换进程映像
+  /// 执行程序」，2 个 `send*` 都是「发送数据」—— 逐个写会把同一句话抄十几遍，
+  /// 而且改一处措辞就会漏掉另外几处。
+  ///
+  /// 呈现层按它取本地化文案（`AnalysisReport.nativeSymbolText`），
+  /// 认不出来就回退到 [description]。
+  final String descriptionCode;
+
+  /// 面向用户的说明（**英文回退**）。
+  ///
+  /// 引擎层不依赖 slang，产不出本地化文案 —— 这里放英文，与
+  /// `SecurityFinding.finding` 的处理方式一致。
   final String description;
 
-  const NativeSymbolMarker(this.symbol, this.category, this.description);
+  const NativeSymbolMarker(
+      this.symbol, this.category, this.descriptionCode, this.description);
 }
 
 /// 全部原生符号标记。
@@ -28,53 +46,58 @@ class NativeSymbolMarker {
 /// 导入的符号 —— 它们命中率太高，只会把报告变成噪音。
 const List<NativeSymbolMarker> nativeSymbolMarkers = [
   // ---- 命令执行 ----
-  NativeSymbolMarker(
-      'system', SecurityCategory.backgroundTask, '执行 shell 命令（system）'),
-  NativeSymbolMarker(
-      'popen', SecurityCategory.backgroundTask, '执行 shell 命令并读输出（popen）'),
-  NativeSymbolMarker(
-      'execl', SecurityCategory.backgroundTask, '替换进程映像执行程序（execl）'),
-  NativeSymbolMarker(
-      'execlp', SecurityCategory.backgroundTask, '替换进程映像执行程序（execlp）'),
-  NativeSymbolMarker(
-      'execle', SecurityCategory.backgroundTask, '替换进程映像执行程序（execle）'),
-  NativeSymbolMarker(
-      'execv', SecurityCategory.backgroundTask, '替换进程映像执行程序（execv）'),
-  NativeSymbolMarker(
-      'execvp', SecurityCategory.backgroundTask, '替换进程映像执行程序（execvp）'),
-  NativeSymbolMarker(
-      'execvpe', SecurityCategory.backgroundTask, '替换进程映像执行程序（execvpe）'),
+  NativeSymbolMarker('system', SecurityCategory.backgroundTask, 'shell',
+      'run a shell command'),
+  NativeSymbolMarker('popen', SecurityCategory.backgroundTask, 'shell_popen',
+      'run a shell command and read its output'),
+  NativeSymbolMarker('execl', SecurityCategory.backgroundTask, 'exec_image',
+      'replace the process image and execute a program'),
+  NativeSymbolMarker('execlp', SecurityCategory.backgroundTask, 'exec_image',
+      'replace the process image and execute a program'),
+  NativeSymbolMarker('execle', SecurityCategory.backgroundTask, 'exec_image',
+      'replace the process image and execute a program'),
+  NativeSymbolMarker('execv', SecurityCategory.backgroundTask, 'exec_image',
+      'replace the process image and execute a program'),
+  NativeSymbolMarker('execvp', SecurityCategory.backgroundTask, 'exec_image',
+      'replace the process image and execute a program'),
+  NativeSymbolMarker('execvpe', SecurityCategory.backgroundTask, 'exec_image',
+      'replace the process image and execute a program'),
   // ---- 进程派生 ----
-  NativeSymbolMarker('fork', SecurityCategory.backgroundTask, '派生新进程（fork）'),
-  NativeSymbolMarker('vfork', SecurityCategory.backgroundTask, '派生新进程（vfork）'),
   NativeSymbolMarker(
-      'posix_spawn', SecurityCategory.backgroundTask, '派生新进程（posix_spawn）'),
+      'fork', SecurityCategory.backgroundTask, 'fork', 'spawn a new process'),
+  NativeSymbolMarker(
+      'vfork', SecurityCategory.backgroundTask, 'fork', 'spawn a new process'),
+  NativeSymbolMarker('posix_spawn', SecurityCategory.backgroundTask, 'fork',
+      'spawn a new process'),
   // ---- 运行时动态加载 ----
-  NativeSymbolMarker(
-      'dlopen', SecurityCategory.backgroundTask, '运行时加载动态库（dlopen）'),
+  NativeSymbolMarker('dlopen', SecurityCategory.backgroundTask, 'dlopen',
+      'load a dynamic library at runtime'),
   NativeSymbolMarker('android_dlopen_ext', SecurityCategory.backgroundTask,
-      '运行时加载动态库（android_dlopen_ext）'),
-  NativeSymbolMarker(
-      'dlsym', SecurityCategory.backgroundTask, '运行时解析符号（dlsym）'),
-  NativeSymbolMarker(
-      'dladdr', SecurityCategory.backgroundTask, '运行时查询符号来源（dladdr）'),
+      'dlopen', 'load a dynamic library at runtime'),
+  NativeSymbolMarker('dlsym', SecurityCategory.backgroundTask, 'dlsym',
+      'resolve a symbol at runtime'),
+  NativeSymbolMarker('dladdr', SecurityCategory.backgroundTask, 'dladdr',
+      'look up the source of a symbol at runtime'),
   // ---- 反调试 / 进程注入 ----
-  NativeSymbolMarker(
-      'ptrace', SecurityCategory.other, '进程跟踪（ptrace）—— 反调试或注入的常见手段'),
+  NativeSymbolMarker('ptrace', SecurityCategory.other, 'ptrace',
+      'trace a process — a common anti-debugging or injection technique'),
   // ---- 原生网络 ----
-  NativeSymbolMarker('socket', SecurityCategory.network, '创建套接字（socket）'),
-  NativeSymbolMarker('connect', SecurityCategory.network, '建立连接（connect）'),
-  NativeSymbolMarker('send', SecurityCategory.network, '发送数据（send）'),
-  NativeSymbolMarker('sendto', SecurityCategory.network, '发送数据（sendto）'),
-  NativeSymbolMarker('recv', SecurityCategory.network, '接收数据（recv）'),
-  NativeSymbolMarker('recvfrom', SecurityCategory.network, '接收数据（recvfrom）'),
   NativeSymbolMarker(
-      'getaddrinfo', SecurityCategory.network, '域名解析（getaddrinfo）'),
+      'socket', SecurityCategory.network, 'socket', 'create a socket'),
   NativeSymbolMarker(
-      'gethostbyname', SecurityCategory.network, '域名解析（gethostbyname）'),
+      'connect', SecurityCategory.network, 'connect', 'establish a connection'),
+  NativeSymbolMarker('send', SecurityCategory.network, 'send', 'send data'),
+  NativeSymbolMarker('sendto', SecurityCategory.network, 'send', 'send data'),
+  NativeSymbolMarker('recv', SecurityCategory.network, 'recv', 'receive data'),
+  NativeSymbolMarker(
+      'recvfrom', SecurityCategory.network, 'recv', 'receive data'),
+  NativeSymbolMarker('getaddrinfo', SecurityCategory.network, 'resolve',
+      'resolve a domain name'),
+  NativeSymbolMarker('gethostbyname', SecurityCategory.network, 'resolve',
+      'resolve a domain name'),
   // ---- 设备 / 系统信息 ----
   NativeSymbolMarker('__system_property_get', SecurityCategory.deviceData,
-      '读取 Android 系统属性（__system_property_get）'),
+      'system_property', 'read an Android system property'),
 ];
 
 /// 按符号名查标记；没有时返回 `null`。

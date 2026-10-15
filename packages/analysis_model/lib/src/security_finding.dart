@@ -211,12 +211,25 @@ class SecurityEvidence {
   final String location;
 
   /// 原文或摘录（可能很长，由产出方自行截断，但不得改写含义）。
+  ///
+  /// **迁移中**：带 [detailCode] 时这里放**英文回退**，呈现层用本地化文案
+  /// （`AnalysisReport.detailText`）。没填 code 的条目继续按原文渲染 ——
+  /// 与 `SecurityFinding.finding` 同一套增量机制。
   final String detail;
+
+  /// [detail] 的稳定标识与参数；`null` 表示尚未迁移。
+  ///
+  /// 需要它是因为详情里的**标签**也是给人读的：「引用」「调用点」「导入」
+  /// 此前由引擎直接写成中文括号，英文界面里就出现 `（引用）`。
+  final String? detailCode;
+  final Map<String, Object> detailArgs;
 
   const SecurityEvidence({
     required this.source,
     required this.location,
     required this.detail,
+    this.detailCode,
+    this.detailArgs = const {},
   });
 
   @override

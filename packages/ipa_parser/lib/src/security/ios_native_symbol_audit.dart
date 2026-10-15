@@ -212,29 +212,51 @@ class IosNativeSymbolAudit {
       severity:
           elevatedHits.isNotEmpty ? SecuritySeverity.p3 : SecuritySeverity.info,
       confidence: SecurityConfidence.independentCapability,
-      finding: '可执行文件导入了 ${result.symbols.length} 项有具体含义的系统能力：'
-          '${result.symbols.map((s) => s.description).join('、')}。'
-          '只证明二进制**有能力**使用它们，不证明被调用过，'
-          '也不说明调用的参数。',
+      finding: 'The executable imports ${result.symbols.length} system '
+          'capabilities with a specific meaning: '
+          '${result.symbols.map((s) => s.description).join(', ')}. This only '
+          'proves the binary **has the ability** to use them; it does not '
+          'prove they are called, nor does it say anything about the '
+          'arguments used.',
+      // 只传**符号名**：说明由呈现层查 `nativeSymbolMarkers` 拼（表里存的是
+      // 类别 id + 英文回退），因此 26 条记录只对应 14 类文案。
+      messageCode: 'ios.native_symbols',
+      messageArgs: {
+        'count': result.symbols.length,
+        'symbols': result.symbols.map((s) => s.symbol).toList(),
+      },
       evidence: [
         for (final hit in result.symbols)
           SecurityEvidence(
             source: SecurityEvidenceSource.nativeSymbol,
             location: executablePath ?? 'main Mach-O executable',
-            detail: '${hit.symbol}（导入）: ${hit.description}'
-                '${hit.rawNames.isEmpty ? '' : ' ｜ 符号：${hit.rawNames.join(', ')}'}',
+            detail: '${hit.symbol} (imported): ${hit.description}'
+                '${hit.rawNames.isEmpty ? '' : ' | raw symbol: ${hit.rawNames.join(', ')}'}',
+            detailCode: hit.rawNames.isEmpty
+                ? 'native_symbol.imported'
+                : 'native_symbol.imported_raw',
+            detailArgs: {
+              'symbol': hit.symbol,
+              if (hit.rawNames.isNotEmpty) 'rawNames': hit.rawNames.join(', '),
+            },
           ),
       ],
-      relationship: '符号来自 Mach-O `LC_SYMTAB` 里 `N_UNDF | N_EXT`（未定义的外部）'
-          '条目 —— 它们由 dyld 在加载时从系统库解析。'
-          '二进制自己定义一个同名函数不会被算进来。',
-      limitation: '导入不等于调用：未反汇编原生代码，'
-          '因此不知道这些函数在哪些代码路径上被调用。'
-          '经 `syscall()` 直接发起系统调用、或经 libc 内部间接调用的实现'
-          '不会出现在符号表里。',
-      recommendation: '如需确认实际行为，请在隔离环境中动态分析'
-          '（`dtrace` / Frida 等）；仅凭导入 `system` / `dlopen` '
-          '不构成风险判定 —— 崩溃上报、热修复、插件化框架都会用到它们。',
+      relationship: 'The symbols come from `N_UNDF | N_EXT` (undefined '
+          'external) entries in the Mach-O `LC_SYMTAB` — dyld resolves them '
+          'from system libraries at load time. A function the binary defines '
+          'itself under the same name is not counted.',
+      relationshipCode: 'ios.native_symbols.relationship',
+      limitation: 'Import does not mean call: the native code was not '
+          'disassembled, so it is unknown which code paths call these '
+          'functions. Implementations that issue system calls directly via '
+          '`syscall()` or call indirectly inside libc do not appear in the '
+          'symbol table.',
+      limitationCode: 'ios.native_symbols.limitation',
+      recommendation: 'To confirm the actual behaviour, analyse dynamically '
+          'in an isolated environment (`dtrace` / Frida and similar). '
+          'Importing `system` / `dlopen` alone is not a risk verdict — crash '
+          'reporting, hot-fix and plugin frameworks all use them.',
+      recommendationCode: 'ios.native_symbols.manual_review',
     ));
 
     return (findings: findings, limitations: limitations);

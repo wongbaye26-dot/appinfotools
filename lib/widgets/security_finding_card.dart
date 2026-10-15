@@ -432,6 +432,7 @@ class _EvidenceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = TranslationProvider.of(context).translations;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -459,7 +460,9 @@ class _EvidenceTile extends StatelessWidget {
             if (evidence.detail.isNotEmpty) ...[
               if (evidence.location.isNotEmpty) const SizedBox(height: 4),
               SelectableText(
-                evidence.detail,
+                // 详情里的标签（引用 / 调用点 / 导入）也要本地化，
+                // 引擎产出的是稳定 code + 英文回退。
+                AnalysisReport.detailText(evidence, t),
                 style: theme.textTheme.bodySmall,
               ),
             ],

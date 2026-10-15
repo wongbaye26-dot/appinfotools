@@ -521,7 +521,15 @@
       "android_rule_f": "No upload-related code characteristics were found within the current analysis scope (no hits for multipart upload, file upload APIs or similar markers). This does not mean the app has no upload behaviour — it only means this static scan found none.",
       "android_rule_f_limitation_no_dex": "No DEX content was read this time, so the confidence of the “not found” conclusion is incomplete.",
       "android_rule_f_limitation_scope": "String scanning does not cover native libraries, resources or code inside a hardened shell.",
-      "android_rule_f_runtime_traffic": "To rule out upload behaviour, combine this with dynamic traffic observation (not provided in this version)."
+      "android_rule_f_runtime_traffic": "To rule out upload behaviour, combine this with dynamic traffic observation (not provided in this version).",
+      "ios_native_symbols": "The executable imports {count} system capabilities with a specific meaning: {symbols}. This only proves the binary **has the ability** to use them; it does not prove they are called, nor does it say anything about the arguments used.",
+      "ios_native_symbols_relationship": "The symbols come from `N_UNDF | N_EXT` (undefined external) entries in the Mach-O `LC_SYMTAB` — dyld resolves them from system libraries at load time. A function the binary defines itself under the same name is not counted.",
+      "ios_native_symbols_limitation": "Import does not mean call: the native code was not disassembled, so it is unknown which code paths call these functions. Implementations that issue system calls directly via `syscall()` or call indirectly inside libc do not appear in the symbol table.",
+      "ios_native_symbols_manual_review": "To confirm the actual behaviour, analyse dynamically in an isolated environment (`dtrace` / Frida and similar). Importing `system` / `dlopen` alone is not a risk verdict — crash reporting, hot-fix and plugin frameworks all use them.",
+      "android_native_symbols": "The native libraries import {count} system capabilities with a specific meaning: {symbols}. This only proves these libraries **have the ability** to use them; it does not prove they are called, nor does it say anything about the arguments used.",
+      "android_native_symbols_relationship": "The symbols come from **undefined** (imported) entries in the ELF `.dynsym` — the dynamic linker resolves them at load time. A function the library defines itself under the same name is not counted.",
+      "android_native_symbols_limitation": "Import does not mean call: the native code was not disassembled, so it is unknown which code paths call these functions. Implementations that issue system calls directly via `syscall()` or call indirectly inside libc do not appear in the symbol table.",
+      "android_native_symbols_manual_review": "To confirm the actual behaviour, analyse dynamically in an isolated environment (`strace` / Frida and similar). Importing `system` / `dlopen` alone is not a risk verdict — crash reporting, hot-fix and plugin frameworks all use them."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -530,6 +538,29 @@
       "clipboard": "clipboard"
     },
     "list_join": ", ",
+    "evidence_texts": {
+      "code_reference": "{marker} (reference): {samples}",
+      "code_call_site": "{marker} (call site): {samples}",
+      "native_symbol_imported": "{symbol} (imported): {description}",
+      "native_symbol_imported_raw": "{symbol} (imported): {description} | raw symbol: {rawNames}"
+    },
+    "native_symbols": {
+      "line": "{text} ({symbol})",
+      "shell": "run a shell command",
+      "shell_popen": "run a shell command and read its output",
+      "exec_image": "replace the process image and execute a program",
+      "fork": "spawn a new process",
+      "dlopen": "load a dynamic library at runtime",
+      "dlsym": "resolve a symbol at runtime",
+      "dladdr": "look up the source of a symbol at runtime",
+      "ptrace": "trace a process — a common anti-debugging or injection technique",
+      "socket": "create a socket",
+      "connect": "establish a connection",
+      "send": "send data",
+      "recv": "receive data",
+      "resolve": "resolve a domain name",
+      "system_property": "read an Android system property"
+    },
     "findings": "Findings"
   },
   "detail_tab": {

@@ -13,6 +13,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipa_parser/ipa_parser.dart';
 
@@ -329,8 +331,14 @@ void main() {
             .every((e) => e.source == SecurityEvidenceSource.nativeSymbol),
         isTrue,
       );
-      expect(finding.limitation, contains('导入不等于调用'));
-      expect(finding.recommendation, contains('不构成风险判定'));
+      expect(
+        AnalysisReport.limitationText(finding, t),
+        contains('Import does not mean call'),
+      );
+      expect(
+        AnalysisReport.recommendationText(finding, t),
+        contains('is not a risk verdict'),
+      );
       expect(
         report.limitations.any((l) => l.contains('未反汇编原生代码')),
         isTrue,

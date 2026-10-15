@@ -520,7 +520,15 @@
       "android_rule_f": "目前分析範圍內未發現上傳相關程式碼特徵（未命中 multipart 上傳、檔案上傳介面等標記）。這不表示應用不存在上傳行為 —— 只說明本次靜態掃描沒有發現。",
       "android_rule_f_limitation_no_dex": "本次未讀取到 DEX 內容，「未發現」的置信度是不完整的。",
       "android_rule_f_limitation_scope": "字串掃描不涵蓋原生庫、資源與加固外殼內程式碼。",
-      "android_rule_f_runtime_traffic": "如需排除上傳行為，請結合動態流量觀察（本版本不提供）。"
+      "android_rule_f_runtime_traffic": "如需排除上傳行為，請結合動態流量觀察（本版本不提供）。",
+      "ios_native_symbols": "可執行檔匯入了 {count} 項有具體含義的系統能力：{symbols}。只證明二進位檔**有能力**使用它們，不證明被呼叫過，也不說明呼叫的參數。",
+      "ios_native_symbols_relationship": "符號來自 Mach-O `LC_SYMTAB` 裡 `N_UNDF | N_EXT`（未定義的外部）條目 —— 它們由 dyld 在載入時從系統函式庫解析。二進位檔自己定義一個同名函式不會被算進來。",
+      "ios_native_symbols_limitation": "匯入不等於呼叫：未反組譯原生程式碼，因此不知道這些函式在哪些程式碼路徑上被呼叫。經 `syscall()` 直接發起系統呼叫、或經 libc 內部間接呼叫的實作不會出現在符號表裡。",
+      "ios_native_symbols_manual_review": "如需確認實際行為，請在隔離環境中動態分析（`dtrace` / Frida 等）；僅憑匯入 `system` / `dlopen` 不構成風險判定 —— 當機回報、熱修復、外掛框架都會用到它們。",
+      "android_native_symbols": "原生函式庫匯入了 {count} 項有具體含義的系統能力：{symbols}。只證明這些函式庫**有能力**使用它們，不證明被呼叫過，也不說明呼叫的參數。",
+      "android_native_symbols_relationship": "符號來自 ELF `.dynsym` 的**未定義**（匯入）條目 —— 它們由動態連結器在載入時解析。函式庫自己定義一個同名函式不會被算進來。",
+      "android_native_symbols_limitation": "匯入不等於呼叫：未反組譯原生程式碼，因此不知道這些函式在哪些程式碼路徑上被呼叫。使用 `syscall()` 直接發起系統呼叫、或經 libc 內部間接呼叫的實作不會出現在符號表裡。",
+      "android_native_symbols_manual_review": "如需確認實際行為，請在隔離環境中動態分析（`strace` / Frida 等）；僅憑匯入 `system` / `dlopen` 不構成風險判定 —— 當機回報、熱修復、外掛框架都會用到它們。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",
@@ -529,6 +537,29 @@
       "clipboard": "剪貼板"
     },
     "list_join": "、",
+    "evidence_texts": {
+      "code_reference": "{marker}（引用）: {samples}",
+      "code_call_site": "{marker}（呼叫點）: {samples}",
+      "native_symbol_imported": "{symbol}（匯入）: {description}",
+      "native_symbol_imported_raw": "{symbol}（匯入）: {description} ｜ 符號：{rawNames}"
+    },
+    "native_symbols": {
+      "line": "{text}（{symbol}）",
+      "shell": "執行 shell 命令",
+      "shell_popen": "執行 shell 命令並讀取輸出",
+      "exec_image": "替換行程映像執行程式",
+      "fork": "衍生新行程",
+      "dlopen": "執行時載入動態函式庫",
+      "dlsym": "執行時解析符號",
+      "dladdr": "執行時查詢符號來源",
+      "ptrace": "行程追蹤 —— 反偵錯或注入的常見手段",
+      "socket": "建立通訊端",
+      "connect": "建立連線",
+      "send": "傳送資料",
+      "recv": "接收資料",
+      "resolve": "網域名稱解析",
+      "system_property": "讀取 Android 系統屬性"
+    },
     "findings": "發現項"
   },
   "detail_tab": {

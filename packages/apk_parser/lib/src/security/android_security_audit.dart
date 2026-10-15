@@ -391,27 +391,44 @@ class AndroidSecurityAudit {
             ? SecuritySeverity.p3
             : SecuritySeverity.info,
         confidence: SecurityConfidence.independentCapability,
-        finding: '原生库导入了 ${nativeScan.symbols.length} 项有具体含义的系统能力：'
-            '${nativeScan.symbols.map((s) => s.description).join('、')}。'
-            '只证明这些库**有能力**使用它们，不证明被调用过，'
-            '也不说明调用的参数。',
+        finding: 'The native libraries import '
+            '${nativeScan.symbols.length} system capabilities with a '
+            'specific meaning: '
+            '${nativeScan.symbols.map((s) => s.description).join(', ')}. This '
+            'only proves these libraries **have the ability** to use them; '
+            'it does not prove they are called, nor does it say anything '
+            'about the arguments used.',
+        messageCode: 'android.native_symbols',
+        messageArgs: {
+          'count': nativeScan.symbols.length,
+          'symbols': nativeScan.symbols.map((s) => s.symbol).toList(),
+        },
         evidence: [
           for (final hit in nativeScan.symbols)
             SecurityEvidence(
               source: SecurityEvidenceSource.nativeSymbol,
               location: hit.libraryNames.join(', '),
-              detail: '${hit.symbol}（导入）: ${hit.description}',
+              detail: '${hit.symbol} (imported): ${hit.description}',
+              detailCode: 'native_symbol.imported',
+              detailArgs: {'symbol': hit.symbol},
             ),
         ],
-        relationship: '符号来自 ELF `.dynsym` 的**未定义**（导入）条目 —— '
-            '它们由动态链接器在加载时解析。库自己定义一个同名函数不会被算进来。',
-        limitation: '导入不等于调用：未反汇编原生代码，'
-            '因此不知道这些函数在哪些代码路径上被调用。'
-            '使用 `syscall()` 直接发起系统调用、或经 libc 内部间接调用的'
-            '实现不会出现在符号表里。',
-        recommendation: '如需确认实际行为，请在隔离环境中动态分析'
-            '（`strace` / Frida 等）；仅凭导入 `system` / `dlopen` '
-            '不构成风险判定 —— 崩溃上报、热修复、插件化框架都会用到它们。',
+        relationship: 'The symbols come from **undefined** (imported) '
+            'entries in the ELF `.dynsym` — the dynamic linker resolves them '
+            'at load time. A function the library defines itself under the '
+            'same name is not counted.',
+        relationshipCode: 'android.native_symbols.relationship',
+        limitation: 'Import does not mean call: the native code was not '
+            'disassembled, so it is unknown which code paths call these '
+            'functions. Implementations that issue system calls directly via '
+            '`syscall()` or call indirectly inside libc do not appear in the '
+            'symbol table.',
+        limitationCode: 'android.native_symbols.limitation',
+        recommendation: 'To confirm the actual behaviour, analyse dynamically '
+            'in an isolated environment (`strace` / Frida and similar). '
+            'Importing `system` / `dlopen` alone is not a risk verdict — '
+            'crash reporting, hot-fix and plugin frameworks all use them.',
+        recommendationCode: 'android.native_symbols.manual_review',
       ));
     }
 
@@ -1068,15 +1085,25 @@ class AndroidSecurityAudit {
           SecurityEvidence(
             source: SecurityEvidenceSource.dexMethodReference,
             location: reference.dexNames.join(', '),
-            detail: '${reference.markerId}（引用）: '
+            detail: '${reference.markerId} (reference): '
                 '${reference.samples.join(' | ')}',
+            detailCode: 'code.reference',
+            detailArgs: {
+              'marker': reference.markerId,
+              'samples': reference.samples.join(' | '),
+            },
           ),
         if (reference.callSiteSamples.isNotEmpty)
           SecurityEvidence(
             source: SecurityEvidenceSource.dexMethodReference,
             location: reference.dexNames.join(', '),
-            detail: '${reference.markerId}（调用点）: '
+            detail: '${reference.markerId} (call site): '
                 '${reference.callSiteSamples.join(' | ')}',
+            detailCode: 'code.call_site',
+            detailArgs: {
+              'marker': reference.markerId,
+              'samples': reference.callSiteSamples.join(' | '),
+            },
           ),
       ],
     ];
