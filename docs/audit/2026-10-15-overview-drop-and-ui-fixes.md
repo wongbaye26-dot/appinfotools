@@ -309,7 +309,46 @@ not permitted`），关掉工具沙箱重试同样失败。因此无法启动真
 
 ## 8. 构建与发布
 
-本机**无法产出 macOS 安装包**（原因见第 7 节），因此：
-- 代码已推送到 `main`；
-- 安装包由 CI（`.github/workflows/build.yml`）在 macOS runner 上产出，
-  该 runner 不受本机沙箱限制。
+本机**无法产出安装包**（原因见第 7 节），因此构建走 CI。
+
+### 8.1 推送 main 已触发三平台构建（实测已成功）
+
+关键一点：**构建 job 本身并不看 tag**。`.github/workflows/build.yml` 里被打 tag
+门住的只有「Sync pubspec version from tag」这一个 step，以及 `create-release` 这个
+job。因此**推送 main 就已经跑了完整的三平台打包**，不需要先打 tag。
+
+本次推送（`1af2727`）的 CI 实测：
+
+| Job | 结果 |
+|---|---|
+| `Quality (format / analyze / test)` | **success** |
+| `build-macos` | **success** |
+| `build-windows` | **success** |
+| `build-linux` | **success** |
+| `create-release` | skipped（tag 门控，未打 tag） |
+
+Run #29（`https://github.com/wongbaye26-dot/appinfotools/actions/runs/38652310272`），
+产物：
+
+| 产物 | 大小 |
+|---|---|
+| `macos-dmg` | 31.93 MB |
+| `windows-release` | 22.50 MB |
+| `linux-appimage` | 10.39 MB |
+
+> 那个「Sync pubspec version from tag」被跳过是**正确行为**：main 分支推送时
+> `GITHUB_REF_NAME` 是 `main`，去掉 `v` 前缀仍是 `main`，改写出来会是
+> `version: main` 这种非法版本号 —— 这正是 v2.0.0 之后连续两次构建失败的根因，
+> 所以那一步刻意只在 tag 分支上跑。
+
+### 8.2 仍缺的一步：打 tag
+
+三平台包都能从本次 run 的 artifacts 直接下载。若要走正式发布（GitHub Release +
+Homebrew / Scoop 分发），需要再打一个 `v*` 标签：
+
+```sh
+git tag v2.3.1 && git push origin v2.3.1
+```
+
+**这一步没有做**：它会把三个包正式发布成一个对外可见的 Release。V2.3.0 那轮也
+是同样处理（打 tag 留给用户决定），本轮保持一致。
