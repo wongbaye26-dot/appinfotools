@@ -187,13 +187,15 @@ class AnalysisReport {
                 .join('<br>')
             : null);
 
-    if (android.permissions.isNotEmpty) {
+    // 权限现在是 `FieldValue`：只有**确实读到**才列清单。
+    // 「这个来源不报权限」不能渲染成「没有声明权限」。
+    final permissions = android.permissions.value ?? const <String>[];
+    if (permissions.isNotEmpty) {
       sb
         ..writeln()
-        ..writeln('### ${t.apk_info.permissions} '
-            '(${android.permissions.length})')
+        ..writeln('### ${t.apk_info.permissions} (${permissions.length})')
         ..writeln();
-      for (final permission in android.permissions) {
+      for (final permission in permissions) {
         sb.writeln('- $permission');
       }
     }
@@ -1554,7 +1556,7 @@ class AnalysisReport {
           // 权限是「应用声明了什么能力」的一等事实，单列成数组。
           // 此前它只散落在逐权限的发现项里，消费者要拿这份清单
           // 得先解析 findings —— 那是把结构化数据当文本用。
-          'permissions': result.android?.permissions ?? const <String>[],
+          'permissions': result.android?.permissions.value ?? const <String>[],
         },
 
         // 签名只给**结论**：平台特有的细节（方案、指纹、退出码）留在各自的

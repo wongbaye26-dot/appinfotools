@@ -59,7 +59,35 @@ class AndroidPackageInfo {
   /// `<application android:debuggable>`。未声明时为 `absent`，不是 `false`。
   final FieldValue<bool> debuggable;
 
-  final List<String> permissions;
+  /// 声明的权限列表。
+  ///
+  /// 与 [components] 同理：`aapt2 dump badging` 会报权限，但**空列表**与
+  /// 「这个来源不报权限」是两件事 —— 用 [FieldValue] 把状态带上，
+  /// 界面才不会把「没读到」渲染成「没有声明」。
+  final FieldValue<List<String>> permissions;
+
+  /// 容器类型（`XAPK` / `APKM` / `APKS`）。单 APK 时为 `absent`。
+  ///
+  /// 它**不是 manifest 字段**，来源是容器本身（[FieldSource.zipDirectory]）。
+  final FieldValue<String> archiveType;
+
+  /// `<supports-screens>` 里声明的屏幕尺寸。
+  final FieldValue<List<String>> supportsScreens;
+
+  /// 资源表里出现过的屏幕密度限定符。
+  final FieldValue<List<String>> densities;
+
+  /// 原生库的 ABI 列表（`arm64-v8a` 这类）。
+  final FieldValue<List<String>> nativeCodes;
+
+  /// 资源表里出现过的语言限定符。
+  final FieldValue<List<String>> locales;
+
+  /// 分包（XAPK / APKM / APKS）内的 APK 清单。单 APK 时为 `absent`。
+  final FieldValue<List<String>> splitApks;
+
+  /// OBB 扩展文件。单 APK 时为 `absent`。
+  final FieldValue<List<String>> obbFiles;
 
   /// 组件列表。
   ///
@@ -93,7 +121,14 @@ class AndroidPackageInfo {
     this.targetSdkVersion = const FieldValue.absent(),
     this.maxSdkVersion = const FieldValue.absent(),
     this.debuggable = const FieldValue.absent(),
-    this.permissions = const [],
+    this.permissions = const FieldValue<List<String>>.absent(),
+    this.archiveType = const FieldValue<String>.absent(),
+    this.supportsScreens = const FieldValue<List<String>>.absent(),
+    this.densities = const FieldValue<List<String>>.absent(),
+    this.nativeCodes = const FieldValue<List<String>>.absent(),
+    this.locales = const FieldValue<List<String>>.absent(),
+    this.splitApks = const FieldValue<List<String>>.absent(),
+    this.obbFiles = const FieldValue<List<String>>.absent(),
     this.components = const FieldValue<List<AndroidComponent>>.absent(),
     this.signature,
     this.hardeningHints = const [],

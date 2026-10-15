@@ -1,9 +1,15 @@
-// Android 详情页的字段状态渲染（缺陷 D5 的回归测试）。
+// Android 详情页的字段状态渲染（缺陷 D5 / B4 的回归测试）。
 //
-// 背景：Android 详情页此前直读 `ApkInfo` 的裸字段并 `?? ""` 兜底 ——
+// 背景：Android 详情页此前直读 `ApkInfo` 的裸字段、用空字符串兜底 ——
 // 「文件里没有」与「我们没读到」渲染成一模一样的空串，而这两件事的结论
 // 完全相反（后者意味着结论不可靠）。修复后走统一模型
 // （`PackageAnalysisResult.android` 的 `FieldValue`），两者分开显示。
+//
+// 最后一组是**约定守卫**：这一轮把剩下 12 个字段也迁进 `FieldValue`
+// （B4），验收条件写明「全库 `grep '?? ""'` 在详情页为 0」—— 把这条约定
+// 钉成测试，免得以后又有人顺手用空串兜底。
+
+import 'dart:io';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
@@ -94,6 +100,32 @@ void main() {
       expect(text, isNot(contains('[unsupported]')));
     });
 
+    testWidgets('这一轮新迁的字段在来源不报时也显示状态，而不是空串', (tester) async {
+      // `unknown` 来源对**所有**字段都不在能力表里 —— 因此这一轮迁过来的
+      // 字段（版本号 / 版本名 / 屏幕 / 密度 / ABI / 语言 / 权限）都应是
+      // `[unsupported]`，而不是留白。
+      final info = ApkInfo()..manifestSource = FieldSource.unknown;
+
+      await pumpAndroidPage(tester, info);
+      final text = visibleText(tester);
+
+      for (final label in [
+        t.apk_info.version_code,
+        t.apk_info.version_name,
+        t.apk_info.screen_size,
+        t.apk_info.screen_density,
+        t.apk_info.abi,
+        t.apk_info.languages,
+      ]) {
+        expect(text, contains(label), reason: '$label 的卡片必须显示出来');
+      }
+      expect(
+        '[unsupported]'.allMatches(text).length,
+        greaterThanOrEqualTo(7),
+        reason: '每个「没读到」的字段都要带状态，不能只显示标题',
+      );
+    });
+
     testWidgets('文件里确实没有的字段不显示卡片', (tester) async {
       // 内置解析器**会报** maxSdkVersion，没值就是真的没声明 → absent。
       final info = ApkInfo()
@@ -110,6 +142,18 @@ void main() {
         text,
         isNot(contains(t.apk_info.max_sdk)),
         reason: '文件里确实没有的字段不必占一张卡片',
+      );
+    });
+
+    test('约定守卫：详情页不再用空串兜底字段值', () {
+      // B4 的验收条件就是这条 grep。它值得钉成测试而不是写在文档里 ——
+      // `?? ""` 正是「把『没读到』渲染成『没有』」的写法，加回来会让上面
+      // 那几条行为测试悄悄失效（空串也是「有内容」，`contains` 照样过）。
+      final source = File('lib/pages/info_page.dart').readAsStringSync();
+      expect(
+        source.contains(r'?? ""'),
+        isFalse,
+        reason: '字段值不要用空串兜底：走 FieldValue，或在确实拿不到时用 "-"',
       );
     });
   });

@@ -29,6 +29,10 @@ enum AndroidField {
   debuggable,
   components,
   permissions,
+  supportsScreens,
+  densities,
+  nativeCodes,
+  locales,
 }
 
 /// 把各来源的解析结果合并成统一的 [PackageAnalysisResult]。
@@ -69,6 +73,10 @@ class AnalysisBuilder {
       AndroidField.debuggable,
       AndroidField.components,
       AndroidField.permissions,
+      AndroidField.supportsScreens,
+      AndroidField.densities,
+      AndroidField.nativeCodes,
+      AndroidField.locales,
     },
     FieldSource.aapt2: {
       AndroidField.appName,
@@ -78,6 +86,12 @@ class AnalysisBuilder {
       AndroidField.minSdkVersion,
       AndroidField.targetSdkVersion,
       AndroidField.permissions,
+      // `aapt2 dump badging` 会输出 supports-screens / densities / locales /
+      // native-code —— 这几项两个来源都给，因此不在能力差异之列。
+      AndroidField.supportsScreens,
+      AndroidField.densities,
+      AndroidField.nativeCodes,
+      AndroidField.locales,
     },
   };
 
@@ -103,6 +117,13 @@ class AnalysisBuilder {
     int? maxSdkVersion,
     bool? debuggable,
     List<String> permissions = const [],
+    List<String> supportsScreens = const [],
+    List<String> densities = const [],
+    List<String> nativeCodes = const [],
+    List<String> locales = const [],
+    String? archiveType,
+    List<String>? splitApks,
+    List<String>? obbFiles,
     List<AndroidComponent> components = const [],
     List<HardeningObservation> hardeningObservations = const [],
     ContainerStructure? structure,
@@ -129,7 +150,36 @@ class AnalysisBuilder {
           _manifest(maxSdkVersion, manifestSource, AndroidField.maxSdkVersion),
       debuggable:
           _manifest(debuggable, manifestSource, AndroidField.debuggable),
-      permissions: permissions,
+      permissions: _manifest(
+        permissions.isEmpty ? null : permissions,
+        manifestSource,
+        AndroidField.permissions,
+      ),
+      supportsScreens: _manifest(
+        supportsScreens.isEmpty ? null : supportsScreens,
+        manifestSource,
+        AndroidField.supportsScreens,
+      ),
+      densities: _manifest(
+        densities.isEmpty ? null : densities,
+        manifestSource,
+        AndroidField.densities,
+      ),
+      nativeCodes: _manifest(
+        nativeCodes.isEmpty ? null : nativeCodes,
+        manifestSource,
+        AndroidField.nativeCodes,
+      ),
+      locales: _manifest(
+        locales.isEmpty ? null : locales,
+        manifestSource,
+        AndroidField.locales,
+      ),
+      // 容器级事实：来源是压缩包本身，不走 manifest 能力表。
+      // `null` 表示「不是分包」—— 那是**文件里确实没有**，记 absent。
+      archiveType: _container(archiveType),
+      splitApks: _containerList(splitApks),
+      obbFiles: _containerList(obbFiles),
       components: _manifest(
         components.isEmpty ? null : components,
         manifestSource,
@@ -198,6 +248,23 @@ class AnalysisBuilder {
         HardeningSignal.resourceTableAnomaly =>
           HintConfidence.weak,
       };
+
+  /// 构造一个来自**容器本身**的字段值（`XAPK` / `APKM` / `APKS`）。
+  ///
+  /// 与 [_manifest] 的区别：这些字段不是 manifest 声明的，而是「这个包是
+  /// 什么形态」的事实。`null` 表示「不是分包」—— 单 APK 里确实没有分包清单，
+  /// 因此记 [FieldStatus.absent]（文件里没有），不是 `unsupported`。
+  static FieldValue<T> _container<T>(T? value) => value == null
+      ? const FieldValue<Never>.absent(source: FieldSource.zipDirectory)
+      : FieldValue<T>.extracted(value, source: FieldSource.zipDirectory);
+
+  /// 同 [_container]，但空列表也记 `absent`。
+  static FieldValue<List<String>> _containerList(List<String>? value) =>
+      (value == null || value.isEmpty)
+          ? const FieldValue<List<String>>.absent(
+              source: FieldSource.zipDirectory)
+          : FieldValue<List<String>>.extracted(value,
+              source: FieldSource.zipDirectory);
 
   /// 构造一个来自 manifest 的字段值。
   ///

@@ -580,7 +580,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     cards.add(
         _SectionHeader(title: t.ios_info.group_file, tab: DetailTab.overview));
     cards.add(_buildPlatformRow(fileState));
-    cards.add(card(t.file_info.file, fileState.filePath ?? "",
+    cards.add(card(t.file_info.file, fileState.filePath ?? '-',
         end: _buildFileActionMenu()));
     cards.add(card(
       t.file_info.size,
@@ -1126,14 +1126,17 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
-  /// 获取当前显示的应用名称（根据用户选择的语言）
-  String _getDisplayLabel(ApkInfo? apkInfo) {
-    if (apkInfo == null) return "";
+  /// 获取当前显示的应用名称（根据用户选择的语言）。
+  ///
+  /// 返回 `null` 表示**拿不到名字**（资源里没有 label）—— 与「名字是空串」
+  /// 分开：界面上前者渲染 `-`，而改名对话框要的是「没有可用的默认名」。
+  String? _getDisplayLabel(ApkInfo? apkInfo) {
+    if (apkInfo == null) return null;
     final selectedLocale = ref.read(selectedLabelLocaleProvider);
     if (selectedLocale != null && apkInfo.labels.containsKey(selectedLocale)) {
-      return apkInfo.labels[selectedLocale]!;
+      return apkInfo.labels[selectedLocale];
     }
-    return apkInfo.label ?? "";
+    return apkInfo.label;
   }
 
   static const _kDefaultLocale = '__default__';
@@ -1360,7 +1363,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
   /// 渲染 Android 侧的 [FieldValue] 字段。
   ///
-  /// Android 详情页此前直读 `ApkInfo` 的裸字段并 `?? ""` 兜底 —— 于是
+  /// Android 详情页此前直读 `ApkInfo` 的裸字段、用空字符串兜底 —— 于是
   /// 「文件里没有」与「我们没读到」在界面上长得一模一样，而这两件事的
   /// 结论完全相反（后者意味着结论不可靠）。这里改成走统一模型：
   /// - 有值 → 值本身；
@@ -1400,7 +1403,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       Card(
           child: TitleValueLayout(
               title: t.file_info.file,
-              value: fileState.filePath ?? "",
+              value: fileState.filePath ?? '-',
               end: _buildFileActionMenu())),
       Card(
           child: TitleValueLayout(
@@ -1412,7 +1415,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // ===== 应用信息 =====
       _SectionHeader(title: t.apk_info.group_app, tab: DetailTab.overview),
       AndroidHeroCard(
-        appName: _getDisplayLabel(apkInfo),
+        appName: _getDisplayLabel(apkInfo) ?? '-',
         packageName: apkInfo?.packageName ?? '',
         versionName: apkInfo?.versionName ?? '',
         versionCode: '${apkInfo?.versionCode ?? ''}',
@@ -1445,12 +1448,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       Card(
           child: TitleValueLayout(
         title: t.apk_info.version_code,
-        value: "${apkInfo?.versionCode ?? ""}",
+        // 走统一模型：`absent` → `-`，`failed` / `unsupported` → 带状态与原因。
+        // 直读 `apkInfo?.versionCode` 会把「文件里没有」与「我们没读到」混成
+        // 同一个空白。
+        value: _androidField(fileState.analysis?.buildNumber, (v) => '$v'),
       )),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.version_name,
-        value: apkInfo?.versionName ?? "",
+        value: _androidField(fileState.analysis?.version, (v) => '$v'),
       )),
       Card(
           child: TitleValueLayout(
@@ -1464,7 +1470,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         Card(
             child: TitleValueLayout(
           title: t.apk_info.archive_type,
-          value: apkInfo?.archiveType ?? "",
+          value: _androidField(
+            fileState.analysis?.android?.archiveType,
+            (v) => '$v',
+          ),
         )),
       Card(
           child: TitleValueLayout(
@@ -1477,22 +1486,34 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       Card(
           child: TitleValueLayout(
         title: t.apk_info.screen_size,
-        value: apkInfo?.supportsScreens.join(" ") ?? "",
+        value: _androidField(
+          fileState.analysis?.android?.supportsScreens,
+          (v) => (v as List).join(' '),
+        ),
       )),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.screen_density,
-        value: apkInfo?.densities.join(" ") ?? "",
+        value: _androidField(
+          fileState.analysis?.android?.densities,
+          (v) => (v as List).join(' '),
+        ),
       )),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.abi,
-        value: apkInfo?.nativeCodes.join(" ") ?? "",
+        value: _androidField(
+          fileState.analysis?.android?.nativeCodes,
+          (v) => (v as List).join(' '),
+        ),
       )),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.languages,
-        value: apkInfo?.locales.join(" ") ?? "",
+        value: _androidField(
+          fileState.analysis?.android?.locales,
+          (v) => (v as List).join(' '),
+        ),
       )),
       // `null` 是「资源表没读到」，与「没有夜间资源」结论相反，必须分开呈现 ——
       // 与 D5 的字段状态处理同一个道理，只是这里的载体是个 bool?。
@@ -1515,7 +1536,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       Card(
           child: TitleValueLayout(
         title: t.apk_info.permissions,
-        value: apkInfo?.usesPermissions.join("\n") ?? "",
+        value: _androidField(
+          fileState.analysis?.android?.permissions,
+          (v) => (v as List).join('\n'),
+        ),
         minLines: 1,
         maxLines: textMaxLines,
         selectable: true,
@@ -1548,7 +1572,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         Card(
             child: TitleValueLayout(
           title: t.apk_info.split_apks,
-          value: apkInfo?.splitApks.join("\n") ?? "",
+          value: _androidField(
+            fileState.analysis?.android?.splitApks,
+            (v) => (v as List).join('\n'),
+          ),
           minLines: 1,
           maxLines: textMaxLines,
           selectable: true,
@@ -1557,7 +1584,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         Card(
             child: TitleValueLayout(
           title: t.apk_info.obb_files,
-          value: apkInfo?.obbFiles.join("\n") ?? "",
+          value: _androidField(
+            fileState.analysis?.android?.obbFiles,
+            (v) => (v as List).join('\n'),
+          ),
           minLines: 1,
           maxLines: textMaxLines,
           selectable: true,
@@ -1580,7 +1610,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           title: t.file_info.md5,
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
-              : (fileState.md5Hash ?? ""),
+              : (fileState.md5Hash ?? '-'),
         )),
       // SHA1 哈希值
       if (enableHash)
@@ -1589,7 +1619,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           title: t.file_info.sha1,
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
-              : (fileState.sha1Hash ?? ""),
+              : (fileState.sha1Hash ?? '-'),
         )),
       // SHA-256 哈希值（规范 4.1 要求）
       if (enableHash)
@@ -1598,7 +1628,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           title: t.file_info.sha256,
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
-              : (fileState.sha256Hash ?? ""),
+              : (fileState.sha256Hash ?? '-'),
         )),
       if (enableSignature && !(apkInfo?.isXapk ?? false))
         Card(
@@ -1690,7 +1720,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         _toastRenameNotReady();
         return;
       }
-      displayName = _getDisplayLabel(apkInfo);
+      // 改名默认名里「拿不到名字」就是空串（`'-.apk'` 也好过 `'null-.apk'`）——
+      // 与界面上渲染 `-` 是两种不同的表达，各取所需。
+      displayName = _getDisplayLabel(apkInfo) ?? '';
       versionName = apkInfo.versionName ?? '';
     } else {
       final ipa = state.ipaAnalysis;

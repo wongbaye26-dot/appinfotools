@@ -204,6 +204,15 @@ class FileState {
       maxSdkVersion: info.maxSdkVersion,
       debuggable: info.applicationDebuggable,
       permissions: info.usesPermissions,
+      supportsScreens: info.supportsScreens,
+      densities: info.densities,
+      nativeCodes: info.nativeCodes,
+      locales: info.locales,
+      // 容器级事实：只有分包安装包才有。单 APK 传 null → 记 absent
+      // （文件里确实没有），而不是「没读到」。
+      archiveType: info.archiveType,
+      splitApks: info.isXapk ? info.splitApks : null,
+      obbFiles: info.isXapk ? info.obbFiles : null,
       components: info.components,
       hardeningObservations: info.hardeningObservations,
       // 空结构等于「没收集到」，传 null 而不是一个空对象，

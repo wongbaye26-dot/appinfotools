@@ -83,7 +83,10 @@ PackageAnalysisResult _android({
           diagnostic: 'android:debuggable is string, expected a boolean',
           source: FieldSource.builtinParser,
         ),
-        permissions: const ['android.permission.INTERNET'],
+        permissions: const FieldValue<List<String>>.extracted(
+          ['android.permission.INTERNET'],
+          source: FieldSource.builtinParser,
+        ),
         components: const FieldValue<List<AndroidComponent>>.extracted(
           [
             AndroidComponent(
