@@ -50,6 +50,10 @@ class IosIconThumbnail extends StatelessWidget {
       );
     }
 
+    if (size.isInfinite) {
+      return IosIconImage(candidate: candidates.first, size: size);
+    }
+
     return SizedBox(
       width: size,
       height: size,
@@ -120,6 +124,14 @@ class _IosIconImageState extends State<IosIconImage> {
             context,
             '${t.ios_info.icon_decode_failed}\n'
             '${result?.failure ?? 'unknown'}',
+          );
+        }
+
+        if (widget.size.isInfinite) {
+          return RawImage(
+            image: result.image,
+            fit: BoxFit.contain,
+            filterQuality: ui.FilterQuality.medium,
           );
         }
 

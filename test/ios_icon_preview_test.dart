@@ -277,5 +277,60 @@ void main() {
           find.textContaining('no previewable icon resource'), findsOneWidget);
       expect(find.byType(RawImage), findsNothing);
     });
+    testWidgets('size 为 double.infinity 时不破坏 IntrinsicHeight 布局',
+        (tester) async {
+      // 概览页的图标区用 IntrinsicHeight + Row + CrossAxisAlignment.stretch
+      // 让图标高度与右侧文字列对齐。如果 RawImage 的 width/height 被写成
+      // double.infinity，RenderImage 会报告 infinite intrinsic size，
+      // 导致 IntrinsicHeight 的 assert(height.isFinite) 失败（debug）或
+      // 后续子组件被 layout 到屏幕外（release）。
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            home: Scaffold(
+              body: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: IosIconThumbnail(
+                        resolution: IosIconResolution(candidates: [
+                          _candidate(
+                              bytes: _realPng(), width: 512, height: 512),
+                        ]),
+                        size: double.infinity,
+                      ),
+                    ),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('App name'),
+                          Text('Identifier'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+      await tester.pump();
+
+      expect(find.byType(RawImage), findsOneWidget);
+
+      final intrinsicHeight = tester.renderObject<RenderBox>(
+        find.byType(IntrinsicHeight),
+      );
+      expect(intrinsicHeight.size.height, greaterThan(0),
+          reason: 'IntrinsicHeight 的高度必须是有限值且大于 0，否则后续子组件会被挤到屏幕外');
+    });
   });
 }
