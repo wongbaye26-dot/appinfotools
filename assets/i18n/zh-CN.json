@@ -832,6 +832,19 @@
       "android_nativeSymbols": "导入的原生符号",
       "ios_nativeSymbols": "导入的原生符号"
     },
-    "truncated_members": "还有 {count} 项未显示"
+    "truncated_members": "还有 {count} 项未显示",
+    "report_title": "版本差异报告",
+    "report_left": "左侧",
+    "report_right": "右侧",
+    "section_summary": "摘要",
+    "section_scope": "范围说明",
+    "report_note": "「无法比较」不等于「没有差异」：那一侧没读到，这些条目说明不了改了什么。",
+    "report_scope_note": "本报告只覆盖字段级与集合级差异；发现项差异不在范围内。",
+    "column_kind": "结论",
+    "column_change": "变化",
+    "column_members": "成员",
+    "export_action": "导出对比报告",
+    "export_success": "对比报告已保存。",
+    "export_failed": "导出失败：{error}"
   }
 }

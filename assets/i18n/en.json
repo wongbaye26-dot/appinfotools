@@ -833,6 +833,19 @@
       "android_nativeSymbols": "Imported native symbols",
       "ios_nativeSymbols": "Imported native symbols"
     },
-    "truncated_members": "{count} more not shown"
+    "truncated_members": "{count} more not shown",
+    "report_title": "Version comparison report",
+    "report_left": "Left",
+    "report_right": "Right",
+    "section_summary": "Summary",
+    "section_scope": "Scope",
+    "report_note": "“Cannot compare” is not “no difference”: one side was not read, so those entries say nothing about what changed.",
+    "report_scope_note": "This report covers field-level and collection-level differences only. Security findings are not compared.",
+    "column_kind": "Result",
+    "column_change": "Change",
+    "column_members": "Members",
+    "export_action": "Export comparison report",
+    "export_success": "The comparison report was saved.",
+    "export_failed": "Export failed: {error}"
   }
 }

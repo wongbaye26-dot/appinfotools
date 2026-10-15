@@ -101,6 +101,14 @@ DiffSubject diffSubjectOf(PackageAnalysisResult result) {
 bool samePlatform(PackageAnalysisResult a, PackageAnalysisResult b) =>
     a.platform == b.platform && a.platform != PackagePlatform.unknown;
 
+/// **三端同源的唯一入口**：差异页（UI）、Markdown 报告、JSON 报告都调这一个。
+///
+/// 三处各自「适配 + 比较」一遍迟早会漂移 —— 用户会看到界面上说「变更」、
+/// 报告里说「新增」。这里把两步绑成一个函数，调用方拿到的就是同一份
+/// [PackageDiff]。
+PackageDiff diffOf(PackageAnalysisResult left, PackageAnalysisResult right) =>
+    diffSubjects(diffSubjectOf(left), diffSubjectOf(right));
+
 /// 签名结论 → 带状态的字段值。
 ///
 /// `notChecked` 记 [FieldStatus.notRequested]（「本次没去查」），**不是**

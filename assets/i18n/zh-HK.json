@@ -832,6 +832,19 @@
       "android_nativeSymbols": "導入的原生符號",
       "ios_nativeSymbols": "導入的原生符號"
     },
-    "truncated_members": "還有 {count} 項未顯示"
+    "truncated_members": "還有 {count} 項未顯示",
+    "report_title": "版本差異報告",
+    "report_left": "左側",
+    "report_right": "右側",
+    "section_summary": "摘要",
+    "section_scope": "範圍說明",
+    "report_note": "「無法比較」不等於「沒有差異」：那一側沒讀到，這些條目說明不了改了什麼。",
+    "report_scope_note": "本報告只覆蓋欄位級與集合級差異；發現項差異不在範圍內。",
+    "column_kind": "結論",
+    "column_change": "變化",
+    "column_members": "成員",
+    "export_action": "匯出對比報告",
+    "export_success": "對比報告已儲存。",
+    "export_failed": "匯出失敗：{error}"
   }
 }

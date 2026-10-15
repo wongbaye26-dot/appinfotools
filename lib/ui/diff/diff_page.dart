@@ -7,6 +7,7 @@ import 'package:apk_info_tool/providers/parsed_file_cache.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/diff_labels.dart';
 import 'package:apk_info_tool/utils/format.dart';
+import 'package:apk_info_tool/widgets/export_diff_dialog.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -68,16 +69,40 @@ class _DiffPageState extends ConsumerState<DiffPage> {
       rightPath = paths.last;
     }
 
+    // 导出按钮只在「真的有一份可比对的差异」时可点：跨平台、缺一侧、
+    // 或两边是同一个包时导出的东西没有意义。
+    final pair = _comparablePair(cache, leftPath, rightPath);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(t.diff.title, style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 6),
-          Text(
-            t.diff.subtitle,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t.diff.title, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 6),
+                    Text(
+                      t.diff.subtitle,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: theme.hintColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              FilledButton.tonalIcon(
+                onPressed:
+                    pair == null ? null : () => _export(pair.left, pair.right),
+                icon: const Icon(Icons.download, size: 18),
+                label: Text(t.diff.export_action),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           if (paths.length < 2)
@@ -88,6 +113,44 @@ class _DiffPageState extends ConsumerState<DiffPage> {
             ..._buildBody(cache, leftPath, rightPath),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 两侧都选好、同平台、且不是同一个包时，返回那一对分析结果。
+  ({PackageAnalysisResult left, PackageAnalysisResult right})? _comparablePair(
+    Map<String, FileState> cache,
+    String? leftPath,
+    String? rightPath,
+  ) {
+    if (leftPath == null || rightPath == null) return null;
+    if (leftPath == rightPath) return null;
+    final left = cache[leftPath]?.analysis;
+    final right = cache[rightPath]?.analysis;
+    if (left == null || right == null) return null;
+    if (!samePlatform(left, right)) return null;
+    return (left: left, right: right);
+  }
+
+  Future<void> _export(
+    PackageAnalysisResult left,
+    PackageAnalysisResult right,
+  ) async {
+    final result = await showDialog<Object?>(
+      context: context,
+      builder: (context) => ExportDiffDialog(left: left, right: right),
+    );
+    if (!mounted) return;
+    // 对话框把「取消」返回成 null、成功返回 true、失败返回异常对象 ——
+    // 三种情况要分开，否则用户取消一次也会看到「导出失败」。
+    if (result == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result == true
+              ? t.diff.export_success
+              : t.diff.export_failed(error: '$result'),
+        ),
       ),
     );
   }
@@ -211,10 +274,8 @@ class _DiffPageState extends ConsumerState<DiffPage> {
       ];
     }
 
-    final diff = diffSubjects(
-      diffSubjectOf(leftAnalysis),
-      diffSubjectOf(rightAnalysis),
-    );
+    // 三端同源：这里与 Markdown / JSON 报告都走 `diffOf`（见适配层注释）。
+    final diff = diffOf(leftAnalysis, rightAnalysis);
 
     final fieldChanges = diff.fields
         .where((f) =>

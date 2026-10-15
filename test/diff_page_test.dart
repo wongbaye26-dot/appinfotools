@@ -242,6 +242,40 @@ void main() {
     });
   });
 
+  group('差异报告入口', () {
+    FilledButton exportButton(WidgetTester tester) =>
+        tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, t.diff.export_action),
+        );
+
+    testWidgets('有可比对的差异时导出按钮可点', (tester) async {
+      await pumpDiff(tester, [
+        androidState('/tmp/demo-1.0.0.apk', 1024, android(targetSdk: 33)),
+        androidState('/tmp/demo-2.0.0.apk', 2048, android(targetSdk: 34)),
+      ]);
+      expect(exportButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('跨平台时导出按钮置灰：导出的东西没有意义', (tester) async {
+      await pumpDiff(tester, [
+        androidState('/tmp/demo.apk', 1024, android()),
+        iosState('/tmp/demo.ipa', 2048),
+      ]);
+      expect(
+        exportButton(tester).onPressed,
+        isNull,
+        reason: '跨平台比较本身就被拦住了，导出更不该可点',
+      );
+    });
+
+    testWidgets('只有一个包时导出按钮置灰', (tester) async {
+      await pumpDiff(tester, [
+        androidState('/tmp/demo.apk', 1024, android()),
+      ]);
+      expect(exportButton(tester).onPressed, isNull);
+    });
+  });
+
   group('已解析文件缓存', () {
     test('按路径累积；没解析出结构的文件不缓存', () {
       final container = ProviderContainer();

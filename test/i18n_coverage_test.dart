@@ -9,6 +9,9 @@
 // loaded」，不 await 则拿到的还是上一个语言 —— 两种情况都会让这类断言
 // 变成假通过或假失败。
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
@@ -298,6 +301,62 @@ void main() {
     test('认不出的 id 原样返回，不显示空白', () {
       expect(DiffLabels.field('future.field', t), 'future.field');
       expect(DiffLabels.set('future.set', t), 'future.set');
+    });
+
+    test('报告的页面文案随语言切换', () async {
+      await _use('en');
+      expect(t.diff.report_title, 'Version comparison report');
+      expect(t.diff.section_scope, 'Scope');
+      expect(t.diff.export_action, 'Export comparison report');
+
+      await _use('zh-CN');
+      expect(t.diff.report_title, '版本差异报告');
+      expect(t.diff.section_scope, '范围说明');
+      expect(t.diff.export_action, '导出对比报告');
+    });
+
+    test('四个语言包的 diff 分组键集完全一致', () {
+      // slang 在缺键时**静默回退到 base locale** —— 也就是说「补了 en、
+      // 忘了 zh-CN」在运行时不报任何错，只是那一句变成英文。
+      // 这条直接读文件比对键集，把这种漂移挡在提交前。
+      //
+      // ja / ko 按先例整段省略（走 base_locale 回退），因此**不在**比对范围内；
+      // 只有 `nav.diff` 是六个语言都补的，单独核对。
+      final locales = ['en', 'zh-CN', 'zh-HK', 'zh-TW'];
+      final keys = <String, Set<String>>{};
+      for (final locale in locales) {
+        final file = File('assets/i18n/$locale.json');
+        expect(file.existsSync(), isTrue, reason: '缺少语言包 $locale');
+        final map = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+        final diff = map['diff'] as Map<String, dynamic>;
+        keys[locale] = {
+          ...diff.keys,
+          for (final k in (diff['fields'] as Map).keys) 'fields.$k',
+          for (final k in (diff['sets'] as Map).keys) 'sets.$k',
+        }..removeAll({'fields', 'sets'});
+      }
+
+      final base = keys['en']!;
+      for (final locale in locales) {
+        expect(
+          keys[locale],
+          base,
+          reason: '$locale 的 diff 键集与 en 不一致：'
+              '${keys[locale]!.difference(base)} / ${base.difference(keys[locale]!)}',
+        );
+      }
+
+      // 导航项是常驻界面元素，六个语言都必须有 —— 缺了会直接看见英文。
+      for (final locale in ['en', 'ja', 'ko', 'zh-CN', 'zh-HK', 'zh-TW']) {
+        final map = jsonDecode(
+          File('assets/i18n/$locale.json').readAsStringSync(),
+        ) as Map<String, dynamic>;
+        expect(
+          (map['nav'] as Map<String, dynamic>)['diff'],
+          isNotNull,
+          reason: '$locale 缺少 nav.diff',
+        );
+      }
     });
   });
 }
