@@ -864,5 +864,21 @@
     "privacy_manifest_too_large": "PrivacyInfo.xcprivacy 超过体积上限",
     "plist_parse_failed": "{path} 解析失败：{message}",
     "plist_root_not_dictionary": "{path} 的根是 {actual}，期望字典"
+  },
+  "analysis_diagnostic": {
+    "android_manifest_unparsed": "AndroidManifest.xml 未能解析：{failure}",
+    "android_resource_reference_cycle": "资源引用成环：{cycle}。成环的资源互相定义、谁也没有真正的值，涉及它们的图标 / 颜色可能无法解析。",
+    "android_resource_reference_cycle_truncated": "资源引用环只列出前 {count} 个，表中可能还有更多。",
+    "android_split_sampling_truncated": "分包一致性只抽检了 {checked} 个分包（共 {total} 个），其余未比对。",
+    "ios_container_multiple_main_apps": "容器里有 {count} 个 Payload/*.app bundle：{paths}",
+    "ios_container_no_main_app": "没有找到 Payload/*.app bundle",
+    "ios_container_no_payload": "容器里没有 Payload/ 目录；这不是一个标准 IPA",
+    "ios_info_plist_missing": "{path} 里没有 Info.plist",
+    "ios_info_plist_vanished": "{path} 在清单里，但读不出来",
+    "ios_info_plist_too_large": "{path} 声明了 {size} 字节，超过 {limit} 字节的上限",
+    "ios_info_plist_size_lie": "{path} 声明 {size} 字节，解压后却有 {decompressed}；不再解析它",
+    "ios_info_plist_unparsable": "{path} 解析失败：{message}",
+    "ios_info_plist_not_a_dict": "{path} 的根是 {actual}，期望字典",
+    "ios_info_plist_parsed": "已解析 {path}（{keys} 个键）"
   }
 }

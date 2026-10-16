@@ -24,6 +24,7 @@ import 'package:apk_info_tool/ipaparser/ios_codesign_step.dart';
 import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
+import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
@@ -277,6 +278,40 @@ void main() {
         final report = AnalysisReport.render(result, t,
             generatedAt: DateTime.utc(2026, 10, 13, 12));
         expect(report, contains(t.report.column_status));
+
+        // 不变量：解析诊断在中文界面上真是中文（迁移的真实数据端到端）。
+        //
+        // 这一条证明本地化**不只是单测里的合成数据**：真实 IPA 产出的诊断里，
+        // 已迁移的 code 在中文下必须渲染成中文，且不残留 `{占位符}`。
+        //
+        // 语言包是 deferred 的，`setLocaleRaw` 要 await；测试体这里是真实
+        // 事件循环（`test()` 而不是 `testWidgets()`），可以直接 await。
+        await LocaleSettings.setLocaleRaw('zh-CN');
+        try {
+          final rendered = // 诊断在 `analysis.allDiagnostics`（容器 + plist + 图标 + Mach-O + 签名材料
+              // 各自产出的汇总）；`result.diagnostics` 是 buildIos 显式传入的那一份，
+              // 这里没传所以是空的 —— 断言一张空表没有意义。
+              DetailRenderer.diagnostics(analysis.allDiagnostics, t);
+          expect(rendered, isNotEmpty, reason: '这份样本应当产出诊断');
+          // 用 `hasMatch` 而不是 `contains(matches(...))`：后者对**字符串**
+          // 的含义是「包含匹配器的描述文本」，不是「含一次匹配」——
+          // 第一版就是这么写错的，正则明明匹配上了却判失败。
+          expect(
+            RegExp(r'ios\.info_plist\.parsed: \S*[\u4e00-\u9fff]')
+                .hasMatch(rendered),
+            isTrue,
+            reason: '已迁移的 code 在中文下仍是英文：$rendered',
+          );
+          for (final line in rendered.split('\n')) {
+            expect(
+              RegExp(r'\{[a-z_][a-z0-9_]*\}').hasMatch(line),
+              isFalse,
+              reason: '诊断里残留了未替换的占位符：$line',
+            );
+          }
+        } finally {
+          await LocaleSettings.setLocaleRaw('en');
+        }
       }
     }, skip: _samples.skipReasonFor(SampleKind.ios));
   });

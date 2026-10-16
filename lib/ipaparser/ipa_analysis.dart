@@ -220,9 +220,13 @@ class IpaAnalysisReader {
       diagnostics.add(
         AnalysisDiagnostic.warning(
           'ios.container.multiple_main_apps',
-          'the archive contains ${container.payloadApps.length} '
+          'the container holds ${container.payloadApps.length} '
               'Payload/*.app bundles: '
               '${container.payloadApps.map((b) => b.path).join(', ')}',
+          messageArgs: {
+            'count': container.payloadApps.length,
+            'paths': container.payloadApps.map((b) => b.path).join(', '),
+          },
           source: FieldSource.zipDirectory,
         ),
       );

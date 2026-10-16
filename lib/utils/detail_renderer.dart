@@ -1,6 +1,7 @@
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_diagnostic_text.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
@@ -225,9 +226,9 @@ class DetailRenderer {
   static String diagnostics(
       List<AnalysisDiagnostic> diagnostics, Translations t) {
     if (diagnostics.isEmpty) return '';
-    return diagnostics
-        .map((d) => '[${d.severity.name}] ${d.code}: ${d.message}')
-        .join('\n');
+    // 走共用的呈现层：认得出 code 就本地化（模板 + messageArgs），
+    // 否则退回 message 的英文原文。此前这里直接输出 `d.message`。
+    return diagnostics.map((d) => AnalysisDiagnosticText.line(d, t)).join('\n');
   }
 
   /// 把组件列表按类型分组渲染为多行文本。

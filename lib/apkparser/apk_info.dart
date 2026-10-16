@@ -1152,7 +1152,10 @@ class ApkInfo {
     if (failure != null) {
       out.add(AnalysisDiagnostic.error(
         'android.manifest_unparsed',
-        'AndroidManifest.xml 未能解析：$failure',
+        // message 是**英文回退**（本地化由 messageArgs + AnalysisDiagnosticText
+        // 负责）。此前这里写的是中文句子，于是英文 / 日文 / 韩文报告里混进中文。
+        'AndroidManifest.xml could not be parsed: $failure',
+        messageArgs: {'failure': failure},
         source: manifestSource,
       ));
     }
@@ -1169,8 +1172,12 @@ class ApkInfo {
       if (split.isTruncated) {
         out.add(AnalysisDiagnostic.info(
           'android.split_sampling_truncated',
-          '分包一致性只抽检了 ${split.checkedCount} 个分包'
-              '（共 ${split.totalCount} 个），其余未比对。',
+          'Split consistency was sampled on ${split.checkedCount} of '
+              '${split.totalCount} splits; the rest were not compared.',
+          messageArgs: {
+            'checked': split.checkedCount,
+            'total': split.totalCount,
+          },
           source: FieldSource.builtinParser,
         ));
       }
@@ -1183,17 +1190,19 @@ class ApkInfo {
       for (final cycle in cycles.cycles) {
         out.add(AnalysisDiagnostic.warning(
           'android.resource_reference_cycle',
-          '资源引用成环：${cycle.description}。'
-              '成环的资源互相定义、谁也没有真正的值，涉及它们的图标 / 颜色'
-              '可能无法解析。',
+          'Resource reference cycle: ${cycle.description}. The resources '
+              'in the cycle define each other, so none has a real value; '
+              'icons or colours involving them may not resolve.',
+          messageArgs: {'cycle': cycle.description},
           source: FieldSource.builtinParser,
         ));
       }
       if (cycles.truncated) {
         out.add(AnalysisDiagnostic.info(
           'android.resource_reference_cycle_truncated',
-          '资源引用环只列出前 ${cycles.cycles.length} 个，'
-              '表中可能还有更多。',
+          'Only the first ${cycles.cycles.length} resource reference '
+              'cycles are listed; there may be more in the table.',
+          messageArgs: {'count': cycles.cycles.length},
           source: FieldSource.builtinParser,
         ));
       }

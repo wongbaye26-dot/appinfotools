@@ -235,6 +235,7 @@ class IpaInfoPlistReader {
         AnalysisDiagnostic.warning(
           'ios.info_plist.missing',
           '${bundle.path} has no Info.plist',
+          messageArgs: {'path': bundle.path},
         ),
       );
     }
@@ -247,6 +248,7 @@ class IpaInfoPlistReader {
         AnalysisDiagnostic.error(
           'ios.info_plist.vanished',
           '$path was listed but could not be read',
+          messageArgs: {'path': path},
         ),
       );
     }
@@ -258,6 +260,11 @@ class IpaInfoPlistReader {
           'ios.info_plist.too_large',
           '$path declares ${entry.size} bytes, above the '
               '$maxInfoPlistBytes byte limit',
+          messageArgs: {
+            'path': path,
+            'size': entry.size,
+            'limit': maxInfoPlistBytes,
+          },
         ),
       );
     }
@@ -274,6 +281,11 @@ class IpaInfoPlistReader {
           'ios.info_plist.size_lie',
           '$path declared ${entry.size} bytes but decompressed to '
               '${content.length}; refusing to parse it',
+          messageArgs: {
+            'path': path,
+            'size': entry.size,
+            'decompressed': content.length,
+          },
         ),
       );
     }
@@ -287,6 +299,7 @@ class IpaInfoPlistReader {
         AnalysisDiagnostic.error(
           'ios.info_plist.unparsable',
           '$path could not be parsed: ${e.message}',
+          messageArgs: {'path': path, 'message': e.message},
         ),
       );
     }
@@ -297,6 +310,7 @@ class IpaInfoPlistReader {
         AnalysisDiagnostic.error(
           'ios.info_plist.not_a_dict',
           '$path root is ${parsed.typeName}, expected a dictionary',
+          messageArgs: {'path': path, 'actual': parsed.typeName},
         ),
       );
     }
@@ -310,6 +324,7 @@ class IpaInfoPlistReader {
       AnalysisDiagnostic.info(
         'ios.info_plist.parsed',
         'parsed $path (${root.value.length} keys)',
+        messageArgs: {'path': path, 'keys': root.value.length},
         source: FieldSource.infoPlist,
       ),
     ];

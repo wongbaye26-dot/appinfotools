@@ -865,5 +865,21 @@
     "privacy_manifest_too_large": "PrivacyInfo.xcprivacy exceeds the size limit",
     "plist_parse_failed": "{path} could not be parsed: {message}",
     "plist_root_not_dictionary": "{path} root is {actual}, expected a dictionary"
+  },
+  "analysis_diagnostic": {
+    "android_manifest_unparsed": "AndroidManifest.xml could not be parsed: {failure}",
+    "android_resource_reference_cycle": "Resource reference cycle: {cycle}. The resources in the cycle define each other, so none has a real value; icons or colours involving them may not resolve.",
+    "android_resource_reference_cycle_truncated": "Only the first {count} resource reference cycles are listed; there may be more in the table.",
+    "android_split_sampling_truncated": "Split consistency was sampled on {checked} of {total} splits; the rest were not compared.",
+    "ios_container_multiple_main_apps": "the container holds {count} Payload/*.app bundles: {paths}",
+    "ios_container_no_main_app": "no Payload/*.app bundle was found",
+    "ios_container_no_payload": "the container has no Payload/ directory; this is not a standard IPA",
+    "ios_info_plist_missing": "{path} has no Info.plist",
+    "ios_info_plist_vanished": "{path} was listed but could not be read",
+    "ios_info_plist_too_large": "{path} declares {size} bytes, above the {limit} byte limit",
+    "ios_info_plist_size_lie": "{path} declared {size} bytes but decompressed to {decompressed}; refusing to parse it",
+    "ios_info_plist_unparsable": "{path} could not be parsed: {message}",
+    "ios_info_plist_not_a_dict": "{path} root is {actual}, expected a dictionary",
+    "ios_info_plist_parsed": "parsed {path} ({keys} keys)"
   }
 }

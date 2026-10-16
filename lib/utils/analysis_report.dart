@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/analysis_diagnostic_text.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
@@ -1436,7 +1437,7 @@ class AnalysisReport {
       ..writeln('| --- | --- | --- |');
     for (final diagnostic in result.diagnostics) {
       sb.writeln('| ${diagnostic.severity.name} | ${_escape(diagnostic.code)} '
-          '| ${_escape(diagnostic.message)} |');
+          '| ${_escape(AnalysisDiagnosticText.text(diagnostic, t))} |');
     }
     sb.writeln();
   }
