@@ -1,9 +1,7 @@
-import 'dart:io';
-
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:apk_info_tool/utils/report_exporter.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
@@ -51,48 +49,42 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
   Future<void> _doExport() async {
     setState(() => _exporting = true);
 
-    try {
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: t.report.export_action,
-        fileName: _suggestedFileName,
-        type: FileType.custom,
-        allowedExtensions: [_fileExtension],
-        lockParentWindow: true,
-      );
+    final now = DateTime.now();
+    // 范围选择必须真的生效：早先 `_scope` 只影响了建议文件名，
+    // 用户选「仅安全检测」仍然会导出一整份报告。
+    final securityOnly = _scope == ExportScope.securityOnly;
+    final content = switch (_format) {
+      ExportFormat.markdown => AnalysisReport.render(
+          widget.analysis,
+          t,
+          generatedAt: now,
+          securityOnly: securityOnly,
+        ),
+      ExportFormat.json => AnalysisReport.renderJson(
+          widget.analysis,
+          generatedAt: now,
+          t: t,
+          securityOnly: securityOnly,
+        ),
+    };
 
-      if (savePath == null) {
-        if (mounted) Navigator.of(context).pop();
-        return;
-      }
+    // 弹面板 + 写盘走共用实现：取消 / 成功 / 失败三态都由它分好，
+    // 不会再出现「用户取消却报导出失败」。
+    final outcome = await ReportExporter.save(
+      t: t,
+      dialogTitle: t.report.export_action,
+      suggestedFileName: _suggestedFileName,
+      content: content,
+      allowedExtensions: [_fileExtension],
+    );
 
-      final now = DateTime.now();
-      // 范围选择必须真的生效：早先 `_scope` 只影响了建议文件名，
-      // 用户选「仅安全检测」仍然会导出一整份报告。
-      final securityOnly = _scope == ExportScope.securityOnly;
-      final content = switch (_format) {
-        ExportFormat.markdown => AnalysisReport.render(
-            widget.analysis,
-            t,
-            generatedAt: now,
-            securityOnly: securityOnly,
-          ),
-        ExportFormat.json => AnalysisReport.renderJson(
-            widget.analysis,
-            generatedAt: now,
-            t: t,
-            securityOnly: securityOnly,
-          ),
-      };
-
-      await File(savePath).writeAsString(content);
-
-      if (mounted) {
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop(e);
-      }
+    if (!mounted) return;
+    if (outcome.isCancelled) {
+      Navigator.of(context).pop();
+    } else if (outcome.isSaved) {
+      Navigator.of(context).pop(true);
+    } else {
+      Navigator.of(context).pop(outcome.failure);
     }
   }
 

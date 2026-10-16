@@ -4,6 +4,7 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/models/analysis/package_diff_adapter.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/parsed_file_cache.dart';
+import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/diff_labels.dart';
 import 'package:apk_info_tool/utils/format.dart';
@@ -56,7 +57,6 @@ class _DiffPageState extends ConsumerState<DiffPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final cache = ref.watch(parsedFileCacheProvider);
     final paths = cache.keys.toList();
 
@@ -78,24 +78,12 @@ class _DiffPageState extends ConsumerState<DiffPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(t.diff.title, style: theme.textTheme.headlineSmall),
-                    const SizedBox(height: 6),
-                    Text(
-                      t.diff.subtitle,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.hintColor),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
+          // 页头走共享的 `PageHeader`（概览 / 分析 / 设置也是它）。
+          // 此前这里是页面内联的一个 Row，另外三个页面又是另外三种做法。
+          PageHeader(
+            title: t.diff.title,
+            subtitle: t.diff.subtitle,
+            actions: [
               FilledButton.tonalIcon(
                 onPressed:
                     pair == null ? null : () => _export(pair.left, pair.right),

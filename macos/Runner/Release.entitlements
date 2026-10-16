@@ -26,5 +26,27 @@
 	<!-- 下载 platform-tools / build-tools 需要出站网络。 -->
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!--
+	  **必须声明，哪怕本应用不开沙箱。**
+
+	  `file_picker`(>=10) 的 macOS 端在弹保存 / 打开面板**之前**就用
+	  `SecTaskCreateFromSelf` + `SecTaskCopyValueForEntitlement` 检查这个
+	  entitlement，值为 true 才继续，否则直接给 Dart 侧回一个 FlutterError：
+
+	    PlatformException(ENTITLEMENT_REQUIRED_WRITE,
+	      The Read-Write entitlement is required for this action.)
+
+	  于是**保存面板根本不弹出来**，表现成「导出失败」—— 而报错其实来自
+	  权限检查，不是写盘。`pickFiles`（「打开文件」按钮）走同一套检查
+	  （read-only 或 read-write 任一为 true 即可），所以它也在同一条船上。
+
+	  为什么加它不会把我们变成沙箱应用：沙箱的开关**只有** `app-sandbox`
+	  这一个键，本文件仍然没有它（理由见上面那段注释）。user-selected 这一族
+	  授权在非沙箱进程里是惰性的 —— 声明了不生效，不声明反而会被插件判为
+	  「没有权限」。v2.4.1 之前就是后者，导出与打开文件全部不可用。
+	-->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+
 </dict>
 </plist>

@@ -14,6 +14,7 @@ import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/pages/install_dialog.dart';
 import 'package:apk_info_tool/pages/pages.dart';
 import 'package:apk_info_tool/pages/text_info.dart';
+import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/providers/home_page_provider.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
@@ -1326,37 +1327,57 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             enableSignature, enableHash, textMaxLines);
     final tabContent = _groupCardsByTab(cards);
 
-    return DropTarget(
-      // 只有当前可见时才接收拖放。三个页面同时活在 `IndexedStack` 里、
-      // 布局尺寸完全重叠，而拖放事件是全局扇出的 —— 不关掉这一层，
-      // 在概览页拖一个文件会**同时**触发本页的 `openApk` 和概览页发出的
-      // `pendingOpenRequest`，同一个文件被解析两遍。
-      enable: Visibility.of(context),
-      onDragDone: (details) {
-        // 只处理第一个文件
-        if (details.files.isNotEmpty) {
-          final file = details.files.first;
-          // 判定抽到 `isSupportedPackagePath` —— 原先这串 `endsWith` 埋在
-          // 这个闭包里，只能靠真的拖一个文件进去才碰得到。
-          if (isSupportedPackagePath(file.path)) {
-            openApk(file.path);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(t.open.invalid_file_type),
-              ),
-            );
-          }
-        }
-      },
-      child: DetailTabView(
-        tabs: tabContent,
-        isParsing: isParsing,
-        parseStageLabel: parseStageLabel,
-        onCancelParse: _currentTask != null && !_currentTask!.isFinished
-            ? _cancelParse
-            : null,
-      ),
+    // 页头 + 内容。页头与 概览 / 版本对比 / 设置 共用 `PageHeader`：
+    // 左边标题 + 副标题，右边是这一页的四个动作（复制 / 搜索 / 导出 / 更多）。
+    //
+    // 这些动作原先挂在 `HomePage` 的 `AppBar` 上，于是「分析」这个标题和
+    // 它的操作都在页面**外面**，和另外三个页面（标题与操作都在页面内）
+    // 完全不是一个路数。现在并进来，四个页面的头部只差标题文字。
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 16, 0),
+          child: PageHeader(
+            title: t.nav.analysis,
+            subtitle: t.home.subtitle,
+            actions: ref.watch(pageActionsProvider),
+          ),
+        ),
+        Expanded(
+          child: DropTarget(
+            // 只有当前可见时才接收拖放。三个页面同时活在 `IndexedStack` 里、
+            // 布局尺寸完全重叠，而拖放事件是全局扇出的 —— 不关掉这一层，
+            // 在概览页拖一个文件会**同时**触发本页的 `openApk` 和概览页发出的
+            // `pendingOpenRequest`，同一个文件被解析两遍。
+            enable: Visibility.of(context),
+            onDragDone: (details) {
+              // 只处理第一个文件
+              if (details.files.isNotEmpty) {
+                final file = details.files.first;
+                // 判定抽到 `isSupportedPackagePath` —— 原先这串 `endsWith` 埋在
+                // 这个闭包里，只能靠真的拖一个文件进去才碰得到。
+                if (isSupportedPackagePath(file.path)) {
+                  openApk(file.path);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(t.open.invalid_file_type),
+                    ),
+                  );
+                }
+              }
+            },
+            child: DetailTabView(
+              tabs: tabContent,
+              isParsing: isParsing,
+              parseStageLabel: parseStageLabel,
+              onCancelParse: _currentTask != null && !_currentTask!.isFinished
+                  ? _cancelParse
+                  : null,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

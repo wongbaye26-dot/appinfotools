@@ -7,6 +7,7 @@ import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
+import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
@@ -73,12 +74,23 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   /// - 900×600（允许的最小窗口，内容区 660×600）→ 减去后为负，网格收起，
   ///   统计与最近文件都放得下。
   ///
+  /// **V2.4.1 起再加上共享页头**：概览页原先没有页头，V2.4.1 为了和
+  /// 分析 / 版本对比 / 设置三个页面统一，加了 `PageHeader`（标题 32 +
+  /// 间距 6 + 单行副标题 20 = 58px，副标题已钉成一行，见 `PageHeader`）。
+  /// 同时三个动作按钮从 Hero 竖排挪到了页头右上角（紧凑尺寸，30px 高，
+  /// 不撑高页头）。不补这 60px，概览页在默认窗口下底栏会溢出 ——
+  /// `test/overview_layout_test.dart` 立刻变红。
+  ///
   /// 用估算值而不是精确测量：精确测量要在布局前拿到子项高度，只能靠
   /// `IntrinsicHeight`，而它和内部的 `ListView` 不兼容（debug 下会断言失败）。
   /// `test/overview_layout_test.dart` 用真实渲染钉住这个常量。
-  static const _chromeHeightEstimate = 620.0;
+  static const _chromeHeightEstimate = 620.0 + 60.0;
 
-  /// 网格能占的最大高度。放不下时网格自身滚动，而不是把最近文件挤没。
+  /// 网格显示的**门槛**（不是它的高度）。
+  ///
+  /// 网格本身是 `Wrap`，高度由字段自然撑开，不滚动；这里只决定「够不够地方
+  /// 显示它」—— 低于门槛整块收起（返回 `SizedBox.shrink()`），把高度让给
+  /// 底部的统计与最近文件。
   static const _detailGridMaxHeight = 180.0;
 
   @override
@@ -194,7 +206,12 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxWidth < _compactWidth;
-            final gap = compact ? 14.0 : 20.0;
+            // 窄窗口的纵向节奏要收紧：V2.4.1 加了 58px 的共享页头之后，
+            // 最小窗口（内容区 660×600）里页头 + Hero + 统计 + 最近文件
+            // 正好差十几像素放不下。收紧的是**间距**，不是内容 ——
+            // 底部「最近文件」至少要 44px（分区标题 + 空状态文案），
+            // 这一段实测能拿回 16px。
+            final gap = compact ? 10.0 : 20.0;
             final pad = compact ? 16.0 : 24.0;
             // 网格能吃多少高度，由窗口高度决定（见 _chromeHeightEstimate）。
             final gridHeight = (constraints.maxHeight - _chromeHeightEstimate)
@@ -205,6 +222,55 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 页头：与 分析 / 版本对比 / 设置 同一个 `PageHeader`
+                  // （此前概览页根本没有页头，标题只在 Hero 里显示当前包名，
+                  //  用户切到别的页面再回来就找不到「这是哪一页」）。
+                  PageHeader(
+                    title: t.nav.overview,
+                    subtitle: t.overview.subtitle,
+                    // 三个动作放在**页头右上角** —— 版本对比页的「导出对比报告」
+                    // 就在這個位置，四个页面因此是同一个路数。
+                    //
+                    // 它们原先竖排挤在 Hero 里（把「四个状态卡片」顶出首屏）。
+                    // 竖排那一列比左侧文字列还高，Hero 因此多出约 10px；
+                    // 概览页是固定一屏布局，这 10px 直接从底部「最近文件」里扣。
+                    //
+                    // 「查看详情 / 导出报告」在没有文件时置灰，与版本对比页
+                    // 「没选两个包时导出按钮置灰」同一条口径。
+                    //
+                    // **窄窗口只留图标**（`iconOnly`）：三个带文字的按钮在
+                    // 660px 内容区里会把标题列挤到几十像素，标题一个字一行地
+                    // 竖排下去。图标按钮约 160px，标题与副标题都放得下。
+                    // 详见 `_HeaderActionButton`。
+                    actions: [
+                      _HeaderActionButton(
+                        iconOnly: compact,
+                        onPressed: _pickFile,
+                        icon: Icons.folder_open,
+                        label: t.overview.open_file,
+                        filled: true,
+                      ),
+                      _HeaderActionButton(
+                        iconOnly: compact,
+                        onPressed: fileState.filePath == null
+                            ? null
+                            : () => ref
+                                .read(shellNavigationProvider.notifier)
+                                .navigate('analysis'),
+                        icon: Icons.analytics_outlined,
+                        label: t.overview.view_details,
+                      ),
+                      _HeaderActionButton(
+                        iconOnly: compact,
+                        onPressed: fileState.analysis == null
+                            ? null
+                            : () => _exportReport(fileState),
+                        icon: Icons.description_outlined,
+                        label: t.overview.export_report,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: compact ? 8 : 18),
                   // Hero 区
                   if (fileState.filePath == null)
                     _buildWelcomeHero(context, compact)
@@ -433,7 +499,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(compact ? 18 : 24),
+      padding: EdgeInsets.all(compact ? 16 : 24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -519,40 +585,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     ],
                   ),
                 ),
-                SizedBox(width: compact ? 10 : 16),
-                // 操作按钮（竖排，避免窄窗口挤成一团）。
-                // 窗口极窄时收紧间距并使用更紧凑的按钮，防止 Hero 溢出。
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _HeroActionButton(
-                      compact: compact,
-                      onPressed: _pickFile,
-                      icon: Icons.folder_open,
-                      label: t.overview.open_file,
-                      filled: true,
-                    ),
-                    SizedBox(height: compact ? 4 : 8),
-                    _HeroActionButton(
-                      compact: compact,
-                      onPressed: () => ref
-                          .read(shellNavigationProvider.notifier)
-                          .navigate('analysis'),
-                      icon: Icons.analytics_outlined,
-                      label: t.overview.view_details,
-                    ),
-                    SizedBox(height: compact ? 4 : 8),
-                    _HeroActionButton(
-                      compact: compact,
-                      onPressed: fileState.analysis == null
-                          ? null
-                          : () => _exportReport(fileState),
-                      icon: Icons.description_outlined,
-                      label: t.overview.export_report,
-                    ),
-                  ],
-                ),
+                // 操作按钮已移到页头右上角（见上面的 `PageHeader.actions`）。
+                // Hero 这里只剩图标 + 身份文字，于是它矮了一大截 ——
+                // 固定一屏的概览页因此反而把高度让回给统计与最近文件。
               ],
             ),
           ),
@@ -1532,33 +1567,67 @@ class _CopyableLine extends StatelessWidget {
 /// Hero 区竖排操作按钮的共享封装。
 ///
 /// 窄窗口时自动收紧内边距和字号，防止 Hero 卡片溢出。
-class _HeroActionButton extends StatelessWidget {
-  final bool compact;
+/// 概览页页头右上角的动作按钮（位置与版本对比页的「导出对比报告」一致）。
+///
+/// **窄窗口只显示图标**（`iconOnly`，带 tooltip）：三个带文字的按钮在英文下
+/// 实测 570px 宽，660px 的内容区里会把标题列挤到几十像素；三个图标按钮只要
+/// 约 160px，标题与副标题都放得下。宽窗口恢复文字，主操作「打开文件」
+/// 仍然是显眼的实心按钮。
+///
+/// 带文字时也用**紧凑尺寸**：默认尺寸三个按钮实测 687px 宽，会把标题列挤到
+/// 289px、副标题被省略号截断；紧凑尺寸合计 570px，默认窗口下标题列还有
+/// 407px，副标题（英文 378px）完整可见。概览页是固定一屏布局，页头每高一
+/// 像素都要从底部「最近文件」里扣，所以这里宁小勿大。
+///
+/// 样式用**中性的 `ButtonStyle`**（而不是 `OutlinedButton.styleFrom`）：
+/// 同一个 style 要同时喂给 `FilledButton.icon` 和 `OutlinedButton.icon`，
+/// 用某一家的 `styleFrom` 会把那一家的前景/背景色一起带过去。
+class _HeaderActionButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final IconData icon;
   final String label;
   final bool filled;
+  final bool iconOnly;
 
-  const _HeroActionButton({
-    required this.compact,
+  const _HeaderActionButton({
     required this.onPressed,
     required this.icon,
     required this.label,
     this.filled = false,
+    this.iconOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = compact
-        ? ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            minimumSize: const Size(0, 28),
-            textStyle: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
-          )
-        : null;
 
-    final effectiveIcon = Icon(icon, size: compact ? 14 : 16);
+    if (iconOnly) {
+      // 图标按钮：tooltip 补回被省掉的文字，功能不靠猜。
+      final iconWidget = Icon(icon, size: 18);
+      return filled
+          ? IconButton.filled(
+              onPressed: onPressed,
+              tooltip: label,
+              icon: iconWidget,
+            )
+          : IconButton.outlined(
+              onPressed: onPressed,
+              tooltip: label,
+              icon: iconWidget,
+            );
+    }
+
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(0, 30)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      ),
+      textStyle: WidgetStatePropertyAll(
+        theme.textTheme.labelMedium?.copyWith(fontSize: 12),
+      ),
+    );
+
+    final effectiveIcon = Icon(icon, size: 15);
     final effectiveLabel = Text(label);
 
     if (filled) {

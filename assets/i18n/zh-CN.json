@@ -67,7 +67,8 @@
     "copy_file_path": "复制文件路径",
     "copy_content": "复制值",
     "copied_content": "已复制：{content}",
-    "more_actions": "更多操作"
+    "more_actions": "更多操作",
+    "subtitle": "逐字段查看应用包的结构、权限、签名与安全检测"
   },
   "open": {
     "open_apk": "打开 APK/XAPK/APKM/APKS/IPA",
@@ -142,7 +143,8 @@
     "parser_engine_aapt2": "aapt2 (外部工具, 兼容性好)",
     "parser_engine_builtin": "内置 (Dart, 速度快)",
     "enable_security_audit": "启用安全检测",
-    "title_width_sample": "这是一段示例内容，用于预览标题宽度，可能会很长……"
+    "title_width_sample": "这是一段示例内容，用于预览标题宽度，可能会很长……",
+    "subtitle": "配置解析工具、外观与诊断选项"
   },
   "signature": {
     "status_verified": "签名验证通过",
@@ -424,7 +426,8 @@
     "split_unchecked": "{count} 个分包未参与比对",
     "split_no_issues": "未发现分包与 base 不一致",
     "split_issue_count": "发现 {count} 处不一致",
-    "split_note": "分包必须与 base 声明相同的包名与 versionCode；不一致说明这个包被改过或拼装过。"
+    "split_note": "分包必须与 base 声明相同的包名与 versionCode；不一致说明这个包被改过或拼装过。",
+    "save_error_entitlement": "打不开保存面板：应用缺少「用户选定的读写」授权。这是打包配置问题、不是操作问题，请换用已修复的版本。"
   },
   "about": {
     "features": {

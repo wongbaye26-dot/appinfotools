@@ -1,9 +1,7 @@
-import 'dart:io';
-
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/diff_report.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:apk_info_tool/utils/report_exporter.dart';
 import 'package:flutter/material.dart';
 
 /// 差异报告的导出格式。
@@ -43,47 +41,44 @@ class _ExportDiffDialogState extends State<ExportDiffDialog> {
 
   Future<void> _doExport() async {
     setState(() => _exporting = true);
-    try {
-      final generatedAt = DateTime.now();
-      final suggested = DiffReport.suggestedFileName(
+
+    final generatedAt = DateTime.now();
+    // 三端同源：这里与界面、JSON 都走 `DiffReport` / `diffOf` 那一份实现。
+    final content = switch (_format) {
+      DiffExportFormat.markdown => DiffReport.render(
+          widget.left,
+          widget.right,
+          t,
+          generatedAt: generatedAt,
+        ),
+      DiffExportFormat.json => DiffReport.renderJson(
+          widget.left,
+          widget.right,
+          generatedAt: generatedAt,
+        ),
+    };
+
+    // 弹面板 + 写盘走共用实现（与分析报告的导出同一份）。
+    final outcome = await ReportExporter.save(
+      t: t,
+      dialogTitle: t.diff.export_action,
+      suggestedFileName: DiffReport.suggestedFileName(
         widget.left,
         widget.right,
         extension: _extension,
         generatedAt: generatedAt,
-      );
+      ),
+      content: content,
+      allowedExtensions: [_extension],
+    );
 
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: t.diff.export_action,
-        fileName: suggested,
-        type: FileType.custom,
-        allowedExtensions: [_extension],
-        lockParentWindow: true,
-      );
-
-      if (savePath == null) {
-        if (mounted) Navigator.of(context).pop();
-        return;
-      }
-
-      // 三端同源：这里与界面、JSON 都走 `DiffReport` / `diffOf` 那一份实现。
-      final content = switch (_format) {
-        DiffExportFormat.markdown => DiffReport.render(
-            widget.left,
-            widget.right,
-            t,
-            generatedAt: generatedAt,
-          ),
-        DiffExportFormat.json => DiffReport.renderJson(
-            widget.left,
-            widget.right,
-            generatedAt: generatedAt,
-          ),
-      };
-
-      await File(savePath).writeAsString(content);
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) Navigator.of(context).pop(e);
+    if (!mounted) return;
+    if (outcome.isCancelled) {
+      Navigator.of(context).pop();
+    } else if (outcome.isSaved) {
+      Navigator.of(context).pop(true);
+    } else {
+      Navigator.of(context).pop(outcome.failure);
     }
   }
 

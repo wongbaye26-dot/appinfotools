@@ -67,7 +67,8 @@
     "copy_file_path": "Copy file path",
     "copy_content": "Copy value",
     "copied_content": "Copied: {content}",
-    "more_actions": "More Actions"
+    "more_actions": "More Actions",
+    "subtitle": "Inspect a package field by field — structure, permissions, signature, and security findings"
   },
   "settings": {
     "title": "Settings",
@@ -135,7 +136,8 @@
     "parser_engine_aapt2": "aapt2 (External, Better Compatibility)",
     "parser_engine_builtin": "Built-in (Dart, Faster)",
     "enable_security_audit": "Enable Security Audit",
-    "title_width_sample": "This is a sample content text that can be very long…"
+    "title_width_sample": "This is a sample content text that can be very long…",
+    "subtitle": "Configure parsing tools, appearance, and diagnostics"
   },
   "signature": {
     "status_verified": "Signature verified",
@@ -425,7 +427,8 @@
     "split_unchecked": "{count} split(s) were not compared",
     "split_no_issues": "No split disagreed with the base APK",
     "split_issue_count": "{count} disagreement(s) found",
-    "split_note": "A split must declare the same package name and versionCode as the base APK; a disagreement means the archive was modified or assembled from parts."
+    "split_note": "A split must declare the same package name and versionCode as the base APK; a disagreement means the archive was modified or assembled from parts.",
+    "save_error_entitlement": "The save dialog could not be opened because the app is missing the \"user-selected read-write\" permission. This is a packaging problem, not something you did wrong — install the fixed build."
   },
   "about": {
     "features": {

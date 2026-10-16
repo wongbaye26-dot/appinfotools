@@ -67,7 +67,8 @@
     "copy_file_path": "複製檔案路徑",
     "copy_content": "複製值",
     "copied_content": "已複製：{content}",
-    "more_actions": "更多操作"
+    "more_actions": "更多操作",
+    "subtitle": "逐欄位查看應用套件的結構、權限、簽名與安全檢測"
   },
   "open": {
     "open_apk": "開啟 APK/XAPK/APKM/APKS/IPA",
@@ -142,7 +143,8 @@
     "parser_engine_aapt2": "aapt2 (外部工具, 相容性好)",
     "parser_engine_builtin": "內置 (Dart, 速度快)",
     "enable_security_audit": "啟用安全檢測",
-    "title_width_sample": "這是一段範例內容，用於預覽標題寬度，可能會很長……"
+    "title_width_sample": "這是一段範例內容，用於預覽標題寬度，可能會很長……",
+    "subtitle": "配置解析工具、外觀與診斷選項"
   },
   "signature": {
     "status_verified": "簽名驗證通過",
@@ -424,7 +426,8 @@
     "split_unchecked": "{count} 個分包未參與比對",
     "split_no_issues": "未發現分包與 base 不一致",
     "split_issue_count": "發現 {count} 處不一致",
-    "split_note": "分包必須與 base 聲明相同的包名與 versionCode；不一致說明這個包被改過或拼裝過。"
+    "split_note": "分包必須與 base 聲明相同的包名與 versionCode；不一致說明這個包被改過或拼裝過。",
+    "save_error_entitlement": "打不開儲存面板：應用缺少「用戶選定的讀寫」授權。這是打包配置問題、不是操作問題，請換用已修復的版本。"
   },
   "about": {
     "features": {

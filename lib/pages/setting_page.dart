@@ -4,6 +4,7 @@ import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
+import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/utils/app_links.dart';
@@ -904,27 +905,20 @@ class _SettingPageState extends ConsumerState<SettingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          t.settings.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        // 与侧边栏、分析页顶栏同一套表面色，去掉 M3 默认的着色。
-        //
-        // 此前这里用的是 `colorScheme.inversePrimary`（一块明显的紫色），
-        // 于是「设置」页的顶栏和另外两页完全不是一块界面。
-        backgroundColor: theme.colorScheme.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-      ),
+      // 不再用 AppBar：设置页的标题改为页面内的 `PageHeader`，
+      // 与 概览 / 分析 / 版本对比 三个页面同一个做法（左边标题+副标题，
+      // 右边操作）。此前这里是 AppBar 里一个孤立的「设置」，与另外几页
+      // 完全不是一个路数 —— 而这三页本身也曾经各有一套。
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         children: [
+          // 不能写 `const`：`t.*` 是 getter，不是编译期常量。
+          PageHeader(
+            title: t.settings.title,
+            subtitle: t.settings.subtitle,
+          ),
+          const SizedBox(height: 18),
           _buildEnvironmentSection(),
           _buildFeaturesSection(),
           _buildAppearanceSection(),
