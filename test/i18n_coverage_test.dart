@@ -359,4 +359,181 @@ void main() {
       }
     });
   });
+
+  // V2.4.2 任务 5.2：ja / ko **已补齐**的分组。
+  //
+  // 这三组此前在 ja / ko 里整组缺失（回退成英文）。本轮的补法是逐条翻译，
+  // 这里把它们钉住：键集与 en 一致、不得是英文复制、占位符必须保留。
+  //
+  // **范围说明（重要）**：只覆盖**已补齐**的四组。`security` / `report` /
+  // `field_diagnostic` / `analysis_diagnostic` 等组仍未补齐（见
+  // `docs/plans/V2.4.2_PROGRESS.md` §14），因此这里**不**断言「六个语言键集全等」——
+  // 那样会立刻变红，而那是「还没做」而不是「做错了」。等那些组补齐后再扩这张表。
+  group('ja / ko 已补齐的分组', () {
+    const migratedGroups = ['coverage', 'diff', 'ios_info', 'security'];
+
+    /// 本就不该翻译的项（文件名 / 算法名 / Apple 产品名 / 平台标识 /
+    /// 纯占位符模板 / 目标语言本来就用 ASCII 标点）。
+    /// **逐个列出理由**，避免「懒得翻就丢进白名单」。
+    const allowSameAsEnglish = {
+      'coverage.dimensions.ios_infoPlist': 'Info.plist 是文件名，不是术语',
+      'coverage.summary_join:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
+      'diff.fields.file_sha256': 'SHA-256 是算法名',
+      'ios_info.code_signature_dir': '目录名 _CodeSignature',
+      'ios_info.codesign_cdhash': 'Apple 的技术标识 CDHash',
+      'ios_info.device_ipad': 'Apple 产品名',
+      'ios_info.device_iphone': 'Apple 产品名',
+      'ios_info.device_tv': 'Apple 产品名 Apple TV',
+      'ios_info.device_watch': 'Apple 产品名 Apple Watch',
+      'ios_info.platform_badge': '平台标识 iOS (.ipa)',
+      'ios_info.uuid': '技术缩写 UUID',
+      'security.list_join:ko': '韩文用 ASCII 逗号，与 en 相同是正常结果',
+      'security.parts.join:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
+      'security.native_symbols.line:ko': '韩文用 ASCII 括号，与 en 相同是正常结果',
+      // 下面四个是**纯占位符模板**：整句就是 `{name}: {note}` 这种，
+      // 没有可翻译的自然语言，日韩文与 en 逐字节相同是唯一正确的结果。
+      'security.finding_texts.android_permission_expired':
+          '纯占位符模板 {name}: {note}',
+      'security.finding_texts.android_permission_inert':
+          '纯占位符模板 {name}: {note}',
+      'security.finding_texts.android_permission_rule': '纯占位符模板 {description}',
+      'security.finding_texts.android_permission_rule_risk_note':
+          '纯占位符模板 {riskNote}',
+      'security.finding_texts.android_permission_rule_with_note:ko':
+          '纯占位符模板 {description} ({note})，韩文用 ASCII 括号',
+      'diff.sets.android_nativeCodes': 'ABI 是技术缩写，不翻译',
+      'ios_info.bundle_kind_app_extension:ja': 'Apple 的官方日文写法就是 App Extension',
+    };
+
+    /// ja 必须出现非 ASCII 字符；ko 必须出现谚文。
+    ///
+    /// **这一条比「逐字节不等于 en」强得多**：后者只抓得住「原样抄英文」，
+    /// 抓不住「把一句**别的**英文写进非英文语言包」。实测：把 ko 的一条安全
+    /// 说明换成一句截短的英文，逐字节比对是绿的（它确实不等于 en 原文），
+    /// 而这条判据立刻变红。
+    ///
+    /// 白名单里那些（`Info.plist` / `SHA-256` / `{name}: {note}` / 韩文的 ASCII
+    /// 分隔符）本来就不含假名或谚文，逐个给了理由。
+    final hangul = RegExp(r'[\uac00-\ud7af\u1100-\u11ff]');
+    bool looksLocalised(String locale, String value) {
+      if (locale == 'ko') return hangul.hasMatch(value);
+      // ja：允许纯汉字词（如「数量」「権限」），只要求出现非 ASCII 字符。
+      return value.runes.any((r) => r > 0x7f);
+    }
+
+    Map<String, String> localeOf(String locale) {
+      final out = <String, String>{};
+      void walk(Map<String, dynamic> node, String prefix) {
+        node.forEach((key, value) {
+          final path = prefix.isEmpty ? key : '$prefix.$key';
+          if (value is Map<String, dynamic>) {
+            walk(value, path);
+          } else {
+            out[path] = value as String;
+          }
+        });
+      }
+
+      walk(
+        jsonDecode(File('assets/i18n/$locale.json').readAsStringSync())
+            as Map<String, dynamic>,
+        '',
+      );
+      return out;
+    }
+
+    Iterable<String> groupKeys(Map<String, String> map, String group) =>
+        map.keys.where((k) => k.startsWith('$group.'));
+
+    test('四组在 ja / ko 里键集与 en 一致（逐键比对，不是只看总数）', () {
+      final en = localeOf('en');
+      for (final locale in ['ja', 'ko']) {
+        final other = localeOf(locale);
+        for (final group in migratedGroups) {
+          final expected = groupKeys(en, group).toSet();
+          final actual = groupKeys(other, group).toSet();
+          expect(expected, isNotEmpty, reason: '$group 在 en 里一个键都没有？');
+          expect(actual.difference(expected), isEmpty,
+              reason: '$locale 的 $group 有多余键');
+          final missing = expected.difference(actual);
+          expect(missing, isEmpty,
+              reason: '$locale 的 $group 缺 ${missing.length} 个键：'
+                  '${missing.take(5).join(', ')}');
+        }
+      }
+    });
+
+    test('译文不是英文复制（白名单除外，白名单逐条给了理由）', () {
+      final en = localeOf('en');
+      for (final locale in ['ja', 'ko']) {
+        final other = localeOf(locale);
+        for (final group in migratedGroups) {
+          for (final key in groupKeys(en, group)) {
+            final value = other[key];
+            if (value == null) continue; // 上一条测试负责报缺键
+            if (value != en[key]) continue;
+            if (allowSameAsEnglish.containsKey(key) ||
+                allowSameAsEnglish.containsKey('$key:$locale')) {
+              continue;
+            }
+            fail('$locale 的 $key 与英文完全相同，疑似英文复制充数：$value');
+          }
+        }
+      }
+    });
+
+    test('占位符与 en 完全一致（名称与个数都要一致）', () {
+      final pattern = RegExp(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}');
+      Set<String> placeholdersOf(String s) =>
+          pattern.allMatches(s).map((m) => m.group(1)!).toSet();
+
+      final en = localeOf('en');
+      for (final locale in ['ja', 'ko']) {
+        final other = localeOf(locale);
+        for (final group in migratedGroups) {
+          for (final key in groupKeys(en, group)) {
+            final value = other[key];
+            if (value == null) continue;
+            expect(placeholdersOf(value), placeholdersOf(en[key]!),
+                reason: '$locale 的 $key 占位符不一致');
+          }
+        }
+      }
+    });
+
+    test('没有空串、没有未替换的插值对象', () {
+      for (final locale in ['ja', 'ko']) {
+        final other = localeOf(locale);
+        for (final group in migratedGroups) {
+          for (final key in groupKeys(other, group)) {
+            final value = other[key]!;
+            expect(value.trim(), isNotEmpty, reason: '$locale/$key 是空串');
+            expect(value, isNot(contains('Instance of')),
+                reason: '$locale/$key');
+            expect(value, isNot(contains('Closure:')), reason: '$locale/$key');
+          }
+        }
+      }
+    });
+
+    test('译文确实是该语言（ja 含非 ASCII / ko 含谚文），白名单除外', () {
+      for (final locale in ['ja', 'ko']) {
+        final other = localeOf(locale);
+        for (final group in migratedGroups) {
+          for (final key in groupKeys(other, group)) {
+            if (allowSameAsEnglish.containsKey(key) ||
+                allowSameAsEnglish.containsKey('$key:$locale')) {
+              continue;
+            }
+            final value = other[key]!;
+            expect(
+              looksLocalised(locale, value),
+              isTrue,
+              reason: '$locale 的 $key 看起来不是 $locale 的译文：$value',
+            );
+          }
+        }
+      }
+    });
+  });
 }

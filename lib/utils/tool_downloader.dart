@@ -8,6 +8,11 @@ import 'package:apk_info_tool/utils/zip_guard.dart';
 import 'package:archive_safety/archive_safety.dart' show ZipBudget;
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+// 只为 `visibleForTesting`：校验和这条链是安全控制，必须有回归测试，
+// 但它不该成为对外的公共 API。`@visibleForTesting` 由分析器强制 ——
+// 非测试代码调用它会报 `invalid_use_of_visible_for_testing_member`，
+// 而本项目的门禁带 `--fatal-warnings`，所以它**不会**被生产代码用上。
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as path;
 
 class ToolDownloadResult {
@@ -22,6 +27,16 @@ class ToolDownloadResult {
   });
 }
 
+/// 下载并安装 Android 平台工具（platform-tools / build-tools）。
+///
+/// ## 为什么有几个成员是 `@visibleForTesting` 的公开名
+///
+/// 校验和这条链是**安全控制**（下载的 adb/aapt2 会被本进程直接执行），
+/// 必须有回归测试；但 `@visibleForTesting` **只放宽 lint，不改变 Dart 的
+/// 库级私有性** —— 测试在另一个库里，`_foo` 这种名字它根本看不到。
+/// 因此这几个成员改成公开名 + `@visibleForTesting`：
+/// 分析器会对**非测试代码**报 `invalid_use_of_visible_for_testing_member`，
+/// 而门禁带 `--fatal-warnings`，所以它们实际上只对 `test/` 可见。
 class ToolDownloader {
   static const String repositoryIndexUrl =
       'https://dl.google.com/android/repository/repository2-3.xml';
@@ -34,7 +49,7 @@ class ToolDownloader {
     await Directory(installDir).create(recursive: true);
 
     final indexUrls = options.sourceUrls.isEmpty
-        ? _buildRepositoryIndexUrls()
+        ? buildRepositoryIndexUrls()
         : options.sourceUrls;
     final xmlContent = await _downloadTextWithFallback(
       indexUrls,
@@ -58,7 +73,7 @@ class ToolDownloader {
         options.onProgress,
       );
       // 解包前必须校验：这些二进制随后会被本进程直接执行。
-      await _verifyArchiveChecksum(
+      await verifyArchiveChecksum(
         platformTemp,
         ArchiveInfo(
           url: platformArchive.url,
@@ -75,7 +90,7 @@ class ToolDownloader {
         'build-tools',
         options.onProgress,
       );
-      await _verifyArchiveChecksum(buildToolsTemp, buildTools.archive);
+      await verifyArchiveChecksum(buildToolsTemp, buildTools.archive);
       await _extractBuildTools(
         buildToolsTemp,
         installDir,
@@ -102,7 +117,11 @@ class ToolDownloader {
   /// 顺序很重要：**官方 Google 仓库排在最前**。历史实现把个人 GitHub 镜像
   /// 放在首位，一旦该账号被接管，所有用户拿到的都是攻击者投放的 adb/aapt2，
   /// 且这些二进制会被直接执行。镜像只能作为官方源不可达时的降级选项。
-  static List<String> _buildRepositoryIndexUrls() {
+  ///
+  /// `@visibleForTesting`：「官方源必须排在镜像之前」这条顺序是安全约束，
+  /// 有回归测试逐位钉住，但它不该对外暴露。
+  @visibleForTesting
+  static List<String> buildRepositoryIndexUrls() {
     final extraUrls = ToolPaths.loadExtraRepositoryUrls();
     return <String>[
       // 官方源优先。
@@ -469,7 +488,11 @@ class ToolDownloader {
   }
 
   /// 从 `<complete>` 片段中解析出全部 `<checksum type="...">value</checksum>`。
-  static Map<String, String> _parseChecksums(String completeBody) {
+  ///
+  /// `@visibleForTesting`：这是 T0-2 安全修复的一半（索引声明的校验和必须被
+  /// 真的读出来，否则后面那道比对形同虚设），但不需要对外暴露。
+  @visibleForTesting
+  static Map<String, String> parseChecksums(String completeBody) {
     final result = <String, String>{};
     final regex = RegExp(
         r'<checksum[^>]*type="([^"]+)"[^>]*>\s*([0-9a-fA-F]+)\s*</checksum>');
@@ -504,7 +527,7 @@ class ToolDownloader {
       }
       return ArchiveInfo(
         url: urlMatch.group(1) ?? '',
-        checksums: _parseChecksums(completeBody),
+        checksums: parseChecksums(completeBody),
       );
     }
     return null;
@@ -532,7 +555,7 @@ class ToolDownloader {
         if (url.contains(hint)) {
           return ArchiveInfo(
             url: urlMatch.group(1) ?? '',
-            checksums: _parseChecksums(completeBody),
+            checksums: parseChecksums(completeBody),
           );
         }
       }
@@ -541,7 +564,11 @@ class ToolDownloader {
   }
 
   /// 计算文件摘要。
-  static Future<String> _digestFile(File file, String algorithm) async {
+  ///
+  /// `@visibleForTesting`：期望值在测试里用 `shasum` / `openssl` 独立核对，
+  /// 不从本实现反推。
+  @visibleForTesting
+  static Future<String> digestFile(File file, String algorithm) async {
     final bytes = await file.readAsBytes();
     switch (algorithm) {
       case 'sha256':
@@ -559,8 +586,11 @@ class ToolDownloader {
   ///
   /// 索引未提供任何校验和时**拒绝安装**，而不是放行——这些归档最终会成为
   /// 被本进程直接执行的 adb/aapt2/apksigner。
-  static Future<void> _verifyArchiveChecksum(
-      File file, ArchiveInfo info) async {
+  ///
+  /// `@visibleForTesting`：这是 T0-2 的**执行点**，两条拒绝路径（不匹配 /
+  /// 未声明）都必须有回归测试钉住。
+  @visibleForTesting
+  static Future<void> verifyArchiveChecksum(File file, ArchiveInfo info) async {
     final expected = info.preferredDigest;
     if (expected == null || expected.isEmpty) {
       throw ToolDownloadException(
@@ -569,7 +599,7 @@ class ToolDownloader {
       );
     }
     final algorithm = info.preferredAlgorithm!;
-    final actual = await _digestFile(file, algorithm);
+    final actual = await digestFile(file, algorithm);
     if (actual.toLowerCase() != expected.toLowerCase()) {
       throw ToolDownloadException(
         ToolDownloadError.checksumMismatch,

@@ -42,8 +42,21 @@ analyzer:
 # （`riverpod_lint` 3.1.0 起改用 `analysis_server_plugin`），所以那段配置
 # 实际是死的：既不生效，又持续产生 analysis_options_deprecated_plugins 告警。
 #
-# 新机制要求插件声明在顶层 `plugins:` 下。插件定义的 lint 规则默认关闭，
-# 需要时在 plugins.<name>.diagnostics 下逐条开启；此处暂不开启任何规则，
-# 因此不会引入新的诊断。
+# 新机制要求插件声明在顶层 `plugins:` 下（已按 dart.dev/tools/analyzer-plugins 核对）。
+#
+# ## V2.4.2 实测（不是照文档推断）
+#
+# * `riverpod_lint` 3.1.0 的 13 条规则**全部**走 `registerWarningRule`，而
+#   **插件的 warning 默认启用**（只有插件定义的 *lint* 规则才需要在
+#   `diagnostics:` 下逐条开）—— 所以这里**不需要** `diagnostics:` 段。
+# * 这些规则**确实会跑，但只在 `dart analyze` 下**。实测：故意写一个
+#   `runApp(...)` 不带 `ProviderScope` 的探针，`dart analyze` 报
+#   `missing_provider_scope`，而 **`flutter analyze` 一条都不报**。
+# * 所以**根门禁用 `flutter analyze` 等于拿不到这个插件**；四个 package 的
+#   门禁用的是 `dart analyze`，反而是有效的。现有代码在 `dart analyze` 下
+#   是 0 issue（与 `flutter analyze` 一致），把根门禁换成 `dart analyze`
+#   不会引入新的失败 —— **但那是改 CI 约束，留待确认，本轮未动**。
+# * 不要加 `analyzer: plugins: [riverpod_lint]`：那是**旧**机制，实测只会得到
+#   一条 `analysis_options_deprecated_plugins` 告警，且规则仍然不跑。
 plugins:
   riverpod_lint: ^3.1.0

@@ -5,6 +5,10 @@ import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
+// 只为 `visibleForTesting`：解包路径必须逐个条目过 ZipGuard，这条约束要有回归
+// 测试；`@visibleForTesting` 由分析器强制（门禁带 `--fatal-warnings`），
+// 因此它不会成为生产代码可用的公共 API。
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as path;
 
 class XapkInstaller {
@@ -159,7 +163,17 @@ class XapkInstaller {
   /// [installOptions] 安装选项
   /// [selectedSplits] 选中的分包，如果为null则安装所有分包
   /// [isCancelled] 检查是否已取消的回调
-  String _safeExtractJoin(String root, String entry) =>
+  /// 把归档条目名安全地拼到解包根目录下 —— **每一个解包点都必须先过这里**。
+  ///
+  /// 归档来自互联网，条目名可以是 `../../.ssh/authorized_keys`。守卫本身在
+  /// `ZipGuard.safeJoin`（拒绝 `..` / 绝对路径 / 盘符 / UNC / `~`）；这里是
+  /// XAPK 安装路径上的唯一入口，`test/xapk_installer_test.dart` 既测它的行为，
+  /// 也**逐点断言每个 `zip.extractFile(...)` 之前都调过它**。
+  ///
+  /// `@visibleForTesting`：Dart 的私有性是库级的，测试看不到 `_foo`，
+  /// 因此用公开名 + 注解（分析器只允许测试调用）。
+  @visibleForTesting
+  String safeExtractJoin(String root, String entry) =>
       ZipGuard.safeJoin(root, entry);
 
   Future<bool> install(
@@ -220,7 +234,7 @@ class XapkInstaller {
           return false;
         }
 
-        final apkPath = _safeExtractJoin(tempDir.path, apk);
+        final apkPath = safeExtractJoin(tempDir.path, apk);
         final apkDir = Directory(path.dirname(apkPath));
         if (!await apkDir.exists()) {
           await apkDir.create(recursive: true);
@@ -242,7 +256,7 @@ class XapkInstaller {
       // 构建安装命令
       final adbPath = CommandTools.getAdbPath();
       final apkPaths =
-          apksToInstall.map((apk) => _safeExtractJoin(tempDir.path, apk));
+          apksToInstall.map((apk) => safeExtractJoin(tempDir.path, apk));
       final args = [
         '-s',
         deviceId,
@@ -281,7 +295,7 @@ class XapkInstaller {
             return false;
           }
 
-          final obbLocalPath = _safeExtractJoin(tempDir.path, obb);
+          final obbLocalPath = safeExtractJoin(tempDir.path, obb);
           final obbDir = Directory(path.dirname(obbLocalPath));
           if (!await obbDir.exists()) {
             await obbDir.create(recursive: true);

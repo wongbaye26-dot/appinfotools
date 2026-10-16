@@ -1,5 +1,10 @@
 # APK 内置解析器设计方案
 
+> ⚠️ **已过时（历史证据，保留不改正文）。** 本文写于上游项目阶段，里面的
+> `BinaryXmlDecompressor` / `ZipHelper` 等类名与目录结构**都已不存在**：
+> 内置解析器现在是一个独立的 package（`packages/apk_parser/`），应用层只消费它，
+> 不再自带一份。现状见 `docs/plans/V2.4.0_PROGRESS.md` 与 `README.md` 的项目结构一节。
+
 ## 背景
 
 当前项目通过调用外部工具 `aapt2 dump badging` 解析 APK 基础信息，在大文件上耗时严重（aapt2 会扫描大量无关资源）。项目已有二进制 XML 反编译器（`BinaryXmlDecompressor`）和 ZIP 读取能力（`ZipHelper`），但从未用于 AndroidManifest.xml 解析。

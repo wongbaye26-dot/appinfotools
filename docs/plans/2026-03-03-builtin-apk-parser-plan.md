@@ -1,6 +1,9 @@
 # APK 内置解析器实施计划
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> ⚠️ **已过时（历史证据，保留不改正文）。** 本文写于上游项目阶段，里面的
+> `BinaryXmlDecompressor` / `ZipHelper` 等类名与目录结构**都已不存在**：
+> 内置解析器现在是一个独立的 package（`packages/apk_parser/`），应用层只消费它，
+> 不再自带一份。现状见 `docs/plans/V2.4.0_PROGRESS.md` 与 `README.md` 的项目结构一节。
 
 **Goal:** 分三阶段实现纯 Dart APK 解析库，逐步替代 aapt2 外部依赖。
 
