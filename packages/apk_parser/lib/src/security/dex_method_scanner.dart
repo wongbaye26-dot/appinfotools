@@ -228,6 +228,17 @@ class DexMethodScanner {
       }
       scannedDexCount++;
 
+      // 本 DEX 内「method_ids 下标 → 命中的标记」。
+      //
+      // **这是本文件最重要的一处性能取舍。** `invoke-*` 的操作数就是 method_idx，
+      // 而它指向的正是上面那一遍刚看过的同一条 `method_ids` 条目 —— 因此调用点
+      // 命中哪些标记，**不需要重新拼字符串、重新匹配**，按下标查表即可。
+      //
+      // 实测（343 MB 的 APK：287 万条 method_ids + **1586 万个调用点**）：
+      // 每个调用点都跑一遍 23 个标记的子串匹配时，这一段要 60.6 秒，占整个
+      // 解析的 92%；改成查表后只剩遍历本身的 3.2 秒。
+      final matchedByIndex = <int, List<CodeMarker>>{};
+
       // ---- 第二层：method_ids ----
       final referenceResult = DexMethodTable.forEachReference(
         entry.bytes,
@@ -236,7 +247,11 @@ class DexMethodScanner {
           // 匹配「类描述符 + 方法名」。`matchCodeMarkers` 会把 `/` 归一成 `.`，
           // 因此 `Lcom/google/mlkit/…` 能命中 `com.google.mlkit`。
           final text = '${reference.classDescriptor}.${reference.name}';
-          for (final marker in matchCodeMarkers(text)) {
+          final markers = matchCodeMarkers(text);
+          if (markers.isEmpty) return;
+          final index = reference.index;
+          if (index != null) matchedByIndex[index] = markers;
+          for (final marker in markers) {
             (samples[marker.id] ??= <String>{}).add(reference.displayName);
             (dexes[marker.id] ??= <String>{}).add(entry.name);
           }
@@ -251,9 +266,18 @@ class DexMethodScanner {
         structure,
         onCallSite: (site) {
           callSiteCount++;
-          final text = '${site.target.classDescriptor}.${site.target.name}';
-          final markers = matchCodeMarkers(text);
-          if (markers.isEmpty) return;
+          final index = site.target.index;
+          var markers = index == null ? null : matchedByIndex[index];
+          if (markers == null) {
+            // 查不到有两种可能：**确实没命中**，或者上面那一遍被预算截断了
+            // （没走到这个下标）。只有后者需要重新匹配 —— 不区分就会在超大
+            // DEX 上静默漏掉调用点证据。
+            if (!referenceResult.truncated) return;
+            markers = matchCodeMarkers(
+              '${site.target.classDescriptor}.${site.target.name}',
+            );
+            if (markers.isEmpty) return;
+          }
 
           for (final marker in markers) {
             (callSiteSamples[marker.id] ??= <String>{}).add(

@@ -206,6 +206,7 @@
     "screen_size": "屏幕尺寸",
     "screen_density": "屏幕密度",
     "abi": "ABI",
+    "icp_filing": "ICP 备案",
     "languages": "语言列表",
     "night_mode": "夜间模式资源",
     "night_mode_yes": "包含",

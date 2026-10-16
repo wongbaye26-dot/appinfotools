@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:archive_safety/archive_safety.dart';
 
 import 'container_structure.dart';
+import 'icp_filing.dart';
 import 'hardening.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
@@ -232,6 +233,9 @@ class ApkReader {
         // 免得把「资源表解析失败」呈现成「没有夜间资源」。
         meta.hasNightMode = parser.hasNightModeResources;
         meta.uiModeTypes = parser.getUiModeTypes();
+        // ICP 备案号：只能从字符串池里找（manifest 里没有标准字段）。
+        // 放在这一支里是因为它要用刚解析好的字符串池 —— 没读到资源表就没有。
+        meta.icpFilings = IcpFilingScanner.scan(parser.globalStringPool);
       }
     }
 

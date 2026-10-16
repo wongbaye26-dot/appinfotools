@@ -89,6 +89,18 @@ class AndroidPackageInfo {
   /// OBB 扩展文件。单 APK 时为 `absent`。
   final FieldValue<List<String>> obbFiles;
 
+  /// **ICP 备案号**（工信部要求应用在界面展示的那一串，例如
+  /// `京ICP备16016397号-49A`）。
+  ///
+  /// 来源是 `resources.arsc` 的字符串池 —— `AndroidManifest.xml` 里**没有**
+  /// 标准字段放它，各家写在各处，因此只能扫字符串池（见 `IcpFilingScanner`）。
+  /// 多条时按换行连接。
+  ///
+  /// `absent` 表示**扫过了、包里确实没有**，界面据此不显示这一行；
+  /// 不要把它渲染成空值 —— 「没备案」和「我们没找到」对用户是两件事，
+  /// 而这个字段**只声称后者**。
+  final FieldValue<String> icpFiling;
+
   /// 组件列表。
   ///
   /// 是 [FieldValue] 而不是裸 List：`aapt2 dump badging` 只输出
@@ -130,6 +142,7 @@ class AndroidPackageInfo {
     this.splitApks = const FieldValue<List<String>>.absent(),
     this.obbFiles = const FieldValue<List<String>>.absent(),
     this.components = const FieldValue<List<AndroidComponent>>.absent(),
+    this.icpFiling = const FieldValue<String>.absent(),
     this.signature,
     this.hardeningHints = const [],
     this.structure,

@@ -472,6 +472,9 @@ class DexMethodBodies {
           classDescriptor: resolved.$1,
           name: resolved.$2,
           protoDescriptor: resolved.$3,
+          // `invoke-*` 的第二代码单元就是 method_idx（`invoke-custom` 是
+          // call_site_idx，走的是另一条分支，不会到这里）。
+          index: invoke.operand,
         ),
         instructionOffset: invoke.offset,
         opcode: invoke.opcode,

@@ -42,6 +42,20 @@ import 'package:path/path.dart' as p;
 class OverviewPage extends ConsumerStatefulWidget {
   const OverviewPage({super.key});
 
+  /// 详细信息网格**最多显示几项**（用户要求 6 项，由我们选）。
+  ///
+  /// 选的是「打开一个包时最常被复制走的那几项」：文件名 / 版本 / 构建号 /
+  /// 最低系统 / SHA-256，以及各自平台最有用的第 6 项（Android 是 targetSdk、
+  /// iOS 是可执行文件名）。
+  ///
+  /// **被去掉的是 SHA-1 与 MD5** —— SHA-256 是现在的通用口径，另两个只在
+  /// 与旧记录比对时才有用；它们在分析页与导出的报告里仍然都在，不是删掉了
+  /// 能力，只是不占概览页这块地方。
+  ///
+  /// 少两项还顺带让网格从 3 行变 2 行：概览页是固定一屏布局，这一块每矮一行
+  /// 就把高度还给底部的「最近文件」。
+  static const maxDetailCells = 6;
+
   @override
   ConsumerState<OverviewPage> createState() => _OverviewPageState();
 }
@@ -613,7 +627,13 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             securityText: securityText,
             securityColor: securityColor,
           ),
-          SizedBox(height: compact ? 12 : 14),
+          // 状态卡片与详细信息之间的间距。
+          //
+          // 12 → 10（V2.4.7）：网格项数从最多 8 项收到 6 项之后，**满 6 项**时
+          // 这一段仍差 1px 放不下（默认窗口 1040×800 实测溢出 1px）。这一块
+          // 的固定开销一直是估算值，网格的真实高度没算进去；按本项目一贯的
+          // 做法**动间距、不动内容**。
+          SizedBox(height: compact ? 10 : 12),
           // 详细信息：每一项都带复制入口。
           //
           // 之前 Hero 区只有「应用名 / 标识符 / 版本」三行，而用户最常拿去
@@ -906,6 +926,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final hashPlaceholder =
         fileState.isComputingHash ? t.file_info.computing_hash : '';
 
+    // **顺序即优先级** —— 渲染时只取前 `maxDetailCells` 项，见那里的说明。
     final cells = <Widget>[
       if (fileName.isNotEmpty)
         _CopyField(
@@ -1002,7 +1023,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               spacing: spacing,
               runSpacing: spacing,
               children: [
-                for (final cell in cells)
+                // 顺序即优先级：超出 `maxDetailCells` 的自然不显示。
+                for (final cell in cells.take(OverviewPage.maxDetailCells))
                   SizedBox(width: cellWidth, child: cell),
               ],
             );

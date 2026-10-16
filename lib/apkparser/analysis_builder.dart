@@ -127,6 +127,9 @@ class AnalysisBuilder {
     List<AndroidComponent> components = const [],
     List<HardeningObservation> hardeningObservations = const [],
     ContainerStructure? structure,
+
+    /// ICP 备案号（从 `resources.arsc` 字符串池里扫出来的）。空表示没找到。
+    List<String> icpFilings = const [],
     SignatureAnalysis? signature,
     SecurityAnalysisResult? security,
     SplitConsistency? splitConsistency,
@@ -185,6 +188,15 @@ class AnalysisBuilder {
         manifestSource,
         AndroidField.components,
       ),
+      // ICP 备案号来自 `resources.arsc` 的字符串池，不是 manifest 能力表里的
+      // 一项 —— 因此不走 `_manifest`（那会把「来源不报这个字段」判成
+      // unsupported），直接按「扫到了 / 扫过了但没有」两态构造。
+      icpFiling: icpFilings.isEmpty
+          ? const FieldValue<String>.absent(source: FieldSource.builtinParser)
+          : FieldValue<String>.extracted(
+              icpFilings.join('\n'),
+              source: FieldSource.builtinParser,
+            ),
       signature: signature,
       hardeningHints: hardeningHints,
       structure: structure,

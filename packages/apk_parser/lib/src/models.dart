@@ -74,6 +74,12 @@ class ApkMeta {
   List<String> locales = [];
   List<int> densities = [];
 
+  /// 从 `resources.arsc` 字符串池里找到的 **ICP 备案号**（可能不止一条）。
+  ///
+  /// 空列表表示**没找到** —— 界面据此不显示这一行。`AndroidManifest.xml` 里
+  /// 没有标准字段放它，因此只能扫字符串池，详见 `IcpFilingScanner`。
+  List<String> icpFilings = [];
+
   /// 资源表里是否有夜间模式变体；`null` 表示**没读到资源表**（无法判断）。
   ///
   /// 三态而非 bool：资源表缺失或解析失败时，`false` 会被读成「这个应用没有

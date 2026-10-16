@@ -193,6 +193,7 @@
     "screen_size": "画面サイズ",
     "screen_density": "画面密度",
     "abi": "ABI",
+    "icp_filing": "ICP 届出番号",
     "languages": "言語リスト",
     "obb_files": "OBBファイル",
     "permissions": "権限リスト",

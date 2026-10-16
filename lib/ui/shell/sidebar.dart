@@ -1,3 +1,5 @@
+import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/ui/shell/navigation_item.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +39,15 @@ class AppSidebar extends StatelessWidget {
     required this.selectedId,
     required this.onItemSelected,
   });
+
+  /// 版本号文本。`packageInfo` 未初始化时（单元测试）返回空串，不抛。
+  static String _versionText() {
+    try {
+      return 'v${packageInfo.version}';
+    } catch (_) {
+      return '';
+    }
+  }
 
   /// 展开 / 紧凑的分界（窗口宽）。
   static const double compactBreakpoint = 800;
@@ -116,15 +127,26 @@ class _ExpandedSidebar extends StatelessWidget {
               },
             ),
           ),
-          // 底部：只留「支持哪两个平台」这一条信息。
+          // 底部：支持的两个平台 + 版本号。
+          //
+          // 版本号 V2.4.6 一度去掉、V2.4.7 按用户要求放回**原来的位置**
+          // （侧边栏底栏）。它是用户报问题时要报的第一个信息，藏在设置页
+          // 里等于没有。
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.all(16),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.android, size: 14, color: theme.hintColor),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Icon(Icons.apple, size: 14, color: theme.hintColor),
+                const Spacer(),
+                Text(
+                  AppSidebar._versionText(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor,
+                    fontSize: 11,
+                  ),
+                ),
               ],
             ),
           ),
@@ -133,16 +155,33 @@ class _ExpandedSidebar extends StatelessWidget {
     );
   }
 
-  /// 头部只留 logo。
+  /// 头部：logo + **应用名（在 logo 右边）**。
   ///
-  /// 早先这里是「logo + AppInfoTool + 应用包分析工具」两行 —— 而应用名在
-  /// 窗口标题栏上已经有了，副标题对老用户也是纯噪音；在 200px 的窄栏里，
-  /// 这一块还要吃掉约 60px 的高度。去掉之后侧边栏顶部干净，纵向空间还给
-  /// 导航项。
+  /// V2.4.6 一度把应用名整块去掉（理由：窗口标题栏上已经有了），V2.4.7 按
+  /// 用户要求加回来，但**只留名字那一行**：副标题「应用包分析工具」仍然是
+  /// 纯噪音，在 200px 的窄栏里还要多吃一行高度。logo 也从 36 收到 32，
+  /// 让「logo + 名字」整体与导航项的左边缘对齐得更好看。
   Widget _buildExpandedLogo(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(20, 24, 20, 8),
-      child: AppLogo(size: 36),
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 22, 16, 6),
+      child: Row(
+        children: [
+          const AppLogo(size: 32),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              t.title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -201,11 +240,21 @@ class _CompactSidebar extends StatelessWidget {
               },
             ),
           ),
-          // 底部：紧凑模式下什么都不放。
-          //
-          // 早先这里是一行竖排的版本号 —— 64px 宽的栏里它占掉整块底边，
-          // 而版本号在设置页已经有一份。留白比一个旋转 90° 的字符串好读。
-          const SizedBox(height: 16),
+          // 底部：版本号（竖排）。64px 宽的栏里这是唯一放得下的形态，
+          // 与展开模式一样是「底栏里的版本号」。
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Text(
+                AppSidebar._versionText(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

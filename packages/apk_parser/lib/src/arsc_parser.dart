@@ -49,6 +49,12 @@ class ArscParser {
   /// 通过资源 ID 获取字符串值
   /// [resourceId] 格式: 0xPPTTEEEE
   /// [locale] 可选的 locale 过滤 (如 "zh-CN", "en")
+  /// 全局字符串池（`resources.arsc` 里的那一张）。
+  ///
+  /// 暴露出来是为了让「从字符串池里找某个事实」的检查（ICP 备案号就是一条）
+  /// 不必自己再解一遍 arsc —— 那正是本类已经做过的事。解析失败时为 `null`。
+  StringPool? get globalStringPool => _globalStringPool;
+
   String? getStringValue(int resourceId, {String? locale}) {
     final packageId = (resourceId >> 24) & 0xFF;
     final typeId = (resourceId >> 16) & 0xFF;

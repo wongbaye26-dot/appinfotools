@@ -10,6 +10,7 @@
 // 2. 窗口矮的时候网格按约定收起，而不是把统计与最近文件挤没；
 // 3. Hero 区里每个字段都带复制入口，并且复制真的写进剪贴板。
 
+import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
@@ -39,7 +40,25 @@ FileState _state() => const FileState(
           'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     );
 
-Future<void> _pump(WidgetTester tester, Size size) async {
+/// 一个「字段齐全」的状态：应用名 / 版本 / 构建号 / 最低系统 / targetSdk /
+/// SHA-256 / SHA-1 / MD5 —— 共 8 项候选，用来验证网格只取前 6 项。
+FileState _fullState() => FileState(
+      filePath: '/tmp/samples/demo-1.2.3.apk',
+      fileSize: 42465437,
+      md5Hash: 'd41d8cd98f00b204e9800998ecf8427e',
+      sha1Hash: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
+      sha256Hash:
+          'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      apkInfo: ApkInfo()
+        ..packageName = 'com.example.demo'
+        ..label = 'Demo'
+        ..versionName = '1.2.3'
+        ..versionCode = 45
+        ..sdkVersion = 24
+        ..targetSdkVersion = 34,
+    );
+
+Future<void> _pump(WidgetTester tester, Size size, {FileState? state}) async {
   SharedPreferences.setMockInitialValues(
       <String, Object>{'recent_files': '[]'});
   await Config.init();
@@ -51,7 +70,11 @@ Future<void> _pump(WidgetTester tester, Size size) async {
 
   final container = ProviderContainer();
   addTearDown(container.dispose);
-  container.read(currentFileStateProvider.notifier).update(_state());
+  final effective = state ?? _state();
+  container.read(currentFileStateProvider.notifier).update(effective);
+  // 概览页的应用名 / 版本 / 构建号等读的是**独立的** `currentApkInfoProvider`，
+  // 不是 `FileState.apkInfo` —— 只设 FileState 的话这些字段全是空的。
+  container.read(currentApkInfoProvider.notifier).update(effective.apkInfo);
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -153,6 +176,48 @@ void main() {
   // 动机是实测出来的：网格在矮窗口下会整块收起（见上一组），而「这个包在
   // 磁盘上哪儿 / 我要改个名」恰好在最小窗口下看不见。路径与重命名入口
   // 都必须**任何尺寸都在**。
+  // V2.4.7：详细信息网格最多 6 项（用户要求，由我们挑）。
+  //
+  // 选的是「打开一个包时最常被复制走的那几项」，去掉的是 SHA-1 与 MD5 ——
+  // SHA-256 是现在的通用口径。它们在分析页与导出的报告里仍然都在。
+  group('详细信息网格最多 6 项', () {
+    testWidgets('字段齐全时正好显示 6 项，且丢掉的是 SHA-1 / MD5', (tester) async {
+      await _pump(tester, _defaultWindow, state: _fullState());
+
+      final text = _visibleText(tester);
+      // 保留的 6 项
+      expect(text, contains(t.overview.field_file_name));
+      expect(text, contains(t.overview.field_version));
+      expect(text, contains(t.overview.field_build));
+      expect(text, contains(t.overview.field_min_sdk));
+      expect(text, contains(t.file_info.sha256));
+      expect(text, contains(t.overview.field_target_sdk));
+      // 被丢掉的
+      expect(text, isNot(contains(t.file_info.sha1)));
+      expect(text, isNot(contains(t.file_info.md5)));
+    });
+
+    testWidgets('网格里的单元数不超过上限', (tester) async {
+      await _pump(tester, _defaultWindow, state: _fullState());
+
+      // 每个单元都带一个复制按钮，因此数复制按钮即可（Hero 里另有若干，
+      // 所以这里用「网格那段」的范围来数）。
+      final grid = find.ancestor(
+        of: find.text(t.overview.field_details),
+        matching: find.byType(Column),
+      );
+      final cells = find.descendant(
+        of: grid.first,
+        matching: find.byIcon(Icons.content_copy),
+      );
+      expect(
+        cells.evaluate().length,
+        lessThanOrEqualTo(OverviewPage.maxDetailCells),
+        reason: '详细信息网格最多 ${OverviewPage.maxDetailCells} 项',
+      );
+    });
+  });
+
   group('Hero 的文件路径行常驻且可重命名', () {
     for (final entry in {
       '最小窗口': _minWindow,

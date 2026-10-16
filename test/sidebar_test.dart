@@ -13,6 +13,7 @@
 
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ui/shell/sidebar.dart';
+import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -76,28 +77,49 @@ void main() {
       expect(t.nav.diff, isNot(contains('Version')));
     });
 
-    testWidgets('不再显示应用名与副标题', (tester) async {
+    testWidgets('应用名显示在 logo 右边', (tester) async {
       await _pumpSidebar(tester, const Size(1280, 800));
-      final text = _text(tester);
 
-      expect(text, isNot(contains(t.title)), reason: '应用名已经在窗口标题栏上，侧边栏不该再说一遍');
-      expect(text, isNot(contains(t.base.app_subtitle)),
+      final nameFinder = find.text(t.title);
+      expect(nameFinder, findsOneWidget, reason: '侧边栏要显示应用名');
+
+      // 「在 logo 右边」是可断言的：应用名的左边缘在 logo 右边缘之后，
+      // 且两者在同一行（垂直中心对齐）。
+      final logo = tester.getRect(find.byType(AppLogo).first);
+      final name = tester.getRect(nameFinder);
+      expect(
+        name.left,
+        greaterThan(logo.right - 4),
+        reason: '应用名应当在 logo 右边（logo=$logo name=$name）',
+      );
+      expect(
+        name.center.dy,
+        closeTo(logo.center.dy, logo.height / 2),
+        reason: '两者应当在同一行',
+      );
+    });
+
+    testWidgets('副标题仍然不显示', (tester) async {
+      await _pumpSidebar(tester, const Size(1280, 800));
+      expect(_text(tester), isNot(contains(t.base.app_subtitle)),
           reason: '副标题是纯噪音，还占掉窄栏的纵向空间');
     });
 
-    testWidgets('不再显示版本号', (tester) async {
+    testWidgets('平台图标与版本号回到侧边栏底栏', (tester) async {
+      // `packageInfo` 在单元测试里没初始化，`_versionText()` 返回空串 ——
+      // 因此这里不断言版本号的文字，只断言「底栏那一行」确实在底部。
       await _pumpSidebar(tester, const Size(1280, 800));
 
-      // 版本号在设置页有一份；侧边栏底部此前还有一份（紧凑模式下甚至是竖排的）。
-      // 这里断言没有任何 `v<数字>` 形态的文本。
-      final versionLike = RegExp(r'^v\d+\.\d+');
-      for (final w in tester.widgetList<Text>(find.byType(Text))) {
-        expect(
-          versionLike.hasMatch(w.data ?? ''),
-          isFalse,
-          reason: '侧边栏不该出现版本号：${w.data}',
-        );
-      }
+      final icons = find.byIcon(Icons.android);
+      expect(icons, findsWidgets, reason: '底栏要保留平台图标');
+
+      final sidebarHeight = tester.getSize(find.byType(AppSidebar)).height;
+      final bottomRow = tester.getRect(icons.first);
+      expect(
+        bottomRow.center.dy,
+        greaterThan(sidebarHeight - 60),
+        reason: '平台图标（与版本号同行）应当贴近侧边栏底部',
+      );
     });
   });
 }

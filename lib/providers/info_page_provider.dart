@@ -217,6 +217,8 @@ class FileState {
       splitApks: info.isXapk ? info.splitApks : null,
       obbFiles: info.isXapk ? info.obbFiles : null,
       components: info.components,
+      // ICP 备案号：解析器从 `resources.arsc` 字符串池里扫出来的。
+      icpFilings: info.icpFilings,
       hardeningObservations: info.hardeningObservations,
       // 空结构等于「没收集到」，传 null 而不是一个空对象，
       // 免得下游把「没数据」渲染成「有数据但全是 0」。

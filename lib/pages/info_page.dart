@@ -1516,6 +1516,23 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             child: _buildLabelLocaleMenu(apkInfo),
           ),
         ),
+      // ICP 备案号（工信部要求应用在界面展示的那一串）。
+      //
+      // **取不到就整行不显示**：`absent` 的语义是「扫过字符串池、包里确实
+      // 没有」，不是「我们没读到」—— 显示一个空值会让用户以为这项检查失败了。
+      // 放在「应用信息」组里、Hero 卡片之后：它是应用的身份信息，不是文件的。
+      if (fileState.analysis?.android?.icpFiling.hasValue ?? false)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.icp_filing,
+          value: _androidField(
+            fileState.analysis?.android?.icpFiling,
+            (v) => '$v',
+          ),
+          selectable: true,
+          minLines: 1,
+          maxLines: 3,
+        )),
       // ===== 文件信息 =====
       _SectionHeader(title: t.file_info.group, tab: DetailTab.overview),
       Card(

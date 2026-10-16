@@ -81,14 +81,50 @@ const List<CodeMarker> codeMarkers = [
       'Bugly crash reporting SDK', 'com.tencent.bugly'),
 ];
 
+/// 每个标记是否**必须**同时比「原文」与「归一化文本」，下标与 [codeMarkers]
+/// 一一对应。
+///
+/// 判据是字面量里有没有 `.`：
+///
+/// - **没有 `.` 的标记比一次就够。** 归一化只把 `/` 换成 `.`；标记里既然没有
+///   `.`，替换就不可能凭空造出一个匹配，也不会破坏原有匹配（能匹配上的那些
+///   字符位置本来就不是 `/`）。因此原文与归一化文本对它**结论相同**。
+/// - **含 `/` 的标记（`multipart/form-data`）只可能命中原文** —— 归一化之后
+///   `/` 已经不存在了。
+/// - **含 `.` 的标记才需要比两次**：归一化会把 `Lcom/google/mlkit/…` 变成
+///   `Lcom.google.mlkit.…`，正是这类标记要抓的形态。
+///
+/// 23 个标记里有 16 个属于第一类，每个文本因此少跑 16 次子串搜索。在真实大包
+/// 上这个函数会被调用上千万次（343 MB 的 APK 光 `method_ids` 就有 287 万条），
+/// 这一项就是几秒钟。
+final List<bool> _needsNormalized = [
+  for (final marker in codeMarkers) marker.literal.contains('.'),
+];
+
 /// 找出 [text] 命中的标记（把 `/` 归一成 `.` 后再比）。
 ///
 /// 两个扫描器共用这一份匹配逻辑，避免「同一段文本在两边命中不同的标记」。
+/// 返回值**保持 [codeMarkers] 的顺序**（调用方目前不依赖顺序，但顺序稳定能
+/// 免掉一整类难查的差异）。
 List<CodeMarker> matchCodeMarkers(String text) {
-  final normalized = text.replaceAll('/', '.');
-  return [
-    for (final marker in codeMarkers)
-      if (text.contains(marker.literal) || normalized.contains(marker.literal))
-        marker,
-  ];
+  // 没有斜杠时归一化就是原文 —— 省掉一次分配与一遍扫描。
+  // 字符串线索那一路（`DexClueScanner`）大量不带斜杠。
+  final hasSlash = text.contains('/');
+  final normalized = hasSlash ? text.replaceAll('/', '.') : text;
+
+  List<CodeMarker>? out;
+  for (var i = 0; i < codeMarkers.length; i++) {
+    final marker = codeMarkers[i];
+    final literal = marker.literal;
+    final bool hit;
+    if (_needsNormalized[i]) {
+      hit = text.contains(literal) || normalized.contains(literal);
+    } else {
+      hit = text.contains(literal);
+    }
+    if (hit) (out ??= <CodeMarker>[]).add(marker);
+  }
+  // 没命中时返回 `const []`：这个函数在真实大包上会被调用几百万次，
+  // 每次都分配一个空列表是纯浪费。
+  return out ?? const <CodeMarker>[];
 }

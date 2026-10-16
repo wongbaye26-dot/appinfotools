@@ -868,6 +868,7 @@ void _applyMetaToApkInfo(apk_parser.ApkMeta meta, ApkInfo apkInfo) {
   apkInfo.densities = meta.densities.map((d) => d.toString()).toList();
   apkInfo.hasNightMode = meta.hasNightMode;
   apkInfo.uiModeTypes = meta.uiModeTypes;
+  apkInfo.icpFilings = List.of(meta.icpFilings);
 
   // 从 arsc 解析的图标路径填充 icons map
   meta.iconPaths.forEach((dpi, iconPath) {
@@ -1057,6 +1058,13 @@ class ApkInfo {
       const apk_parser.ContainerStructure();
   String? label;
   String? mainIconPath; // 主图标路径
+  /// **ICP 备案号**（工信部要求应用在界面展示的那一串）。
+  ///
+  /// 由内置解析器从 `resources.arsc` 的字符串池里扫出来（见 `IcpFilingScanner`）。
+  /// 走 aapt2 的分包路径拿不到它 —— 那条路不解析 arsc，此时是空列表，
+  /// 界面据此**不显示这一行**（而不是显示一个空值）。
+  List<String> icpFilings = [];
+
   Image? mainIconImage;
   List<IconCandidate> iconCandidates = [];
   Map<String, String> labels = {};
