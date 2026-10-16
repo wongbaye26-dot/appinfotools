@@ -213,7 +213,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             // 这一段实测能拿回 16px。
             final gap = compact ? 10.0 : 20.0;
             final pad = compact ? 16.0 : 24.0;
-            // 网格能吃多少高度，由窗口高度决定（见 _chromeHeightEstimate）。
+            // 网格「显不显示」由窗口高度决定（门槛见 _detailGridMaxHeight）。
             final gridHeight = (constraints.maxHeight - _chromeHeightEstimate)
                 .clamp(0.0, _detailGridMaxHeight);
 
@@ -232,8 +232,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     // 就在這個位置，四个页面因此是同一个路数。
                     //
                     // 它们原先竖排挤在 Hero 里（把「四个状态卡片」顶出首屏）。
-                    // 竖排那一列比左侧文字列还高，Hero 因此多出约 10px；
-                    // 概览页是固定一屏布局，这 10px 直接从底部「最近文件」里扣。
+                    // 竖排那一列比左侧文字列还高 —— 实测最小窗口下 Hero 因此
+                    // 多出 56px（392 → 336），而概览页是固定一屏布局，
+                    // 这 56px 直接从底部「最近文件」里扣。
                     //
                     // 「查看详情 / 导出报告」在没有文件时置灰，与版本对比页
                     // 「没选两个包时导出按钮置灰」同一条口径。
