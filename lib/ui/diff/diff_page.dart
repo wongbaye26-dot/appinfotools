@@ -9,6 +9,8 @@ import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/diff_labels.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/widgets/export_diff_dialog.dart';
+import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
+import 'package:apk_info_tool/widgets/platform_tag.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -533,6 +535,61 @@ class _KindBadge extends StatelessWidget {
   }
 }
 
+/// 槽位里的应用图标。
+///
+/// 与概览页的 Hero 一样按**平台**分两条渲染路径：Android 用已经渲染好的
+/// `dart:ui.Image`，iOS 用图标候选（CgBI 由 `IosIconDecoder` 规范化）。
+///
+/// 取不到时退回平台通用图标，**不留空白框** —— 空白框会被读成「这个包没有
+/// 图标」，而真相是「我们还没拿到」。
+class _SlotIcon extends StatelessWidget {
+  final FileState state;
+  final bool isIos;
+
+  const _SlotIcon({required this.state, required this.isIos});
+
+  static const double _side = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final apkIcon = state.apkInfo?.mainIconImage;
+    final iosCandidate = state.ipaAnalysis?.icon?.candidates.firstOrNull;
+
+    return Container(
+      width: _side,
+      height: _side,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(_side * 0.2237),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.15)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: isIos
+          ? (iosCandidate != null
+              ? IosIconImage(candidate: iosCandidate, size: _side)
+              : _fallback(theme, Icons.apple))
+          : (apkIcon != null
+              ? RawImage(
+                  image: apkIcon,
+                  // cover 而不是 contain：源图不是正方形时 contain 会在两侧
+                  // 露出底色，看起来像一圈黑边（与概览页 Hero 同一条取舍）。
+                  fit: BoxFit.cover,
+                )
+              : _fallback(theme, Icons.android)),
+    );
+  }
+
+  Widget _fallback(ThemeData theme, IconData icon) => Center(
+        child: Icon(
+          icon,
+          size: 22,
+          color: theme.hintColor.withValues(alpha: 0.4),
+        ),
+      );
+}
+
 /// 一个文件槽：显示已选的包，或「选择应用包」。
 class _SlotCard extends StatelessWidget {
   final String label;
@@ -553,6 +610,7 @@ class _SlotCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final analysis = state?.analysis;
+    final isIos = analysis?.platform == PackagePlatform.ios;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -573,21 +631,51 @@ class _SlotCard extends StatelessWidget {
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.hintColor),
               )
-            else ...[
-              Text(
-                analysis.fileName.value ?? state!.filePath ?? '',
-                style: theme.textTheme.titleSmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            else
+              // 图标 + 文件名 + 平台 + 元信息。
+              //
+              // 图标是**用户分辨「左边这个是哪一个」最快的一眼** —— 差异页
+              // 此前只有文件名和一行元信息，两个版本的包名又常常长得极像
+              // （`xxx-1.4.1.apk` / `xxx-1.4.2.apk`）。平台标签同样必要：
+              // 本页只允许同平台比较，但用户仍要知道「现在比的是 iOS 还是
+              // Android」。
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SlotIcon(state: state!, isIos: isIos),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                analysis.fileName.value ??
+                                    state!.filePath ??
+                                    '',
+                                style: theme.textTheme.titleSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            PlatformTag(platform: analysis.platform),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _slotSubtitle(analysis, state!.fileSize),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.hintColor),
+                          maxLines: 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                _slotSubtitle(analysis, state!.fileSize),
-                style:
-                    theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-                maxLines: 2,
-              ),
-            ],
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,

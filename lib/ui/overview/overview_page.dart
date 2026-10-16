@@ -9,6 +9,7 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
+import 'package:apk_info_tool/utils/architecture_label.dart';
 import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -16,9 +17,12 @@ import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
+import 'package:apk_info_tool/widgets/arch_badge.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
+import 'package:apk_info_tool/widgets/platform_tag.dart';
+import 'package:apk_info_tool/widgets/rename_file_dialog.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -465,38 +469,10 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final title = appName.isNotEmpty ? appName : fileName;
 
     // 架构位数（从 Mach-O / ABI 推断）。
-    final String? architectureLabel;
-    if (isIos) {
-      final macho = analysis?.ios?.executable;
-      if (macho != null && macho.images.isNotEmpty) {
-        final has64 = macho.images.any((img) => img.is64Bit);
-        final has32 = macho.images.any((img) => !img.is64Bit);
-        if (has64 && has32) {
-          architectureLabel = '64/32-bit';
-        } else if (has64) {
-          architectureLabel = '64-bit';
-        } else {
-          architectureLabel = '32-bit';
-        }
-      } else {
-        architectureLabel = null;
-      }
-    } else {
-      final abis = analysis?.android?.structure?.abis ?? [];
-      if (abis.isNotEmpty) {
-        final has64 = abis.any((a) => a.contains('64'));
-        final has32 = abis.any((a) => !a.contains('64'));
-        if (has64 && has32) {
-          architectureLabel = '64/32-bit';
-        } else if (has64) {
-          architectureLabel = '64-bit';
-        } else {
-          architectureLabel = '32-bit';
-        }
-      } else {
-        architectureLabel = null;
-      }
-    }
+    //
+    // 判定只有一份实现（`architectureLabelOf`）—— 详情页的应用信息卡也要
+    // 显示同一项，两处各写一遍迟早会分叉。
+    final architectureLabel = architectureLabelOf(analysis);
 
     final (String signatureText, Color signatureColor) =
         _signatureStatus(fileState, analysis, isIos);
@@ -570,7 +546,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                           ),
                           if (architectureLabel != null) ...[
                             const SizedBox(width: 8),
-                            _ArchChip(label: architectureLabel),
+                            ArchBadge(label: architectureLabel),
                           ],
                           if (filePath.isNotEmpty) ...[
                             const SizedBox(width: 10),
@@ -876,135 +852,27 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
   }
 
-  /// 文件路径字段旁的重命名按钮 —— 见 [_FilePathLine]。
+  /// 弹出重命名对话框（入口在 Hero 的文件路径行上，见 [_FilePathLine]）。
   ///
-  /// 弹出重命名对话框。
-  ///
-  /// 与分析页保持一致：默认文件名按「应用名-版本号.后缀」生成，
-  /// 并提供「默认名称 / 仅应用名 / 名称+版本号」三个快捷按钮。
-  void _showRenameDialog({
+  /// 对话框本身只有一份实现（`showRenameFileDialog`），与分析页共用 ——
+  /// 此前两页各写一个长得不一样的 `AlertDialog`。
+  Future<void> _showRenameDialog({
     required String filePath,
     required String displayName,
     required String versionName,
-  }) {
-    final file = File(filePath);
-    final extension = p.extension(filePath).toLowerCase();
-    final targetExtension = extension.isNotEmpty
-        ? extension
-        : (filePath.toLowerCase().endsWith('.ipa') ? '.ipa' : '.apk');
-    final defaultName = '$displayName-$versionName$targetExtension';
-
-    final controller = TextEditingController(
-      text: displayName.isNotEmpty && versionName.isNotEmpty
-          ? defaultName
-          : p.basename(filePath),
+  }) async {
+    final result = await showRenameFileDialog(
+      context,
+      filePath: filePath,
+      displayName: displayName,
+      versionName: versionName,
     );
-    final formKey = GlobalKey<FormFieldState<String>>();
-    final localT = t;
+    if (!mounted || result == null) return;
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        final navigator = Navigator.of(dialogContext, rootNavigator: true);
-        final messenger = ScaffoldMessenger.of(dialogContext);
-
-        return AlertDialog(
-          title: Text(localT.rename.rename_file),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: controller,
-                decoration: InputDecoration(
-                  labelText: localT.rename.new_file_name,
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return localT.rename.name_cannot_be_empty;
-                  }
-                  final lower = value.toLowerCase();
-                  final valid = lower.endsWith('.apk') ||
-                      lower.endsWith('.xapk') ||
-                      lower.endsWith('.apkm') ||
-                      lower.endsWith('.apks') ||
-                      lower.endsWith('.ipa');
-                  if (!valid) {
-                    return localT.rename.must_end_with_apk;
-                  }
-                  return null;
-                },
-                key: formKey,
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => controller.text = defaultName,
-                    child: Text(localT.rename.default_name),
-                  ),
-                  OutlinedButton(
-                    onPressed: () =>
-                        controller.text = '$displayName$targetExtension',
-                    child: Text(localT.rename.app_name_only),
-                  ),
-                  OutlinedButton(
-                    onPressed: () => controller.text =
-                        '$displayName-v$versionName$targetExtension',
-                    child: Text(localT.rename.name_with_version),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: navigator.pop,
-              child: Text(localT.base.cancel),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (!(formKey.currentState?.validate() ?? false)) return;
-
-                // 三级回退（就地改名 → 复制+删除 → 保存对话框）都封在
-                // `renameFile` 里：macOS 沙箱只授予「用户选中的那个文件」的
-                // 写权限，不含它所在的目录，前两条都会 EPERM 失败。
-                final result = await renameFile(
-                  file,
-                  newName: controller.text,
-                  saveDialogTitle: localT.rename.rename_file,
-                );
-
-                if (!mounted) return;
-
-                switch (result.outcome) {
-                  case RenameOutcome.cancelled:
-                    return;
-                  case RenameOutcome.failed:
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content:
-                            Text('${localT.rename.failed}: ${result.error}'),
-                      ),
-                    );
-                    return;
-                  case RenameOutcome.renamed:
-                  case RenameOutcome.savedElsewhere:
-                    // 更新当前文件状态为新路径，触发重新解析。
-                    _openFile(result.path!, navigate: false);
-                    navigator.pop();
-                    messenger.showSnackBar(
-                      SnackBar(content: Text(localT.rename.success)),
-                    );
-                }
-              },
-              child: Text(localT.base.confirm),
-            ),
-          ],
-        );
-      },
-    );
+    // 提示文案三态统一（见 `reportRenameOutcome`）；这里只决定**重新打开**
+    // 的方式：概览页留在原地更新状态卡片，不跳分析页。
+    final newPath = reportRenameOutcome(context, result);
+    if (newPath != null) _openFile(newPath, navigate: false);
   }
 
   /// 详细信息网格 —— 每个值都能一键复制。
@@ -1652,34 +1520,6 @@ class _HeaderActionButton extends StatelessWidget {
   }
 }
 
-/// Hero 区平台标识旁的小标签：64-bit / 32-bit / 64/32-bit。
-class _ArchChip extends StatelessWidget {
-  final String label;
-
-  const _ArchChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: colorScheme.primary,
-        ),
-      ),
-    );
-  }
-}
-
 /// Hero 区里的「文件路径」行：路径 + 复制 + 重命名。
 ///
 /// **为什么用 `Text` 而不是 `SelectableText`**：`SelectableText` 的
@@ -2090,19 +1930,10 @@ class _RecentFileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAndroid = entry.platform == 'android';
-    final isIos = entry.platform == 'ios';
-
-    final platformLabel = isAndroid
-        ? 'Android'
-        : isIos
-            ? 'iOS'
-            : '—';
-    final platformColor = isAndroid
-        ? Colors.green
-        : isIos
-            ? Colors.grey
-            : theme.hintColor;
+    // 平台判断只在这里发生一次：`PlatformTag` 负责「字符串 → 枚举 → 文案与
+    // 颜色」，本地不再写 `== 'android'` 这类判断。
+    final platform = PlatformTag.fromId(entry.platform).platform;
+    final platformColor = PlatformTag.colorOf(platform, theme);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -2124,11 +1955,11 @@ class _RecentFileTile extends StatelessWidget {
               children: [
                 _RecentFileIcon(
                   iconFile: entry.iconFile,
-                  fallback: isAndroid
-                      ? Icons.android
-                      : isIos
-                          ? Icons.apple
-                          : Icons.insert_drive_file,
+                  fallback: switch (platform) {
+                    PackagePlatform.android => Icons.android,
+                    PackagePlatform.ios => Icons.apple,
+                    PackagePlatform.unknown => Icons.insert_drive_file,
+                  },
                   fallbackColor: platformColor,
                 ),
                 const SizedBox(width: 12),
@@ -2150,10 +1981,7 @@ class _RecentFileTile extends StatelessWidget {
                         children: [
                           // 平台是**文字**，不只是颜色 —— 只靠颜色区分在
                           // 色觉障碍下等于没有区分（与详情页同一条约定）。
-                          _PlatformTag(
-                            label: platformLabel,
-                            color: platformColor,
-                          ),
+                          PlatformTag(platform: platform),
                           const SizedBox(width: 6),
                           Flexible(
                             child: Text(
@@ -2267,35 +2095,6 @@ class _RecentFileIconState extends State<_RecentFileIcon> {
                 ),
               ),
             ),
-    );
-  }
-}
-
-/// 最近文件行里的平台标签。
-class _PlatformTag extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _PlatformTag({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
     );
   }
 }

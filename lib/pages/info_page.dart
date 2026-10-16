@@ -20,12 +20,12 @@ import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
+import 'package:apk_info_tool/utils/architecture_label.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
-import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/format.dart';
@@ -42,6 +42,7 @@ import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
+import 'package:apk_info_tool/widgets/rename_file_dialog.dart';
 import 'package:apk_info_tool/widgets/security_finding_card.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -626,34 +627,42 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     String field(FieldValue<Object?> value) =>
         FieldValueText.describe(value, t);
 
-    // ===== 文件信息 =====
-    cards.add(
-        _SectionHeader(title: t.ios_info.group_file, tab: DetailTab.overview));
+    // 平台标识放在最前：两页版式一致，这一行是用户分辨自己在看哪个平台的
+    // 第一眼依据。
     cards.add(_buildPlatformRow(fileState));
-    cards.add(card(t.file_info.file, fileState.filePath ?? '-',
-        end: _buildFileActionMenu()));
-    cards.add(card(
-      t.file_info.size,
-      fileState.fileSize != null
-          ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
-          : "",
-    ));
 
+    // 还没解析出结果时，「应用信息」无从谈起，但**文件信息是事实** ——
+    // 路径与大小在解析之前就已经知道了，照常显示。
     if (parsed == null || result == null || ios == null) {
+      cards.add(
+          _SectionHeader(title: t.file_info.group, tab: DetailTab.overview));
+      cards.add(card(t.file_info.file, fileState.filePath ?? '-',
+          end: _buildFileActionMenu()));
+      cards.add(card(
+        t.file_info.size,
+        fileState.fileSize != null
+            ? "${formatFileSize(fileState.fileSize)}"
+                " (${fileState.fileSize} Bytes)"
+            : "",
+      ));
       cards.add(card(t.ios_info.section, t.ios_info.unavailable));
       return cards;
     }
+
+    // ===== 应用信息（归入「概览」，与 Android 侧对齐）=====
+    //
+    // **应用信息排在文件信息之前**（V2.4.6 调换）：用户打开一个包，第一眼
+    // 要找的是「这是哪个应用、什么版本」，而不是「它在磁盘上的路径」——
+    // 后者是排查时才需要的。Hero 卡片因此紧跟在平台行之后。
+    cards.add(
+        _SectionHeader(title: t.ios_info.group_app, tab: DetailTab.overview));
 
     // 容器里没有 `Payload/*.app` 时，后面每一项都会是「-」
     if (ios.mainApp == null) {
       cards.add(card(t.ios_info.unavailable, t.ios_info.no_main_app));
     }
 
-    // ===== 应用信息（归入「概览」，与 Android 侧对齐）=====
-    cards.add(
-        _SectionHeader(title: t.ios_info.group_app, tab: DetailTab.overview));
-
-    // Hero 卡片：大图标 + 应用名 + Bundle ID + 版本
+    // Hero 卡片：大图标 + 应用名 + Bundle ID + 版本 + 架构位数
     //
     // 复制按钮**放进卡片里**（`trailing`）。早先它被 `Align` 贴在卡片下面，
     // 于是界面上是一个孤零零的复制图标飘在空白处，看不出属于哪一项。
@@ -662,11 +671,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       bundleId: field(ios.bundleIdentifier),
       version: ios.shortVersion.hasValue ? '${ios.shortVersion.value}' : '',
       buildNumber: ios.buildNumber.hasValue ? '${ios.buildNumber.value}' : '',
+      architectureLabel: architectureLabelOf(result),
       icon: ios.icon,
       trailing: CopyIconButton(
         text: ios.bundleIdentifier.value ?? '',
         iconSize: 16,
       ),
+    ));
+
+    // ===== 文件信息 =====
+    cards
+        .add(_SectionHeader(title: t.file_info.group, tab: DetailTab.overview));
+    cards.add(card(t.file_info.file, fileState.filePath ?? '-',
+        end: _buildFileActionMenu()));
+    cards.add(card(
+      t.file_info.size,
+      fileState.fileSize != null
+          ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
+          : "",
     ));
 
     // ===== 应用详情（归入「应用」Tab，与 Android 侧对齐）=====
@@ -1459,25 +1481,18 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 平台标识同样放在最前：两页版式一致，这一行是用户
       // 分辨自己在看哪个平台的第一眼依据。
       _buildPlatformRow(fileState),
-      Card(
-          child: TitleValueLayout(
-              title: t.file_info.file,
-              value: fileState.filePath ?? '-',
-              end: _buildFileActionMenu())),
-      Card(
-          child: TitleValueLayout(
-        title: t.file_info.size,
-        value: fileState.fileSize != null
-            ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
-            : "",
-      )),
       // ===== 应用信息 =====
+      //
+      // **应用信息排在文件信息之前**（V2.4.6 调换，与 iOS 侧一致）：用户
+      // 打开一个包，第一眼要找的是「这是哪个应用、什么版本」，而不是「它在
+      // 磁盘上的路径」—— 后者是排查时才需要的。
       _SectionHeader(title: t.apk_info.group_app, tab: DetailTab.overview),
       AndroidHeroCard(
         appName: _getDisplayLabel(apkInfo) ?? '-',
         packageName: apkInfo?.packageName ?? '',
         versionName: apkInfo?.versionName ?? '',
         versionCode: '${apkInfo?.versionCode ?? ''}',
+        architectureLabel: architectureLabelOf(fileState.analysis),
         icon: apkInfo?.mainIconImage,
         // 候选图标切换与图标导出原先挂在版本栏那张独立图标卡上。
         // 图标去重后只剩 Hero 卡片这一处，能力因此挪到这里。
@@ -1501,6 +1516,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             child: _buildLabelLocaleMenu(apkInfo),
           ),
         ),
+      // ===== 文件信息 =====
+      _SectionHeader(title: t.file_info.group, tab: DetailTab.overview),
+      Card(
+          child: TitleValueLayout(
+              title: t.file_info.file,
+              value: fileState.filePath ?? '-',
+              end: _buildFileActionMenu())),
+      Card(
+          child: TitleValueLayout(
+        title: t.file_info.size,
+        value: fileState.fileSize != null
+            ? "${formatFileSize(fileState.fileSize)}"
+                " (${fileState.fileSize} Bytes)"
+            : "",
+      )),
       // ===== 应用详情（归入「应用」Tab，与 iOS 侧对齐）=====
       _SectionHeader(
           title: t.detail_tab.application, tab: DetailTab.application),
@@ -1759,13 +1789,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
-  void _showRenameDialog() {
+  /// 弹出重命名对话框（入口在「文件信息 → 文件」那一行的菜单里）。
+  ///
+  /// 对话框本体与分析页共用一份实现（`showRenameFileDialog`），这里只负责
+  /// 准备「应用名 / 版本号」两个默认名的输入，以及改名成功后的重新打开方式。
+  Future<void> _showRenameDialog() async {
     final state = ref.read(currentFileStateProvider);
     final filePath = state.filePath;
     if (filePath == null) return;
-
-    final isIpa = _looksLikeIpa(filePath);
-    final isApk = !isIpa;
 
     // 从 APK 或 IPA 解析结果中提取应用名与版本号。
     //
@@ -1773,17 +1804,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 「点了没反应」—— 解析还没跑完、或解析失败时都会命中这条路径。
     final String displayName;
     final String versionName;
-    if (isApk) {
-      final apkInfo = ref.read(currentApkInfoProvider);
-      if (apkInfo == null) {
-        _toastRenameNotReady();
-        return;
-      }
-      // 改名默认名里「拿不到名字」就是空串（`'-.apk'` 也好过 `'null-.apk'`）——
-      // 与界面上渲染 `-` 是两种不同的表达，各取所需。
-      displayName = _getDisplayLabel(apkInfo) ?? '';
-      versionName = apkInfo.versionName ?? '';
-    } else {
+    if (_looksLikeIpa(filePath)) {
       final ipa = state.ipaAnalysis;
       if (ipa == null) {
         _toastRenameNotReady();
@@ -1793,118 +1814,30 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           ipa.infoPlist?.bundleIdentifier.value ??
           '';
       versionName = ipa.infoPlist?.shortVersionString.value ?? '';
+    } else {
+      final apkInfo = ref.read(currentApkInfoProvider);
+      if (apkInfo == null) {
+        _toastRenameNotReady();
+        return;
+      }
+      // 改名默认名里「拿不到名字」就是空串（`'-.apk'` 也好过 `'null-.apk'`）——
+      // 与界面上渲染 `-` 是两种不同的表达，各取所需。
+      displayName = _getDisplayLabel(apkInfo) ?? '';
+      versionName = apkInfo.versionName ?? '';
     }
 
-    final extension = path.extension(filePath).toLowerCase();
-    final targetExtension =
-        extension.isNotEmpty ? extension : (isApk ? '.apk' : '.ipa');
-    final defaultName = '$displayName-$versionName$targetExtension';
-
-    final controller = TextEditingController(text: defaultName);
-    final formKey = GlobalKey<FormFieldState<String>>();
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(t.rename.rename_file),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: t.rename.new_file_name,
-                suffixText: '',
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return t.rename.name_cannot_be_empty;
-                }
-                final lower = value.toLowerCase();
-                final valid = lower.endsWith('.apk') ||
-                    lower.endsWith('.xapk') ||
-                    lower.endsWith('.apkm') ||
-                    lower.endsWith('.apks') ||
-                    lower.endsWith('.ipa');
-                if (!valid) {
-                  return t.rename.must_end_with_apk;
-                }
-                return null;
-              },
-              key: formKey,
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton(
-                  onPressed: () {
-                    controller.text = defaultName;
-                  },
-                  child: Text(t.rename.default_name),
-                ),
-                OutlinedButton(
-                  onPressed: () {
-                    controller.text = '$displayName$targetExtension';
-                  },
-                  child: Text(t.rename.app_name_only),
-                ),
-                OutlinedButton(
-                  onPressed: () {
-                    controller.text =
-                        '$displayName-v$versionName$targetExtension';
-                  },
-                  child: Text(t.rename.name_with_version),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-            child: Text(t.base.cancel),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (!(formKey.currentState?.validate() ?? false)) return;
-
-              // 三级回退（就地改名 → 复制+删除 → 保存对话框）都封在
-              // `renameFile` 里：macOS 沙箱只授予「用户选中的那个文件」的
-              // 写权限，不含它所在的目录，前两条都会 EPERM 失败。
-              final result = await renameFile(
-                File(filePath),
-                newName: controller.text,
-                saveDialogTitle: t.rename.rename_file,
-              );
-
-              if (!mounted) return;
-
-              switch (result.outcome) {
-                case RenameOutcome.cancelled:
-                  return;
-                case RenameOutcome.failed:
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${t.rename.failed}: ${result.error}'),
-                    ),
-                  );
-                  return;
-                case RenameOutcome.renamed:
-                case RenameOutcome.savedElsewhere:
-                  // 重新打开新路径的文件，更新 UI 状态。
-                  openApk(result.path!);
-                  Navigator.of(context, rootNavigator: true).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(t.rename.success)),
-                  );
-              }
-            },
-            child: Text(t.base.confirm),
-          ),
-        ],
-      ),
+    final result = await showRenameFileDialog(
+      context,
+      filePath: filePath,
+      displayName: displayName,
+      versionName: versionName,
     );
+    if (!mounted || result == null) return;
+
+    // 提示文案三态统一（见 `reportRenameOutcome`）；分析页的重新打开走
+    // `openApk` —— 它会就地重跑整条流水线并更新本页的所有卡片。
+    final newPath = reportRenameOutcome(context, result);
+    if (newPath != null) openApk(newPath);
   }
 
   @override

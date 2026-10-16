@@ -13,7 +13,7 @@
     "overview": "개요",
     "analysis": "분석",
     "settings": "설정",
-    "diff": "버전 비교"
+    "diff": "비교"
   },
   "overview": {
     "subtitle": "Android 및 iOS 앱 패키지를 분석하고 보안 인사이트를 제공합니다",
@@ -168,6 +168,7 @@
     "cancel_parse": "취소"
   },
   "file_info": {
+    "group": "파일 정보",
     "computing_hash": "계산 중...",
     "file": "파일",
     "md5": "MD5",
@@ -752,7 +753,6 @@
     "executable": "실행 파일",
     "group_app": "앱 정보",
     "group_container": "컨테이너와 바이너리",
-    "group_file": "파일 정보",
     "group_integrity": "파일 무결성",
     "group_signature": "서명과 인가",
     "icon_asset_catalog": "아이콘이 Assets.car 안에 있어 미리 볼 수 없습니다",

@@ -181,6 +181,7 @@
     "invalid_file_type": "Invalid file type, please select APK/XAPK/APKM/APKS/IPA file"
   },
   "file_info": {
+    "group": "File info",
     "computing_hash": "Computing...",
     "file": "File",
     "md5": "MD5",
@@ -326,7 +327,6 @@
     "executable": "Executable",
     "group_app": "App info",
     "group_container": "Container and binaries",
-    "group_file": "File info",
     "group_integrity": "File integrity",
     "group_signature": "Signature and authorization",
     "icon_asset_catalog": "the icon lives in Assets.car and cannot be previewed",

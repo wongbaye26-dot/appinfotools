@@ -13,7 +13,7 @@
     "overview": "概览",
     "analysis": "分析",
     "settings": "设置",
-    "diff": "版本对比"
+    "diff": "对比"
   },
   "overview": {
     "subtitle": "解析 Android 与 iOS 应用包，并给出安全洞察",
@@ -181,6 +181,7 @@
     "cancel_parse": "取消"
   },
   "file_info": {
+    "group": "文件信息",
     "computing_hash": "正在计算...",
     "file": "文件",
     "md5": "MD5",
@@ -326,7 +327,6 @@
     "executable": "可执行文件",
     "group_app": "应用信息",
     "group_container": "容器与二进制",
-    "group_file": "文件信息",
     "group_integrity": "文件校验",
     "group_signature": "签名与授权",
     "icon_asset_catalog": "图标位于 Assets.car 中，无法直接预览",

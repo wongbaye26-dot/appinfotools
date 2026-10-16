@@ -13,7 +13,7 @@
     "overview": "概覽",
     "analysis": "分析",
     "settings": "設定",
-    "diff": "版本對比"
+    "diff": "對比"
   },
   "overview": {
     "subtitle": "解析 Android 與 iOS 應用程式套件，並提供安全洞察",
@@ -181,6 +181,7 @@
     "cancel_parse": "取消"
   },
   "file_info": {
+    "group": "檔案資訊",
     "computing_hash": "正在計算...",
     "file": "文件",
     "md5": "MD5",
@@ -326,7 +327,6 @@
     "executable": "可執行檔",
     "group_app": "應用資訊",
     "group_container": "容器與二進位",
-    "group_file": "檔案資訊",
     "group_integrity": "檔案校驗",
     "group_signature": "簽章與授權",
     "icon_asset_catalog": "圖示位於 Assets.car 中，無法直接預覽",

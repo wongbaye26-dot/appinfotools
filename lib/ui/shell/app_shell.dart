@@ -10,7 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 应用全局外壳。
 ///
-/// 桌面端：左侧固定侧边栏（240px）+ 右侧主内容区。
+/// 桌面端：左侧固定侧边栏（`kSidebarWidth`，200px）+ 右侧主内容区。
 /// 窄窗口（< 600）：侧边栏收叠，通过后续添加的响应式机制处理。
 ///
 /// 采用渐进式重构策略：

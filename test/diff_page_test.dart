@@ -100,6 +100,46 @@ Future<void> pumpDiff(
 }
 
 void main() {
+  // V2.4.6：两个槽位都要显示**各自的真实应用图标**与平台标签。
+  //
+  // 动机：此前槽位里只有文件名与一行元信息，而两个版本的包名常常长得极像
+  // （`xxx-1.4.1.apk` / `xxx-1.4.2.apk`），用户只能靠读包名分辨左右。图标是
+  // 最快的一眼，平台标签则回答「现在比的是 iOS 还是 Android」。
+  group('槽位：图标与平台标签', () {
+    testWidgets('两侧都渲染平台标签，且左右可以不同（同平台比较是页面的门槛）', (tester) async {
+      await pumpDiff(tester, [
+        androidState('/tmp/demo-1.0.apk', 1024, android()),
+        androidState('/tmp/demo-2.0.apk', 2048, android(versionName: '2.0')),
+      ]);
+
+      // 两个槽位各一个平台标签。
+      expect(find.text('Android'), findsNWidgets(2));
+    });
+
+    testWidgets('图标取不到时退回平台通用图标，不留空白框', (tester) async {
+      await pumpDiff(tester, [
+        androidState('/tmp/demo-1.0.apk', 1024, android()),
+        androidState('/tmp/demo-2.0.apk', 2048, android(versionName: '2.0')),
+      ]);
+
+      // 这两个 FileState 里没有 `mainIconImage`，因此走退回路径。
+      expect(find.byIcon(Icons.android), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('iOS 包走 iOS 的图标路径与标签', (tester) async {
+      await pumpDiff(tester, [
+        iosState('/tmp/demo-1.0.ipa', 1024),
+        iosState('/tmp/demo-2.0.ipa', 2048),
+      ]);
+
+      expect(find.text('iOS'), findsNWidgets(2));
+      // `IpaAnalysis(container: const IpaContainer())` 没有图标候选 —— 退回
+      // 苹果通用图标，而不是空白。
+      expect(find.byIcon(Icons.apple), findsWidgets);
+    });
+  });
+
   group('差异页', () {
     testWidgets('两个已解析的包进来就能看到差异：新增 / 删除 / 变更三态齐现', (tester) async {
       // 左侧：没声明 minSdk、有 maxSdk / debuggable、targetSdk 33

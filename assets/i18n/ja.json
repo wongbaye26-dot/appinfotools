@@ -13,7 +13,7 @@
     "overview": "概要",
     "analysis": "分析",
     "settings": "設定",
-    "diff": "バージョン比較"
+    "diff": "比較"
   },
   "overview": {
     "subtitle": "Android と iOS のアプリケーションパッケージを解析し、セキュリティの洞察を提供します",
@@ -168,6 +168,7 @@
     "cancel_parse": "キャンセル"
   },
   "file_info": {
+    "group": "ファイル情報",
     "computing_hash": "計算中...",
     "file": "ファイル",
     "md5": "MD5",
@@ -752,7 +753,6 @@
     "executable": "実行ファイル",
     "group_app": "アプリ情報",
     "group_container": "コンテナとバイナリ",
-    "group_file": "ファイル情報",
     "group_integrity": "ファイルの完全性",
     "group_signature": "署名と認可",
     "icon_asset_catalog": "アイコンは Assets.car 内にあり、プレビューできません",

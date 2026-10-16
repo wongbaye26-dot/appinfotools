@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/widgets/arch_badge.dart';
 import 'package:flutter/material.dart';
 
 /// Android 系统强调色。
@@ -32,6 +33,11 @@ class AndroidHeroCard extends StatelessWidget {
   final String packageName;
   final String versionName;
   final String versionCode;
+
+  /// 架构位数标签（`64-bit` / `32-bit` / `64/32-bit`）；取不到时为 `null`，
+  /// 此时不渲染徽章 —— 不猜。
+  final String? architectureLabel;
+
   final ui.Image? icon;
 
   /// 图标区域的右键回调。
@@ -52,6 +58,7 @@ class AndroidHeroCard extends StatelessWidget {
     required this.packageName,
     required this.versionName,
     required this.versionCode,
+    this.architectureLabel,
     this.icon,
     this.onIconSecondaryTapUp,
     this.trailing,
@@ -170,29 +177,42 @@ class AndroidHeroCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // 版本号
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withValues(
-                        alpha: 0.5,
+                  // 版本号 + 架构位数
+                  //
+                  // 位数与版本并排而不是另起一行：它是「这个包能不能装在老
+                  // 设备上」的答案，属于**同一眼的判断**。用 `Wrap` 是因为
+                  // 窄窗口下两者放不进一行。
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.5,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          versionName.isNotEmpty
+                              ? (versionCode.isNotEmpty
+                                  ? 'v$versionName ($versionCode)'
+                                  : 'v$versionName')
+                              : '-',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      versionName.isNotEmpty
-                          ? (versionCode.isNotEmpty
-                              ? 'v$versionName ($versionCode)'
-                              : 'v$versionName')
-                          : '-',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                      if (architectureLabel != null)
+                        ArchBadge(label: architectureLabel!, fontSize: 11),
+                    ],
                   ),
                 ],
               ),

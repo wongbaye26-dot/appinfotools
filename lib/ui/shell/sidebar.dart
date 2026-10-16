@@ -1,19 +1,31 @@
-import 'package:apk_info_tool/gen/strings.g.dart';
-import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/ui/shell/navigation_item.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
 
+/// 侧边栏展开模式的宽度。
+///
+/// 240 → 200（V2.4.6）：导航项只有四个、标签最长两个字，240px 里有近一半是
+/// 空白，而右侧内容区为此少 40px。200px 装得下「概览 / 分析 / 对比 / 设置」
+/// 加图标，且窄窗口的紧凑模式（< 800px）不受影响。
+///
+/// **改这个常量要连带看**：`main.dart` 的初始窗口宽度（按内容区 1040px 反推）、
+/// `overview_layout_test.dart` 里那三档「内容区」尺寸的换算注释。
+const double kSidebarWidth = 200;
+
 /// 应用侧边栏导航组件。
 ///
 /// 响应式行为：
-/// - 宽窗口（>= 800px）：240px 展开模式，显示图标 + 文字标签
+/// - 宽窗口（>= 800px）：[kSidebarWidth] 展开模式，显示图标 + 文字标签
 /// - 窄窗口（< 800px）：64px 紧凑模式，仅显示图标，Tooltip 显示标签
 ///
 /// 包含：
-/// - Logo / 应用名称区域
+/// - Logo（**只有 logo**，不再重复应用名与副标题）
 /// - 导航项列表（可点击切换）
-/// - 底部操作区（平台图标 + 版本号）
+/// - 底部平台图标
+///
+/// 应用名与版本号**不在这里显示**：应用名已经在窗口标题栏上，版本号在设置页
+/// 有一份 —— 侧边栏再写一遍只是把同一件事说三次，还占掉窄栏里最值钱的纵向
+/// 空间。
 ///
 /// 支持明暗模式自动适配。
 class AppSidebar extends StatelessWidget {
@@ -26,31 +38,28 @@ class AppSidebar extends StatelessWidget {
     required this.onItemSelected,
   });
 
-  /// 版本号文本，处理未初始化的情况（如单元测试）。
-  static String _versionText() {
-    try {
-      return 'v${packageInfo.version}';
-    } catch (_) {
-      return '';
-    }
-  }
+  /// 展开 / 紧凑的分界（窗口宽）。
+  static const double compactBreakpoint = 800;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 800;
-        return isCompact
-            ? _CompactSidebar(
-                selectedId: selectedId,
-                onItemSelected: onItemSelected,
-              )
-            : _ExpandedSidebar(
-                selectedId: selectedId,
-                onItemSelected: onItemSelected,
-              );
-      },
-    );
+    // **判据必须是「窗口宽」，不能是 `LayoutBuilder` 给的约束。**
+    //
+    // 侧边栏是 `Row` 的非弹性子项，而 `Row` 给非弹性子项的约束是
+    // `BoxConstraints(maxHeight: …)` —— **主轴不设上限**。因此
+    // `constraints.maxWidth` 恒为 `Infinity`，`< 800` 永远为假：这个响应式
+    // 分支此前是**死代码**（实测 `Row` 内 `LayoutBuilder` 看到的是
+    // `0.0<=w<=Infinity`）。`MediaQuery` 才是窗口的真实宽度。
+    final isCompact = MediaQuery.sizeOf(context).width < compactBreakpoint;
+    return isCompact
+        ? _CompactSidebar(
+            selectedId: selectedId,
+            onItemSelected: onItemSelected,
+          )
+        : _ExpandedSidebar(
+            selectedId: selectedId,
+            onItemSelected: onItemSelected,
+          );
   }
 }
 
@@ -70,7 +79,7 @@ class _ExpandedSidebar extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      width: 240,
+      width: kSidebarWidth,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         border: Border(
@@ -107,22 +116,15 @@ class _ExpandedSidebar extends StatelessWidget {
               },
             ),
           ),
-          // 底部
+          // 底部：只留「支持哪两个平台」这一条信息。
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.android, size: 14, color: theme.hintColor),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Icon(Icons.apple, size: 14, color: theme.hintColor),
-                const Spacer(),
-                Text(
-                  AppSidebar._versionText(),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.hintColor,
-                    fontSize: 11,
-                  ),
-                ),
               ],
             ),
           ),
@@ -131,43 +133,16 @@ class _ExpandedSidebar extends StatelessWidget {
     );
   }
 
+  /// 头部只留 logo。
+  ///
+  /// 早先这里是「logo + AppInfoTool + 应用包分析工具」两行 —— 而应用名在
+  /// 窗口标题栏上已经有了，副标题对老用户也是纯噪音；在 200px 的窄栏里，
+  /// 这一块还要吃掉约 60px 的高度。去掉之后侧边栏顶部干净，纵向空间还给
+  /// 导航项。
   Widget _buildExpandedLogo(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 16, 8),
-      child: Row(
-        children: [
-          const AppLogo(size: 36),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  t.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.3,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  t.base.app_subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.hintColor,
-                    fontSize: 11,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 24, 20, 8),
+      child: AppLogo(size: 36),
     );
   }
 }
@@ -226,20 +201,11 @@ class _CompactSidebar extends StatelessWidget {
               },
             ),
           ),
-          // 底部（仅版本号，竖排）
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: RotatedBox(
-              quarterTurns: 3,
-              child: Text(
-                AppSidebar._versionText(),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.hintColor,
-                  fontSize: 10,
-                ),
-              ),
-            ),
-          ),
+          // 底部：紧凑模式下什么都不放。
+          //
+          // 早先这里是一行竖排的版本号 —— 64px 宽的栏里它占掉整块底边，
+          // 而版本号在设置页已经有一份。留白比一个旋转 90° 的字符串好读。
+          const SizedBox(height: 16),
         ],
       ),
     );

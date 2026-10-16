@@ -20,7 +20,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 真实的内容区尺寸 = 窗口宽 − 侧栏 240。
+/// 内容区尺寸 = 窗口宽 − 侧栏宽（V2.4.6 起侧栏是 200px，见 `kSidebarWidth`）。
+///
+/// 660 对应的是 860px 的窗口，**比应用允许的最小窗口（900px）还窄 40px** ——
+/// 刻意留出余量：这组尺寸是「版式不得溢出」的下界，比真实情况更苛刻才有意义。
 const _minWindow = Size(660, 600);
 const _defaultWindow = Size(1040, 800);
 const _wideWindow = Size(1440, 900);

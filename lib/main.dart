@@ -69,12 +69,17 @@ void main(List<String> arguments) async {
   if (isDesktop) {
     await windowManager.ensureInitialized();
     windowManager.waitUntilReadyToShow().then((_) async {
-      // 侧边栏在 >= 800px 时展开为 240px。最小宽度取 900：再窄下去
-      // 内容区只剩不到 660px，卡片会被压成一列短横线。
+      // 侧边栏在 >= 800px 时展开为 `kSidebarWidth`（200px）。最小宽度取 900：
+      // 再窄下去内容区只剩不到 660px，卡片会被压成一列短横线。
       const minSize = Size(900, 600);
       await windowManager.setMinimumSize(minSize);
       await windowManager.setSize(await _initialWindowSize(minSize));
-      await windowManager.setTitle('${t.title} v${packageInfo.version}');
+      // 标题栏只写应用名，**不带版本号**。
+      //
+      // 「AppInfoTool v2.4.5」把两个信息挤在一处，而版本号在设置页有一份、
+      // 侧边栏此前还各有一份。标题栏是最窄的地方，留给应用名本身。
+      // 三平台走的是同一行代码（`window_manager`），因此 Windows 一并生效。
+      await windowManager.setTitle(t.title);
       // 居中必须在 show 之前 —— show 之后再挪，用户会看到窗口跳一下。
       await windowManager.center();
       await windowManager.show();
