@@ -255,11 +255,16 @@ void _parseEntryPoint(_ParseRequest request) async {
           NativeLibraryBytes(name, bytes),
     ];
 
+    // 容器结构扫描**只做一次**：它要遍历整张条目表（几千条），而
+    // `AndroidSecurityAudit.audit` 与结果对象都要用它。此前这里调了两次
+    // `scanHardeningSignals()`，同一份结果算两遍。
+    final hardeningObservations = reader.scanHardeningSignals();
+
     final security = AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
       containerAnomalies: [
-        for (final obs in reader.scanHardeningSignals()) obs.evidence,
+        for (final obs in hardeningObservations) obs.evidence,
         // 结构异常（EOCD 声明的条目数与实际不符）也要进覆盖说明 ——
         // 「这个包的结构与声明对不上」直接影响本次结论的可信范围。
         if (reader.structureAnomaly case final anomaly?) anomaly,
@@ -270,7 +275,7 @@ void _parseEntryPoint(_ParseRequest request) async {
     request.reply.send(ParseSucceeded(ParsedApkData(
       meta: meta,
       arscResources: arscResources,
-      hardeningObservations: reader.scanHardeningSignals(),
+      hardeningObservations: hardeningObservations,
       structure: reader.collectStructure(),
       security: security,
       // 环检测的输入就是 arscResources，顺手算掉 —— 不为了这项检查再遍历

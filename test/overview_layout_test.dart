@@ -116,7 +116,9 @@ void main() {
       expect(_detailsGrid(), findsOneWidget);
       final text = _visibleText(tester);
       expect(text, contains(t.overview.field_file_name));
-      expect(text, contains(t.overview.field_file_path));
+      // 文件路径**不在网格里**（V2.5.0 起移到 Hero 的常驻行，见下一个 group），
+      // 但文件名仍在网格中 —— 两者不是同一项。
+      expect(text, contains('/tmp/samples/example-application.ipa'));
       expect(text, contains(t.file_info.sha256));
       expect(text, contains(t.file_info.sha1));
       expect(text, contains(t.file_info.md5));
@@ -140,6 +142,52 @@ void main() {
       final text = _visibleText(tester);
       expect(text, isNot(contains('64-bit')), reason: '无 analysis 结果时不应有架构标签');
       expect(text, isNot(contains('32-bit')), reason: '无 analysis 结果时不应有架构标签');
+    });
+  });
+
+  // V2.5.0：文件路径从「详细信息」网格移到了 Hero 的常驻行。
+  //
+  // 动机是实测出来的：网格在矮窗口下会整块收起（见上一组），而「这个包在
+  // 磁盘上哪儿 / 我要改个名」恰好在最小窗口下看不见。路径与重命名入口
+  // 都必须**任何尺寸都在**。
+  group('Hero 的文件路径行常驻且可重命名', () {
+    for (final entry in {
+      '最小窗口': _minWindow,
+      '默认窗口': _defaultWindow,
+      '宽窗口': _wideWindow,
+    }.entries) {
+      testWidgets('${entry.key}下都能看到完整路径与重命名按钮', (tester) async {
+        await _pump(tester, entry.value);
+
+        expect(
+          _visibleText(tester),
+          contains('/tmp/samples/example-application.ipa'),
+          reason: '${entry.key} 下路径必须可见（网格收起时更要可见）',
+        );
+        expect(
+          find.byIcon(Icons.drive_file_rename_outline),
+          findsOneWidget,
+          reason: '${entry.key} 下重命名入口必须存在',
+        );
+      });
+    }
+
+    testWidgets('点重命名按钮弹出对话框，默认名按「应用名-版本号.后缀」', (tester) async {
+      await _pump(tester, _defaultWindow);
+
+      await tester.tap(find.byIcon(Icons.drive_file_rename_outline));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text(t.rename.rename_file), findsWidgets);
+      // 状态里没有解析结果，因此默认名退回原文件名（不编一个应用名出来）。
+      // 用 `findsWidgets` 而不是 `findsOneWidget`：网格里的文件名、路径行
+      // 末尾、以及对话框输入框里都会出现这个串。
+      expect(find.text('example-application.ipa'), findsWidgets);
+
+      await tester.tap(find.text(t.base.cancel));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
     });
   });
 
@@ -174,19 +222,19 @@ void main() {
       await _pump(tester, _defaultWindow);
 
       // 这个状态下有值的字段：应用名（标题行）+ 四个状态卡片 + 网格里的
-      // 文件名 / SHA-256 / SHA-1 / MD5 —— 共 9 个。
-      // 文件路径改为重命名按钮（Icons.drive_file_rename_outline），
-      // 不再计入复制按钮。
+      // 文件名 / SHA-256 / SHA-1 / MD5 + Hero 里的文件路径 —— 共 10 个。
+      // 文件路径旁边**同时**有复制与重命名两个入口（路径是用户最常要
+      // 贴给别人、也最常要改名的一项）。
       // 标识符与版本没有值（状态里没有解析结果），因此不出现复制入口：
       // 空字段不给复制按钮，正是「取不到就不假装有」的那条约定。
       final copies = find.byIcon(Icons.content_copy).evaluate().length;
       expect(
         copies,
-        greaterThanOrEqualTo(9),
+        greaterThanOrEqualTo(10),
         reason: '有值的字段都应有复制入口（实测 $copies 个）',
       );
 
-      // 文件路径旁应有重命名按钮。
+      // 重命名按钮**只有一个**：路径行是唯一的入口，网格里不再重复。
       expect(find.byIcon(Icons.drive_file_rename_outline), findsOneWidget);
     });
 
@@ -206,13 +254,14 @@ void main() {
             .setMockMethodCallHandler(SystemChannels.platform, null);
       });
 
-      // 点第一个复制按钮（应用名）。
+      // 点第一个复制按钮 —— V2.5.0 起「当前文件」那一行最前面就是文件路径，
+      // 它的复制按钮因此排在树里第一个（此前是应用名）。
       await tester.tap(find.byIcon(Icons.content_copy).first);
       await tester.pump();
 
       expect(calls, isNotEmpty, reason: '复制按钮必须真的调用 Clipboard.setData');
       final data = calls.first.arguments as Map;
-      expect(data['text'], 'example-application.ipa');
+      expect(data['text'], '/tmp/samples/example-application.ipa');
     });
   });
 }

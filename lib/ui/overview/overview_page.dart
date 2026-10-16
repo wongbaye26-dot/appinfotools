@@ -14,6 +14,7 @@ import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
+import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
@@ -84,6 +85,10 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   /// 用估算值而不是精确测量：精确测量要在布局前拿到子项高度，只能靠
   /// `IntrinsicHeight`，而它和内部的 `ListView` 不兼容（debug 下会断言失败）。
   /// `test/overview_layout_test.dart` 用真实渲染钉住这个常量。
+  ///
+  /// **V2.5.0 的文件路径行没有动这个常量**：它挂在「当前文件」那一行上
+  /// （横向，不占高度），不是新开一行。实测 1040×800 下 Hero 502px、
+  /// 底部「最近文件」只剩 30px —— 再长高 20px 就会溢出，这条路走不通。
   static const _chromeHeightEstimate = 620.0 + 60.0;
 
   /// 网格显示的**门槛**（不是它的高度）。
@@ -534,7 +539,20 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // 第 1 行：平台 + 「当前文件」+ 架构位数
+                      // 第 1 行：平台 + 「当前文件」+ 架构位数 + **文件路径**
+                      //
+                      // 路径挂在这一行而不是自己占一行：概览页是**固定一屏**
+                      // 布局（见 `_chromeHeightEstimate`），多一行就要从底部
+                      // 的「最近文件」里扣 20px，而 1040×800 下那 20px 已经
+                      // 是最后一口气（实测 Hero 502px、底栏只剩 30px）。
+                      // 这一行本身只有 15px 高，横向还有大量空白 —— 把路径
+                      // 放进来是零高度成本，而且「当前文件」旁边正是它该在
+                      // 的位置。
+                      //
+                      // 同时它也**不随窗口高度收起**：路径此前只在「详细信息」
+                      // 网格里，而网格在矮窗口下会整块收起 —— 于是「这个包在
+                      // 磁盘上哪儿、我要改个名」这个最常见的诉求，恰好在最
+                      // 需要它的尺寸下看不见。网格是**可选**补充，路径不是。
                       Row(
                         children: [
                           Icon(
@@ -553,6 +571,20 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                           if (architectureLabel != null) ...[
                             const SizedBox(width: 8),
                             _ArchChip(label: architectureLabel),
+                          ],
+                          if (filePath.isNotEmpty) ...[
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _FilePathLine(
+                                path: filePath,
+                                onRename: () => _showRenameDialog(
+                                  filePath: filePath,
+                                  displayName:
+                                      appName.isNotEmpty ? appName : fileName,
+                                  versionName: version,
+                                ),
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -615,8 +647,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             context,
             fileState: fileState,
             fileName: fileName,
-            displayName: appName.isNotEmpty ? appName : fileName,
-            filePath: filePath,
             version: version,
             build: build,
             minSystem: minSystem,
@@ -846,25 +876,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     );
   }
 
-  /// 文件路径字段旁的重命名按钮。
-  Widget _buildRenameButton({
-    required String filePath,
-    required String displayName,
-    required String versionName,
-  }) =>
-      IconButton(
-        icon: const Icon(Icons.drive_file_rename_outline, size: 13),
-        color: Theme.of(context).colorScheme.primary,
-        tooltip: t.rename.rename_file,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-        onPressed: () => _showRenameDialog(
-          filePath: filePath,
-          displayName: displayName,
-          versionName: versionName,
-        ),
-      );
-
+  /// 文件路径字段旁的重命名按钮 —— 见 [_FilePathLine]。
+  ///
   /// 弹出重命名对话框。
   ///
   /// 与分析页保持一致：默认文件名按「应用名-版本号.后缀」生成，
@@ -1009,8 +1022,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     BuildContext context, {
     required FileState fileState,
     required String fileName,
-    required String displayName,
-    required String filePath,
     required String version,
     required String build,
     required String minSystem,
@@ -1033,16 +1044,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           label: t.overview.field_file_name,
           value: fileName,
         ),
-      if (filePath.isNotEmpty)
-        _CopyField(
-          label: t.overview.field_file_path,
-          value: filePath,
-          trailing: _buildRenameButton(
-            filePath: filePath,
-            displayName: displayName,
-            versionName: version,
-          ),
-        ),
+      // 文件路径**不在这里**：它是 Hero 里那条常驻的行（见 [_FilePathLine]），
+      // 网格是随窗口高度收起的补充信息，两者放同一项会让「矮窗口下路径消失」
+      // 这个 bug 原样复活，还会多出一个重命名按钮。
       if (version.isNotEmpty)
         _CopyField(
           label: t.overview.field_version,
@@ -1676,6 +1680,93 @@ class _ArchChip extends StatelessWidget {
   }
 }
 
+/// Hero 区里的「文件路径」行：路径 + 复制 + 重命名。
+///
+/// **为什么用 `Text` 而不是 `SelectableText`**：`SelectableText` 的
+/// `maxLines` 只是裁剪，不加省略号 —— 超出的部分根本不会被绘制，而被吃掉的
+/// 恰好是路径尾部（也就是文件名）。这里宁可要一个明确的「…」，完整值交给
+/// 悬停提示与复制按钮。
+///
+/// **高度被钉死在 [_lineHeight]。** 这一行挂在「当前文件」那一行上，而那一行
+/// 只有 15px 高；`CopyIconButton` / `IconButton` 的**固有高度**是 M3 的 40px
+/// 最小点按尺寸（`constraints: BoxConstraints()` 压得住实际布局，压不住
+/// `IntrinsicHeight` 量的那个数）。不钉的话整行会被撑高 24px —— 概览页是
+/// **固定一屏**布局，实测身份行 96 → 120px，底部「最近文件」立刻溢出。
+/// 文案的 `height: 1.1` 是为了让 11px 的行盒落进这个高度，不然会被裁掉
+/// 下缘。
+///
+/// 重命名走与详情页同一套三级回退（[renameFile]）：macOS 沙箱下就地改名
+/// 会以 `EPERM` 失败，只能由用户在保存对话框里重新授权目标路径。
+class _FilePathLine extends StatelessWidget {
+  final String path;
+
+  /// 点重命名时调用；由页面负责弹对话框与执行改名。
+  final VoidCallback onRename;
+
+  const _FilePathLine({required this.path, required this.onRename});
+
+  /// 与「当前文件」那一行的文本高度持平，见类文档。
+  static const double _lineHeight = 15;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return SizedBox(
+      height: _lineHeight,
+      child: Row(
+        children: [
+          // 文件夹图标是这一行的语义标识（其余几行靠内容自明：应用名 /
+          // 标识符 / 版本）。tooltip 补回被省掉的文字，功能不靠猜。
+          Tooltip(
+            message: t.overview.field_file_path,
+            child:
+                Icon(Icons.folder_outlined, size: 12, color: theme.hintColor),
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Tooltip(
+              message: path,
+              child: Text(
+                path,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                  fontFamilyFallback: const ['Menlo', 'Courier'],
+                  fontSize: 11,
+                  // 行盒压到 12.1px，才落得进 _lineHeight（见类文档）。
+                  height: 1.1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          CopyIconButton(
+            text: path,
+            tooltip: path,
+            iconSize: 13,
+            color: colorScheme.primary,
+          ),
+          Tooltip(
+            message: t.rename.rename_file,
+            child: IconButton(
+              icon: const Icon(Icons.drive_file_rename_outline, size: 13),
+              color: colorScheme.primary,
+              padding: const EdgeInsets.only(left: 4),
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(),
+              splashRadius: 13,
+              onPressed: onRename,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 详细信息网格里的一个字段：标签 + 值 + 复制按钮。
 ///
 /// 值一律用 `SelectableText`（可以手动划选）**并且**给一个复制按钮 ——
@@ -1688,15 +1779,10 @@ class _CopyField extends StatelessWidget {
   final String value;
   final bool monospace;
 
-  /// 替换默认复制按钮的自定义尾部操作。
-  /// 为 `null` 时显示复制按钮。
-  final Widget? trailing;
-
   const _CopyField({
     required this.label,
     required this.value,
     this.monospace = false,
-    this.trailing,
   });
 
   @override
@@ -1749,13 +1835,12 @@ class _CopyField extends StatelessWidget {
               const SizedBox(width: 4),
               // tooltip 直接显示完整值：单元宽度有限，哈希会被截断，
               // 而截断后的哈希没有任何用。
-              trailing ??
-                  CopyIconButton(
-                    text: value,
-                    tooltip: value,
-                    iconSize: 13,
-                    color: colorScheme.primary,
-                  ),
+              CopyIconButton(
+                text: value,
+                tooltip: value,
+                iconSize: 13,
+                color: colorScheme.primary,
+              ),
             ],
           ),
         ],
@@ -1991,6 +2076,11 @@ class _FeatureChip extends StatelessWidget {
 }
 
 /// 最近文件条目。
+///
+/// 一行里给出三件事：**真实应用图标**、文件名、平台与体积/时间。
+/// 平台此前只靠一个 16px 的通用图标表示（Android 小绿人 / iOS 苹果），
+/// 而现在 APK 与 IPA 的图标长得都不一样了 —— 再不给文字标签，用户就没法
+/// 一眼分出「这是哪个平台的包」，只能靠认图标。
 class _RecentFileTile extends StatelessWidget {
   final RecentFileEntry entry;
   final VoidCallback onTap;
@@ -2003,6 +2093,17 @@ class _RecentFileTile extends StatelessWidget {
     final isAndroid = entry.platform == 'android';
     final isIos = entry.platform == 'ios';
 
+    final platformLabel = isAndroid
+        ? 'Android'
+        : isIos
+            ? 'iOS'
+            : '—';
+    final platformColor = isAndroid
+        ? Colors.green
+        : isIos
+            ? Colors.grey
+            : theme.hintColor;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
@@ -2012,7 +2113,7 @@ class _RecentFileTile extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
@@ -2021,40 +2122,178 @@ class _RecentFileTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(
-                  isAndroid
+                _RecentFileIcon(
+                  iconFile: entry.iconFile,
+                  fallback: isAndroid
                       ? Icons.android
                       : isIos
                           ? Icons.apple
                           : Icons.insert_drive_file,
-                  size: 16,
-                  color: isAndroid
-                      ? Colors.green
-                      : isIos
-                          ? Colors.grey
-                          : theme.hintColor,
+                  fallbackColor: platformColor,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    entry.fileName,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        entry.fileName,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          // 平台是**文字**，不只是颜色 —— 只靠颜色区分在
+                          // 色觉障碍下等于没有区分（与详情页同一条约定）。
+                          _PlatformTag(
+                            label: platformLabel,
+                            color: platformColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '${RecentFilesManager.formatSize(entry.size)}'
+                              ' · ${entry.timeAgo()}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.hintColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  '${RecentFilesManager.formatSize(entry.size)} · ${entry.timeAgo()}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.hintColor,
+                if (entry.platform == null)
+                  Icon(
+                    Icons.help_outline,
+                    size: 14,
+                    color: theme.hintColor.withValues(alpha: 0.6),
                   ),
-                ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 最近文件里的应用图标：优先用缓存的真实图标，取不到时退回平台通用图标。
+///
+/// 缓存是**异步**读的（要解析缓存目录），因此这里必须是一个有状态的组件：
+/// 首帧先画通用图标，拿到文件后换上去。缓存命中时这个切换是同一帧内的，
+/// 用户看不到闪烁。
+class _RecentFileIcon extends StatefulWidget {
+  final String? iconFile;
+  final IconData fallback;
+  final Color fallbackColor;
+
+  const _RecentFileIcon({
+    required this.iconFile,
+    required this.fallback,
+    required this.fallbackColor,
+  });
+
+  @override
+  State<_RecentFileIcon> createState() => _RecentFileIconState();
+}
+
+class _RecentFileIconState extends State<_RecentFileIcon> {
+  File? _file;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecentFileIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.iconFile != widget.iconFile) _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final file = await RecentIconCache.fileFor(widget.iconFile);
+    if (!mounted) return;
+    if (file?.path == _file?.path) return;
+    setState(() => _file = file);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final file = _file;
+
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: file == null
+          ? Center(
+              child: Icon(
+                widget.fallback,
+                size: 16,
+                color: widget.fallbackColor,
+              ),
+            )
+          : Image.file(
+              file,
+              width: 32,
+              height: 32,
+              // cover：图标本来就是圆角正方形，按原比例居中裁切而不是拉伸。
+              fit: BoxFit.cover,
+              // 缓存文件可能被外部删掉（或写坏了）—— 那时退回通用图标，
+              // 而不是让整个列表报红。
+              errorBuilder: (_, __, ___) => Center(
+                child: Icon(
+                  widget.fallback,
+                  size: 16,
+                  color: widget.fallbackColor,
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// 最近文件行里的平台标签。
+class _PlatformTag extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _PlatformTag({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
     );

@@ -1481,6 +1481,10 @@ class ApkInfo {
       if (sharedZip == null) await zip.open(apkPath);
       final aaptPath = CommandTools.findAapt2Path();
       final allFiles = zip.listFiles();
+      // **存在性判断用 `Set`。** 候选路径有几十个，而条目列表动辄几千条 ——
+      // `List.contains` 是逐个比对（O(条目数) × O(候选数)），大 APK 上这里是
+      // 纯浪费。集合只建一次，之后每次判断都是 O(1)。
+      final allFileSet = allFiles.toSet();
 
       // 构建 path -> knownDpi 的映射
       final dpiMap = <String, int>{};
@@ -1529,11 +1533,11 @@ class ApkInfo {
       final validPaths = <String>[];
       for (final iconPath in prioritizedPaths) {
         if (_isBitmapIcon(iconPath)) {
-          if (allFiles.contains(iconPath)) {
+          if (allFileSet.contains(iconPath)) {
             validPaths.add(iconPath);
           }
         } else if (_isXmlPath(iconPath)) {
-          if (allFiles.contains(iconPath)) {
+          if (allFileSet.contains(iconPath)) {
             validPaths.add(iconPath);
           }
         } else {

@@ -11,11 +11,19 @@ class RecentFileEntry {
   final DateTime analyzedAt;
   final String? platform; // 'android' | 'ios' | null
 
+  /// 真实应用图标的缓存文件名（见 [RecentIconCache]）；没有缓存时为 `null`。
+  ///
+  /// 存**文件名**而不是绝对路径：缓存目录的位置随平台与用户变（macOS 的
+  /// 应用支持目录带沙箱/用户路径），存绝对路径的话换台机器或换个账户就
+  /// 全部失效。目录由 [RecentIconCache] 负责解析。
+  final String? iconFile;
+
   const RecentFileEntry({
     required this.path,
     required this.size,
     required this.analyzedAt,
     this.platform,
+    this.iconFile,
   });
 
   Map<String, dynamic> toJson() => {
@@ -23,6 +31,7 @@ class RecentFileEntry {
         'size': size,
         'analyzedAt': analyzedAt.millisecondsSinceEpoch,
         if (platform != null) 'platform': platform,
+        if (iconFile != null) 'iconFile': iconFile,
       };
 
   factory RecentFileEntry.fromJson(Map<String, dynamic> json) =>
@@ -33,6 +42,7 @@ class RecentFileEntry {
           json['analyzedAt'] as int? ?? 0,
         ),
         platform: json['platform'] as String?,
+        iconFile: json['iconFile'] as String?,
       );
 
   /// 文件名（不含路径）。
@@ -78,7 +88,16 @@ class RecentFilesManager {
   }
 
   /// 添加一条记录（去重后插入头部，超出 _maxCount 时截断尾部）。
-  static Future<void> add(String path, int size, {String? platform}) async {
+  ///
+  /// [iconFile] 是真实应用图标的缓存文件名（见 [RecentIconCache]）。
+  /// **覆盖同路径的旧记录时沿用新的那个值** —— 重命名或重新下载之后，
+  /// 图标要跟着换，不能把旧图标留在列表里。
+  static Future<void> add(
+    String path,
+    int size, {
+    String? platform,
+    String? iconFile,
+  }) async {
     final entries = load();
     // 去重：移除已存在的同路径记录
     entries.removeWhere((e) => e.path == path);
@@ -90,6 +109,7 @@ class RecentFilesManager {
         size: size,
         analyzedAt: DateTime.now(),
         platform: platform,
+        iconFile: iconFile,
       ),
     );
     // 截断

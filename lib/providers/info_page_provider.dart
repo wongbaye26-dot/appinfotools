@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
@@ -6,6 +8,7 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
+import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart' show ApkParseStage;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -361,9 +364,26 @@ class RecentFiles extends _$RecentFiles {
   @override
   List<RecentFileEntry> build() => RecentFilesManager.load();
 
-  Future<void> add(String path, int size, {String? platform}) async {
-    await RecentFilesManager.add(path, size, platform: platform);
-    state = RecentFilesManager.load();
+  Future<void> add(
+    String path,
+    int size, {
+    String? platform,
+    String? iconFile,
+  }) async {
+    await RecentFilesManager.add(
+      path,
+      size,
+      platform: platform,
+      iconFile: iconFile,
+    );
+    final entries = RecentFilesManager.load();
+    state = entries;
+    // 顺带清掉被挤出列表的图标。**不 await**：这是收尾工作，失败也只是
+    // 多占几 KB，不该让「记录最近文件」这件事等它。
+    unawaited(RecentIconCache.prune({
+      for (final entry in entries)
+        if (entry.iconFile case final name?) name,
+    }));
   }
 
   Future<void> clear() async {

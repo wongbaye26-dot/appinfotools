@@ -27,10 +27,12 @@ import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
+import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/platform.dart';
+import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart'
@@ -263,16 +265,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           // `RecentFilesManager.add` 抛出的 `UnsupportedError`（空列表返回
           // `const []` 导致 `removeWhere` 失败）被彻底吞掉，用户看到的是
           // 「最近文件永远为空」而日志里什么都没有。失败至少要说出来。
-          unawaited(ref
-              .read(recentFilesProvider.notifier)
-              .add(
-                currentState.filePath ?? '',
-                currentState.fileSize ?? 0,
-                platform: 'android',
-              )
-              .catchError((Object e) {
-            log.warning('loadApkInfo: failed to record recent file: $e');
-          }));
+          unawaited(_recordRecentFile(
+            path: currentState.filePath ?? '',
+            size: currentState.fileSize ?? 0,
+            platform: 'android',
+            icon: apkInfo.mainIconImage,
+          ));
         }
       }
     } on ApkParseCancelledException {
@@ -451,16 +449,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         securityResult: security,
       ));
       // 追加到最近文件列表（走 provider，见 Android 侧的说明）。
-      unawaited(ref
-          .read(recentFilesProvider.notifier)
-          .add(
-            currentState.filePath ?? '',
-            currentState.fileSize ?? 0,
-            platform: 'ios',
-          )
-          .catchError((Object e) {
-        log.warning('_loadIpaInfo: failed to record recent file: $e');
-      }));
+      unawaited(_recordIosRecentFile(
+        parsed,
+        currentState.filePath ?? '',
+        currentState.fileSize ?? 0,
+      ));
       isParsingState.update(false);
       iosStageState.update(null);
 
@@ -475,6 +468,63 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     isParsingState.update(false);
     iosStageState.update(null);
+  }
+
+  /// 把这次解析记进「最近文件」，并顺手缓存真实应用图标。
+  ///
+  /// **图标只在这里存**：解析刚完成时它已经在手上（Android 是渲染好的
+  /// `ui.Image`，iOS 是刚解出来的候选）。再晚一步，为了画列表里的一行就得
+  /// 重新打开归档、重解资源表 —— 那是「打开一个包」的开销，不是「画一行」的
+  /// 开销。因此缓存是**顺手**做的，不是列表按需去取的。
+  ///
+  /// 任何一步失败都只影响列表里那个小图标，不影响「记录最近文件」本身。
+  Future<void> _recordRecentFile({
+    required String path,
+    required int size,
+    required String platform,
+    ui.Image? icon,
+  }) async {
+    String? iconFile;
+    if (icon != null) {
+      iconFile = await RecentIconCache.storeFromImage(path, size, icon);
+    }
+    try {
+      await ref.read(recentFilesProvider.notifier).add(
+            path,
+            size,
+            platform: platform,
+            iconFile: iconFile,
+          );
+    } catch (e) {
+      log.warning('_recordRecentFile: failed to record recent file: $e');
+    }
+  }
+
+  /// iOS 侧：先把图标候选解出来，再走 [_recordRecentFile]。
+  ///
+  /// 解码失败（CgBI 异常、候选为空）时图标留空，列表退回平台通用图标 ——
+  /// 那是「没缓存到」，不是「这个包有问题」。
+  Future<void> _recordIosRecentFile(
+    IpaAnalysis analysis,
+    String path,
+    int size,
+  ) async {
+    ui.Image? icon;
+    try {
+      final candidates = analysis.icon?.candidates ?? const [];
+      if (candidates.isNotEmpty) {
+        final decoded = await IosIconDecoder.decode(candidates.first);
+        if (decoded.hasImage) icon = decoded.image;
+      }
+    } catch (e) {
+      log.fine('_recordIosRecentFile: 图标解码失败，列表将使用平台图标: $e');
+    }
+    await _recordRecentFile(
+      path: path,
+      size: size,
+      platform: 'ios',
+      icon: icon,
+    );
   }
 
   /// 解包主应用并调用 `codesign`。
