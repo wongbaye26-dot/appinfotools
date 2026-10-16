@@ -151,7 +151,8 @@
     "key_algorithm": "Key algorithm",
     "key_size_bits": "{bits} bits",
     "validity": "Validity",
-    "diagnostics": "Diagnostics"
+    "diagnostics": "Diagnostics",
+    "status_not_checked": "not run (disabled in settings)"
   },
   "parse": {
     "signature_verify_failed": "Signature verification failed",
@@ -847,5 +848,22 @@
     "export_action": "Export comparison report",
     "export_success": "The comparison report was saved.",
     "export_failed": "Export failed: {error}"
+  },
+  "field_diagnostic": {
+    "hashing_disabled": "Hashing is disabled in settings",
+    "signature_disabled": "Signature verification is disabled in settings",
+    "source_not_reported": "{source} does not report {field}",
+    "plist_expected_string": "{key} is {actual}, expected a string",
+    "plist_expected_string_or_number": "{key} is {actual}, expected a string or a number",
+    "plist_expected_string_array": "{key} is {actual}, expected an array of strings",
+    "plist_array_item_not_string": "{key} contains a {actual}, expected strings",
+    "plist_expected_int_array": "{key} is {actual}, expected an array of integers",
+    "plist_array_item_not_int": "{key} contains a {actual}, expected integers",
+    "plist_expected_date": "{key} is {actual}, expected a date",
+    "plist_expected_array": "{key} is {actual}, expected an array",
+    "plist_expected_boolean": "{key} is not a boolean",
+    "privacy_manifest_too_large": "PrivacyInfo.xcprivacy exceeds the size limit",
+    "plist_parse_failed": "{path} could not be parsed: {message}",
+    "plist_root_not_dictionary": "{path} root is {actual}, expected a dictionary"
   }
 }

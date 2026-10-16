@@ -373,6 +373,8 @@ class IpaInfoPlistReader {
     if (array == null) {
       return FieldValue<List<String>>.wrongType(
         diagnostic: 'CFBundleURLTypes is ${value.typeName}, expected array',
+        diagnosticCode: 'plist.expected_array',
+        diagnosticArgs: {'key': 'CFBundleURLTypes', 'actual': value.typeName},
         source: source,
       );
     }
@@ -432,6 +434,8 @@ class IpaInfoPlistReader {
       return FieldValue<bool>.wrongType(
         source: source,
         diagnostic: 'NSAllowsArbitraryLoads is not a boolean',
+        diagnosticCode: 'plist.expected_boolean',
+        diagnosticArgs: {'key': 'NSAllowsArbitraryLoads'},
       );
     }
     return FieldValue<bool>.extracted(value, source: source);
@@ -482,6 +486,7 @@ class IpaInfoPlistReader {
       return const FieldValue<IosPrivacyInfo>.failed(
         source: source,
         diagnostic: 'PrivacyInfo.xcprivacy exceeds the size limit',
+        diagnosticCode: 'privacy_manifest.too_large',
       );
     }
     final PlistValue parsed;
@@ -495,12 +500,16 @@ class IpaInfoPlistReader {
       return FieldValue<IosPrivacyInfo>.failed(
         source: source,
         diagnostic: '$path could not be parsed: ${e.message}',
+        diagnosticCode: 'plist.parse_failed',
+        diagnosticArgs: {'path': path, 'message': e.message},
       );
     }
     if (parsed is! PlistDict) {
       return FieldValue<IosPrivacyInfo>.failed(
         source: source,
         diagnostic: '$path root is ${parsed.typeName}, expected a dictionary',
+        diagnosticCode: 'plist.root_not_dictionary',
+        diagnosticArgs: {'path': path, 'actual': parsed.typeName},
       );
     }
 

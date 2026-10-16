@@ -124,6 +124,7 @@ FieldValue<Object?> _verdictValue(SignatureVerdict verdict) =>
         // 会让人以为「没查」是个异常，而它其实是设置里关掉了。
         ? const FieldValue<Object?>.notRequested(
             diagnostic: 'signature check is disabled in settings',
+            diagnosticCode: 'signature.disabled',
           )
         : FieldValue<Object?>.extracted(verdict, source: FieldSource.unknown);
 

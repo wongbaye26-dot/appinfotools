@@ -203,6 +203,7 @@ class AnalysisBuilder {
       sha256: hashes == null
           ? const FieldValue<String>.notRequested(
               diagnostic: 'hashing is disabled in settings',
+              diagnosticCode: 'hashing.disabled',
               source: FieldSource.fileSystem,
             )
           : FieldValue<String>.extracted(
@@ -287,6 +288,10 @@ class AnalysisBuilder {
     }
     return FieldValue<T>.unsupported(
       diagnostic: '${source.name} does not report ${field.name}',
+      diagnosticCode: 'source.not_reported',
+      // 实参是**机器标识**（来源枚举名 + 字段枚举名），刻意原样嵌入：
+      // 它们同时出现在界面的别处，翻成散文反而对不上。
+      diagnosticArgs: {'source': source.name, 'field': field.name},
     );
   }
 
@@ -352,6 +357,7 @@ class AnalysisBuilder {
       sha256: hashes == null
           ? const FieldValue<String>.notRequested(
               diagnostic: 'hashing is disabled in settings',
+              diagnosticCode: 'hashing.disabled',
               source: FieldSource.fileSystem,
             )
           : FieldValue<String>.extracted(

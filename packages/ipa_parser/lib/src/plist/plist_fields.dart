@@ -26,6 +26,8 @@ class PlistFields {
     if (raw is! PlistString) {
       return FieldValue<String>.wrongType(
         diagnostic: '$key is ${raw.typeName}, expected a string',
+        diagnosticCode: 'plist.expected_string',
+        diagnosticArgs: {'key': key, 'actual': raw.typeName},
         source: source,
       );
     }
@@ -50,6 +52,8 @@ class PlistFields {
     if (value == null) {
       return FieldValue<String>.wrongType(
         diagnostic: '$key is ${raw.typeName}, expected a string or a number',
+        diagnosticCode: 'plist.expected_string_or_number',
+        diagnosticArgs: {'key': key, 'actual': raw.typeName},
         source: source,
       );
     }
@@ -72,6 +76,8 @@ class PlistFields {
     if (raw is! PlistArray) {
       return FieldValue<List<String>>.wrongType(
         diagnostic: '$key is ${raw.typeName}, expected an array of strings',
+        diagnosticCode: 'plist.expected_string_array',
+        diagnosticArgs: {'key': key, 'actual': raw.typeName},
         source: source,
       );
     }
@@ -81,6 +87,8 @@ class PlistFields {
       if (value == null) {
         return FieldValue<List<String>>.wrongType(
           diagnostic: '$key contains a ${item.typeName}, expected strings',
+          diagnosticCode: 'plist.array_item_not_string',
+          diagnosticArgs: {'key': key, 'actual': item.typeName},
           source: source,
         );
       }
@@ -105,6 +113,8 @@ class PlistFields {
     if (raw is! PlistArray) {
       return FieldValue<List<int>>.wrongType(
         diagnostic: '$key is ${raw.typeName}, expected an array of integers',
+        diagnosticCode: 'plist.expected_int_array',
+        diagnosticArgs: {'key': key, 'actual': raw.typeName},
         source: source,
       );
     }
@@ -114,6 +124,8 @@ class PlistFields {
       if (value == null) {
         return FieldValue<List<int>>.wrongType(
           diagnostic: '$key contains a ${item.typeName}, expected integers',
+          diagnosticCode: 'plist.array_item_not_int',
+          diagnosticArgs: {'key': key, 'actual': item.typeName},
           source: source,
         );
       }
@@ -140,6 +152,8 @@ class PlistFields {
     if (raw is! PlistDate) {
       return FieldValue<DateTime>.wrongType(
         diagnostic: '$key is ${raw.typeName}, expected a date',
+        diagnosticCode: 'plist.expected_date',
+        diagnosticArgs: {'key': key, 'actual': raw.typeName},
         source: source,
       );
     }

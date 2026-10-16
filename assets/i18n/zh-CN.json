@@ -158,7 +158,8 @@
     "key_algorithm": "密钥算法",
     "key_size_bits": "{bits} 位",
     "validity": "有效期",
-    "diagnostics": "诊断信息"
+    "diagnostics": "诊断信息",
+    "status_not_checked": "未执行（设置中已关闭）"
   },
   "parse": {
     "signature_verify_failed": "签名验证失败",
@@ -846,5 +847,22 @@
     "export_action": "导出对比报告",
     "export_success": "对比报告已保存。",
     "export_failed": "导出失败：{error}"
+  },
+  "field_diagnostic": {
+    "hashing_disabled": "设置里关闭了哈希计算",
+    "signature_disabled": "设置里关闭了签名验证",
+    "source_not_reported": "{source} 不报 {field}",
+    "plist_expected_string": "{key} 是 {actual}，期望字符串",
+    "plist_expected_string_or_number": "{key} 是 {actual}，期望字符串或数字",
+    "plist_expected_string_array": "{key} 是 {actual}，期望字符串数组",
+    "plist_array_item_not_string": "{key} 里含 {actual}，期望字符串",
+    "plist_expected_int_array": "{key} 是 {actual}，期望整数数组",
+    "plist_array_item_not_int": "{key} 里含 {actual}，期望整数",
+    "plist_expected_date": "{key} 是 {actual}，期望日期",
+    "plist_expected_array": "{key} 是 {actual}，期望数组",
+    "plist_expected_boolean": "{key} 不是布尔值",
+    "privacy_manifest_too_large": "PrivacyInfo.xcprivacy 超过体积上限",
+    "plist_parse_failed": "{path} 解析失败：{message}",
+    "plist_root_not_dictionary": "{path} 的根是 {actual}，期望字典"
   }
 }

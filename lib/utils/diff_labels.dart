@@ -2,6 +2,7 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
+import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:apk_info_tool/utils/format.dart';
 
 /// 差异的呈现文案 —— **UI 与 Markdown 报告共用的唯一一份实现**。
@@ -81,7 +82,9 @@ class DiffLabels {
   static String value(String id, FieldValue<Object?> value, Translations t) {
     if (value.hasValue) return formatValue(id, value.value, t);
     if (value.status == FieldStatus.absent) return t.diff.value_absent;
-    final reason = value.diagnostic;
+    // 差异页对 `absent` 的措辞与详情页不同（「文件里没有」而不是 `-`），
+    // 因为在这里它正是「新增」的判据，一个破折号读不出结论。其余走共用实现。
+    final reason = FieldValueText.diagnostic(value, t);
     return reason == null
         ? '[${value.status.name}]'
         : '[${value.status.name}] $reason';

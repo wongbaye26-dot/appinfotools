@@ -88,7 +88,12 @@ class DetailRenderer {
       SignatureVerdict.verified => t.signature.status_verified,
       SignatureVerdict.rejected => t.signature.status_failed,
       SignatureVerdict.inconclusive => t.signature.status_unknown,
-      SignatureVerdict.notChecked => t.ios_info.codesign_not_run,
+      // `notChecked` 在实践里**只出现在 Android**：iOS 侧 `verdictFromIos`
+      // 对「没跑 codesign」返回 `inconclusive`，不会返回 `notChecked`。
+      // 此前这里复用 `t.ios_info.codesign_not_run`（「非 macOS、设置中已关闭，
+      // 或解包失败」），于是 Android 包的结论行会写着「非 macOS」——
+      // 一句话里三个原因，两个与 Android 无关。
+      SignatureVerdict.notChecked => t.signature.status_not_checked,
     };
   }
 

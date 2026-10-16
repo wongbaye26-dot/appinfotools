@@ -22,6 +22,7 @@ import 'package:apk_info_tool/utils/android_version.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
+import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
@@ -567,14 +568,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         );
 
     /// 把一个 [FieldValue] 渲染成「值」或「为什么没有值」。
-    String field(FieldValue<Object?> value) {
-      if (value.hasValue) return '${value.value}';
-      if (value.status == FieldStatus.absent) return '-';
-      final reason = value.diagnostic;
-      return reason == null
-          ? '[${value.status.name}]'
-          : '[${value.status.name}] $reason';
-    }
+    ///
+    /// 实现只有一份（[FieldValueText]）—— 这里、Android 卡片、Markdown 报告、
+    /// 差异页四处共用。此前四处各写一遍，其中三处把「原因」直接取
+    /// `value.diagnostic`（硬编码英文），中文界面上就混进了英文。
+    String field(FieldValue<Object?> value) =>
+        FieldValueText.describe(value, t);
 
     // ===== 文件信息 =====
     cards.add(
@@ -1365,26 +1364,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   ///
   /// Android 详情页此前直读 `ApkInfo` 的裸字段、用空字符串兜底 —— 于是
   /// 「文件里没有」与「我们没读到」在界面上长得一模一样，而这两件事的
-  /// 结论完全相反（后者意味着结论不可靠）。这里改成走统一模型：
-  /// - 有值 → 值本身；
-  /// - `absent` → `-`（文件里确实没有）；
-  /// - 其余（`failed` / `unsupported` / `hardenedUnknown` / `notRequested`）
-  ///   → `[状态] 原因`，明确说「我们没读到」。
+  /// 结论完全相反（后者意味着结论不可靠）。这里改成走统一模型。
   ///
-  /// 与 iOS 侧的局部 `field()` 是同一套语义，只是那边直接读 `FieldValue`
-  /// 而这边要处理 `analysis.android` 可能为 null 的情况。
+  /// 与 iOS 侧的局部 `field()` 共用 [FieldValueText]，只是这边要处理
+  /// `analysis.android` 可能为 null 的情况。
   String _androidField(
     FieldValue<Object?>? value,
     String Function(Object value) format,
-  ) {
-    if (value == null) return '-';
-    if (value.hasValue) return format(value.value as Object);
-    if (value.status == FieldStatus.absent) return '-';
-    final reason = value.diagnostic;
-    return reason == null
-        ? '[${value.status.name}]'
-        : '[${value.status.name}] $reason';
-  }
+  ) =>
+      value == null ? '-' : FieldValueText.describe(value, t, format: format);
 
   /// Android 详情卡片。
   List<Widget> _buildAndroidCards(

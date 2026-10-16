@@ -131,7 +131,27 @@ class FieldValue<T> {
   final FieldSource source;
 
   /// 面向诊断的补充说明：为什么没取到、来自哪一步、有什么异常。
+  ///
+  /// 这是**英文回退**。呈现层应优先用 [diagnosticCode] 查本地化文案，
+  /// 认不出 code 时（新引擎 + 旧界面）才退回这里 —— 与
+  /// `SecurityFinding.messageCode` / `CoverageEntry.noteCode` 是同一套做法。
   final String? diagnostic;
+
+  /// 诊断文案的**稳定标识**（`hashing.disabled` 这类）。
+  ///
+  /// 为什么要有它：`diagnostic` 是硬编码的英文句子，中文界面上会混进英文。
+  /// 而它又是**引擎产出的用户可见文案**，必须能本地化。code 是机器读的
+  /// 稳定标识，`diagnostic` 是英文回退，两者**同进同退**。
+  ///
+  /// `null` 表示这条诊断没有 code（还没迁过来的产出点）—— 此时呈现层
+  /// 退回 [diagnostic]，不会出现「有 code 却没文案」的半吊子状态。
+  final String? diagnosticCode;
+
+  /// [diagnosticCode] 的占位符实参，例如 `{'key': 'CFBundleVersion'}`。
+  ///
+  /// 值是机器标识（plist 键名、来源枚举名），**不是**给用户读的散文 ——
+  /// 呈现层只把句子的**框架**本地化，标识原样嵌入。
+  final Map<String, Object> diagnosticArgs;
 
   /// 成功提取。
   ///
@@ -141,12 +161,16 @@ class FieldValue<T> {
     this.value, {
     required this.source,
     this.diagnostic,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
   }) : status = FieldStatus.extracted;
 
   /// 文件中不存在。
   const FieldValue.absent({
     this.source = FieldSource.unknown,
     this.diagnostic,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
   })  : value = null,
         status = FieldStatus.absent;
 
@@ -154,12 +178,17 @@ class FieldValue<T> {
   const FieldValue.wrongType({
     required this.diagnostic,
     this.source = FieldSource.unknown,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
   })  : value = null,
         status = FieldStatus.wrongType;
 
   /// 当前解析器不支持。
-  const FieldValue.unsupported({this.diagnostic})
-      : value = null,
+  const FieldValue.unsupported({
+    this.diagnostic,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
+  })  : value = null,
         status = FieldStatus.unsupported,
         source = FieldSource.unknown;
 
@@ -167,6 +196,8 @@ class FieldValue<T> {
   const FieldValue.failed({
     required this.diagnostic,
     this.source = FieldSource.unknown,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
   })  : value = null,
         status = FieldStatus.failed;
 
@@ -174,6 +205,8 @@ class FieldValue<T> {
   const FieldValue.hardenedUnknown({
     this.diagnostic,
     this.source = FieldSource.unknown,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
   })  : value = null,
         status = FieldStatus.hardenedUnknown;
 
@@ -181,6 +214,8 @@ class FieldValue<T> {
   const FieldValue.notRequested({
     this.diagnostic,
     this.source = FieldSource.unknown,
+    this.diagnosticCode,
+    this.diagnosticArgs = const {},
   })  : value = null,
         status = FieldStatus.notRequested;
 
@@ -200,5 +235,6 @@ class FieldValue<T> {
 
   @override
   String toString() => 'FieldValue<$T>(status: $status, source: $source, '
-      'value: $value${diagnostic == null ? '' : ', diagnostic: $diagnostic'})';
+      'value: $value${diagnostic == null ? '' : ', diagnostic: $diagnostic'}'
+      '${diagnosticCode == null ? '' : ', diagnosticCode: $diagnosticCode'})';
 }

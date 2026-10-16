@@ -5,6 +5,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
+import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:path/path.dart' as path;
 
 /// 把统一分析结果渲染成一份可读、可归档的报告。
@@ -1456,9 +1457,13 @@ class AnalysisReport {
     String? displayValue,
   }) {
     final cell = displayValue ?? _valueCell(value);
+    // 「说明」列走**共用**的呈现层：认得出 `diagnosticCode` 就本地化，
+    // 否则退回英文原文。此前这里直接输出 `value.diagnostic`，
+    // 中文报告里因此混进英文句子。
+    final reason = FieldValueText.diagnostic(value, t) ?? '';
     sb.writeln('| ${_escape(label)} | ${_escape(cell)} '
         '| ${value.status.name} | ${value.source.name} '
-        '| ${_escape(value.diagnostic ?? '')} |');
+        '| ${_escape(reason)} |');
   }
 
   /// 值单元格的**原始**文本（尚未转义）。
