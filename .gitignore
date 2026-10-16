@@ -83,5 +83,15 @@ lib/gen
 .workbuddy-ai/
 
 # 工作流在 CI 里生成的发布中间文件；本地跑同样的步骤也会出现，不应入库。
+# （工作流的 "Build changelog from git log" 步骤把 git log 拼成小写 changelog.md，
+#   再由 "Assemble release body" 拼出 release-body.md。）
 /changelog.md
 /release-body.md
+#
+# ⚠️ 上面这条在 macOS / Windows 的**大小写不敏感**文件系统上会连带匹配到人工维护的
+# `CHANGELOG.md`（`core.ignoreCase` 默认 true）。实测后果：那份人工 CHANGELOG
+# **从未入库**，一直只存在于本机，仓库里看不到任何版本说明。
+#
+# 解决办法**不是**加 `!CHANGELOG.md` 否定 —— 否定同样被大小写折叠吃掉。
+# 用 `git add -f CHANGELOG.md`：**已追踪的文件不受 .gitignore 约束**，
+# 这条规则从此只管得住 CI 的那个小写产物。
