@@ -15,6 +15,7 @@
 // APPINFOTOOL_SAMPLES=/path/to/samples flutter test test/real_samples_ui_test.dart
 // ```
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:analysis_model/analysis_model.dart';
@@ -22,8 +23,11 @@ import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ipaparser/ios_codesign_step.dart';
 import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
+import 'package:apk_info_tool/models/analysis/package_diff_adapter.dart';
 import 'package:apk_info_tool/pages/info_page.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
+import 'package:apk_info_tool/ui/diff/diff_page.dart';
+import 'package:apk_info_tool/utils/diff_report.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
@@ -137,37 +141,72 @@ String _visibleText(WidgetTester tester) {
   return buffer.toString();
 }
 
-/// 向下滚动详情页，直到可见文本里出现 [needle]；返回滚过之后的可见文本。
+/// 取详情页最外层的纵向滚动位置。
 ///
-/// 详情页最外层是 `DetailTabView._buildTestView` 里的 `ListView` —— 懒构建，
-/// 所以**必须**滚动才能让深层卡片进入 widget 树。这里不假设任何视口高度。
-///
-/// 停止条件是「滚动位置不再前进」，不是「文本长度不再变化」—— 后者在
-/// 长度恰好相等时会误判成到底。
-Future<String> _scrollToFindText(
-  WidgetTester tester,
-  String needle, {
-  int maxScrolls = 80,
-  double step = 320,
-}) async {
+/// 找不到就 `fail`（构建层失败），而不是返回 `null` 让调用方自己去猜 ——
+/// 「页面没构建出来」与「滚不到目标」是两件事，失败信息必须能分开。
+ScrollableState _outerScrollable(WidgetTester tester) {
   final scrollables = find.byType(Scrollable);
   if (scrollables.evaluate().isEmpty) {
     fail('详情页里找不到任何 Scrollable：页面可能没有构建成功（构建层失败）');
   }
-  final outer = scrollables.first;
-  final state = tester.state<ScrollableState>(outer);
+  return tester.state<ScrollableState>(scrollables.first);
+}
+
+/// 把列表往下推一步；返回**是否真的动了**。
+///
+/// 用 `jumpTo` 直接驱动 `ScrollPosition`，**刻意不用 `tester.drag`**。
+///
+/// 原因（实测，不是推测）：`tester.drag` 模拟的是**触摸**指针，而详情页里
+/// 每一个字段值都是 `SelectableText`（`TitleValueLayout` 就是这么渲染的）。
+/// 触摸拖拽落在可选中的文本上时，文本选择的手势识别器赢得手势竞技场 ——
+/// 列表**一动不动**。同一页面上实测：
+///
+/// | 拖拽起点落在 | 列表位移 |
+/// |---|---|
+/// | `RenderEditable`（`SelectableText` 内部） | **0** |
+/// | `RenderScrollSemantics` 或别处 | 200 |
+///
+/// 也就是说「能不能滚到目标」取决于拖拽点恰好压在哪个控件上 —— 而内容一滚，
+/// 压在什么上就变了。这不是「测试写得不够稳」，是**方法本身不成立**：
+/// 拿触摸拖拽去驱动一个满是可选文本的页面，等于掷骰子。真实样本上的表现就是
+/// 「滚到 MD5 卡住、后面的 SHA-1 / SHA-256 永远看不到」，而两张卡其实一直在树里。
+///
+/// `jumpTo` 仍然是真的滚动（懒构建的卡片照常进入 widget 树），只是绕开了
+/// 手势竞技场。`maxScrollExtent` 会随着卡片被构建而变大，因此**每一步都重新读**，
+/// 不能缓存。
+bool _scrollStep(ScrollableState state, double step) {
+  final position = state.position;
+  if (!position.hasContentDimensions) return false;
+  final before = position.pixels;
+  final max = position.maxScrollExtent;
+  final target = before + step > max ? max : before + step;
+  if (target <= before) return false;
+  position.jumpTo(target);
+  return true;
+}
+
+/// 向下滚动详情页，直到可见文本里出现 [needle]；返回滚过之后的可见文本。
+///
+/// 详情页最外层是 `DetailTabView._buildTestView` 里的 `ListView` —— 懒构建，
+/// 所以**必须**滚动才能让深层卡片进入 widget 树。这里不假设任何视口高度。
+Future<String> _scrollToFindText(
+  WidgetTester tester,
+  String needle, {
+  int maxScrolls = 120,
+  double step = 320,
+}) async {
+  final state = _outerScrollable(tester);
 
   var text = _visibleText(tester);
   if (text.contains(needle)) return text;
 
   for (var i = 0; i < maxScrolls; i++) {
-    final before = state.position.pixels;
-    await tester.drag(outer, Offset(0, -step));
+    // 推不动了 = 已经到底，再滚也是白费。
+    if (!_scrollStep(state, step)) break;
     await tester.pump();
     text = _visibleText(tester);
     if (text.contains(needle)) return text;
-    // 拖不动了 = 已经到底，再滚也是白费。
-    if (state.position.pixels <= before) break;
   }
   return text;
 }
@@ -178,27 +217,20 @@ Future<String> _scrollToFindText(
 /// 而 `_visibleText` 只看当前视口，不滚就只看得到首屏。
 ///
 /// 与旧做法的区别：旧做法把视口拉到 8000 高，指望一次建完；这里是真的滚过去，
-/// 不依赖任何像素阈值。
+/// 不依赖任何像素阈值。滚动本身用 `_scrollStep`（`jumpTo`，不是拖拽）——
+/// 理由见那里的注释。
 Future<String> _scrollThroughAllText(
   WidgetTester tester, {
-  int maxScrolls = 80,
+  int maxScrolls = 120,
   double step = 320,
 }) async {
+  final state = _outerScrollable(tester);
   final buffer = StringBuffer()..writeln(_visibleText(tester));
 
-  final scrollables = find.byType(Scrollable);
-  if (scrollables.evaluate().isEmpty) {
-    fail('详情页里找不到任何 Scrollable：页面可能没有构建成功（构建层失败）');
-  }
-  final outer = scrollables.first;
-  final state = tester.state<ScrollableState>(outer);
-
   for (var i = 0; i < maxScrolls; i++) {
-    final before = state.position.pixels;
-    await tester.drag(outer, Offset(0, -step));
+    if (!_scrollStep(state, step)) break;
     await tester.pump();
     buffer.writeln(_visibleText(tester));
-    if (state.position.pixels <= before) break;
   }
   return buffer.toString();
 }
@@ -405,6 +437,144 @@ void main() {
       );
     });
   }, skip: _samples.skipReasonFor(SampleKind.ios));
+
+  // 版本对比（阶段 5）在**真实**结构上的端到端冒烟。
+  //
+  // 样本目录里只有一个真实 APK，**没有两个真实版本可比** —— 这一点如实说明，
+  // 不拿构造数据假装。因此这一组比的是「同一个真实包的两条路径」：
+  //
+  // - 它能验证适配层 + 差异模型 + 报告在**真实结构**上不炸：22 个组件、
+  //   40 条权限、真实的加固线索与安全结果、真实的资源表与 ABI；
+  // - 「没有差异」这条结论必须成立（除文件名外）；
+  // - 它**不能**验证「两个真实版本之间确实有差异」——那需要两份真实样本，
+  //   属于样本目录的缺口，不是代码的缺口。
+  group('真实 APK 的版本对比', () {
+    final sample = _firstSample(SampleKind.android);
+    late FileState state;
+
+    setUpAll(() async {
+      state = await _parseApk(sample!.path);
+    });
+
+    test('同一个真实包与自己比：没有任何实质差异', () {
+      final analysis = state.analysis!;
+      final diff = diffOf(analysis, analysis);
+
+      expect(diff.hasChanges, isFalse);
+      // 真实数据下这几个维度必须真的读到了值 —— 否则「没差异」是假的，
+      // 只是两边都没读到而已。
+      for (final id in [
+        'android.permissions',
+        'android.components',
+        'android.locales',
+        'android.nativeCodes',
+      ]) {
+        final set = diff.sets.firstWhere((s) => s.id == id);
+        expect(set.comparable, isTrue, reason: '$id 应当可比');
+        expect(set.common, isNotEmpty, reason: '$id 在真实样本上应当读到成员');
+      }
+      // 40 条权限、22 个组件是这份样本的实际规模（解析日志可核对）。
+      expect(
+        diff.sets
+            .firstWhere((s) => s.id == 'android.permissions')
+            .common
+            .length,
+        greaterThanOrEqualTo(30),
+      );
+    });
+
+    test('真实结构下两份报告都能生成，且条目与模型逐项一致', () {
+      final analysis = state.analysis!;
+      final diff = diffOf(analysis, analysis);
+      final at = DateTime.utc(2026, 10, 16);
+
+      final md = DiffReport.render(analysis, analysis, t, generatedAt: at);
+      expect(md, startsWith('# ${t.diff.report_title}'));
+      expect(md, contains(sample!.path.split('/').last));
+      // 没有差异时不该出现「字段差异」小节。
+      expect(md, isNot(contains('## ${t.diff.section_fields}')));
+
+      final map = jsonDecode(
+        DiffReport.renderJson(analysis, analysis, generatedAt: at),
+      ) as Map<String, dynamic>;
+      expect(map['diffReportSchemaVersion'], DiffReport.schemaVersion);
+      final sets = (map['sets'] as List).cast<Map<String, dynamic>>();
+      expect(
+        sets.map((s) => s['id']).toList(),
+        diff.sets.map((s) => s.id).toList(),
+      );
+      // 真实权限清单真的进了 JSON（不是空数组）。
+      expect(
+        (sets.firstWhere((s) => s['id'] == 'android.permissions')['common']
+                as List)
+            .length,
+        greaterThanOrEqualTo(30),
+      );
+    });
+
+    testWidgets('差异页能渲染真实数据，并允许导出', (tester) async {
+      // 同一个真实包挂两条路径：缓存按 path 索引，这样页面才会进入「两侧都选好」
+      // 的状态。差异因此只有文件名一条 —— 这正是我们要断言的真实行为。
+      tester.view.physicalSize = const Size(1400, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: TranslationProvider(
+            child: const MaterialApp(home: Scaffold(body: DiffPage())),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final notifier = container.read(currentFileStateProvider.notifier);
+      notifier.update(state.copyWith(filePath: '/tmp/samples/hardened-v1.apk'));
+      await tester.pump();
+      notifier.update(state);
+      await tester.pump();
+
+      final buffer = StringBuffer();
+      for (final w in tester.widgetList<Text>(find.byType(Text))) {
+        buffer.writeln(w.data ?? '');
+      }
+      for (final w in tester.widgetList<SelectableText>(
+        find.byType(SelectableText),
+      )) {
+        buffer.writeln(w.data ?? '');
+      }
+      final text = buffer.toString();
+
+      // 真实文件名出现在两侧槽位里。
+      expect(text, contains('hardened.apk'));
+      expect(text, contains('hardened-v1.apk'));
+
+      // 两侧是**同一个包**，因此唯一的变化是文件名。
+      expect(text, contains(t.diff.fields.file_fileName));
+      expect(text, contains(t.diff.kind_changed));
+      // 集合层面没有任何变化 → 不出现「集合差异」区。这条同时钉住
+      // 「页面只列变化的集合」这条口径在真实数据上成立（40 条权限、
+      // 22 个组件都读到了，但一条都不显示 —— 它们没变）。
+      expect(
+        text,
+        isNot(contains(t.diff.section_sets)),
+        reason: '真实权限 / 组件都读到了，但两侧相同，不该出现在差异区里',
+      );
+      // 「没查签名」必须出现在「无法比较」区，而不是被算成差异。
+      expect(text, contains(t.diff.section_unknown));
+      expect(text, contains(t.diff.kind_unknown));
+
+      // 导出按钮可点：两侧同平台、都有解析结果。
+      final button = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, t.diff.export_action),
+      );
+      expect(button.onPressed, isNotNull);
+    });
+  }, skip: _samples.skipReasonFor(SampleKind.android));
 
   // 这一组是「跳过原因本身」的断言：把五种情况分别钉住，避免以后有人把
   // 「目录里没有 IPA」又压回成「未配置」。
