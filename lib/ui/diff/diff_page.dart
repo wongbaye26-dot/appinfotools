@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
@@ -10,6 +12,7 @@ import 'package:apk_info_tool/utils/diff_labels.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/widgets/export_diff_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
+import 'package:apk_info_tool/widgets/package_icon_metrics.dart';
 import 'package:apk_info_tool/widgets/platform_tag.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:flutter/material.dart';
@@ -192,6 +195,7 @@ class _DiffPageState extends ConsumerState<DiffPage> {
     String? leftPath,
     String? rightPath,
   ) {
+    final icons = ref.watch(parsedFileIconsProvider);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -199,6 +203,10 @@ class _DiffPageState extends ConsumerState<DiffPage> {
           child: _SlotCard(
             label: t.diff.slot_left,
             state: leftPath == null ? null : cache[leftPath],
+            // 图标从**图标副本**里取，不取 `state.apkInfo.mainIconImage`：
+            // 换文件时 `ApkInfo.dispose()` 会把那个 `ui.Image` 释放掉，先解析
+            // 的那个包因此丢图标（实测：左侧槽位只剩平台通用图标）。
+            icon: leftPath == null ? null : icons[leftPath],
             // 另一侧已选的文件不再出现在自己的候选里：比较同一个包没有意义，
             // 而它恰恰是「随手一选」最容易选到的那一个。
             excludePath: rightPath,
@@ -211,6 +219,7 @@ class _DiffPageState extends ConsumerState<DiffPage> {
           child: _SlotCard(
             label: t.diff.slot_right,
             state: rightPath == null ? null : cache[rightPath],
+            icon: rightPath == null ? null : icons[rightPath],
             excludePath: leftPath,
             cache: cache,
             onPick: (path) => setState(() => _rightPath = path),
@@ -544,17 +553,28 @@ class _KindBadge extends StatelessWidget {
 /// 图标」，而真相是「我们还没拿到」。
 class _SlotIcon extends StatelessWidget {
   final FileState state;
+
+  /// Android 图标的**副本**（见 `parsedFileIconsProvider`）。
+  ///
+  /// 刻意不读 `state.apkInfo!.mainIconImage`：那个 `ui.Image` 会在换文件时
+  /// 被 `ApkInfo.dispose()` 释放，先解析的包因此丢图标。
+  final ui.Image? icon;
+
   final bool isIos;
 
-  const _SlotIcon({required this.state, required this.isIos});
+  const _SlotIcon({
+    required this.state,
+    required this.icon,
+    required this.isIos,
+  });
 
-  static const double _side = 48;
+  static const double _side = PackageIconMetrics.slotSide;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final apkIcon = state.apkInfo?.mainIconImage;
+    final apkIcon = icon;
     final iosCandidate = state.ipaAnalysis?.icon?.candidates.firstOrNull;
 
     return Container(
@@ -562,7 +582,7 @@ class _SlotIcon extends StatelessWidget {
       height: _side,
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(_side * 0.2237),
+        borderRadius: BorderRadius.circular(PackageIconMetrics.radiusOf(_side)),
         border: Border.all(color: theme.dividerColor.withValues(alpha: 0.15)),
       ),
       clipBehavior: Clip.antiAlias,
@@ -594,6 +614,10 @@ class _SlotIcon extends StatelessWidget {
 class _SlotCard extends StatelessWidget {
   final String label;
   final FileState? state;
+
+  /// 该包的图标副本（Android 侧）；`null` 时退回平台通用图标。
+  final ui.Image? icon;
+
   final String? excludePath;
   final Map<String, FileState> cache;
   final ValueChanged<String> onPick;
@@ -601,6 +625,7 @@ class _SlotCard extends StatelessWidget {
   const _SlotCard({
     required this.label,
     required this.state,
+    required this.icon,
     required this.excludePath,
     required this.cache,
     required this.onPick,
@@ -642,7 +667,7 @@ class _SlotCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _SlotIcon(state: state!, isIos: isIos),
+                  _SlotIcon(state: state!, icon: icon, isIos: isIos),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(

@@ -3,6 +3,36 @@ import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// 标题列的**最小**宽度。
+///
+/// 这个下限不是排版偏好，是「中文标签能不能放下」：`夜间模式资源` 六个汉字、
+/// `uiMode 设备类型` 混排，都要一行放得下。此前下限是 40（滑块的 min），
+/// 实测在那档宽度下标题会被**逐字折断**（`uiMod` / `e 设备` / `类型`），
+/// 四个 Tab 里到处都是这种碎块。
+///
+/// 用户存下来的旧值比它小时按它算（见 [TitleValueLayout]），滑块本身的下限
+/// 也是它 —— 否则界面上会显示 40、实际按 96 排版。
+const double kMinDetailTitleWidth = 96;
+
+/// 标题列的**最大**宽度（与设置页滑块的上限一致）。
+const double kMaxDetailTitleWidth = 200;
+
+/// 详情卡片里「标题」的统一样式。
+///
+/// **单独抽出来是为了设置页的预览也用它** —— 预览与真实卡片各写一份字体，
+/// 改一处另一处就成了谎言（此前预览里写死的 16px 恰好与卡片一致，那是巧合，
+/// 不是约束）。
+///
+/// 用 `bodySmall` + 淡色：标题是**标签**，不该和值长得一样大。此前是 16px
+/// 常规字重、与 14px 的值同色，扫一眼分不出哪个是标签。
+TextStyle detailTitleStyle(BuildContext context) {
+  final theme = Theme.of(context);
+  return (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+    color: theme.hintColor,
+    fontWeight: FontWeight.w500,
+  );
+}
+
 /// 一行「标题 — 值」。
 ///
 /// 高度必须**跟着内容走**。`SelectableText` 会把 `maxLines` 当成高度预留：
@@ -87,16 +117,25 @@ class TitleValueLayout extends ConsumerWidget {
         // 居中会让标题看起来像内容中间另起的一行。
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 标题部分
+          // 标题部分。
+          //
+          // **绝不换行**：`softWrap: false` + `maxLines: 1` + 省略号。此前
+          // 只给了一个固定宽度，宽度不够时 Flutter 会**逐字折断**
+          // （`uiMod` / `e 设备` / `类型`），四个 Tab 里到处都是这种碎块。
+          // 截断至少是单行、可预期；完整标题交给 tooltip。
           SizedBox(
-            width: titleWidth ?? configTitleWidth,
-            child: Text(
-              title,
-              style: titleStyle ??
-                  const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
-                  ),
+            width: (titleWidth ?? configTitleWidth)
+                .clamp(kMinDetailTitleWidth, kMaxDetailTitleWidth),
+            child: Tooltip(
+              message: title,
+              waitDuration: const Duration(milliseconds: 600),
+              child: Text(
+                title,
+                style: titleStyle ?? detailTitleStyle(context),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           const SizedBox(width: 16),

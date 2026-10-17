@@ -55,6 +55,11 @@ class _AppShellState extends ConsumerState<AppShell> {
     // 「解析 A → 解析 B → 进差异页」这条路径上缓存从没活过，两个包都会丢。
     // 在这里先读一次把它唤醒 —— 只读一次，之后由解析流程驱动。
     ref.read(parsedFileCacheProvider);
+    // 图标副本也一样：它靠监听累积，而**必须在对第一个包解析完成之前**就
+    // 建起来。否则「解析 A → 解析 B → 进差异页」这条路径上，进差异页那一刻
+    // 才第一次读它，A 与 B 的 `ApkInfo` 早已被 dispose，一个图标也留不下 ——
+    // 那正是用户报的「左侧包没有图标」。
+    ref.read(parsedFileIconsProvider);
   }
 
   void _onNavSelected(String id) {

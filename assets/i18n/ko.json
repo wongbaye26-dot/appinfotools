@@ -51,7 +51,10 @@
     "sig_verified": "검증됨",
     "sig_failed": "검증 실패",
     "sig_unknown": "알 수 없음",
-    "sig_none": "미검증"
+    "sig_none": "미검증",
+    "field_permission_count": "권한 수",
+    "field_component_count": "컴포넌트 수",
+    "field_nested_bundle_count": "중첩 번들 수"
   },
   "home": {
     "copy_file_path": "파일 경로 복사",

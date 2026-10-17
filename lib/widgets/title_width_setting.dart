@@ -1,5 +1,6 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
+import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -43,8 +44,8 @@ class _TitleWidthSettingState extends ConsumerState<TitleWidthSetting> {
             Expanded(
               child: Slider(
                 value: currentWidth,
-                min: 40,
-                max: 200,
+                min: kMinDetailTitleWidth,
+                max: kMaxDetailTitleWidth,
                 divisions: 24,
                 label: currentWidth.round().toString(),
                 onChanged: (value) {
@@ -81,13 +82,17 @@ class _TitleWidthSettingState extends ConsumerState<TitleWidthSetting> {
                   children: [
                     Container(
                       alignment: Alignment.centerLeft,
-                      width: currentWidth,
+                      width: currentWidth.clamp(
+                        kMinDetailTitleWidth,
+                        kMaxDetailTitleWidth,
+                      ),
                       child: Text(
                         'Title',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w400,
-                        ),
+                        // 与真实卡片同一个样式函数 —— 预览不能是另一套字体。
+                        style: detailTitleStyle(context),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 16),

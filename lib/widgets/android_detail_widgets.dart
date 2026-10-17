@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/widgets/arch_badge.dart';
+import 'package:apk_info_tool/widgets/package_icon_metrics.dart';
 import 'package:flutter/material.dart';
 
 /// Android 系统强调色。
@@ -84,17 +85,23 @@ class AndroidHeroCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 大图标
+            // 大图标。尺寸与圆角取自 `PackageIconMetrics` —— 与概览页 Hero
+            // 同一份定义（此前这里是 72×72 + 固定 16px 圆角，比概览页小一圈，
+            // 用户一眼就看出来了）。
             GestureDetector(
               onSecondaryTapUp: onIconSecondaryTapUp == null
                   ? null
                   : (details) => onIconSecondaryTapUp!(details.globalPosition),
               child: Container(
-                width: 72,
-                height: 72,
+                // 供测试定位：断言这个框用的是 `PackageIconMetrics` 的尺寸。
+                key: const ValueKey('package_icon_box'),
+                width: PackageIconMetrics.heroSide,
+                height: PackageIconMetrics.heroSide,
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(
+                    PackageIconMetrics.radiusOf(PackageIconMetrics.heroSide),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.06),

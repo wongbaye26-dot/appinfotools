@@ -51,7 +51,10 @@
     "sig_verified": "検証済み",
     "sig_failed": "検証失敗",
     "sig_unknown": "不明",
-    "sig_none": "未検証"
+    "sig_none": "未検証",
+    "field_permission_count": "権限数",
+    "field_component_count": "コンポーネント数",
+    "field_nested_bundle_count": "ネスト数"
   },
   "home": {
     "copy_file_path": "ファイルパスをコピー",

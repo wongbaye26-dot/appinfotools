@@ -59,6 +59,9 @@
     "field_min_os": "最低系统",
     "field_min_sdk": "最低 SDK",
     "field_target_sdk": "目标 SDK",
+    "field_permission_count": "权限数",
+    "field_component_count": "组件数",
+    "field_nested_bundle_count": "嵌套包数",
     "field_executable": "可执行文件",
     "copy_field": "复制{label}",
     "field_details": "详细信息"

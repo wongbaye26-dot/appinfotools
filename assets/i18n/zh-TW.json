@@ -59,6 +59,9 @@
     "field_min_os": "最低系統",
     "field_min_sdk": "最低 SDK",
     "field_target_sdk": "目標 SDK",
+    "field_permission_count": "權限數",
+    "field_component_count": "組件數",
+    "field_nested_bundle_count": "嵌套包數",
     "field_executable": "可執行檔",
     "copy_field": "複製{label}",
     "field_details": "詳細資料"

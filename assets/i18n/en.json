@@ -59,6 +59,9 @@
     "field_min_os": "Minimum OS",
     "field_min_sdk": "Min SDK",
     "field_target_sdk": "Target SDK",
+    "field_permission_count": "Permissions",
+    "field_component_count": "Components",
+    "field_nested_bundle_count": "Nested bundles",
     "field_executable": "Executable",
     "copy_field": "Copy {label}",
     "field_details": "Details"

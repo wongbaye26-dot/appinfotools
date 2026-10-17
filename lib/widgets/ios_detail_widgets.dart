@@ -1,6 +1,7 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
 import 'package:apk_info_tool/widgets/arch_badge.dart';
+import 'package:apk_info_tool/widgets/package_icon_metrics.dart';
 import 'package:flutter/material.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IosIconResolution;
 
@@ -77,13 +78,17 @@ class IosHeroCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 大图标
+            // 大图标。尺寸与圆角取自 `PackageIconMetrics`（与概览页 Hero
+            // 同一份定义）。
             Container(
-              width: 72,
-              height: 72,
+              key: const ValueKey('package_icon_box'),
+              width: PackageIconMetrics.heroSide,
+              height: PackageIconMetrics.heroSide,
               decoration: BoxDecoration(
                 color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(
+                  PackageIconMetrics.radiusOf(PackageIconMetrics.heroSide),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.06),
@@ -94,7 +99,10 @@ class IosHeroCard extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: icon != null
-                  ? IosIconThumbnail(resolution: icon, size: 72)
+                  ? IosIconThumbnail(
+                      resolution: icon,
+                      size: PackageIconMetrics.heroSide,
+                    )
                   : Center(
                       child: Icon(
                         Icons.app_shortcut,

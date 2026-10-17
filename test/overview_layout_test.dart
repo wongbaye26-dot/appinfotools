@@ -11,6 +11,8 @@
 // 3. Hero 区里每个字段都带复制入口，并且复制真的写进剪贴板。
 
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_parser/apk_parser.dart'
+    show AndroidComponent, ComponentType;
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
@@ -55,7 +57,20 @@ FileState _fullState() => FileState(
         ..versionName = '1.2.3'
         ..versionCode = 45
         ..sdkVersion = 24
-        ..targetSdkVersion = 34,
+        ..targetSdkVersion = 34
+        ..nativeCodes = ['arm64-v8a', 'armeabi-v7a']
+        ..usesPermissions = [
+          for (var i = 0; i < 12; i++) 'android.permission.P$i'
+        ]
+        ..components = [
+          for (var i = 0; i < 3; i++)
+            AndroidComponent(
+              type: ComponentType.activity,
+              name: 'com.example.demo.Screen$i',
+              exported: true,
+              hasIntentFilter: true,
+            ),
+        ],
     );
 
 Future<void> _pump(WidgetTester tester, Size size, {FileState? state}) async {
@@ -103,6 +118,30 @@ String _visibleText(WidgetTester tester) {
 /// Hero 里「详细信息」网格那一段。
 Finder _detailsGrid() => find.text(t.overview.field_details);
 
+/// 只取**网格里**的文字。
+///
+/// 页面级的 `_visibleText` 会把 Hero 的身份信息（应用名 / 包名 / 版本）一起
+/// 算进来，而 V2.4.8 的验收点恰恰是「网格里不再重复那些」—— 不限定范围就
+/// 断言不了。
+String _gridText(WidgetTester tester) {
+  final grid = find
+      .ancestor(
+        of: find.text(t.overview.field_details),
+        matching: find.byType(Column),
+      )
+      .first;
+  final buffer = StringBuffer();
+  for (final w in tester.widgetList<Text>(
+      find.descendant(of: grid, matching: find.byType(Text)))) {
+    buffer.writeln(w.data ?? '');
+  }
+  for (final w in tester.widgetList<SelectableText>(
+      find.descendant(of: grid, matching: find.byType(SelectableText)))) {
+    buffer.writeln(w.data ?? '');
+  }
+  return buffer.toString();
+}
+
 void main() {
   group('Hero 版式：任何尺寸都不得溢出', () {
     for (final entry in {
@@ -137,17 +176,18 @@ void main() {
     });
 
     testWidgets('默认窗口下网格显示，并且字段齐全', (tester) async {
-      await _pump(tester, _defaultWindow);
+      await _pump(tester, _defaultWindow, state: _fullState());
 
       expect(_detailsGrid(), findsOneWidget);
-      final text = _visibleText(tester);
-      expect(text, contains(t.overview.field_file_name));
-      // 文件路径**不在网格里**（V2.5.0 起移到 Hero 的常驻行，见下一个 group），
-      // 但文件名仍在网格中 —— 两者不是同一项。
-      expect(text, contains('/tmp/samples/example-application.ipa'));
-      expect(text, contains(t.file_info.sha256));
-      expect(text, contains(t.file_info.sha1));
-      expect(text, contains(t.file_info.md5));
+      final grid = _gridText(tester);
+      // V2.4.8 起网格的 6 项是「Hero 上没有、但一眼想知道」的：
+      // 最低系统 / 目标 SDK / ABI / 权限数 / 组件数 / SHA-256。
+      expect(grid, contains(t.overview.field_min_sdk));
+      expect(grid, contains(t.overview.field_target_sdk));
+      expect(grid, contains(t.apk_info.abi));
+      expect(grid, contains(t.overview.field_permission_count));
+      expect(grid, contains(t.overview.field_component_count));
+      expect(grid, contains(t.file_info.sha256));
     });
 
     testWidgets('网格不含内部滚动器（用户要求固定显示）', (tester) async {
@@ -181,20 +221,35 @@ void main() {
   // 选的是「打开一个包时最常被复制走的那几项」，去掉的是 SHA-1 与 MD5 ——
   // SHA-256 是现在的通用口径。它们在分析页与导出的报告里仍然都在。
   group('详细信息网格最多 6 项', () {
-    testWidgets('字段齐全时正好显示 6 项，且丢掉的是 SHA-1 / MD5', (tester) async {
+    testWidgets('正好显示 6 项，且不再重复 Hero 已经显示过的信息', (tester) async {
       await _pump(tester, _defaultWindow, state: _fullState());
 
-      final text = _visibleText(tester);
+      final grid = _gridText(tester);
       // 保留的 6 项
-      expect(text, contains(t.overview.field_file_name));
-      expect(text, contains(t.overview.field_version));
-      expect(text, contains(t.overview.field_build));
-      expect(text, contains(t.overview.field_min_sdk));
-      expect(text, contains(t.file_info.sha256));
-      expect(text, contains(t.overview.field_target_sdk));
-      // 被丢掉的
-      expect(text, isNot(contains(t.file_info.sha1)));
-      expect(text, isNot(contains(t.file_info.md5)));
+      expect(grid, contains(t.overview.field_min_sdk));
+      expect(grid, contains(t.overview.field_target_sdk));
+      expect(grid, contains(t.apk_info.abi));
+      expect(grid, contains(t.overview.field_permission_count));
+      expect(grid, contains(t.overview.field_component_count));
+      expect(grid, contains(t.file_info.sha256));
+
+      // **网格里不再出现** Hero 已经显示过的三项（文件名 / 版本 / 构建号）——
+      // 这正是用户报的「6 个里有三个是重复信息」。
+      expect(grid, isNot(contains(t.overview.field_file_name)));
+      expect(grid, isNot(contains(t.overview.field_version)));
+      expect(grid, isNot(contains(t.overview.field_build)));
+      // SHA-1 / MD5 仍然不在（V2.4.7 起的取舍）。
+      expect(grid, isNot(contains(t.file_info.sha1)));
+      expect(grid, isNot(contains(t.file_info.md5)));
+    });
+
+    testWidgets('权限 / 组件没读到时不渲染成 0', (tester) async {
+      // `_state()` 没有解析结果：所有计数类字段都是「没读到」。
+      await _pump(tester, _defaultWindow);
+
+      final grid = _gridText(tester);
+      expect(grid, isNot(contains(t.overview.field_permission_count)));
+      expect(grid, isNot(contains(t.overview.field_component_count)));
     });
 
     testWidgets('网格里的单元数不超过上限', (tester) async {
@@ -287,13 +342,13 @@ void main() {
 
   group('Hero 区每个字段都能复制', () {
     testWidgets('复制按钮数量与字段数量一致', (tester) async {
-      await _pump(tester, _defaultWindow);
+      // 用字段齐全的状态：空状态下网格只剩 SHA-256 一项，数不出东西来。
+      await _pump(tester, _defaultWindow, state: _fullState());
 
-      // 这个状态下有值的字段：应用名（标题行）+ 四个状态卡片 + 网格里的
-      // 文件名 / SHA-256 / SHA-1 / MD5 + Hero 里的文件路径 —— 共 10 个。
+      // 这个状态下有值的字段：应用名（标题行）+ 包名 + 版本 + 四个状态卡片 +
+      // 网格里的 6 项 + Hero 里的文件路径 —— 至少 10 个。
       // 文件路径旁边**同时**有复制与重命名两个入口（路径是用户最常要
       // 贴给别人、也最常要改名的一项）。
-      // 标识符与版本没有值（状态里没有解析结果），因此不出现复制入口：
       // 空字段不给复制按钮，正是「取不到就不假装有」的那条约定。
       final copies = find.byIcon(Icons.content_copy).evaluate().length;
       expect(

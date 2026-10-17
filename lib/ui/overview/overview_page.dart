@@ -10,6 +10,7 @@ import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/architecture_label.dart';
+import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_rename.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -21,6 +22,7 @@ import 'package:apk_info_tool/widgets/arch_badge.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_icon_preview.dart';
+import 'package:apk_info_tool/widgets/package_icon_metrics.dart';
 import 'package:apk_info_tool/widgets/platform_tag.dart';
 import 'package:apk_info_tool/widgets/rename_file_dialog.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -642,9 +644,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           _buildDetailGrid(
             context,
             fileState: fileState,
-            fileName: fileName,
-            version: version,
-            build: build,
             minSystem: minSystem,
             targetSdk: targetSdk,
             executable: executable,
@@ -690,8 +689,12 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     // 所以这里固定成正方形并居中：多出来的高度由 Hero 卡片自己的背景填充，
     // 而不是一个深色的空框。圆角按 iOS 图标的比例给（约 22.4%），比原来写死的
     // 14px（15%）更接近真实图标。
-    final side = compact ? 76.0 : 92.0;
-    final radius = side * 0.2237;
+    // 尺寸与圆角取自共享定义（`PackageIconMetrics`）—— 分析页 Hero 卡片与
+    // 版本对比槽位用的是同一份，改一处三处一起变。
+    final side = compact
+        ? PackageIconMetrics.compactHeroSide
+        : PackageIconMetrics.heroSide;
+    final radius = PackageIconMetrics.radiusOf(side);
 
     return Center(
       child: SizedBox.square(
@@ -909,9 +912,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   Widget _buildDetailGrid(
     BuildContext context, {
     required FileState fileState,
-    required String fileName,
-    required String version,
-    required String build,
     required String minSystem,
     required String targetSdk,
     required String executable,
@@ -926,42 +926,64 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final hashPlaceholder =
         fileState.isComputingHash ? t.file_info.computing_hash : '';
 
+    final analysis = fileState.analysis;
+    final android = analysis?.android;
+    final ios = analysis?.ios;
+
+    /// 列表型字段的**条数**。读不到（`absent` / `unsupported` / `failed`）
+    /// 时返回 `null` —— 「没读到」不能渲染成 0，那会被读成「一个都没有」。
+    String? countOf(FieldValue<List<Object?>>? value) {
+      if (value == null || !value.hasValue) return null;
+      return '${value.value!.length}';
+    }
+
+    final abi = android?.nativeCodes;
+    final permissionCount = countOf(android?.permissions);
+    final componentCount = countOf(android?.components);
+    final deviceFamily = ios?.deviceFamily.hasValue ?? false
+        ? DetailRenderer.deviceFamily(ios!.deviceFamily.value, t)
+        : null;
+    final nestedBundleCount =
+        ios == null ? null : '${ios.nestedBinaries.length}';
+
     // **顺序即优先级** —— 渲染时只取前 `maxDetailCells` 项，见那里的说明。
+    //
+    // **不重复 Hero 已经显示过的东西**（V2.4.8）：文件名、版本、构建号在
+    // Hero 上都有（应用名 / 包名 / `v1.4.1 (14102)` / 完整路径），网格再列
+    // 一遍纯属占位。空出来的三格换成「Hero 上没有、但一眼想知道」的：
+    // ABI、权限数、组件数（iOS 侧是设备类型、可执行文件、嵌套包数）。
     final cells = <Widget>[
-      if (fileName.isNotEmpty)
-        _CopyField(
-          label: t.overview.field_file_name,
-          value: fileName,
-        ),
-      // 文件路径**不在这里**：它是 Hero 里那条常驻的行（见 [_FilePathLine]），
-      // 网格是随窗口高度收起的补充信息，两者放同一项会让「矮窗口下路径消失」
-      // 这个 bug 原样复活，还会多出一个重命名按钮。
-      if (version.isNotEmpty)
-        _CopyField(
-          label: t.overview.field_version,
-          value: version,
-        ),
-      if (build.isNotEmpty)
-        _CopyField(
-          label: t.overview.field_build,
-          value: build,
-        ),
+      // 1. 最低系统
       if (minSystem.isNotEmpty)
-        _CopyField(
-          label: minSystemLabel,
-          value: minSystem,
-        ),
+        _CopyField(label: minSystemLabel, value: minSystem),
+      // 2. 目标 SDK（Android）/ 设备类型（iOS）
       if (targetSdk.isNotEmpty)
+        _CopyField(label: t.overview.field_target_sdk, value: targetSdk)
+      else if (deviceFamily != null && deviceFamily.isNotEmpty)
+        _CopyField(label: t.ios_info.device_family, value: deviceFamily),
+      // 3. ABI（Android）/ 可执行文件（iOS）
+      if (abi != null && abi.hasValue && abi.value!.isNotEmpty)
+        _CopyField(label: t.apk_info.abi, value: abi.value!.join(' '))
+      else if (executable.isNotEmpty)
+        _CopyField(label: t.overview.field_executable, value: executable),
+      // 4. 权限数（Android）/ 嵌套包数（iOS）
+      if (permissionCount != null)
         _CopyField(
-          label: t.overview.field_target_sdk,
-          value: targetSdk,
-        ),
-      if (executable.isNotEmpty)
+          label: t.overview.field_permission_count,
+          value: permissionCount,
+        )
+      else if (nestedBundleCount != null)
         _CopyField(
-          label: t.overview.field_executable,
-          value: executable,
+          label: t.overview.field_nested_bundle_count,
+          value: nestedBundleCount,
         ),
-      // 哈希：最常被拿去比对的一项，也是最需要「不用手划选」的一项。
+      // 5. 组件数（Android；iOS 没有对应概念，自然不出现）
+      if (componentCount != null)
+        _CopyField(
+          label: t.overview.field_component_count,
+          value: componentCount,
+        ),
+      // 6. 哈希：最常被拿去比对的一项，也是最需要「不用手划选」的一项。
       if (fileState.sha256Hash != null)
         _CopyField(
           label: t.file_info.sha256,
@@ -972,18 +994,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         _CopyField(
           label: t.file_info.sha256,
           value: hashPlaceholder,
-        ),
-      if (fileState.sha1Hash != null)
-        _CopyField(
-          label: t.file_info.sha1,
-          value: fileState.sha1Hash!,
-          monospace: true,
-        ),
-      if (fileState.md5Hash != null)
-        _CopyField(
-          label: t.file_info.md5,
-          value: fileState.md5Hash!,
-          monospace: true,
         ),
     ];
 
