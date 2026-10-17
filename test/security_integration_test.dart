@@ -479,7 +479,14 @@ void main() {
       AnalysisNote('ios.native_symbols.stripped', 'f'),
       AnalysisNote('ios.native_symbols.semantics', 'f'),
       AnalysisNote('android.manifest.unparsed', 'f', {'reason': 'r'}),
-      AnalysisNote('android.dex.budget', 'f', {'name': 'n'}),
+      // V2.4.9 起预算说明要四个参数（名字 / 扫了多少 / 一共多大 / 几成）——
+      // 只给 `name` 时模板会整条回退成英文，正是上面那条守卫要抓的情况。
+      AnalysisNote('android.dex.budget', 'f', {
+        'name': 'n',
+        'scannedBytes': 1,
+        'totalBytes': 2,
+        'percent': 50,
+      }),
       AnalysisNote('android.dex.no_content', 'f'),
       AnalysisNote(
           'android.dex.scan_summary', 'f', {'dexCount': 1, 'bytes': 2}),

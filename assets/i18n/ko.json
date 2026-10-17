@@ -398,7 +398,7 @@
     "limitation_notes": {
       "android_analysis_based_on_cooccurrence": "OCR, 업로드, 백그라운드에 관한 결론은 문자열 마커의 동시 출현에 근거합니다. 디스어셈블리나 메서드 간 데이터 흐름 복원을 하지 않았으므로, 난독화나 동적 로딩에 따라 결론이 달라질 수 있습니다.",
       "android_container_anomaly": "컨테이너/해석 이상이 커버리지의 완전성에 영향을 줄 수 있습니다: {anomaly}",
-      "android_dex_budget": "DEX 스캔 예산: {name} — 이 파일은 일부만 스캔했으며, 스캔하지 않은 바이트에 찾지 못한 단서가 있을 수 있습니다.",
+      "android_dex_budget": "DEX 스캔 예산: {name}은(는) {totalBytes}바이트 중 처음 {scannedBytes}바이트만 스캔되었습니다(약 {percent}%). 남은 바이트는 검색되지 않아 그 안의 단서는 발견되지 않습니다. 이는 의도적으로 설정한 상한이며 파싱 실패가 아닙니다.",
       "android_dex_checksum_not_verified": "{name}은 {limitMiB} MiB를 초과하므로 체크섬을 **검증하지 않았습니다** — '체크섬 이상 보고 없음'을 '체크섬이 올바름'으로 읽지 마세요.",
       "android_dex_desynced_bodies": "{count}개의 메서드 본문이 명령 경계에 정렬되지 않았습니다 ({names}): **이 메서드 본문의 호출 지점은 신뢰할 수 없습니다** — 폭 테이블이나 페이로드 길이가 실제 파일 형태와 맞지 않을 수 있습니다.",
       "android_dex_invoke_custom": "invoke-custom 명령이 {count}개 있습니다: 이것들은 method_ids가 아니라 call_site_ids를 참조하며 해석하지 않았으므로, 이 호출은 호출 지점 커버리지에 **포함되지 않습니다**.",

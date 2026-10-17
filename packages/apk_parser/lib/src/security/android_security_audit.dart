@@ -54,12 +54,21 @@ class AndroidSecurityAudit {
 
     // ---- DEX 字符串扫描（第一层取证）----
     final scan = DexClueScanner.scan(dexEntries);
-    for (final skipped in scan.skippedForBudget) {
+    for (final skip in scan.skippedForBudget) {
+      // 参数分开给：界面要按语言拼「只扫了前 8 MiB（共 17.5 MB，约 47%）」，
+      // 而拼接好的整句没法再拆回数字。
       limitations.add(AnalysisNote(
         'android.dex.budget',
-        'DEX scan budget: $skipped — this file was only partially scanned, and '
-            'the uncovered bytes may contain clues that were not found.',
-        {'name': skipped},
+        'DEX scan budget: ${skip.name} was only scanned for '
+            '${skip.scannedBytes} of ${skip.totalBytes} bytes '
+            '(${skip.percent}%) — the remaining bytes were not searched, so '
+            'clues inside them were not found.',
+        {
+          'name': skip.name,
+          'scannedBytes': skip.scannedBytes,
+          'totalBytes': skip.totalBytes,
+          'percent': skip.percent,
+        },
       ));
     }
     if (dexEntries.isEmpty) {

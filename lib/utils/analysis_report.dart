@@ -1207,6 +1207,11 @@ class AnalysisReport {
     final message = a['message'];
     final limitMiB = a['limitMiB'];
     final anomaly = a['anomaly'];
+    // DEX 扫描预算的三个数（V2.4.9）：只给 `{name}` 时界面只能写「该文件只
+    // 扫描了部分内容」，说不出「扫了多少 / 一共多大 / 覆盖几成」。
+    final scannedBytes = a['scannedBytes'];
+    final totalBytes = a['totalBytes'];
+    final percent = a['percent'];
 
     final String? localized = switch (note.code) {
       'ios.url_schemes.unreadable' =>
@@ -1237,8 +1242,17 @@ class AnalysisReport {
       'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.manifest.unparsed' =>
         reason == null ? null : n.android_manifest_unparsed(reason: reason),
-      'android.dex.budget' =>
-        name == null ? null : n.android_dex_budget(name: name),
+      'android.dex.budget' => (name == null ||
+              scannedBytes == null ||
+              totalBytes == null ||
+              percent == null)
+          ? null
+          : n.android_dex_budget(
+              name: name,
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+            ),
       'android.dex.no_content' => n.android_dex_no_content,
       'android.dex.scan_summary' => (dexCount == null || bytes == null)
           ? null

@@ -44,6 +44,39 @@ class CodeClue {
 }
 
 /// DEX 字符串扫描结果。
+/// 一条「被扫描预算挡掉」的记录。
+///
+/// [scannedBytes] 为 0 表示整份都没扫（总预算用尽）；大于 0 表示只扫了前
+/// 这么多字节。
+class DexBudgetSkip {
+  final String name;
+  final int scannedBytes;
+
+  /// 该 DEX 的实际大小。
+  final int totalBytes;
+
+  const DexBudgetSkip({
+    required this.name,
+    required this.scannedBytes,
+    required this.totalBytes,
+  });
+
+  /// 扫描覆盖率（0–100 的整数）。`totalBytes` 为 0 时按 0 算。
+  ///
+  /// **向下取整，且部分扫描绝不给 100%。** 一个比上限只大 22 字节的 DEX，
+  /// 用 `round()` 会算出 100 —— 界面上就是「只扫了约 100%」，而它恰恰是
+  /// 未覆盖的那一条。宁可显示 99。
+  int get percent {
+    if (totalBytes <= 0) return 0;
+    if (scannedBytes >= totalBytes) return 100;
+    final value = (scannedBytes * 100 / totalBytes).floor();
+    return value >= 100 ? 99 : value;
+  }
+
+  @override
+  String toString() => '$name scanned $scannedBytes of $totalBytes bytes';
+}
+
 class DexScanResult {
   final List<CodeClue> clues;
 
@@ -57,8 +90,11 @@ class DexScanResult {
   final int scannedDexCount;
   final int scannedBytes;
 
-  /// 因预算被跳过的 DEX（名字 + 大小）。**必须**出现在报告的未覆盖范围里。
-  final List<String> skippedForBudget;
+  /// 因预算被跳过的 DEX。**必须**出现在报告的未覆盖范围里。
+  ///
+  /// 是结构化记录而不是一句英文 —— 界面上要按语言拼出「只扫了前 8 MiB（共
+  /// 17.5 MB，约 47%）」，而拼接过的字符串没法再拆回去。
+  final List<DexBudgetSkip> skippedForBudget;
 
   const DexScanResult({
     required this.clues,
@@ -138,12 +174,21 @@ class DexClueScanner {
   /// IPv4 字面量。
   static final RegExp _ipPattern = RegExp(r'\b(\d{1,3}\.){3}\d{1,3}\b');
 
-  static DexScanResult scan(List<DexBytes> entries) {
+  /// [maxBytesPerDex] / [maxTotalBytes] 可覆盖（探针与测试用）。
+  ///
+  /// 默认值就是上面两个常量 —— 调用方不传时行为与之前完全一致。做成参数是
+  /// 因为「预算到底卡掉了多少」只能靠实测回答：拿同一个包分别按 8 / 32 MiB
+  /// 扫一遍，才知道多扫出来的字节有没有换来新线索。
+  static DexScanResult scan(
+    List<DexBytes> entries, {
+    int maxBytesPerDex = DexClueScanner.maxBytesPerDex,
+    int maxTotalBytes = DexClueScanner.maxTotalBytes,
+  }) {
     final domains = <String>{};
     final ips = <String>{};
     final markerSamples = <String, Set<String>>{};
     final markerDexes = <String, Set<String>>{};
-    final skipped = <String>[];
+    final skipped = <DexBudgetSkip>[];
 
     var scannedDexCount = 0;
     var scannedBytes = 0;
@@ -151,14 +196,21 @@ class DexClueScanner {
 
     for (final entry in entries) {
       if (totalSeen >= maxTotalBytes) {
-        skipped.add('${entry.name} (total budget reached)');
+        skipped.add(DexBudgetSkip(
+          name: entry.name,
+          scannedBytes: 0,
+          totalBytes: entry.bytes.length,
+        ));
         continue;
       }
       if (entry.bytes.length > maxBytesPerDex) {
         // 只扫前 maxBytesPerDex 字节，并明确记录「这是部分扫描」——
         // 悄悄扫一半比不扫更糟：报告会看起来是完整的。
-        skipped.add('${entry.name} scanned partially '
-            '(${maxBytesPerDex ~/ 1024} KiB of ${entry.bytes.length} bytes)');
+        skipped.add(DexBudgetSkip(
+          name: entry.name,
+          scannedBytes: maxBytesPerDex,
+          totalBytes: entry.bytes.length,
+        ));
       }
       final limit = entry.bytes.length < maxBytesPerDex
           ? entry.bytes.length

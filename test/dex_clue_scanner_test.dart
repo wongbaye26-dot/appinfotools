@@ -99,7 +99,13 @@ void main() {
       final result = DexClueScanner.scan([DexBytes('classes.dex', bytes)]);
 
       expect(result.skippedForBudget, isNotEmpty);
-      expect(result.skippedForBudget.first, contains('partially'));
+      // 结构化记录：名字、扫了多少、文件多大、覆盖百分比。
+      // 界面按语言拼句子，所以这几个数必须分开给，不能只给一句英文。
+      final skip = result.skippedForBudget.first;
+      expect(skip.name, 'classes.dex');
+      expect(skip.scannedBytes, DexClueScanner.maxBytesPerDex);
+      expect(skip.totalBytes, bytes.length);
+      expect(skip.percent, lessThan(100));
       // 截断之外的标记扫不到 —— 这正是不许悄悄少扫的原因。
       expect(result.hasClue('ocr-mlkit'), isFalse);
     });
@@ -114,7 +120,9 @@ void main() {
       final result = DexClueScanner.scan(entries);
       expect(result.scannedDexCount, 6);
       expect(result.skippedForBudget.length, 2);
-      expect(result.skippedForBudget.first, contains('total budget'));
+      // 整份没扫时 `scannedBytes` 为 0（区别于「只扫了一部分」）。
+      expect(result.skippedForBudget.first.scannedBytes, 0);
+      expect(result.skippedForBudget.first.percent, 0);
     });
 
     test('纯二进制内容不产生虚假线索', () {
