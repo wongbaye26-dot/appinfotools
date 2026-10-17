@@ -168,7 +168,12 @@ void main() {
       // fake 区的微任务队列里，只有 `pump()` 才会被排空。因此必须**交替**推进
       // 两边 —— 只用 `runAsync(() => pending)` 会死锁（实测挂到测试超时），
       // 只用 `pumpAndSettle()` 则 IO 永远没有机会完成。
-      for (var i = 0; i < 50 && result == null; i++) {
+      //
+      // 轮询上限给到 **3 秒**（300 × 10ms）：单跑时通常一两轮就完成，但
+      // `flutter test` 同时跑几十个 isolate 时真实事件循环会被饿住 —— 上限
+      // 卡在 500ms 时实测**偶发**超时（同一份代码单独跑 3/3 通过、全量跑偶发
+      // 变红）。一旦 `result` 到手就立刻退出，所以放宽上限不会拖慢正常路径。
+      for (var i = 0; i < 300 && result == null; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 10)),
         );

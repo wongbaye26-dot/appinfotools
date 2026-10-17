@@ -1427,4 +1427,53 @@ void main() {
       expect(AnalysisReport.limitationText(f, t), '尚未迁移的局限');
     });
   });
+  group('覆盖不足的文案（V2.4.9）', () {
+    test('未扫描清单只列路径，不夹英文原因', () {
+      // 实测用户看到的原文：
+      //   Payload/Runner.app/Frameworks/App.framework/App（bytes not retained
+      //   (nested budget of 32 MiB reached)）
+      // 一半中文一半英文 —— 原因来自引擎侧的 `bytesFailure`，是英文句子。
+      // 原因在 `IosNestedBinary.failure` 与解析诊断里仍然能看到。
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+          infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+              '<plist version="1.0"><dict></dict></plist>',
+        ),
+        nestedExecutables: [
+          // 至少要有**一个**能扫的，否则走的是「一个都读不到」那条分支
+          // （`ios.executable.none_readable`），不会产出「未扫描清单」。
+          IosNestedExecutableInput(
+            path: 'Payload/Runner.app/Frameworks/Foo.framework/Foo',
+            bundlePath: 'Payload/Runner.app/Frameworks/Foo.framework',
+            kind: IosBundleKind.framework,
+            bytes: const Utf8Encoder().convert('PHPhotoLibrary\n'),
+          ),
+          const IosNestedExecutableInput(
+            path: 'Payload/Runner.app/Frameworks/App.framework/App',
+            bundlePath: 'Payload/Runner.app/Frameworks/App.framework',
+            kind: IosBundleKind.framework,
+            bytes: null,
+            failure: 'bytes not retained (nested budget of 32 MiB reached)',
+          ),
+        ],
+      );
+
+      final note = result.limitations.firstWhere(
+        (l) => l.code == 'ios.executable.unscanned',
+      );
+      final names = (note.args['names'] as List).cast<String>();
+      // 断言「**每一条**都是纯路径」而不是只看第一条 —— 主可执行文件也可能
+      // 因为没给字节而落进这个清单，数量随入参变化。
+      expect(names, isNotEmpty);
+      expect(
+        names,
+        contains('Payload/Runner.app/Frameworks/App.framework/App'),
+      );
+      for (final name in names) {
+        expect(name, isNot(contains('（')), reason: '夹了中文括号：$name');
+        expect(name, isNot(contains('bytes not retained')), reason: name);
+        expect(name, isNot(contains('budget')), reason: name);
+      }
+    });
+  });
 }

@@ -10,6 +10,9 @@
 // 这一组钉住：这几条渲染出来**必须是完整的中文句子**，且不含 Markdown 标记
 // 与代码标识符。
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
@@ -84,6 +87,36 @@ void main() {
       expect(text, isNot(contains('bool')));
       expect(text, isNot(contains('false')));
       expect(text, contains('离线静态分析'));
+    });
+
+    test('所有语言包里的每一条：没有 Markdown 标记，也没有代码标识符', () {
+      // 界面是纯 `Text`，`**` 会原样显示成星号；`includesRuntimeEvidence`
+      // 这类是模型字段名，不该出现在给用户看的句子里。
+      //
+      // 直接读 JSON 而不是渲染：模板里有占位符，渲染需要构造 args，而这一条
+      // 要覆盖**全部** 36 条 × 6 个语言包。
+      for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW', 'ja', 'ko']) {
+        final file = File('assets/i18n/$locale.json');
+        expect(file.existsSync(), isTrue, reason: '缺少语言包 $locale');
+        final map = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+        final notes =
+            (map['security'] as Map<String, dynamic>)['limitation_notes']
+                as Map<String, dynamic>;
+        expect(notes, isNotEmpty, reason: '$locale 没有 limitation_notes');
+        notes.forEach((key, value) {
+          final text = value as String;
+          expect(
+            text,
+            isNot(contains('**')),
+            reason: '$locale / $key 里有 Markdown 标记，界面上会显示星号',
+          );
+          expect(
+            text,
+            isNot(contains('includesRuntimeEvidence')),
+            reason: '$locale / $key 漏了代码标识符',
+          );
+        });
+      }
     });
 
     test('英文界面下不混进中文', () async {

@@ -296,8 +296,14 @@ class IosPrivacyAudit {
     for (final target in targets) {
       final bytes = target.bytes;
       if (bytes == null || bytes.isEmpty) {
-        unscanned.add('${target.path}'
-            '${target.failure == null ? '' : '（${target.failure}）'}');
+        // **只放路径，不带原因。** 原因（`bytes not retained (nested budget
+        // of 32 MiB reached)` 这类）是英文，而这句话会原样进中文界面 ——
+        // 实测用户看到的就是「Payload/…/App（bytes not retained (nested
+        // budget of 32 MiB reached)）」，一半中文一半英文。
+        //
+        // 原因没有丢：`IosNestedBinary.failure` / `bytesFailure` 在详情页的
+        // 嵌套清单与解析诊断里都能看到。
+        unscanned.add(target.path);
         continue;
       }
       scannedPaths.add(target.path);
