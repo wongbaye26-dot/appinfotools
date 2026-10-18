@@ -83,6 +83,7 @@ void main() {
           'ANDROID-DEBUGGABLE',
           'ANDROID-EXPORTED-COMPONENT',
           'ANDROID-ALLOW-BACKUP',
+          'ANDROID-SHARED-USER-ID',
           'ANDROID-RULE-A',
           'ANDROID-RULE-B',
           'ANDROID-RULE-C',
@@ -167,6 +168,9 @@ void main() {
           ),
       'ANDROID-ALLOW-BACKUP': () => _audit(
             meta: _meta(targetSdk: 34)..applicationAllowBackup = true,
+          ),
+      'ANDROID-SHARED-USER-ID': () => _audit(
+            meta: _meta(targetSdk: 34)..sharedUserId = 'com.example.shared',
           ),
       // 特殊访问能力：**清单层的组件权限**才是判据（不需要上传）。
       // 用 DEX 字面量判会误伤 Material 的 `AccessibilityServiceInfo` 查询。

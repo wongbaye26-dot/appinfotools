@@ -4,6 +4,8 @@ import 'package:analysis_model/analysis_model.dart';
 
 import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
+import '../ios_signature.dart';
+import '../plist/plist_value.dart';
 import 'ios_native_symbol_audit.dart';
 
 /// Mach-O 可执行文件的字符串线索扫描预算。
@@ -156,6 +158,20 @@ class IosPrivacyAudit {
     /// 应用的一部分，而且扩展常常**正是**处理照片与 OCR 的地方。
     List<IosNestedExecutableInput> nestedExecutables = const [],
 
+    /// 描述文件里的授权项（`Entitlements`）。
+    ///
+    /// **为什么需要它**：`get-task-allow` 是 iOS 的 `debuggable` —— 为 true
+    /// 时任何拿到设备的人都能用调试器附加进程、读内存。App Store 分发的包
+    /// 不含描述文件（授权信息在签名里），此时只能标「不适用」，不能标「没有」。
+    List<IosEntitlement> entitlements = const [],
+
+    /// 是否真的读到了描述文件。
+    ///
+    /// 与 [entitlements] 为空是两件事：`false` 表示**没读到**
+    /// （App Store 分发 / 文件缺失 / CMS 解不出来），此时覆盖率要标
+    /// `notApplicable` 或 `partial`，而不是「已覆盖、没有问题」。
+    bool provisioningProfilePresent = false,
+
     /// **测试用**：覆盖单文件扫描预算。
     ///
     /// 生产不传（走 [_Budget.maxBytes] = 64 MiB）。测试要验证「被预算截断时
@@ -168,6 +184,9 @@ class IosPrivacyAudit {
     final budgetBytes = scanBudgetBytes ?? _Budget.maxBytes;
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
+
+    // ---- 授权项（Entitlements）----
+    findings.addAll(_auditEntitlements(entitlements));
 
     // ---- 用途说明键：逐条事实记录 ----
     final usage = infoPlist.privacyUsageDescriptions;
@@ -1295,6 +1314,31 @@ class IosPrivacyAudit {
                     : null)),
       ),
       CoverageEntry.noted(
+        id: 'ios.entitlements',
+        status: !provisioningProfilePresent
+            ? CoverageStatus.notApplicable
+            : (entitlements.isEmpty
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: provisioningProfilePresent ? entitlements.length : null,
+        note: !provisioningProfilePresent
+            ? (
+                'ios.entitlements.no_profile',
+                'No embedded.mobileprovision (App Store distribution keeps '
+                    'the entitlements inside the signature), so the '
+                    'entitlement list cannot be read statically',
+                const <String, Object>{},
+              )
+            : (entitlements.isEmpty
+                ? (
+                    'ios.entitlements.empty',
+                    'The provisioning profile was found but declares no '
+                        'entitlements',
+                    const <String, Object>{},
+                  )
+                : null),
+      ),
+      CoverageEntry.noted(
         id: 'ios.signature',
         // 签名验证由 codesign 在**主 isolate** 单独执行，不在本审计里 ——
         // 标 notApplicable 而不是 notCovered，避免报告凭空多出一个假缺口。
@@ -1315,6 +1359,95 @@ class IosPrivacyAudit {
       limitations: limitations,
       coverage: coverage,
     );
+  }
+
+  /// 授权项（Entitlements）里的两条硬事实。
+  ///
+  /// 只收**确定有害或确定异常**的两项：
+  ///
+  /// | 键 | 后果 | 等级 |
+  /// |---|---|---|
+  /// | `get-task-allow=true` | 调试器可附加进程、读内存、替换代码 —— iOS 的 `debuggable` | P1 |
+  /// | `aps-environment=development` | 推送走沙箱环境，说明是开发/企业签名的包 | P3 |
+  ///
+  /// **刻意不收** `keychain-access-groups` / `application-groups` /
+  /// `associated-domains`：它们在正常应用里极其常见（几乎每个带登录或
+  /// 分享的应用都有），一律报会让读者学会忽略整个面板。
+  static List<SecurityFinding> _auditEntitlements(
+    List<IosEntitlement> entitlements,
+  ) {
+    final findings = <SecurityFinding>[];
+    for (final e in entitlements) {
+      switch (e.key) {
+        case 'get-task-allow':
+          // 只认**布尔 true**：`PlistString('true')` 之类不是平台写的形态，
+          // 当成「读不懂」而不是「开着了」。
+          final value = e.value;
+          if (value is! PlistBoolean || !value.value) continue;
+          findings.add(SecurityFinding(
+            ruleId: 'IOS-GET-TASK-ALLOW',
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.configuration,
+            severity: SecuritySeverity.p1,
+            confidence: SecurityConfidence.confirmed,
+            finding: 'The provisioning profile grants get-task-allow: a '
+                'debugger can attach to the process, read its memory and '
+                'replace code. Release builds must not carry this.',
+            messageCode: 'ios.get_task_allow',
+            evidence: [
+              SecurityEvidence(
+                source: SecurityEvidenceSource.provisioning,
+                location: 'embedded.mobileprovision / Entitlements',
+                detail: 'get-task-allow = true',
+              ),
+            ],
+            limitation: 'This is the entitlement declared in the '
+                'provisioning profile; whether the build was actually '
+                'distributed to users cannot be determined statically. '
+                'Development and enterprise profiles legitimately carry it.',
+            limitationCode: 'ios.get_task_allow.limitation',
+            recommendation: 'Ship App Store / ad-hoc builds signed without '
+                'get-task-allow, and treat any build that has it as a '
+                'debug-capable artifact.',
+            recommendationCode: 'ios.get_task_allow.review',
+          ));
+        case 'aps-environment':
+          final value = e.value;
+          if (value is! PlistString) continue;
+          if (value.value.toLowerCase() != 'development') continue;
+          findings.add(SecurityFinding(
+            ruleId: 'IOS-PUSH-SANDBOX',
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.configuration,
+            severity: SecuritySeverity.p3,
+            confidence: SecurityConfidence.confirmed,
+            finding: 'The provisioning profile declares '
+                'aps-environment="development": push notifications are bound '
+                'to the sandbox APNs environment, which indicates a '
+                'development-signed build.',
+            messageCode: 'ios.push_sandbox',
+            evidence: [
+              SecurityEvidence(
+                source: SecurityEvidenceSource.provisioning,
+                location: 'embedded.mobileprovision / Entitlements',
+                detail: 'aps-environment = development',
+              ),
+            ],
+            limitation: 'The APNs environment is a property of the signing '
+                'profile, not of the app logic; a distribution build uses '
+                '"production" instead.',
+            limitationCode: 'ios.push_sandbox.limitation',
+            recommendation: 'Confirm this build is meant for testing; '
+                'production releases should be signed with '
+                'aps-environment="production".',
+            recommendationCode: 'ios.push_sandbox.review',
+          ));
+        default:
+          // 其余授权项不判 —— 见上面的说明。
+          break;
+      }
+    }
+    return findings;
   }
 
   static List<SecurityEvidence> _clueEvidence(

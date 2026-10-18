@@ -461,7 +461,9 @@
       "android_container_executable_in_assets": "{name}은(는) assets/ 안의 실행 코드입니다. 정상 빌드에서는 포함되지 않습니다.",
       "android_container_resource_table_missing": "64 KiB 이상의 DEX가 있는데 resources.arsc가 없습니다. 정상 빌드에는 항상 리소스 테이블이 있습니다.",
       "android_container_resource_table_too_small": "resources.arsc가 {size}바이트뿐이라 정상적인 리소스 테이블보다 훨씬 작습니다.",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 확장하지 못했습니다(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음). 따라서 평문 트래픽 정책은 판정하지 않았습니다"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 확장하지 못했습니다(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음). 따라서 평문 트래픽 정책은 판정하지 않았습니다",
+      "ios_entitlements_no_profile": "embedded.mobileprovision 이 없습니다(App Store 배포는 권한을 서명 안에 둡니다). 따라서 권한 목록을 정적으로 읽을 수 없습니다",
+      "ios_entitlements_empty": "프로비저닝 프로파일은 찾았지만 선언된 권한이 없습니다"
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -604,7 +606,18 @@
       "ios_url_schemes_manual_review": "공격 표면을 평가하려면 스킴 처리 로직이 호출자를 검증하는지, 파라미터를 그대로 경로나 SQL에 연결하지 않는지 수동으로 확인하세요.",
       "ios_usage_description": "Info.plist가 {key}를 선언합니다(용도 설명이 있습니다). 그 존재는 앱이 이 기능을 사용하겠다고 **주장한다**는 증명일 뿐이며, 런타임에 데이터에 실제로 접근했다는 증명이 아닙니다.",
       "ios_usage_description_cross_check": "실제로 사용되는 API와 대조하세요: 이 보고서의 해당 API 단서 항목을 참조하세요.",
-      "android_exported_component_many": "android:permission 보호 없이 내보내진 컴포넌트가 {count}개 있습니다({names} 외 {more}개). 기기의 다른 앱이 이들을 호출할 수 있습니다."
+      "android_exported_component_many": "android:permission 보호 없이 내보내진 컴포넌트가 {count}개 있습니다({names} 외 {more}개). 기기의 다른 앱이 이들을 호출할 수 있습니다.",
+      "android_shared_user_id": "매니페스트가 android:sharedUserId=\"{id}\" 를 선언했습니다. 같은 키로 서명되고 같은 sharedUserId 를 선언한 다른 앱과 UID(즉 샌드박스)를 공유합니다.",
+      "android_shared_user_id_limitation": "같은 sharedUserId 를 가진 다른 앱이 실제로 기기에 설치되어 있는지는 이 패키지만으로 판단할 수 없습니다. 여기서는 선언 사실만 보고합니다. sharedUserId 는 Android 10 부터 사용 중단되었습니다.",
+      "android_shared_user_id_review": "데이터 공유가 정말 필요하지 않다면 android:sharedUserId 를 제거하고, 같은 값을 선언한 모든 앱을 확인하세요.",
+      "android_exported_component_weak": "android:permission 보호가 실효 없이 {count}개 컴포넌트가 내보내졌습니다({names}). 선언된 권한은 이 앱이 protectionLevel normal 또는 dangerous 로 정의한 것이라 어떤 앱이든 요청할 수 있습니다. 기기의 다른 앱이 이들을 호출할 수 있습니다.",
+      "android_exported_component_weak_many": "android:permission 보호가 실효 없이 내보내진 컴포넌트가 {count}개 있습니다({names} 외 {more}개). 이 권한은 이 앱이 protectionLevel normal 또는 dangerous 로 정의한 것이라 어떤 앱이든 요청할 수 있습니다.",
+      "ios_get_task_allow": "프로비저닝 프로파일이 get-task-allow 를 부여합니다. 디버거가 프로세스에 접근해 메모리를 읽고 코드를 교체할 수 있습니다. 릴리스 빌드에는 포함되면 안 됩니다.",
+      "ios_get_task_allow_limitation": "프로비저닝 프로파일에 선언된 권한입니다. 이 빌드가 실제로 배포되었는지는 정적으로 판단할 수 없습니다. 개발용 및 엔터프라이즈 서명에는 정당하게 포함됩니다.",
+      "ios_get_task_allow_review": "외부 배포에는 get-task-allow 가 없는 서명을 사용하고, 이 항목이 있는 빌드는 디버그 가능한 산출물로 취급하세요.",
+      "ios_push_sandbox": "프로비저닝 프로파일이 aps-environment=\"development\" 를 선언했습니다. 푸시가 샌드박스 APNs 환경에 연결되어 있어 개발 서명 빌드임을 나타냅니다.",
+      "ios_push_sandbox_limitation": "APNs 환경은 서명 프로파일의 속성이며 앱 로직이 아닙니다. 배포 빌드에서는 \"production\" 을 사용합니다.",
+      "ios_push_sandbox_review": "이 빌드가 테스트용인지 확인하세요. 정식 배포에는 aps-environment=\"production\" 서명을 사용해야 합니다."
     }
   },
   "report": {
@@ -649,7 +662,8 @@
       "ios_nativeSymbols": "네이티브 심볼",
       "ios_privacyManifest": "개인정보 매니페스트",
       "ios_signature": "서명",
-      "ios_usageDescriptions": "용도 설명"
+      "ios_usageDescriptions": "용도 설명",
+      "ios_entitlements": "권한(Entitlements)"
     },
     "gap_count": "{count}개 항목에 누락이 있습니다",
     "hint": "'누락'은 결론이 모든 것을 포괄하지 못한다는 뜻입니다. 여기서 '찾을 수 없음'은 '없음'이 아닙니다.",

@@ -604,7 +604,18 @@
       "android_permission_rule_with_note": "{description} ({note})",
       "android_permission_rule_risk_note": "{riskNote}",
       "android_permission_rule_limitation": "A permission declaration is only an intent; it does not prove the app actually accessed the corresponding data at runtime.",
-      "android_exported_component_many": "{count} component(s) are exported without an android:permission guard, including {names} and {more} more. Other apps on the device can invoke them."
+      "android_exported_component_many": "{count} component(s) are exported without an android:permission guard, including {names} and {more} more. Other apps on the device can invoke them.",
+      "android_shared_user_id": "The manifest declares android:sharedUserId=\"{id}\": this app shares a UID (and therefore a sandbox) with any other app signed with the same key and declaring the same sharedUserId.",
+      "android_shared_user_id_limitation": "Whether another app with the same sharedUserId is actually installed cannot be determined from this package; only the declaration is reported. sharedUserId is deprecated since Android 10.",
+      "android_shared_user_id_review": "Remove android:sharedUserId unless the data sharing is genuinely required, and review every app that declares the same value.",
+      "android_exported_component_weak": "{count} component(s) are exported without an effective android:permission guard: {names}. The permission they declare is defined by this app with protectionLevel normal or dangerous, so any app can request it. Other apps on the device can invoke them.",
+      "android_exported_component_weak_many": "{count} component(s) are exported without an effective android:permission guard, including {names} and {more} more. The permission they declare is defined by this app with protectionLevel normal or dangerous, so any app can request it.",
+      "ios_get_task_allow": "The provisioning profile grants get-task-allow: a debugger can attach to the process, read its memory and replace code. Release builds must not carry this.",
+      "ios_get_task_allow_limitation": "This is the entitlement declared in the provisioning profile; whether the build was actually distributed to users cannot be determined statically. Development and enterprise profiles legitimately carry it.",
+      "ios_get_task_allow_review": "Ship App Store / ad-hoc builds signed without get-task-allow, and treat any build that has it as a debug-capable artifact.",
+      "ios_push_sandbox": "The provisioning profile declares aps-environment=\"development\": push notifications are bound to the sandbox APNs environment, which indicates a development-signed build.",
+      "ios_push_sandbox_limitation": "The APNs environment is a property of the signing profile, not of the app logic; a distribution build uses \"production\" instead.",
+      "ios_push_sandbox_review": "Confirm this build is meant for testing; production releases should be signed with aps-environment=\"production\"."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -761,7 +772,9 @@
       "android_container_executable_in_assets": "{name} is executable code inside assets/, which a normal build never ships.",
       "android_container_resource_table_missing": "resources.arsc is missing while a DEX entry is at least 64 KiB. A normal build always has a resource table.",
       "android_container_resource_table_too_small": "resources.arsc is only {size} bytes, far below any plausible resource table.",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig could not be expanded (the resource, its file path, or the XML itself was unreadable), so the cleartext policy is not judged"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig could not be expanded (the resource, its file path, or the XML itself was unreadable), so the cleartext policy is not judged",
+      "ios_entitlements_no_profile": "No embedded.mobileprovision (App Store distribution keeps the entitlements inside the signature), so the entitlement list cannot be read statically",
+      "ios_entitlements_empty": "The provisioning profile was found but declares no entitlements"
     },
     "findings": "Findings"
   },
@@ -805,7 +818,8 @@
       "ios_executables": "Executables",
       "ios_macho_strings": "Mach-O strings",
       "ios_nativeSymbols": "Native symbols",
-      "ios_signature": "Signature"
+      "ios_signature": "Signature",
+      "ios_entitlements": "Entitlements"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",

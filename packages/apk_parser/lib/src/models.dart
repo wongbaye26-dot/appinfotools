@@ -120,6 +120,32 @@ class ApkMeta {
   /// 但那与「应用显式声明了 false」是两回事，规则引擎需要区分。
   bool? applicationUsesCleartextTraffic;
 
+  /// `<manifest android:sharedUserId>` —— 与其它应用共享 UID。
+  ///
+  /// 未声明为 `null`。非空意味着**同一 UID 下的应用共享沙箱**
+  /// （文件目录、偏好、数据库都互相可见），只要签名相同。
+  String? sharedUserId;
+
+  /// `<application android:fullBackupContent>`（API 23–30 的备份规则）。
+  ///
+  /// 三种形态，必须分开：
+  /// - `null` —— 未声明；
+  /// - `"false"` —— **彻底关闭**自动备份（即使 `allowBackup="true"`）；
+  /// - `@res/0x...` —— 指向一份 XML 规则（我们不展开内容，只在说明里讲清）。
+  String? applicationFullBackupContent;
+
+  /// `<application android:dataExtractionRules>`（API 31+ 的备份规则，
+  /// 语义同上）。声明了它之后 `fullBackupContent` 被平台忽略。
+  String? applicationDataExtractionRules;
+
+  /// 本包**自己声明**的权限（`<permission>`），含 `protectionLevel`。
+  ///
+  /// 为什么需要它：判断「导出组件有没有被保护」时，只看 `android:permission`
+  /// 非空是不够的 —— 一个 `protectionLevel="normal"` 的自定义权限**任何应用
+  /// 都能申请**，等于没保护。而框架权限（`android.permission.X`）或别的包声明
+  /// 的权限，我们看不到级别，只能保守地当成受保护。
+  List<AndroidDeclaredPermission> declaredPermissions = [];
+
   /// `<application android:networkSecurityConfig>` 的**原始属性值**。
   ///
   /// 引用类型时形如 `@res/0x7f17001c`（这是本解析器的引用表示法），
@@ -257,6 +283,99 @@ class IntentFilterInfo {
 ///
 /// 把「未声明」当成「未导出」是常见误判 —— Android 12 之前大量应用省略该
 /// 属性，其真实语义由是否有 intent-filter 决定（见 [effectivelyExported]）。
+/// 本包声明的一条自定义权限（`<permission>`）。
+class AndroidDeclaredPermission {
+  /// 权限全名，例如 `com.example.permission.CALL`。
+  final String name;
+
+  /// `android:protectionLevel` 的**原始值**，例如 `signature|privileged`、
+  /// `dangerous`；未声明为 `null`（平台默认 `normal`）。
+  final String? protectionLevel;
+
+  const AndroidDeclaredPermission({required this.name, this.protectionLevel});
+
+  /// `protectionLevel` 的**数字值**（`normal`=0、`dangerous`=1、
+  /// `signature`=2、`signatureOrSystem`=3，高位是附加标志）。
+  ///
+  /// **aapt2 写进 AXML 的是整数，不是字符串。** `aapt2 dump xmltree` 显示
+  /// `protectionLevel(0x01010009)=0x00000002` —— 实测确认。所以按字符串
+  /// 找 `"signature"` 永远找不到，规则会静默不生效（与属性表错位同一类坑）。
+  int? get protectionLevelValue {
+    final raw = protectionLevel?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.startsWith('0x') || raw.startsWith('0X')) {
+      return int.tryParse(raw.substring(2), radix: 16);
+    }
+    final numeric = int.tryParse(raw);
+    if (numeric != null) return numeric;
+    // 文本形态（少数工具/手写清单里出现）
+    final lower = raw.toLowerCase();
+    if (lower.contains('signatureorsystem')) return 3;
+    if (lower.contains('signature')) return 2;
+    if (lower.contains('dangerous')) return 1;
+    if (lower.contains('normal')) return 0;
+    return null;
+  }
+
+  /// 是否只有**同签名**的应用才能持有。
+  ///
+  /// 只有 `signature`(2) / `signatureOrSystem`(3) 才真正构成保护；
+  /// `normal`(0) 与 `dangerous`(1) 任何应用都能申请（`dangerous` 只是需要
+  /// 用户点同意），所以它们**保护不了**一个导出组件。
+  ///
+  /// 未声明时为 `false` —— 平台默认是 `normal`，同样不构成保护。
+  bool get signatureProtected {
+    final value = protectionLevelValue;
+    if (value == null) return false;
+    return (value & 0x3) >= 2;
+  }
+
+  /// 给人看的 `protectionLevel` 文本（`0x00000012` → `signature|privileged`）。
+  ///
+  /// 直接显示 `0x12` 对读者没有意义，而证据行里必须能看懂「这条权限是什么级别」。
+  String get protectionLevelText {
+    final value = protectionLevelValue;
+    if (value == null) {
+      return protectionLevel == null || protectionLevel!.trim().isEmpty
+          ? 'normal (default)'
+          : protectionLevel!;
+    }
+    const names = <int, String>{
+      0x0: 'normal',
+      0x1: 'dangerous',
+      0x2: 'signature',
+      0x3: 'signatureOrSystem',
+      0x10: 'privileged',
+      0x20: 'development',
+      0x40: 'appop',
+      0x80: 'pre23',
+      0x100: 'installer',
+      0x200: 'verifier',
+      0x400: 'preinstalled',
+      0x800: 'setup',
+      0x1000: 'instant',
+      0x2000: 'ephemeral',
+      0x4000: 'runtime',
+      0x8000: 'oem',
+      0x10000: 'vendorPrivileged',
+      0x20000: 'textClassifier',
+      0x40000: 'wellKnownSigner',
+    };
+    final parts = <String>[];
+    final base = value & 0x3;
+    parts.add(names[base] ?? '0x${base.toRadixString(16)}');
+    for (final entry in names.entries) {
+      if (entry.key <= 0x3) continue;
+      if (value & entry.key != 0) parts.add(entry.value);
+    }
+    return parts.join('|');
+  }
+
+  @override
+  String toString() =>
+      'AndroidDeclaredPermission($name, ${protectionLevel ?? 'normal'})';
+}
+
 class AndroidComponent {
   final ComponentType type;
 

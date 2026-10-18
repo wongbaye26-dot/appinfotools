@@ -627,6 +627,7 @@ class AnalysisReport {
       'ios.executables' => d.ios_executables,
       'ios.macho.strings' => d.ios_macho_strings,
       'ios.nativeSymbols' => d.ios_nativeSymbols,
+      'ios.entitlements' => d.ios_entitlements,
       'ios.signature' => d.ios_signature,
       _ => id,
     };
@@ -670,6 +671,8 @@ class AnalysisReport {
     final api = finding.messageArgs['api'];
     // 被截断的点名数量（导出组件可达上百个，正文只列前若干个）。
     final more = finding.messageArgs['more'];
+    // sharedUserId 的值（一条发现里只有一个 id）。
+    final id = finding.messageArgs['id'];
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -755,6 +758,18 @@ class AnalysisReport {
             : f.android_exported_component_many(
                 count: count, names: names, more: more),
       'android.allow_backup' => f.android_allow_backup,
+      'android.shared_user_id' =>
+        id == null ? null : f.android_shared_user_id(id: id),
+      'android.exported_component_weak' => (count == null || names == null)
+          ? null
+          : f.android_exported_component_weak(count: count, names: names),
+      'android.exported_component_weak_many' =>
+        (count == null || names == null || more == null)
+            ? null
+            : f.android_exported_component_weak_many(
+                count: count, names: names, more: more),
+      'ios.get_task_allow' => f.ios_get_task_allow,
+      'ios.push_sandbox' => f.ios_push_sandbox,
       'android.rule_g' =>
         sources == null ? null : f.android_rule_g(sources: sources),
       'android.special_access' =>
@@ -821,6 +836,9 @@ class AnalysisReport {
       'android.debuggable.remove' => f.android_debuggable_remove,
       'android.exported_component.review' =>
         f.android_exported_component_review,
+      'android.shared_user_id.review' => f.android_shared_user_id_review,
+      'ios.get_task_allow.review' => f.ios_get_task_allow_review,
+      'ios.push_sandbox.review' => f.ios_push_sandbox_review,
       'android.allow_backup.review' => f.android_allow_backup_review,
       'android.rule_g.manual_review' => f.android_rule_g_manual_review,
       'android.special_access.review' => f.android_special_access_review,
@@ -918,6 +936,10 @@ class AnalysisReport {
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
       'android.debuggable.limitation' => f.android_debuggable_limitation,
+      'android.shared_user_id.limitation' =>
+        f.android_shared_user_id_limitation,
+      'ios.get_task_allow.limitation' => f.ios_get_task_allow_limitation,
+      'ios.push_sandbox.limitation' => f.ios_push_sandbox_limitation,
       'android.exported_component.limitation' =>
         f.android_exported_component_limitation,
       'android.allow_backup.limitation' => f.android_allow_backup_limitation,
@@ -1328,6 +1350,8 @@ class AnalysisReport {
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
       'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
+      'ios.entitlements.no_profile' => n.ios_entitlements_no_profile,
+      'ios.entitlements.empty' => n.ios_entitlements_empty,
       'android.manifest.unparsed' =>
         reason == null ? null : n.android_manifest_unparsed(reason: reason),
       'android.dex.budget' => (name == null ||

@@ -124,6 +124,19 @@ class AndroidRuleFacts {
     return meta.applicationUsesCleartextTraffic ?? false;
   }
 
+  /// 备份规则是否**彻底关闭**了自动备份。
+  ///
+  /// `allowBackup="true"` 与「数据真的会被备份」不是一回事：
+  /// `android:fullBackupContent="false"`（API 23–30）或
+  /// `android:dataExtractionRules="false"`（API 31+）会把备份整个关掉。
+  /// 只读 allowBackup 就会报一条**事实上不成立**的发现。
+  bool get backupDisabledByRules {
+    final full = meta.applicationFullBackupContent?.trim().toLowerCase();
+    final extraction =
+        meta.applicationDataExtractionRules?.trim().toLowerCase();
+    return full == 'false' || extraction == 'false';
+  }
+
   /// 明文策略是否确定允许。
   bool get allowsCleartext => cleartextPolicy == true;
 
@@ -189,6 +202,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     summary: '显式声明 android:allowBackup="true" —— adb backup 可整包导出应用数据。',
     matches: _matchesAllowBackup,
     build: _buildAllowBackup,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-SHARED-USER-ID',
+    summary: '声明了 android:sharedUserId —— 与同签名的其它应用共享 UID 与沙箱。',
+    matches: _matchesSharedUserId,
+    build: _buildSharedUserId,
   ),
   AndroidSecurityRule(
     id: 'ANDROID-RULE-A',
@@ -280,16 +299,52 @@ SecurityFinding _buildDebuggable(AndroidRuleFacts f) => SecurityFinding(
 /// 启动页必须导出（否则桌面图标点不开），报它等于每个应用都报一条。
 /// `exported` 为 `null` 时不判 —— 默认值取决于有没有 intent-filter 与
 /// targetSdk，静态猜它就是在编造。
-List<AndroidComponent> _unprotectedExported(AndroidRuleFacts f) {
-  final launchers = {for (final a in f.meta.launchableActivities) a.name};
-  return [
-    for (final c in f.meta.components)
-      if (c.exported == true &&
-          (c.permission == null || c.permission!.isEmpty) &&
-          !launchers.contains(c.name))
-        c,
-  ];
+/// 为什么这个组件「没有被真正保护」。
+enum _UnprotectedReason {
+  /// 完全没有 `android:permission`。
+  noPermission,
+
+  /// 声明了 `android:permission`，但那个权限是**本包自己声明**的，
+  /// 且 `protectionLevel` 不是 `signature` —— 任何应用都能申请到它。
+  weakPermission,
 }
+
+/// 一个导出且未受保护的组件，连同原因。
+typedef _Unprotected = ({
+  AndroidComponent component,
+  _UnprotectedReason reason
+});
+
+/// 本包自己声明的权限名 → 声明（含 protectionLevel）。
+Map<String, AndroidDeclaredPermission> _ownPermissions(ApkMeta meta) => {
+      for (final p in meta.declaredPermissions) p.name: p,
+    };
+
+List<_Unprotected> _unprotectedExported(AndroidRuleFacts f) {
+  final launchers = {for (final a in f.meta.launchableActivities) a.name};
+  final own = _ownPermissions(f.meta);
+  final result = <_Unprotected>[];
+  for (final c in f.meta.components) {
+    if (c.exported != true) continue;
+    if (launchers.contains(c.name)) continue;
+    final permission = c.permission;
+    if (permission == null || permission.isEmpty) {
+      result.add((component: c, reason: _UnprotectedReason.noPermission));
+      continue;
+    }
+    // 只对**本包声明**的权限下判断：框架权限与别包声明的权限看不到级别，
+    // 保守当成受保护 —— 猜错的方向必须偏向「不误报」。
+    final declared = own[permission];
+    if (declared != null && !declared.signatureProtected) {
+      result.add((component: c, reason: _UnprotectedReason.weakPermission));
+    }
+  }
+  return result;
+}
+
+/// 权限保护是否**名存实亡**（`normal` / `dangerous` 级自定义权限）。
+bool _hasWeakPermission(AndroidRuleFacts f) => _unprotectedExported(f)
+    .any((e) => e.reason == _UnprotectedReason.weakPermission);
 
 bool _matchesExportedComponent(AndroidRuleFacts f) =>
     _unprotectedExported(f).isNotEmpty;
@@ -316,19 +371,56 @@ int _exportedTypeRank(ComponentType type) => switch (type) {
       _ => 4,
     };
 
+/// 导出组件发现的正文。
+///
+/// 四种组合（是否省略 / 是否「权限名存实亡」）必须分开说，否则会自相矛盾：
+/// 正文写「没有 android:permission」而那个组件明明声明了 permission。
+String _exportedFindingText({
+  required int total,
+  required List<String> shown,
+  required int omitted,
+  required bool weak,
+}) {
+  final guard = weak
+      ? 'without an effective android:permission guard'
+      : 'without an android:permission guard';
+  if (omitted > 0) {
+    return '$total component(s) are exported $guard, including '
+        '${shown.join(', ')} and $omitted more. Other apps on the device can '
+        'invoke them.';
+  }
+  return '$total component(s) are exported $guard: ${shown.join(', ')}. '
+      'Other apps on the device can invoke them.';
+}
+
+String _exportedMessageCode({required int omitted, required bool weak}) {
+  if (weak) {
+    return omitted > 0
+        ? 'android.exported_component_weak_many'
+        : 'android.exported_component_weak';
+  }
+  return omitted > 0
+      ? 'android.exported_component_many'
+      : 'android.exported_component';
+}
+
 SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
-  final components = _unprotectedExported(f);
+  final entries = _unprotectedExported(f);
   // ContentProvider 直接暴露数据，比 activity / service 更危险 → P2。
-  final hasProvider = components.any((c) => c.type == ComponentType.provider);
-  final ordered = [...components]..sort((a, b) {
-      final byType =
-          _exportedTypeRank(a.type).compareTo(_exportedTypeRank(b.type));
+  final hasProvider =
+      entries.any((e) => e.component.type == ComponentType.provider);
+  final ordered = [...entries]..sort((a, b) {
+      final byType = _exportedTypeRank(a.component.type)
+          .compareTo(_exportedTypeRank(b.component.type));
       if (byType != 0) return byType;
-      return (a.name ?? '').compareTo(b.name ?? '');
+      return (a.component.name ?? '').compareTo(b.component.name ?? '');
     });
-  final names = [for (final c in ordered) c.name ?? '<unnamed>'];
+  final names = [for (final e in ordered) e.component.name ?? '<unnamed>'];
   final shown = names.take(_kMaxNamedExportedComponents).toList();
   final omitted = names.length - shown.length;
+  // 有「权限名存实亡」的组件时，措辞必须换 —— 否则正文说「没有
+  // android:permission」，而那个组件明明写着 permission，读者会认为工具在乱报。
+  final weak = _hasWeakPermission(f);
 
   return SecurityFinding(
     ruleId: 'ANDROID-EXPORTED-COMPONENT',
@@ -336,33 +428,54 @@ SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
     category: SecurityCategory.configuration,
     severity: hasProvider ? SecuritySeverity.p2 : SecuritySeverity.p3,
     confidence: SecurityConfidence.confirmed,
-    finding: omitted > 0
-        ? '${names.length} component(s) are exported without an '
-            'android:permission guard, including ${shown.join(', ')} '
-            'and $omitted more. Other apps on the device can invoke them.'
-        : '${names.length} component(s) are exported without an '
-            'android:permission guard: ${shown.join(', ')}. Other apps on the '
-            'device can invoke them.',
-    messageCode: omitted > 0
-        ? 'android.exported_component_many'
-        : 'android.exported_component',
+    finding: _exportedFindingText(
+      total: names.length,
+      shown: shown,
+      omitted: omitted,
+      weak: weak,
+    ),
+    messageCode: _exportedMessageCode(omitted: omitted, weak: weak),
     messageArgs: {
       'count': names.length,
       'names': shown,
       if (omitted > 0) 'more': omitted,
+      if (weak) 'weak': true,
     },
+    // 证据的取舍：**弱权限的先列**。
+    //
+    // 证据上限 20 条，而按类型排序时 activity 排在最后 —— 实测抖音有 161 个
+    // 未受保护组件，其中 2 个是「权限名存实亡」的 activity，正好被挤出上限。
+    // 结果是正文说「without an effective guard」，而 20 条证据全写着
+    // 「without android:permission」—— 读者会认为工具在乱说。
+    // 正文声称了什么，证据里就必须有对应的一条。
     evidence: [
-      for (final c in ordered.take(_kMaxExportedEvidence))
+      for (final e in [
+        ...ordered.where((e) => e.reason == _UnprotectedReason.weakPermission),
+        ...ordered.where((e) => e.reason != _UnprotectedReason.weakPermission),
+      ].take(_kMaxExportedEvidence))
         SecurityEvidence(
           source: SecurityEvidenceSource.manifest,
-          location: 'AndroidManifest.xml / ${c.type.name}'
-              '[@name="${c.name ?? '?'}"]',
-          detail: 'android:exported="true" without android:permission',
+          location: 'AndroidManifest.xml / ${e.component.type.name}'
+              '[@name="${e.component.name ?? '?'}"]',
+          detail: switch (e.reason) {
+            _UnprotectedReason.noPermission =>
+              'android:exported="true" without android:permission',
+            _UnprotectedReason.weakPermission =>
+              'android:exported="true" guarded only by '
+                  '${e.component.permission}, which this app declares as '
+                  'protectionLevel="'
+                  '${_ownPermissions(f.meta)[e.component.permission]?.protectionLevelText ?? 'normal'}" '
+                  '— any app can request it',
+          },
         ),
     ],
     limitation: 'Exported is reported only when it is explicitly declared; '
         'components without the attribute are not judged (the default depends '
-        'on the intent filters and targetSdk). Some exported components are '
+        'on the intent filters and targetSdk). A permission declared by this '
+        'app with protectionLevel normal or dangerous is treated as no '
+        'protection, because any app can request it; framework permissions '
+        'and permissions declared elsewhere are assumed to protect, since '
+        'their level is not visible here. Some exported components are '
         'intended to be called by other apps.',
     limitationCode: 'android.exported_component.limitation',
     recommendation: 'For each component: add android:permission, or set '
@@ -372,7 +485,12 @@ SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
 }
 
 bool _matchesAllowBackup(AndroidRuleFacts f) =>
-    f.meta.applicationAllowBackup == true;
+    f.meta.applicationAllowBackup == true && !f.backupDisabledByRules;
+
+bool _matchesSharedUserId(AndroidRuleFacts f) {
+  final id = f.meta.sharedUserId;
+  return id != null && id.trim().isNotEmpty;
+}
 
 SecurityFinding _buildAllowBackup(AndroidRuleFacts f) => SecurityFinding(
       ruleId: 'ANDROID-ALLOW-BACKUP',
@@ -384,12 +502,35 @@ SecurityFinding _buildAllowBackup(AndroidRuleFacts f) => SecurityFinding(
           '`adb backup` can export its private data on devices that still '
           'honour it.',
       messageCode: 'android.allow_backup',
-      evidence: const [
-        SecurityEvidence(
+      evidence: [
+        const SecurityEvidence(
           source: SecurityEvidenceSource.manifest,
           location: 'AndroidManifest.xml / application[@android:allowBackup]',
           detail: 'android:allowBackup="true"',
         ),
+        // 有例外清单时必须点出来 —— 否则读者会以为整包数据都会被备份。
+        //
+        // 只列**引用形态**（`@res/0x...`）。`true` 不是这个属性的合法值
+        // （合法值是 `false` 或一份 XML 资源），实测飞牛写了 `true`，
+        // 把它当成「有规则清单」列出来等于替平台解释了一个无效值。
+        if (_isRuleFileRef(f.meta.applicationDataExtractionRules))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.manifest,
+            location: 'AndroidManifest.xml / '
+                'application[@android:dataExtractionRules]',
+            detail: 'dataExtractionRules = '
+                '${f.meta.applicationDataExtractionRules} (exclusion rules '
+                'file, contents not expanded)',
+          ),
+        if (_isRuleFileRef(f.meta.applicationFullBackupContent))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.manifest,
+            location: 'AndroidManifest.xml / '
+                'application[@android:fullBackupContent]',
+            detail: 'fullBackupContent = '
+                '${f.meta.applicationFullBackupContent} (exclusion rules '
+                'file, contents not expanded)',
+          ),
       ],
       limitation: 'Only an explicit allowBackup="true" is reported; the '
           'platform default is also true, but treating an absent attribute as '
@@ -400,6 +541,51 @@ SecurityFinding _buildAllowBackup(AndroidRuleFacts f) => SecurityFinding(
           'android:allowBackup="false" or provide explicit backup rules.',
       recommendationCode: 'android.allow_backup.review',
     );
+
+/// 备份规则属性是否指向一份 XML 规则文件（本解析器的引用表示法是 `@res/`）。
+bool _isRuleFileRef(String? value) =>
+    value != null && value.trim().startsWith('@res/');
+
+/// `android:sharedUserId` —— 与同签名的其它应用共享 UID。
+///
+/// 后果很具体：同一 UID 下的应用**共享沙箱**，彼此的私有目录、偏好、
+/// 数据库互相可读。只要其中一个包被替换成旧版本或被攻破，另一个的数据
+/// 也就跟着暴露。
+///
+/// 等级 P2 而不是 P1：共享 UID 需要**相同签名**，正常情况下是同一开发者
+/// 自己的应用之间共享；它是「配置上不该有」的味道，不是可被任意利用的洞。
+/// 这个属性在 Android 10 起已被标记为废弃。
+SecurityFinding _buildSharedUserId(AndroidRuleFacts f) {
+  final id = f.meta.sharedUserId!;
+  return SecurityFinding(
+    ruleId: 'ANDROID-SHARED-USER-ID',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.configuration,
+    severity: SecuritySeverity.p2,
+    confidence: SecurityConfidence.confirmed,
+    finding: 'The manifest declares android:sharedUserId="$id": this app '
+        'shares a UID (and therefore a sandbox) with any other app signed '
+        'with the same key and declaring the same sharedUserId.',
+    messageCode: 'android.shared_user_id',
+    messageArgs: {'id': id},
+    evidence: [
+      SecurityEvidence(
+        source: SecurityEvidenceSource.manifest,
+        location: 'AndroidManifest.xml / manifest[@android:sharedUserId]',
+        detail: 'android:sharedUserId="$id"',
+      ),
+    ],
+    limitation: 'Whether another app with the same sharedUserId is actually '
+        'installed on the device cannot be determined from this package; '
+        'only the declaration is reported. sharedUserId is deprecated since '
+        'Android 10.',
+    limitationCode: 'android.shared_user_id.limitation',
+    recommendation: 'Remove android:sharedUserId unless the data sharing is '
+        'genuinely required, and review every app that declares the same '
+        'value.',
+    recommendationCode: 'android.shared_user_id.review',
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 各规则的判定

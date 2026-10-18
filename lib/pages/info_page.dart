@@ -430,6 +430,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           infoPlist: parsed.infoPlist!,
           executableBytes: parsed.executableBytes,
           executablePath: parsed.executablePath,
+          // 授权项：`get-task-allow` 是 iOS 的 debuggable，`aps-environment`
+          // 说明签名环境。App Store 分发的包不含描述文件 —— 那种情况传
+          // `provisioningProfilePresent: false`，让覆盖率标「不适用」而不是
+          // 「已覆盖、没问题」。
+          entitlements:
+              parsed.signature?.profile.value?.entitlements ?? const [],
+          provisioningProfilePresent: parsed.signature?.profile.value != null,
           // 阶段 5b：嵌套 bundle 的可执行文件也参与扫描。
           // 只传**真的拿到了字节**的那些；没拿到的一并传过去（`bytes` 为
           // null），让审计把它们算进「未覆盖」—— 静默省略会让覆盖率虚高。

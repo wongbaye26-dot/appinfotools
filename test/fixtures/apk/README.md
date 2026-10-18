@@ -262,3 +262,60 @@ $AAPT2 dump xmltree nsc-fixture.apk --file res/xml/network_security_config.xml
 输出里能看到 `base-config cleartextTrafficPermitted=false`、
 `domain-config cleartextTrafficPermitted=true`，以及两条
 `T: 'api.example.com'` / `T: 'legacy.example.org'`。
+
+## manifest-extra-fixture.apk
+
+一份由 `aapt2` **真实产出**的最小 APK，用来钉住清单里四项「数据已经在手但
+此前没人读」的属性：
+
+| 项 | 不读它时的错误结论 |
+|---|---|
+| `android:sharedUserId` | 「与同签名应用共享沙箱」完全不可见 |
+| `android:protectionLevel` | 导出组件只要写了 `android:permission` 就当「受保护」，而 `normal` 级自定义权限**任何应用都能申请** |
+| `android:dataExtractionRules` / `fullBackupContent` | `allowBackup="true"` 就说「整包数据可被备份」，而 `"false"` 其实把备份彻底关了 |
+
+### 内容（三个组件刻意覆盖三种权限形态）
+
+```xml
+<manifest android:sharedUserId="com.example.shared">
+  <permission android:name="...WEAK"   android:protectionLevel="normal" />
+  <permission android:name="...STRONG" android:protectionLevel="signature" />
+  <application android:allowBackup="true"
+               android:dataExtractionRules="@xml/data_extraction_rules">
+    <provider android:name=".WeakProvider" android:exported="true"
+              android:permission="...WEAK" />        <!-- 等于没保护 -->
+    <service  android:name=".StrongService" android:exported="true"
+              android:permission="...STRONG" />      <!-- 真的受保护 -->
+    <receiver android:name=".JobReceiver" android:exported="true"
+              android:permission="android.permission.BIND_JOB_SERVICE" />
+                                                     <!-- 框架权限：保守当成受保护 -->
+  </application>
+</manifest>
+```
+
+### 生成命令
+
+```sh
+AAPT2=~/Library/Android/sdk/build-tools/34.0.0/aapt2
+JAR=~/Library/Android/sdk/platforms/android-34/android.jar
+$AAPT2 compile --dir res -o compiled.zip
+$AAPT2 link -o manifest-extra-fixture.apk -I "$JAR" \
+  --manifest AndroidManifest.xml compiled.zip
+```
+
+源文件见同目录的 `manifest-extra-fixture.AndroidManifest.xml` 与
+`manifest-extra-fixture.data_extraction_rules.xml`。
+
+### 期望值（用 aapt2 独立核对）
+
+```sh
+$AAPT2 dump xmltree manifest-extra-fixture.apk --file AndroidManifest.xml
+  A: ...sharedUserId(0x0101000b)="com.example.shared"
+  A: ...protectionLevel(0x01010009)=0x00000000     ← normal
+  A: ...protectionLevel(0x01010009)=0x00000002     ← signature
+  A: ...dataExtractionRules(0x0101063e)=@0x7f010000
+```
+
+> **`protectionLevel` 是整数标志位，不是字符串。** 按字符串找 `"signature"`
+> 永远找不到，规则会静默不生效 —— 这是本项目第三次踩到「值读到了但形态
+> 不对」（前两次是属性 ID 错位、布尔值被读成有符号 -1）。

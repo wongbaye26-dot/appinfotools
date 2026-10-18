@@ -41,6 +41,8 @@ class ManifestParser {
     meta.packageName = manifest.attributes['package'];
     meta.versionCode = _parseInt(manifest.attributes['versionCode']);
     meta.versionName = manifest.attributes['versionName'];
+    // 共享 UID：非空即意味着与同签名应用共享沙箱（文件/偏好/数据库互通）。
+    meta.sharedUserId = manifest.attributes['sharedUserId'];
 
     // 混淆 APK 可能无法通过属性名找到 package，
     // 启发式查找：在 manifest 属性中寻找类似包名的字符串值
@@ -96,6 +98,21 @@ class ManifestParser {
         sdk23Only: true,
       ));
       if (!meta.permissions.contains(name)) meta.permissions.add(name);
+    }
+
+    // <permission>：本包**自己声明**的权限。
+    //
+    // 只有这些权限我们才知道 `protectionLevel` —— 判断「导出组件有没有被
+    // 真正保护」时，`normal` / `dangerous` 级的自定义权限任何应用都能申请，
+    // 等于没保护。框架权限与别包声明的权限看不到级别，只能保守当成受保护。
+    for (final child in manifest.children) {
+      if (child.name != 'permission') continue;
+      final name = child.attributes['name'];
+      if (name == null || name.isEmpty) continue;
+      meta.declaredPermissions.add(AndroidDeclaredPermission(
+        name: name,
+        protectionLevel: child.attributes['protectionLevel'],
+      ));
     }
 
     // <uses-feature>
@@ -157,6 +174,12 @@ class ManifestParser {
           _parseBool(application.attributes['usesCleartextTraffic']);
       meta.networkSecurityConfig =
           application.attributes['networkSecurityConfig'];
+      // 备份规则：`false` 表示**彻底关闭**备份（即使 allowBackup="true"）；
+      // 引用形式（`@res/0x...`）指向一份规则 XML，我们不展开内容。
+      meta.applicationFullBackupContent =
+          application.attributes['fullBackupContent'];
+      meta.applicationDataExtractionRules =
+          application.attributes['dataExtractionRules'];
       // 引用形式是 `@res/0x7f17001c`（本解析器的表示法）。取出数字 id，
       // 才能去 `resources.arsc` 里查这条资源对应的**文件路径** ——
       // 有了路径才能真的打开 `res/xml/network_security_config.xml`。

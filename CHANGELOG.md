@@ -215,6 +215,68 @@ CI 有 `build-windows`（windows-latest）与 `build-linux`（ubuntu-latest）�
 而它们此前都通过全绿的门禁 —— 「测试全绿」只证明已写下的断言成立，
 不证明没写的那部分对。
 
+### 第一档：把「数据已经在手但没人读」的四项接上
+
+上一轮盘点出的第一档全部落地。测试 1,430 → **1,456**。
+
+| 缺口 | 此前的错误结论 |
+|---|---|
+| `android:sharedUserId` | 与同签名应用共享沙箱这件事**完全不可见** |
+| `android:protectionLevel` | 导出组件只要写了 `android:permission` 就当「受保护」 |
+| `fullBackupContent` / `dataExtractionRules` | `allowBackup="true"` 就说「整包数据可被备份」 |
+| iOS `get-task-allow` | iOS 侧**没有** debuggable 这条规则（Android 侧是 P1） |
+
+#### 新增规则
+
+- **`ANDROID-SHARED-USER-ID`（P2）**：声明了 `sharedUserId`，与同签名的其它
+  应用共享 UID 与沙箱。只报声明事实（是否真有同 UID 应用装在设备上无法静态判断）。
+- **`ANDROID-EXPORTED-COMPONENT` 的语义修正**：`android:permission` 指向
+  **本包自己声明**且 `protectionLevel` 不是 `signature` 的权限时，视为
+  **没有保护** —— `normal` / `dangerous` 级权限任何应用都能申请。
+  正文措辞随之换成 `without an effective android:permission guard`，
+  并新增 `android.exported_component_weak` / `_weak_many` 两个文案。
+  框架权限与别包声明的权限看不到级别，**保守当成受保护**（猜错要偏向不误报）。
+- **`IOS-GET-TASK-ALLOW`（P1）**：描述文件授予 `get-task-allow=true`，
+  调试器可附加进程。这是 iOS 的 `debuggable` —— 此前两侧能力不对称。
+- **`IOS-PUSH-SANDBOX`（P3）**：`aps-environment="development"`，
+  推送绑定沙箱环境，说明是开发签名。
+  刻意**不报** `keychain-access-groups` / `application-groups` /
+  `associated-domains` —— 正常应用里太常见，报了读者会忽略整个面板。
+
+#### 语义修正（比新规则更值钱）
+
+- **备份被规则关掉时不报**：`fullBackupContent="false"`（API 23–30）或
+  `dataExtractionRules="false"`（API 31+）会彻底关闭自动备份，
+  此时再报 `allowBackup="true"` 是**事实上不成立**的发现。
+- **备份规则文件要在证据里点出来**：只列引用形态（`@res/0x...`）。
+  实测飞牛写了 `fullBackupContent="true"` —— 那不是这个属性的合法值，
+  把它当「有规则清单」列出来等于替平台解释一个无效值。
+- **iOS 覆盖率新增 `ios.entitlements`**：没有 `embedded.mobileprovision`
+  （App Store 分发把授权项放在签名里）时标 **notApplicable**，
+  不能说成「已覆盖、没问题」。
+
+#### 真实样本抓到的第一个实例
+
+抖音有 **2 个**导出 receiver（`CardLifecycleReceiver` /
+`CardProjectStatusReceiver`）只由
+`com.ss.android.ugc.aweme.permission.sendXiaoYiCardInfo` 保护，而这条权限
+**没有声明 protectionLevel**（平台默认 `normal`）—— 任何应用都能申请到它，
+等于没有保护。导出组件从 159 变成 **161**。
+
+同时修了一个呈现缺陷：证据上限 20 条，按类型排序时 activity 排最后，
+这 2 个弱权限组件正好被挤出上限 —— 正文说「effective guard」而 20 条证据
+全写「without android:permission」，读者会认为工具在乱说。
+现在弱权限证据优先列，**正文声称了什么，证据里就有对应的一条**。
+
+#### 又一次「值读到了但形态不对」
+
+`android:protectionLevel` 在 AXML 里是**整数标志位**（`0x0`=normal、
+`0x2`=signature），不是字符串。按字符串找 `"signature"` 永远找不到，
+规则会静默不生效。这是本项目第三次踩这一类坑（前两次：属性 ID 错位 51/63、
+布尔值 `0xffffffff` 被读成有符号 `-1`）。
+现在 `protectionLevelValue` 按位解析，`protectionLevelText` 输出
+`signature|privileged` 这种可读形态供证据行使用。
+
 ## 2.4.13 — 2026-10-18
 
 > 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论

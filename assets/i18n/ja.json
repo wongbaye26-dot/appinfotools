@@ -461,7 +461,9 @@
       "android_container_executable_in_assets": "{name} は assets/ 内の実行可能コードです。正常なビルドでは同梱されません。",
       "android_container_resource_table_missing": "64 KiB 以上の DEX があるのに resources.arsc がありません。正常なビルドには必ずリソーステーブルがあります。",
       "android_container_resource_table_too_small": "resources.arsc は {size} バイトしかなく、妥当なリソーステーブルよりはるかに小さいです。",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できませんでした（リソース、ファイルパス、XML 自体のいずれかが読めません）。そのため平文通信ポリシーは判定していません"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できませんでした（リソース、ファイルパス、XML 自体のいずれかが読めません）。そのため平文通信ポリシーは判定していません",
+      "ios_entitlements_no_profile": "embedded.mobileprovision がありません（App Store 配布では権利が署名の中にあります）。そのため権利の一覧を静的に読み取れません",
+      "ios_entitlements_empty": "プロビジョニングプロファイルは見つかりましたが、権利が宣言されていません"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -604,7 +606,18 @@
       "ios_url_schemes_manual_review": "攻撃面を評価するには、スキームの処理ロジックが呼び出し元を検証しているか、パラメータをそのままパスや SQL に連結していないかを手動で確認してください。",
       "ios_usage_description": "Info.plist が {key} を宣言しています（用途の説明があります）。その存在は、アプリがこの機能を使うと**主張している**ことの証明にすぎず、実行時にデータへ実際にアクセスしたことの証明ではありません。",
       "ios_usage_description_cross_check": "実際に使われている API と照合してください: このレポートの対応する API 手がかりの項目を参照してください。",
-      "android_exported_component_many": "android:permission による保護がないまま {count} 個のコンポーネントがエクスポートされています（{names} など、他 {more} 個）。端末上の他のアプリから呼び出せます。"
+      "android_exported_component_many": "android:permission による保護がないまま {count} 個のコンポーネントがエクスポートされています（{names} など、他 {more} 個）。端末上の他のアプリから呼び出せます。",
+      "android_shared_user_id": "マニフェストが android:sharedUserId=\"{id}\" を宣言しています。同じ鍵で署名され同じ sharedUserId を宣言した他のアプリと UID（つまりサンドボックス）を共有します。",
+      "android_shared_user_id_limitation": "同じ sharedUserId を持つ別のアプリが実際に端末にインストールされているかは、このパッケージだけでは判断できません。ここでは宣言という事実のみを報告します。sharedUserId は Android 10 以降非推奨です。",
+      "android_shared_user_id_review": "データ共有が本当に必要でない限り android:sharedUserId を削除し、同じ値を宣言しているアプリをすべて確認してください。",
+      "android_exported_component_weak": "android:permission による実効的な保護がないまま {count} 個のコンポーネントがエクスポートされています（{names}）。宣言されている権限はこのアプリ自身が protectionLevel normal または dangerous で定義しているため、どのアプリでも取得できます。端末上の他のアプリから呼び出せます。",
+      "android_exported_component_weak_many": "android:permission による実効的な保護がないまま {count} 個のコンポーネントがエクスポートされています（{names} など、他 {more} 個）。これらの権限はこのアプリ自身が protectionLevel normal または dangerous で定義しているため、どのアプリでも取得できます。",
+      "ios_get_task_allow": "プロビジョニングプロファイルが get-task-allow を付与しています。デバッガがプロセスに接続し、メモリを読み、コードを差し替えられます。リリースビルドに含めてはいけません。",
+      "ios_get_task_allow_limitation": "これはプロビジョニングプロファイルに宣言された権利です。このビルドが実際に配布されたかは静的に判断できません。開発用・エンタープライズ署名には正当に含まれます。",
+      "ios_get_task_allow_review": "外部配布には get-task-allow を含まない署名を使ってください。含むビルドはデバッグ可能な成果物として扱ってください。",
+      "ios_push_sandbox": "プロビジョニングプロファイルが aps-environment=\"development\" を宣言しています。プッシュはサンドボックス APNs 環境に紐づいており、開発署名のビルドであることを示します。",
+      "ios_push_sandbox_limitation": "APNs 環境は署名プロファイルの属性であり、アプリのロジックではありません。配布ビルドでは \"production\" になります。",
+      "ios_push_sandbox_review": "このビルドがテスト用か確認してください。正式配布には aps-environment=\"production\" の署名を使ってください。"
     }
   },
   "report": {
@@ -649,7 +662,8 @@
       "ios_nativeSymbols": "ネイティブシンボル",
       "ios_privacyManifest": "プライバシーマニフェスト",
       "ios_signature": "署名",
-      "ios_usageDescriptions": "用途の説明"
+      "ios_usageDescriptions": "用途の説明",
+      "ios_entitlements": "権利（Entitlements）"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",

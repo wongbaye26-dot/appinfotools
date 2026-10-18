@@ -18,8 +18,9 @@
 
 > **本文件是滚动记录**：§9 修完 7 项后 **74**，§10 第二轮后 **76**，§11 第三轮后
 > **78**，§12 第四轮（清单配置维度 + 修正两处「输出正常但内容错」的解析缺陷）后
-> **81**，§13 验证轮（NSC 真正展开 + 下载链修复）后 **82**。
-> **§0 的表格是首轮基线，保留原样作为对照** —— 想看当前分数请看 §13.6。
+> **81**，§13 验证轮（NSC 真正展开 + 下载链修复）后 **82**，
+> §14 第一档落地（sharedUserId / protectionLevel / 备份规则 / iOS entitlements）后 **84**。
+> **§0 的表格是首轮基线，保留原样作为对照** —— 想看当前分数请看 §14.7。
 >
 > ⚠️ **§12.4(a) 的结论已被 §13.1 推翻**：那一节说「NSC 存在时不予判定」，
 > 实测展开后那 3 个包确实允许明文 —— 原文保留并加了批注，不要照它实现。
@@ -926,3 +927,125 @@ temp leftovers=[]            ← 临时目录清理生效
 > 这一轮的方法论收获比分数重要：**五个「未验证」里，两个一验就发现了真缺陷**
 > （NSC 的结论是反的、下载 100% 失败），而它们都通过全绿的门禁。
 > 「测试全绿」证明的只是「已写下的断言成立」，不证明「没写的那部分对」。
+
+## 14. 第一档落地：把「数据已经在手但没人读」的四项接上
+
+测试 1,430 → **1,456**。评分 **82 → 84**。
+
+上一轮盘点出的第一档四项全部做完。**四项里有三项不是「缺功能」，而是
+「数据解析出来了但没人消费」** —— 这类缺口的成本极低，但对结论的影响直接。
+
+| 缺口 | 数据在哪 | 此前的错误结论 |
+|---|---|---|
+| `android:sharedUserId` | AXML（属性 id `0x0101000b`） | 共享沙箱完全不可见 |
+| `android:protectionLevel` | AXML（`0x01010009`） | 写了 `android:permission` 就当受保护 |
+| `fullBackupContent` / `dataExtractionRules` | AXML（`0x010104eb` / `0x0101063e`） | `allowBackup="true"` 就说整包可被备份 |
+| iOS `get-task-allow` | `IosProvisioningProfile.entitlements` | iOS 侧没有 debuggable 这条规则 |
+
+### 14.1 `protectionLevel`：不是新规则，是修正一条**误判**
+
+`ANDROID-EXPORTED-COMPONENT` 此前的判据是「`android:permission` 非空 = 受保护」。
+这条判据在 `normal` / `dangerous` 级自定义权限上**是错的** —— 任何应用都能
+申请到这类权限（`dangerous` 只是要用户点一下同意），等于没有保护。
+
+现在的判据：
+
+1. 无 `android:permission` → 未保护；
+2. `android:permission` 指向**本包 `<permission>` 声明**且
+   `protectionLevel` 的 base 位 < 2（`normal` / `dangerous`）→ **仍未保护**；
+3. 框架权限（`android.permission.*`）与别包声明的权限 → 看不到级别，
+   **保守当成受保护**。
+
+第 3 条是刻意的：猜错的方向必须偏向「不误报」。
+
+正文措辞随之分叉 —— 有弱权限组件时用 `without an effective
+android:permission guard`（`android.exported_component_weak[_many]`），
+否则沿用原文案。否则正文说「没有 permission」而那个组件明明写着 permission，
+读者会认为工具在乱报。
+
+**真实样本的第一个实例**：抖音有 2 个导出 receiver
+（`CardLifecycleReceiver` / `CardProjectStatusReceiver`）只由
+`com.ss.android.ugc.aweme.permission.sendXiaoYiCardInfo` 保护，而这条权限
+**没有声明 `protectionLevel`**（平台默认 `normal`）—— 任何应用都能申请。
+导出组件计数 159 → **161**。
+
+### 14.2 又一个「正文说了、证据里看不到」
+
+证据上限 20 条，按类型排序（provider → service → receiver → activity）。
+抖音那 2 个弱权限组件是 receiver，排在 activity 之前但整体仍在 161 个里靠后，
+正好被挤出上限 —— 结果是正文说「effective guard」，20 条证据却全写着
+「without android:permission」。
+
+修法：**弱权限证据优先列**。原则是「正文声称了什么，证据里就必须有对应的一条」。
+
+### 14.3 `protectionLevel` 是整数，不是字符串
+
+`aapt2 dump xmltree` 显示 `protectionLevel(0x01010009)=0x00000002` ——
+AXML 里存的是**整数标志位**。按字符串找 `"signature"` 永远找不到。
+
+这是本项目第三次踩「值读到了但形态不对」：
+
+| 次序 | 形态问题 | 后果 |
+|---|---|---|
+| 1 | 属性表 51/63 条 ID 错位 | 四个安全属性全读不到 |
+| 2 | `true` = `0xffffffff`，被 `readInt32` 读成 `-1` | 每个 `true` 变 `false` |
+| 3 | `protectionLevel` 是 int 不是 string | 新规则**永不生效** |
+
+三次的共同点：**解析出了值，但比对时用的形态与真实形态不一致**。
+现在的做法是解析层直接给出 `protectionLevelValue`（按位）与
+`protectionLevelText`（`signature|privileged` 这种可读形态），
+上层不再碰原始字符串。
+
+### 14.4 备份规则：一条**事实上不成立**的发现
+
+`allowBackup="true"` 与「数据真的会被备份」不是一回事：
+
+- `fullBackupContent="false"`（API 23–30）→ 备份彻底关闭；
+- `dataExtractionRules="false"`（API 31+）→ 同上；
+- 两者指向一份 XML → 有例外清单，但具体排除了什么我们没展开。
+
+现在：前两种**不报**；第三种照报，但把规则文件列进证据。
+
+顺带修了一个措辞问题：实测飞牛写了 `fullBackupContent="true"` ——
+这**不是这个属性的合法值**（合法值是 `false` 或一份 XML 资源）。
+原先把任何非 `false` 的值都当「有规则清单」列出来，等于替平台解释了一个
+无效值。现在只列 `@res/` 引用形态。
+
+### 14.5 iOS：`get-task-allow` 补上两侧的不对称
+
+`IosProvisioningProfile.entitlements` 从 V2.4.9 起就解析好了，
+但 `security/` 下**零消费**。现在：
+
+- **`IOS-GET-TASK-ALLOW`（P1）**：调试器可附加进程、读内存、替换代码。
+  只认**布尔 true** —— `PlistString('true')` 不是平台写的形态，当成「读不懂」。
+- **`IOS-PUSH-SANDBOX`（P3）**：`aps-environment="development"`。
+
+**刻意不报** `keychain-access-groups` / `application-groups` /
+`associated-domains`：正常应用里极其常见，一律报会让读者学会忽略整个面板 ——
+而「读者忽略」比「漏报一条」更糟。
+
+覆盖率新增 `ios.entitlements`：没有 `embedded.mobileprovision`
+（App Store 分发把授权项放在签名里）时标 **notApplicable** 并说明原因。
+「没看到」不能说成「已覆盖、没问题」。
+
+### 14.6 真实样本复测
+
+| 样本 | sharedUserId | 自定义权限 | 导出组件 | allowBackup |
+|---|---|---|---|---|
+| `49af6cnn-1018` | 无 | 3 条（3 条 signature） | 10 | 不报（`allowBackup=false`） |
+| `app.apk` | 无 | 5 条（5 条 signature） | 11 | 不报 |
+| `抖音-v40.7.0` | 无 | 19 条（18 条 signature，1 条默认 normal） | **161**（含 2 条弱权限） | 不报 |
+| `飞牛-v1.37.1` | 无 | 1 条（signature） | 7 | 报，证据含规则文件 |
+| `飞牛TV-v1.4.1` | 无 | — | 2 | 不报 |
+
+`sharedUserId` 在这 5 个包里都没出现 —— 符合预期（该属性自 Android 10 起
+已废弃，现代应用基本不用）。
+
+### 14.7 评分影响
+
+**82 → 84/100**。加分主要来自 `protectionLevel` 那条 —— 它不是新增能力，
+而是**修正了一条会产生错误结论的判据**（把「有 permission」当成「受保护」）。
+
+剩余的第一档之外缺口不变：签名方案 v2/v3、WebView/JS 桥、
+权限与 API 的交叉核对、iOS 侧缺「敏感来源 + 上传」组合规则、
+原生库二进制加固属性、`Assets.car`、SDK 盘点。

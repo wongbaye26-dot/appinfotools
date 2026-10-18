@@ -604,7 +604,18 @@
       "android_permission_rule_with_note": "{description}（{note}）",
       "android_permission_rule_risk_note": "{riskNote}",
       "android_permission_rule_limitation": "權限宣告本身只是意圖，不證明執行時一定存取了對應資料。",
-      "android_exported_component_many": "有 {count} 個元件匯出且沒有 android:permission 保護，其中包括 {names}，另有 {more} 個未列出。裝置上的其它應用程式可以直接呼叫它們。"
+      "android_exported_component_many": "有 {count} 個元件匯出且沒有 android:permission 保護，其中包括 {names}，另有 {more} 個未列出。裝置上的其它應用程式可以直接呼叫它們。",
+      "android_shared_user_id": "清單宣告了 android:sharedUserId=\"{id}\"：本應用程式與任何使用同一簽章、宣告了同一 sharedUserId 的應用程式共享 UID（也就共享沙箱）。",
+      "android_shared_user_id_limitation": "裝置上是否真的安裝了另一個同 sharedUserId 的應用程式，無法從這一個套件判斷；這裡只報告宣告事實。sharedUserId 自 Android 10 起已廢棄。",
+      "android_shared_user_id_review": "除非確實需要共享資料，否則移除 android:sharedUserId；並核查所有宣告了同一值的應用程式。",
+      "android_exported_component_weak": "有 {count} 個元件匯出，且 android:permission 保護名存實亡：{names}。它們宣告的權限由本應用程式自己定義，protectionLevel 是 normal 或 dangerous，任何應用程式都能申請到，等於沒有保護。裝置上的其它應用程式可以直接呼叫它們。",
+      "android_exported_component_weak_many": "有 {count} 個元件匯出，且 android:permission 保護名存實亡，其中包括 {names}，另有 {more} 個未列出。這些權限由本應用程式自己定義、protectionLevel 為 normal 或 dangerous，任何應用程式都能申請到。",
+      "ios_get_task_allow": "描述檔授予了 get-task-allow：除錯器可以附加到行程、讀取記憶體、替換程式碼。發佈套件不應帶這一項。",
+      "ios_get_task_allow_limitation": "這是描述檔裡宣告的授權項；這個套件是否真的散佈給使用者無法靜態判斷。開發與企業簽章本來就會帶它。",
+      "ios_get_task_allow_review": "對外發佈請用不帶 get-task-allow 的簽章；帶這一項的套件一律按「可除錯產物」對待。",
+      "ios_push_sandbox": "描述檔宣告了 aps-environment=\"development\"：推送綁定的是沙箱 APNs 環境，說明這是開發簽章的套件。",
+      "ios_push_sandbox_limitation": "APNs 環境是簽章描述檔的屬性，不是應用程式邏輯；散佈版用的是 \"production\"。",
+      "ios_push_sandbox_review": "確認這個套件是用於測試的；正式發佈應使用 aps-environment=\"production\" 的簽章。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",
@@ -761,7 +772,9 @@
       "android_container_executable_in_assets": "{name} 是放在 assets/ 裡的可執行程式碼 —— 正常建置不會這樣發佈。",
       "android_container_resource_table_missing": "resources.arsc 缺失，而封裝裡有至少 64 KiB 的 DEX。正常建置一定有資源表。",
       "android_container_resource_table_too_small": "resources.arsc 只有 {size} 位元組，遠低於任何合理的資源表。",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略",
+      "ios_entitlements_no_profile": "沒有 embedded.mobileprovision（App Store 散佈把授權項放在簽章裡），因此無法靜態讀取授權項列表",
+      "ios_entitlements_empty": "找到了描述檔，但它沒有宣告任何授權項"
     },
     "findings": "發現項"
   },
@@ -805,7 +818,8 @@
       "ios_executables": "可執行檔",
       "ios_macho_strings": "Mach-O 字串",
       "ios_nativeSymbols": "原生庫符號",
-      "ios_signature": "簽名"
+      "ios_signature": "簽名",
+      "ios_entitlements": "授權項"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 無法解析（{reason}）",
