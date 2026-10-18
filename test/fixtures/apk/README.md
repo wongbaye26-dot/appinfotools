@@ -142,3 +142,60 @@ $AAPT2 dump resources cyclic-color-alias.apk | grep -E 'resource 0x|@color'
   上确实能检出环（否则那组纯函数测试可能只是自证）。
 - `cyclic-color-icon.apk` 钉住「图标渲染遇到环时必须留下说明」——
   这个夹具的图标填充色指向环，渲染会失败，而失败**必须能解释**。
+
+## attr-fixture.apk
+
+一个由 `aapt2` **真实产出**的最小 APK，专门用来钉住「框架属性 ID → 属性名」的解析。
+
+### 为什么需要它
+
+`_kFrameworkAttrNames` 曾经是一份 63 条的表，其中 **51 条 ID 对应错了名字**
+（`0x01010010` 写成 `resource`，实为 `exported`；`0x01010280` 写成
+`screenSize`，实为 `allowBackup`）。后果是 `android:exported` /
+`debuggable` / `allowBackup` / `usesCleartextTraffic` 在**所有真实包**上
+都读不到，四条安全规则长期静默失效。
+
+它没被发现的原因很具体：当时的用例都手工构造 `ApkMeta`，测的是「拿到一个
+`bool` 之后规则怎么判」，而不是「这个 `bool` 能不能从字节里拿到」。
+所以这个夹具必须**从真实字节走完整条链路**。
+
+第二件事：AXML 的布尔值 `tvData` 是**有符号** 32 位读出来的，而 `true` 的
+规范编码是 `0xffffffff`（即 `-1`）。旧代码写 `data == 0xffffffff`，于是
+**每一个 `true` 都变成 `false`** —— 比读不到更糟，因为它是一个「看起来
+很正常的具体值」。
+
+### 内容
+
+见 `attr-fixture.AndroidManifest.xml`。刻意覆盖了正反两面：
+
+| 位置 | 声明 | 用途 |
+|---|---|---|
+| `<application>` | `debuggable="true"` | 真的 `true`（旧代码会读成 `false`） |
+| `<application>` | `allowBackup="false"` | 真的 `false`（不能把 `false` 和「没读到」混为一谈） |
+| `<application>` | `usesCleartextTraffic="true"` | 规则 D 的输入 |
+| `<application>` | `networkSecurityConfig="@xml/..."` | 规则 D 在 NSC 存在时必须**不判定** |
+| `<activity>` | `exported="true"` + `enabled="false"` | 导出组件规则；同时是启动页（必须被排除） |
+| `<provider>` | `exported="true"` + `authorities="..."` | `authorities` 曾与 `debuggable` 的 ID 互换 |
+| `<service>` | `exported="false"` | 「读到了 false」与「没读到」要能区分 |
+| `<uses-permission>` | `maxSdkVersion="28"` | 版本适用条件 |
+
+### 生成命令
+
+```sh
+AAPT2=~/Library/Android/sdk/build-tools/34.0.0/aapt2
+JAR=~/Library/Android/sdk/platforms/android-34/android.jar
+$AAPT2 compile --dir res -o compiled.zip
+$AAPT2 link -o attr-fixture.apk -I "$JAR" \
+  --manifest AndroidManifest.xml compiled.zip
+```
+
+### 期望值（用 aapt2 独立核对，不是从本项目的解析器拿的）
+
+```sh
+$AAPT2 dump xmltree attr-fixture.apk --file AndroidManifest.xml
+```
+
+该输出里每条属性都带自己的资源 ID，例如
+`A: ...android:exported(0x01010010)=true` —— 这正是判定「解析器有没有
+读对属性」的第三方依据。完整的 ID 对照表快照在
+`packages/apk_parser/test/fixtures/android_34_attrs.txt`。

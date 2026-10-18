@@ -231,71 +231,48 @@ class AxmlLayoutAnomalies {
   }
 }
 
-/// Android 框架属性资源 ID → 属性名的映射
-const Map<int, String> _kFrameworkAttrNames = {
-  0x01010000: 'theme',
+/// Android 框架属性资源 ID → 属性名。
+///
+/// **这张表是「读得到」与「读错」的分界线，绝不能凭印象写。**
+/// 资源 ID 由 AOSP 固定，唯一可信来源是 android.jar 的资源表：
+///
+/// ```
+/// aapt2 dump resources $ANDROID_HOME/platforms/android-34/android.jar \
+///   | grep -oE 'resource 0x[0-9a-f]+ attr/[A-Za-z0-9_]+'
+/// ```
+///
+/// 该命令的完整输出快照在 `test/fixtures/android_34_attrs.txt`，
+/// `test/framework_attr_names_test.dart` 逐条比对，防止再次写错。
+///
+/// 历史教训：V2.4.14 之前这里是一份 63 条的表，其中 **51 条 ID 对应错了名字**
+/// （`0x01010010` 写成 `resource` 实为 `exported`、`0x01010280` 写成
+/// `screenSize` 实为 `allowBackup`……）。后果是 `android:exported` /
+/// `debuggable` / `allowBackup` / `usesCleartextTraffic` 在**真实包上全部读不到**，
+/// 相关安全规则长期静默失效，而单元测试因为自己造 AXML 而一直绿。
+///
+/// 只收录解析器真正消费的属性；不在此表内的属性走字符串池回退
+/// （aapt2 一定会把属性名写进字符串池，回退在正常包上是正确的）。
+const Map<int, String> kFrameworkAttrNames = {
   0x01010001: 'label',
   0x01010002: 'icon',
   0x01010003: 'name',
   0x01010006: 'permission',
-  0x0101000f: 'value',
-  0x01010010: 'resource',
-  0x01010011: 'mimeType',
-  0x01010012: 'scheme',
-  0x01010013: 'host',
-  0x01010018: 'debuggable',
-  0x0101001e: 'authorities',
+  0x0101000e: 'enabled',
+  0x0101000f: 'debuggable',
+  0x01010010: 'exported',
+  0x01010018: 'authorities',
+  0x01010027: 'scheme',
   0x0101020c: 'minSdkVersion',
-  0x01010270: 'targetSdkVersion',
   0x0101021b: 'versionCode',
   0x0101021c: 'versionName',
+  0x01010270: 'targetSdkVersion',
+  0x01010271: 'maxSdkVersion',
+  0x01010280: 'allowBackup',
   0x0101028e: 'required',
-  0x010102b7: 'screenOrientation',
+  0x010104ec: 'usesCleartextTraffic',
+  0x01010527: 'networkSecurityConfig',
   0x01010572: 'compileSdkVersion',
   0x01010573: 'compileSdkVersionCodename',
-  0x01010281: 'smallScreens',
-  0x01010282: 'normalScreens',
-  0x01010283: 'largeScreens',
-  0x01010284: 'resizeable',
-  0x010102bf: 'xlargeScreens',
-  0x0101026c: 'anyDensity',
-  0x01010272: 'hardwareAccelerated',
-  0x0101027f: 'configChanges',
-  0x01010280: 'screenSize',
-  0x01010324: 'exported',
-  0x01010398: 'banner',
-  0x010103f2: 'roundIcon',
-  0x0101054b: 'appComponentFactory',
-  0x0101000e: 'persistent',
-  0x01010019: 'enabled',
-  0x01010275: 'installLocation',
-  0x0101042e: 'extractNativeLibs',
-  0x0101054c: 'classLoader',
-  0x010104d8: 'networkSecurityConfig',
-  0x01010009: 'process',
-  0x010102d3: 'targetSandboxVersion',
-  0x01010285: 'requiresSmallestWidthDp',
-  0x01010286: 'compatibleWidthLimitDp',
-  0x0101028d: 'largestWidthLimitDp',
-  0x010104f6: 'isGame',
-  0x010103af: 'requestLegacyExternalStorage',
-  0x010104ec: 'localeConfig',
-  0x0101052c: 'enableOnBackInvokedCallback',
-  0x01010004: 'launchMode',
-  0x01010007: 'taskAffinity',
-  0x01010008: 'multiprocess',
-  0x0101000a: 'allowTaskReparenting',
-  0x01010014: 'port',
-  0x01010015: 'path',
-  0x01010016: 'pathPrefix',
-  0x01010017: 'pathPattern',
-  0x01010020: 'hasCode',
-  0x01010024: 'allowClearUserData',
-  0x01010271: 'maxSdkVersion',
-  0x01010273: 'supportsRtl',
-  0x01010326: 'parentActivityName',
-  0x01010473: 'usesCleartextTraffic',
-  0x0101054a: 'appCategory',
 };
 
 class BinaryXmlDecompressor {
@@ -714,7 +691,7 @@ class BinaryXmlDecompressor {
       case RES_TYPE_INT_HEX:
         return '0x${(attributeResourceId & 0xffffffff).toRadixString(16)}';
       case RES_TYPE_INT_BOOLEAN:
-        return (attributeResourceId == RES_VALUE_TRUE) ? 'true' : 'false';
+        return _boolText(attributeResourceId);
       case RES_TYPE_INT_COLOR_ARGB8:
       case RES_TYPE_INT_COLOR_ARGB4:
         return '#${(attributeResourceId & 0xffffffff).toRadixString(16).padLeft(8, '0')}';
@@ -879,8 +856,7 @@ class BinaryXmlDecompressor {
               '0x${(attributeResourceId & 0xffffffff).toRadixString(16)}';
           break;
         case RES_TYPE_INT_BOOLEAN:
-          attributeValue =
-              (attributeResourceId == RES_VALUE_TRUE) ? 'true' : 'false';
+          attributeValue = _boolText(attributeResourceId);
           break;
         case RES_TYPE_INT_COLOR_ARGB8:
         case RES_TYPE_INT_COLOR_ARGB4:
@@ -1050,20 +1026,44 @@ class BinaryXmlDecompressor {
     return List<int>.generate(count, (_) => reader.readUint32());
   }
 
-  /// 通过字符串池索引获取名称，优先使用 Resource ID Map
-  /// (混淆 APK 的字符串池可能被篡改，Resource ID Map 更可靠)
+  /// 通过字符串池索引获取名称。
+  ///
+  /// 优先级：**Resource ID Map（框架属性）> 字符串池**。
+  ///
+  /// 为什么表优先：混淆/加固包会重写字符串池里的属性名，而 Resource ID Map
+  /// 里的 32 位资源 ID 是结构化的、改不动 —— 前提是 [kFrameworkAttrNames]
+  /// 本身正确。表一旦写错，这里就会**用错名字覆盖正确的名字**，而且编译、
+  /// 单测、静态分析都发现不了（V2.4.14 实测：63 条里 51 条 ID 错位）。
+  /// 所以这张表由 `test/fixtures/android_34_attrs.txt`（aapt2 输出快照）
+  /// 逐条守着，改表必须先改夹具。
+  ///
+  /// 表里没有的 ID（非框架属性、或我们暂不消费的属性）回退字符串池 ——
+  /// aapt2 一定会把属性名写进池里，这条回退在正常包上是可靠的。
   String _resolveStringOrResourceId(
       List<String> strings, List<int> resourceIdMap, int index) {
-    // 优先使用 Resource ID Map（对框架属性更可靠）
     if (index >= 0 && index < resourceIdMap.length) {
       final resId = resourceIdMap[index];
-      final name = _kFrameworkAttrNames[resId];
+      final name = kFrameworkAttrNames[resId];
       if (name != null) return name;
     }
 
     // 回退到字符串池
     return _safeGet(strings, index);
   }
+
+  /// AXML 布尔值的文本形式。
+  ///
+  /// `tvData` 是**有符号** 32 位读出来的（见 `_parseStartElement` 里的
+  /// `readInt32`），而 `true` 的规范编码是 `0xffffffff`，即 `-1`。
+  /// 曾经这里直接写 `data == 0xffffffff`，于是**每一个 `true` 都变成 `false`**：
+  /// `android:debuggable="true"` 读成 `false`、`android:exported="true"`
+  /// 读成 `false`。比「读不到」更糟 —— 读不到至少是 `null`，能被发现；
+  /// 读成 `false` 是一个**看起来很正常的具体值**，没人会怀疑。
+  ///
+  /// 平台侧（`TypedArray.getBoolean`）的判据就是「非 0 即真」，这里照办，
+  /// 顺带兼容把 `true` 写成 `1` 的构建工具。
+  static String _boolText(int data) =>
+      (data & 0xffffffff) == 0 ? 'false' : 'true';
 
   /// 安全访问字符串列表，越界时返回空字符串
   static String _safeGet(List<String> strings, int index) {
