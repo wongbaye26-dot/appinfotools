@@ -2,6 +2,14 @@
 #define RUNNER_FILE_ASSOCIATION_CHANNEL_H_
 
 #include <flutter/encodable_value.h>
+// `flutter::FlutterEngine` 的定义在 flutter_engine.h 里。
+//
+// **不能省这一行**：`method_channel.h` 与 `encodable_value.h` 都不 include 它
+// （实测两者各 0 处提到 FlutterEngine），所以只 include 那两个头时，
+// 下面 `Register(flutter::FlutterEngine* …)` 会报
+// `error C2039: 'FlutterEngine': is not a member of 'flutter'`。
+// CI run #94 就是栽在这里。
+#include <flutter/flutter_engine.h>
 #include <flutter/method_channel.h>
 
 #include <memory>
