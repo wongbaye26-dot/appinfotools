@@ -109,6 +109,12 @@ class AssetsCarImage {
   /// 块在文件中的偏移（排查用）。
   final int blockOffset;
 
+  /// 压缩流在文件里的**绝对偏移**；没有压缩流时为 `null`。
+  ///
+  /// 就是块内 `bvx2` / `bvx-` 魔数的位置 —— LZFSE 的流以这个魔数开头，
+  /// 所以直接从这儿读到最后即可。
+  final int? payloadOffset;
+
   const AssetsCarImage({
     required this.renditionName,
     this.width,
@@ -117,6 +123,7 @@ class AssetsCarImage {
     this.compression = CarCompression.none,
     required this.sizeOnDisk,
     required this.blockOffset,
+    this.payloadOffset,
   });
 
   /// 是不是一张真的**像素**图。
@@ -356,15 +363,17 @@ AssetsCarImage? _parseIstc(
 
   final name = _readRenditionName(bytes, address + _istcNameOffset, length);
   if (name == null || name.isEmpty) return null;
+  final detected = _detectCompression(bytes, address, length);
 
   return AssetsCarImage(
     renditionName: name,
     width: width == 0 ? null : width,
     height: height == 0 ? null : height,
     pixelFormat: pixelFormat,
-    compression: _detectCompression(bytes, address, length),
+    compression: detected.compression,
     sizeOnDisk: length,
     blockOffset: address,
+    payloadOffset: detected.offset,
   );
 }
 
@@ -386,7 +395,8 @@ String? _format4cc(List<int> raw) {
 ///
 /// 只在前 4 KiB 内找：`bvx2` 紧跟在 ISTC 头的可选字段之后，实测偏移
 /// 在 300–400 之间。搜整个块没意义（像素数据里偶然命中会误判）。
-CarCompression _detectCompression(Uint8List bytes, int address, int length) {
+({CarCompression compression, int? offset}) _detectCompression(
+    Uint8List bytes, int address, int length) {
   final scanEnd = address + (length < 4096 ? length : 4096);
   final limit = scanEnd > bytes.length ? bytes.length : scanEnd;
   for (var i = address; i + 4 <= limit; i++) {
@@ -394,15 +404,17 @@ CarCompression _detectCompression(Uint8List bytes, int address, int length) {
       continue; // 'bvx'
     }
     final kind = bytes[i + 3];
-    return switch (kind) {
+    // 魔数所在的 i 就是压缩流的起点 —— LZFSE 的流以它开头。
+    final compression = switch (kind) {
       0x32 => CarCompression.lzfseV2, // '2'
       0x6E => CarCompression.lzfseV1, // 'n'
       0x31 => CarCompression.lzfseV1Alt, // '1'
       0x2D => CarCompression.lzfseUncompressed, // '-'
       _ => CarCompression.unknown,
     };
+    return (compression: compression, offset: i);
   }
-  return CarCompression.none;
+  return (compression: CarCompression.none, offset: null);
 }
 
 /// 读 rendition 名（NUL 结尾，带上限）。

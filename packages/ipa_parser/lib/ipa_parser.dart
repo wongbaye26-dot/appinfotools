@@ -24,6 +24,11 @@ export 'src/ipa_container.dart';
 export 'src/ipa_icon.dart';
 // `Assets.car` 的**索引**解析（不解码像素：数据是 LZFSE 压缩的）。
 export 'src/assets_car.dart';
+// LZFSE 解码：`Assets.car` 的像素数据是 LZFSE 压过的。
+export 'src/lzfse.dart';
+// 从 `Assets.car` 真正取出图像（LZFSE 解码 + PNG 编码）。
+export 'src/assets_car_extract.dart';
+export 'src/png_encoder.dart';
 export 'src/ipa_info_plist.dart';
 export 'src/ios_signature.dart';
 export 'src/macho.dart';

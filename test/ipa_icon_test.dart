@@ -238,8 +238,8 @@ void main() {
       expect(resolution.unresolved.single.reason, contains('Assets.car'));
       // 措辞升级了：以前说「需要一个解析器」，现在真的解析一遍并说清
       // 「索引读不出来」—— `List.filled(128, 0)` 不是 BOMStore。
-      expect(resolution.unresolved.single.reason,
-          contains('could not be parsed'),
+      expect(
+          resolution.unresolved.single.reason, contains('could not be parsed'),
           reason: '读不出索引时要说清是解析失败，不能说「无法预览」了事');
       expect(resolution.assetCatalog, isNotNull);
       expect(resolution.assetCatalog!.parsed, isFalse);

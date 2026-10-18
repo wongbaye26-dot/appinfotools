@@ -1,8 +1,12 @@
 # Assets.car 格式调研（未完成实现）
 
-> 状态：**索引已实现**（`packages/ipa_parser/lib/src/assets_car.dart`），
-> 能列出每张 rendition 的名字/宽高/像素格式/压缩方式/字节数。
-> **像素不解码**：数据是 LZFSE 压缩的（见 §三）。
+> 状态：**索引 + 像素提取都已实现**。
+> - 索引：`assets_car.dart`（名字/宽高/像素格式/压缩方式/字节数）
+> - 解码：`lzfse.dart`（纯 Dart LZFSE，与 Apple 的 `libcompression`
+>   **逐字节一致**）
+> - 出图：`assets_car_extract.dart` + `png_encoder.dart`
+>
+> 但**不是每个 rendition 都能出图** —— 见 §六的第 2 条。
 >
 > 本文记录已验证的格式事实与卡点，避免下次重复探索。
 
@@ -139,9 +143,37 @@ iOS 应用的 `AppIcon` 传统上是 PNG，但本机**没有 iOS 的 `Assets.car
 |---|---|
 | 列出 Assets.car 里的图（名字/宽高/像素格式/压缩方式/字节数） | **已实现**，与 `assetutil --info` 逐条对齐 |
 | 识别「空壳」与矢量（`GVS `/`PDF `） | **已实现** |
+| LZFSE 解码（`bvx2` / `bvx-` / `bvx$`） | **已实现**，与 `libcompression` 逐字节一致 |
+| 提取像素并编成 PNG | **已实现**，但受下面的限制 |
 | 拿到资产名（`AppIcon` / `AppIcon_Assets/...`） | 未做：要解析 `RENDITIONS` 的 CPI key |
-| 提取**未压缩**像素的图 | 需 PNG 编码器（~200 行） |
-| 提取**压缩**的图 | 需 LZFSE 解码器（~500–700 行），验证办法是用 `libcompression` 生成夹具 |
 
-前两行已交付且完全可验证。剩下的都要新写编解码器。
+### 三件必须说明的事
+
+**1. 通道顺序不是猜的，是 CoreGraphics 说的。**
+
+`ARGB`（4CC 反转后）对应内存字节 `B,G,R,A`。这不是从文档抄的，而是让
+CoreGraphics 自己解释：用 `kCGImageAlphaPremultipliedFirst |
+kCGBitmapByteOrder32Little` 从 4 个已知字节 `[10,20,30,255]` 构造 `CGImage`，
+再画进标准 RGBA 上下文，读回 `[30,20,10,255]` —— 所以 **byte0 = B**。
+
+`GA8 ` 同理：`[77,200]` 读回 `[77,77,77,200]`，即 byte0 = 灰度、byte1 = alpha。
+
+**2. 不是每个 rendition 的 payload 都是裸像素。**
+
+实测 5 个系统 `Assets.car`：**部分**块解码后长度正好等于 `W×H×bpp`
+（FindMy 里有大量这种，例如 `366×104 ARGB` → 152,256 字节），这类能直接出图；
+但**大图标常常不是** —— Chess 的 1024×1024 `image.png` 解码出 2,086,192 字节，
+而 1024×1024×4 = 4,194,304。这些 payload 里还有一层本文没搞清的封装
+（内容 90% 是零、有约 1026 字节的周期结构）。
+
+所以提取器对尺寸不匹配的渲染项**明确报 `pixel_size_mismatch`**，并把
+「解出多少 / 期望多少」写出来。不猜、不截断、不拉伸。
+
+实测可提取比例：`installer-progress.car` 2/3、FindMy 11/57。
+
+**3. 两个不支持的块类型是**报出来的**，不是猜出来的。**
+
+`bvx1`（v1 头）没有工具产出、没有样本；`bvxn`（LZVN）在实测的 951 张真实
+光栅图里出现 **0** 次。两者都抛带稳定 code 的异常，而不是写一个没验证过的
+实现 —— 「能跑但结果是错的」比「明确说不支持」糟糕得多。
 
