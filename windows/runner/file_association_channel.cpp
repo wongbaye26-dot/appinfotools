@@ -1,10 +1,16 @@
 #include "file_association_channel.h"
 
-#include <flutter/standard_method_codec.h>
-#include <shlobj.h>
+// **windows.h 必须先于 shlobj.h**：后者依赖前者引入的 HWND / HKEY / DWORD
+// 等基础类型，顺序反过来会在 MSVC 上报一堆未定义类型。CI 第一次构建就是
+// 栽在这一行上。
 #include <windows.h>
 
+#include <shlobj.h>
+
+#include <flutter/standard_method_codec.h>
+
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace {

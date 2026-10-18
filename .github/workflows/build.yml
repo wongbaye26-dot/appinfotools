@@ -188,7 +188,32 @@ jobs:
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Windows
-        run: flutter build windows --release
+        # 失败时把编译器/链接器的错误行**变成 annotation**。
+        #
+        # 为什么需要这一步：job 日志要仓库 admin 权限才能通过 API 拉取
+        # （`/actions/jobs/<id>/logs` 返回 403），而 annotations 是公开可读的。
+        # 没有它，失败时只能在评审界面看到一句「Process completed with
+        # exit code 1」，完全不知道哪个 .cpp 的哪一行出问题 —— v2.4.15
+        # 第一次构建就是这么卡住的。
+        #
+        # `set -o pipefail` 必不可少：不设的话 `| tee` 会把退出码换成 tee 的 0，
+        # 构建失败也当成功（本项目的门禁命令踩过同一个坑）。
+        shell: bash
+        run: |
+          set -o pipefail
+          BUILD_LOG="$RUNNER_TEMP/build-windows.log"
+          if flutter build windows --release 2>&1 | tee "$BUILD_LOG"; then
+            exit 0
+          fi
+          echo "::error::flutter build windows 失败，下面是错误行"
+          # MSVC 的错误形如 `xxx.cpp(12,34): error C2065: ...`，
+          # 链接错误形如 `LINK : fatal error LNK2019: ...`。
+          grep -iE 'error [A-Z]+[0-9]+|fatal error|error:' "$BUILD_LOG" \
+            | head -40 \
+            | while IFS= read -r line; do
+                echo "::error::$line"
+              done
+          exit 1
 
       - name: Create Installer
         run: dart run inno_bundle:build --release
