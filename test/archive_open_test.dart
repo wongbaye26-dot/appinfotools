@@ -12,8 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// 那样的样本测的是「损坏输入」而不是「合法空归档」。
 final Uint8List _emptyZip = Uint8List.fromList(ZipEncoder().encode(Archive()));
 
-/// 17 MiB，略高于 [ZipBudget.ratioCheckMinSize]，用于触发压缩比检查。
-const int _ratioProbeBytes = 17 * 1024 * 1024;
+/// 17 MiB —— 与真实加固包零填充的量级相当（实测被填充的
+/// `AndroidManifest.xml` 是 72.3 MiB）。
+const int _paddedProbeBytes = 17 * 1024 * 1024;
 
 void main() {
   group('looksLikeZip', () {
@@ -95,23 +96,68 @@ void main() {
       );
     });
 
-    test('真实高压缩比归档 -> resourceBudgetExceeded', () async {
-      // 17 MiB 全零内容，deflate 后只剩十几 KB：这正是 ZIP 炸弹的特征。
-      final bomb = Archive()
-        ..addFile(ArchiveFile.string('zeros.bin', '\u0000' * _ratioProbeBytes));
-      final bytes = ZipEncoder().encode(bomb);
+    test('被零填充的大条目**不再**被拒绝（加固包的常见做法）', () async {
+      // V2.4.10 起不再按压缩比拒绝：实测 `49af6cnn-1018.apk`
+      // （`澳門新葡京` 变种）把 `AndroidManifest.xml` 零填充到 72.3 MiB
+      // （压缩比 205:1），而 `archive` 的 deflate 对 17 MiB 纯零也只给
+      // **229:1** —— 压缩比区分不了「零填充的合法文件」与「零填充的炸弹」。
+      //
+      // 真正的判据是**解压后占多少内存**：17 MiB 读进来毫无压力。
+      final padded = Archive()
+        ..addFile(
+            ArchiveFile.string('zeros.bin', '\u0000' * _paddedProbeBytes));
+      final bytes = ZipEncoder().encode(padded);
 
-      // 先确认样本本身确实满足「高压缩比」前提，否则测试是空的。
+      // 先确认样本确实「解压后远大于压缩后」，否则这条测试是空的。
       final decoded = ZipDecoder().decodeBytes(Uint8List.fromList(bytes));
-      expect(ZipBudget.isExceeded(decoded), isTrue,
-          reason: '样本未触发压缩比预算，测试前提不成立');
+      final entry = decoded.files.first;
+      expect(entry.size, _paddedProbeBytes);
+      expect(entry.size, greaterThan(bytes.length * 100),
+          reason: '样本应当是「高度可压缩」的，否则测不到这条路径');
 
-      final path = await write('bomb.zip', bytes);
+      final path = await write('padded.zip', bytes);
       final reader = ApkReader();
       addTearDown(reader.close);
-      expect(await reader.open(path), ArchiveOpenResult.resourceBudgetExceeded);
-      // 被拒绝后不得留下可用的归档句柄。
-      expect(reader.readFile('zeros.bin'), isNull);
+      expect(await reader.open(path), ArchiveOpenResult.ok);
+      // 真的能读出来，而不只是「没被拒绝」。
+      expect(reader.readFile('zeros.bin')?.length, _paddedProbeBytes);
+    });
+
+    test('单条目超过 256 MiB -> 拒绝，且说明是哪一条', () {
+      final archive = Archive()
+        ..addFile(ArchiveFile('classes.dex', 300 * 1024 * 1024, const []));
+      final violation = ZipBudget.check(archive);
+      expect(violation, isNotNull);
+      expect(violation!.entry, 'classes.dex');
+      expect(violation.reason, contains('per-entry limit'));
+      expect(violation.describe(), contains('classes.dex'));
+    });
+
+    test('解压后总量超过 1 GiB -> 拒绝', () {
+      final archive = Archive();
+      for (var i = 0; i < 5; i++) {
+        archive
+            .addFile(ArchiveFile('classes$i.dex', 250 * 1024 * 1024, const []));
+      }
+      final violation = ZipBudget.check(archive);
+      expect(violation, isNotNull);
+      expect(violation!.reason, contains('cumulative'));
+    });
+
+    test('条目数超过上限 -> 拒绝', () {
+      final archive = Archive();
+      for (var i = 0; i <= ZipBudget.maxEntryCount; i++) {
+        archive.addFile(ArchiveFile('f$i', 1, const []));
+      }
+      expect(ZipBudget.check(archive)?.reason, contains('entry count'));
+    });
+
+    test('预算内的归档返回 null（不误报）', () {
+      final archive = Archive()
+        ..addFile(
+            ArchiveFile('AndroidManifest.xml', 72 * 1024 * 1024, const []))
+        ..addFile(ArchiveFile('resources.arsc', 20 * 1024 * 1024, const []));
+      expect(ZipBudget.check(archive), isNull);
     });
 
     test('随机输入永不抛异常，且结果始终是合法枚举值', () async {

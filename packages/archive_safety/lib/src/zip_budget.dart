@@ -18,14 +18,20 @@ class ZipBudget {
   /// 单个归档允许的最大条目数。
   static const int maxEntryCount = 100000;
 
-  /// 触发压缩比检查的最小解压体积（16 MiB）。
-  ///
-  /// 小体积文件即使压缩比很高也通常是合法资源（例如大面积为零的
-  /// `resources.arsc`），不加以区分会产生误报。
-  static const int ratioCheckMinSize = 16 * 1024 * 1024;
-
-  /// 允许的最大压缩比（100:1）。
-  static const int maxCompressionRatio = 100;
+  // **这里没有「压缩比」上限，而且不该有（V2.4.10 移除）。**
+  //
+  // 原规则：解压后超过 16 MiB 且压缩比超过 100:1 就拒绝。它误伤了真实样本 ——
+  // `49af6cnn-1018.apk`（`澳門新葡京` 变种）把 `AndroidManifest.xml` 的字符串池
+  // **零填充到 72.3 MiB**（真实 XML 只有末尾 35 KB），压缩比 205:1，整个包因此
+  // 打不开。而这类包恰恰是本工具要分析的对象。
+  //
+  // 试过「把阈值提到 1000，只拒绝纯零填充」——**行不通**：实测 `archive` 包的
+  // deflate 对 17 MiB 纯零只给 **229:1**，与被填充的清单（205:1）**几乎一样**。
+  // 压缩比区分不了「零填充的合法文件」和「零填充的炸弹」。
+  //
+  // 真正决定风险的是**解压后要占多少内存**，也就是下面两条绝对上限：单条目
+  // 256 MiB、总量 1 GiB。72 MiB 的清单读进来毫无压力（实测解析 231ms），
+  // 而 1 GiB 的展开无论压缩比多少都该拒绝。
 
   /// 单个条目允许的解压后字节数上限（256 MiB）。
   ///
@@ -34,46 +40,83 @@ class ZipBudget {
   /// 或几 MB 的原生库，256 MiB 已远超正常值。
   static const int maxSingleEntryUncompressed = 256 * 1024 * 1024;
 
-  /// 判定归档是否超出预算。
+  /// 判定归档是否超出预算，并说明**是哪一条**超的。
   ///
   /// 只读取归档头部声明的尺寸，不实际解压，因此开销可忽略。
-  static bool isExceeded(Archive archive) {
+  ///
+  /// 返回 `null` 表示在预算内。命中的原因会写进 [ZipBombException] ——
+  /// 「归档超出安全解压上限」这句话对排查毫无帮助，而「`classes.dex` 声明
+  /// 300 MiB，超过单条目上限 256 MiB」能直接定位。
+  static ZipBudgetViolation? check(Archive archive) {
     var totalUncompressed = 0;
     var count = 0;
     for (final file in archive.files) {
       count++;
-      if (count > maxEntryCount) return true;
+      if (count > maxEntryCount) {
+        return ZipBudgetViolation(
+          entry: file.name,
+          reason: 'entry count exceeds $maxEntryCount',
+        );
+      }
       if (!file.isFile) continue;
       // ArchiveFile.size 为解压后的尺寸（解码时取自 ZipFile.uncompressedSize）。
       final uncompressed = file.size;
-      if (uncompressed < 0) return true;
-      if (uncompressed > maxSingleEntryUncompressed) return true;
+      if (uncompressed < 0) {
+        return ZipBudgetViolation(
+          entry: file.name,
+          reason: 'declares a negative size ($uncompressed)',
+        );
+      }
+      if (uncompressed > maxSingleEntryUncompressed) {
+        return ZipBudgetViolation(
+          entry: file.name,
+          reason: 'declares $uncompressed bytes, over the per-entry limit of '
+              '$maxSingleEntryUncompressed',
+        );
+      }
       totalUncompressed += uncompressed;
-      if (totalUncompressed > maxTotalUncompressed) return true;
-      final raw = file.rawContent;
-      if (raw is ZipFile) {
-        final compressed = raw.compressedSize;
-        if (uncompressed > ratioCheckMinSize &&
-            compressed > 0 &&
-            uncompressed > compressed * maxCompressionRatio) {
-          return true;
-        }
+      if (totalUncompressed > maxTotalUncompressed) {
+        return ZipBudgetViolation(
+          entry: file.name,
+          reason: 'cumulative uncompressed size exceeds '
+              '$maxTotalUncompressed bytes',
+        );
       }
     }
-    return false;
+    return null;
   }
+
+  /// 判定归档是否超出预算。
+  static bool isExceeded(Archive archive) => check(archive) != null;
 
   /// 超出预算则抛出 [ZipBombException]。
   ///
   /// 用于解包到磁盘之前的前置校验 —— 一旦开始写入就已经太晚了。
   static void ensureWithin(Archive archive, {String? source}) {
-    if (isExceeded(archive)) {
+    final violation = check(archive);
+    if (violation != null) {
       throw ZipBombException(
-        'Refusing to open archive: decompression bomb detected',
+        'Refusing to open archive: ${violation.describe()}',
         source: source,
       );
     }
   }
+}
+
+/// 一条「超出解压预算」的具体原因。
+class ZipBudgetViolation {
+  /// 命中的条目名（条目数超限时是越界的那一条）。
+  final String entry;
+
+  /// 英文短句，进日志与异常消息 —— 面向排查，不是面向最终用户。
+  final String reason;
+
+  const ZipBudgetViolation({required this.entry, required this.reason});
+
+  String describe() => '$entry: $reason';
+
+  @override
+  String toString() => 'ZipBudgetViolation(${describe()})';
 }
 
 /// 跨多层归档累计的解压预算。
