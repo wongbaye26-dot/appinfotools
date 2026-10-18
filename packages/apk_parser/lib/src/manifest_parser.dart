@@ -147,6 +147,9 @@ class ManifestParser {
       meta.applicationDebuggable =
           _parseBool(application.attributes['debuggable']);
 
+      meta.applicationAllowBackup =
+          _parseBool(application.attributes['allowBackup']);
+
       // 明文流量开关（规则 D 的输入）。三态：未声明时系统按 targetSdk 给
       // 默认值（≥28 默认禁止），但那与「显式声明了 false」不是一回事，
       // 因此这里不把 null 折算成 true/false。

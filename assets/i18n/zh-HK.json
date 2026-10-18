@@ -543,6 +543,15 @@
       "android_rule_g_relationship": "來源 API 與上傳 API 都出現在封裝裡，但未證實兩者在同一條呼叫路徑上 —— 「資料真的流進了那個請求」這個結論並未成立。",
       "android_rule_g_limitation": "同現不是資料流：來源可能是為別的功能讀的（統計、風控），上傳也可能傳的是完全另一份內容。本版本未做反組譯與污點分析。",
       "android_rule_g_manual_review": "建議人工核查：這份資料是否真的被發送出去，以及使用者是否被明確告知。這是一條待複核項，不是惡意結論。",
+      "android_debuggable": "應用宣告了 android:debuggable=\"true\"。任何拿到這台裝置的人都能除錯它、讀它的記憶體、替換它的程式碼。發佈包不該帶這個屬性。",
+      "android_debuggable_limitation": "這是清單屬性，按「已宣告」報告；這個包是否真的發到使用者手上，靜態分析無法判斷。",
+      "android_debuggable_remove": "從發佈建置裡去掉 android:debuggable（通常是除錯工具或建置變體注入的）。",
+      "android_exported_component": "有 {count} 個元件匯出但沒有 android:permission 保護：{names}。裝置上的其它應用可以直接呼叫它們。",
+      "android_exported_component_limitation": "只報顯式宣告 exported=\"true\" 的元件；沒寫這個屬性的不判 —— 預設值取決於 intent-filter 與 targetSdk。部分匯出元件本來就是給其它應用呼叫的。",
+      "android_exported_component_review": "逐個確認：加上 android:permission，或者在其它應用不需要時改成 android:exported=\"false\"。",
+      "android_allow_backup": "應用宣告了 android:allowBackup=\"true\"：在仍然支援該開關的裝置上，adb backup 可以匯出它的私有資料。",
+      "android_allow_backup_limitation": "只報顯式寫了 allowBackup=\"true\" 的情況。平台預設值也是 true，但把「沒寫」當成應用的選擇會冤枉所有包。Android 12+ 對 adb backup 另有更嚴的限制。",
+      "android_allow_backup_review": "如果應用存了敏感資料，建議設成 android:allowBackup=\"false\"，或提供明確的備份規則。",
       "android_special_access": "應用宣告或引用了特殊存取能力：{sources}。這些是高權限事實，使用者應當知情；宣告了不等於被濫用。",
       "android_special_access_limitation": "這是「宣告/引用」的事實，不是行為結論：無障礙服務、裝置管理員、通知監聽都有正當用途（自動化、密碼管理器、手錶配套）。本次未觀察執行時行為。",
       "android_special_access_review": "核查應用拿這個能力做了什麼、使用者是否被告知。這是一條待複核的事實，不是惡意結論。",
@@ -594,7 +603,8 @@
       "android_permission_rule": "{description}",
       "android_permission_rule_with_note": "{description}（{note}）",
       "android_permission_rule_risk_note": "{riskNote}",
-      "android_permission_rule_limitation": "權限聲明本身只是意圖，不證明執行時一定存取了對應資料。"
+      "android_permission_rule_limitation": "權限聲明本身只是意圖，不證明執行時一定存取了對應資料。",
+      "android_exported_component_many": "有 {count} 個元件導出且沒有 android:permission 保護，其中包括 {names}，另有 {more} 個未列出。裝置上的其它應用可以直接呼叫它們。"
     },
     "sources": {
       "photo_library": "完整相片庫（PhotoKit）",
@@ -750,7 +760,8 @@
       "android_container_unusual_native_library": "{name} 不符合 lib/<abi>/ 下 lib*.so 的命名慣例。",
       "android_container_executable_in_assets": "{name} 是放在 assets/ 裡的可執行程式碼 —— 正常建置不會這樣發佈。",
       "android_container_resource_table_missing": "resources.arsc 缺失，而封裝裡有至少 64 KiB 的 DEX。正常建置一定有資源表。",
-      "android_container_resource_table_too_small": "resources.arsc 只有 {size} 位元組，遠低於任何合理的資源表。"
+      "android_container_resource_table_too_small": "resources.arsc 只有 {size} 位元組，遠低於任何合理的資源表。",
+      "android_cleartext_policy_unknown": "聲明了 android:networkSecurityConfig 時 android:usesCleartextTraffic 會被平台忽略；該設定檔的內容未展開，因此未判定明文流量策略"
     },
     "findings": "發現項"
   },
@@ -787,6 +798,7 @@
       "android_dex_callSites": "DEX 呼叫點",
       "android_nativeSymbols": "原生庫符號",
       "android_arsc": "資源表",
+      "android_cleartextPolicy": "明文流量策略",
       "ios_infoPlist": "Info.plist",
       "ios_usageDescriptions": "用途說明",
       "ios_privacyManifest": "私隱清單",

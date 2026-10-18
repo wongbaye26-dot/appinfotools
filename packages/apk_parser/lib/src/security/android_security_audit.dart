@@ -1173,6 +1173,30 @@ class AndroidSecurityAudit {
                   )
                 : null),
       ),
+      // 明文流量策略：**NSC 存在时这一维不予判定**。
+      //
+      // `android:usesCleartextTraffic` 只在没有 `android:networkSecurityConfig`
+      // 时生效；声明了 NSC 之后平台只看 NSC，而这个 XML 我们还没展开。
+      // 不写这一条的话，规则 D 在 NSC 存在时会**静默消失** ——
+      // 用户看到「没有明文流量问题」，而真相是「我们没看」。
+      CoverageEntry.noted(
+        id: 'android.cleartextPolicy',
+        status: facts.cleartextPolicyUnknown
+            ? CoverageStatus.partial
+            : CoverageStatus.covered,
+        covered: facts.cleartextPolicyUnknown ? 0 : 1,
+        limit: 1,
+        note: facts.cleartextPolicyUnknown
+            ? (
+                'android.cleartext_policy_unknown',
+                'android:networkSecurityConfig is present, so '
+                    'android:usesCleartextTraffic is ignored; the config '
+                    'itself was not expanded, so the cleartext policy is '
+                    'not judged',
+                const <String, Object>{},
+              )
+            : null,
+      ),
       CoverageEntry.noted(
         id: 'android.arsc',
         status: arscEntryCount == 0

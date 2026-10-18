@@ -460,7 +460,8 @@
       "android_container_unusual_native_library": "{name} は lib/<abi>/ 配下の lib*.so 命名規則に反しています。",
       "android_container_executable_in_assets": "{name} は assets/ 内の実行可能コードです。正常なビルドでは同梱されません。",
       "android_container_resource_table_missing": "64 KiB 以上の DEX があるのに resources.arsc がありません。正常なビルドには必ずリソーステーブルがあります。",
-      "android_container_resource_table_too_small": "resources.arsc は {size} バイトしかなく、妥当なリソーステーブルよりはるかに小さいです。"
+      "android_container_resource_table_too_small": "resources.arsc は {size} バイトしかなく、妥当なリソーステーブルよりはるかに小さいです。",
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig が宣言されているため android:usesCleartextTraffic はプラットフォームに無視されます。設定ファイルの内容は展開していないため、平文通信ポリシーは判定していません"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -522,6 +523,15 @@
       "android_rule_g_relationship": "取得元 API とアップロード API はどちらもパッケージ内にありますが、同じ呼び出し経路上にあることは確認できていません。「データが実際にその要求へ流れ込んだ」という結論は成立していません。",
       "android_rule_g_limitation": "同時出現はデータフローではありません。取得元は別機能（統計・不正検知）のために読まれている可能性があり、アップロードはまったく別の内容かもしれません。逆アセンブルとテイント解析は行っていません。",
       "android_rule_g_manual_review": "手動で確認してください：このデータが実際に送信されているか、ユーザーに明示されているか。これは確認候補であり、悪意の判定ではありません。",
+      "android_debuggable": "アプリが android:debuggable=\"true\" を宣言しています。端末にアクセスできる人は誰でもこのアプリをデバッグし、メモリを読み、コードを差し替えられます。リリースビルドに含めるべきではありません。",
+      "android_debuggable_limitation": "これはマニフェスト属性であり、宣言どおりに報告しています。このビルドが実際にユーザーへ配布されたかは静的に判断できません。",
+      "android_debuggable_remove": "リリースビルドから android:debuggable を外してください（通常はデバッグツールやビルド変種が注入します）。",
+      "android_exported_component": "{count} 個のコンポーネントが android:permission の保護なしでエクスポートされています：{names}。端末上の他のアプリから直接呼び出せます。",
+      "android_exported_component_limitation": "明示的に exported=\"true\" と書かれたコンポーネントのみ報告します。属性がないものは判断しません（既定値は intent-filter と targetSdk に依存）。意図的に他アプリへ公開しているコンポーネントもあります。",
+      "android_exported_component_review": "各コンポーネントについて、android:permission を追加するか、他アプリが不要なら android:exported=\"false\" にしてください。",
+      "android_allow_backup": "アプリが android:allowBackup=\"true\" を宣言しています。この設定を尊重する端末では adb backup でプライベートデータを丸ごと取得できます。",
+      "android_allow_backup_limitation": "明示的に allowBackup=\"true\" と書かれた場合のみ報告します。プラットフォームの既定値も true ですが、未指定をアプリの選択と見なすとすべてのパッケージが該当します。Android 12 以降は adb backup がさらに制限されています。",
+      "android_allow_backup_review": "機微なデータを保存している場合は android:allowBackup=\"false\" にするか、明示的なバックアップ規則を用意してください。",
       "android_special_access": "パッケージが特殊アクセス権限を宣言または参照しています：{sources}。これらは高権限の事実であり、ユーザーに知られるべきものです。宣言していることは濫用を意味しません。",
       "android_special_access_limitation": "これは「宣言・参照」の事実であり、挙動の結論ではありません。アクセシビリティサービス、デバイス管理者、通知リスナーには正当な用途（自動化、パスワードマネージャー、時計連携）があります。実行時の挙動は観測していません。",
       "android_special_access_review": "この権限で何をしているか、ユーザーに明示されているかを確認してください。これは確認すべき事実であり、悪意の判定ではありません。",
@@ -593,7 +603,8 @@
       "ios_url_schemes_limitation": "スキームの処理コードは確認していません（逆アセンブルなし）。「入口が存在する」と「入口が安全である」は別のことです。",
       "ios_url_schemes_manual_review": "攻撃面を評価するには、スキームの処理ロジックが呼び出し元を検証しているか、パラメータをそのままパスや SQL に連結していないかを手動で確認してください。",
       "ios_usage_description": "Info.plist が {key} を宣言しています（用途の説明があります）。その存在は、アプリがこの機能を使うと**主張している**ことの証明にすぎず、実行時にデータへ実際にアクセスしたことの証明ではありません。",
-      "ios_usage_description_cross_check": "実際に使われている API と照合してください: このレポートの対応する API 手がかりの項目を参照してください。"
+      "ios_usage_description_cross_check": "実際に使われている API と照合してください: このレポートの対応する API 手がかりの項目を参照してください。",
+      "android_exported_component_many": "android:permission による保護がないまま {count} 個のコンポーネントがエクスポートされています（{names} など、他 {more} 個）。端末上の他のアプリから呼び出せます。"
     }
   },
   "report": {
@@ -624,6 +635,7 @@
     "covered": "カバー済み",
     "dimensions": {
       "android_arsc": "リソーステーブル",
+      "android_cleartextPolicy": "平文通信ポリシー",
       "android_dex_callSites": "DEX 呼び出し箇所",
       "android_dex_methodReferences": "DEX メソッド参照",
       "android_dex_strings": "DEX 文字列",

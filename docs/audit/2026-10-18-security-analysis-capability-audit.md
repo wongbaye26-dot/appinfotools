@@ -16,6 +16,10 @@
 
 综合评分 **65 / 100**。
 
+> **本文件是滚动记录**：§9 修完 7 项后 **74**，§10 第二轮后 **76**，§11 第三轮后
+> **78**，§12 第四轮（清单配置维度 + 修正两处「输出正常但内容错」的解析缺陷）后
+> **81**。**§0 的表格是首轮基线，保留原样作为对照** —— 想看当前分数请看 §12.7。
+
 | 维度 | 权重 | 得分 | 依据 |
 |---|---:|---:|---|
 | 检测广度（能覆盖多少类风险） | 20 | **11** | 组合规则 6 条里 4 条是图片链；短信/通讯录/定位/录音/无障碍/动态加载**没有任何标记**（§4 P2-2） |
@@ -612,3 +616,143 @@ android.permission.BIND_NOTIFICATION_LISTENER_SERVICE  → notification_listener
 ### 11.4 评分影响
 
 **76 → 78/100**：检测广度 14 → 16（iOS 三类能力双向、Android 相机与录屏）。
+
+## 12. 第四轮：清单配置类规则 —— 以及一个让前三轮结论部分作废的解析缺陷
+
+新增 31 条测试，`flutter test` 1,377 → **1,408**（+14 skipped）。
+
+### 12.1 三条新规则
+
+清单层的三个经典缺陷此前**完全没被检查过**（`AndroidSecurityAudit` 只看权限、
+代码线索与组件数）。它们的共同点是「完全可判定」：清单里写了就是写了。
+
+| 规则 | 等级 | 判据 | 排除的误报 |
+|---|---|---|---|
+| `ANDROID-DEBUGGABLE` | **P1** | `android:debuggable="true"` | 未声明不报（平台默认 false） |
+| `ANDROID-EXPORTED-COMPONENT` | P2（有 provider）/ P3 | `exported="true"` 且无 `android:permission` | 启动页（MAIN/LAUNCHER）必须导出，不报；`exported` 未声明不替平台猜默认值 |
+| `ANDROID-ALLOW-BACKUP` | P3 | `android:allowBackup="true"` | 只报**显式** true；未声明时默认也是 true，但那样每个包都会报 |
+
+### 12.2 真实样本验证暴露的根因：属性表 63 条里 51 条错位
+
+规则写完、单测全绿之后，拿 5 个真实包跑了一遍：
+
+```
+=== 抖音-v40.7.0.apk ===
+  debuggable=null allowBackup=null 组件=1891 导出=0 启动页=2
+```
+
+`导出=0` 在抖音上不可能。用 `aapt2` 独立核对：
+
+```
+$ aapt2 dump xmltree 抖音.apk --file AndroidManifest.xml | grep -c exported
+642
+```
+
+于是查 `_kFrameworkAttrNames`。逐条比对 `aapt2 dump resources android-34/android.jar`
+（1,545 条 attr 定义）后发现 **63 条里有 51 条 ID 对应错了名字**：
+
+| 资源 ID | 我们表里写的 | aapt2 说的 |
+|---|---|---|
+| `0x0101000f` | `value` | **`debuggable`** |
+| `0x01010010` | `resource` | **`exported`** |
+| `0x01010018` | `debuggable` | **`authorities`** |
+| `0x01010280` | `screenSize` | **`allowBackup`** |
+| `0x010104ec` | `localeConfig` | **`usesCleartextTraffic`** |
+| `0x01010527` 表里写 `0x010104d8` | `networkSecurityConfig` | `networkSecurityConfig` |
+
+后果不是「少读一个字段」，而是**用错名字覆盖正确的名字**：
+`_resolveStringOrResourceId` 是**表优先**的（因为混淆包会重写字符串池里的
+属性名，而资源 ID 改不动）—— 表错了，就再也没有回退的机会。
+
+**受影响的不只是这一轮的新规则**：`android:exported` / `debuggable` /
+`allowBackup` / `usesCleartextTraffic` 在**所有真实包上都是 `null`**，也就是说：
+
+- `RULE-D`（明文流量）**从上线起就在真实包上静默失效**；
+- `AndroidComponent.exported` 恒为 `null`，组件导出情况从未被真正读取过
+  （`AndroidComponent.permission` 是另一个属性，一直是好的）。
+
+**为什么单测一直绿**：当时的用例都手工构造 `ApkMeta`，测的是「拿到一个
+`bool` 之后规则怎么判」，而不是「这个 `bool` 能不能从字节里拿到」。
+这是典型的自证循环 —— 期望值和实现共享同一个错误假设。
+
+**修法**：
+
+1. 表重写为 aapt2 权威值，并从 63 条**裁剪到解析器真正消费的 20 条** ——
+   表里每多一条就多一条要守的错，而且会遮住字符串池回退。
+2. 新增 `packages/apk_parser/test/fixtures/android_34_attrs.txt`（aapt2 输出的
+   1,545 条快照，可复现），`framework_attr_names_test.dart` 逐条比对。
+3. 新增 `test/fixtures/apk/attr-fixture.apk` —— 由 `aapt2 link` 真实产出的最小
+   APK，走完整条「字节 → ApkMeta」链路，不再手工构造 `ApkMeta`。
+
+### 12.3 第二个缺陷：每一个 `true` 都被读成 `false`
+
+属性名读对之后，值还是错的：`debuggable: false`（应为 true）、
+`exported: false`（应为 true）。
+
+根因在 `_parseStartElement`：`tvData` 是 `readInt32()` 读的（**有符号**），
+而 AXML 里 `true` 的规范编码是 `0xffffffff`，有符号即 `-1`。
+`_resolveAttributeValue` 里写的是 `data == 0xffffffff` —— 永远不成立。
+
+**这比「读不到」更糟**：读不到至少是 `null`，能被发现；读成 `false` 是一个
+看起来很正常的具体值，没人会怀疑。改成平台侧的同一条判据
+（`TypedData.getBoolean`：非 0 即真）。
+
+### 12.4 修完之后新暴露的两个事实问题
+
+属性一旦能读，规则就真的开火了 —— 于是两个此前不可见的问题立刻显形。
+
+**(a) `RULE-D` 与 `networkSecurityConfig` 的优先级**
+
+修完前两条之后，5 个真实包里 **4 个** `usesCleartextTraffic=true`，规则 D 以
+**P1** 出现在 80% 的应用上。查 AOSP `ApplicationInfo`：API 24 起，
+只要声明了 `android:networkSecurityConfig`，`usesCleartextTraffic` **就不再生效**。
+
+也就是说，那 4 个里 3 个（抖音、飞牛、飞牛TV）的报告是**事实错误**，不只是
+「说得太重」。改成：NSC 存在时这一维**不予判定**，并在覆盖率里单列一条
+`android.cleartextPolicy`（partial + `android_cleartext_policy_unknown`）——
+**不能静默消失**，否则用户会把「我们没看」读成「没有问题」。
+
+修后：只有 `49af6cnn-1018.apk`（无 NSC）报规则 D。
+
+**(b) 导出组件列表刷屏**
+
+抖音有 **159 个**导出且无 `android:permission` 的组件。全列出来是 6 KB 正文 +
+159 行证据，读者只会跳过 —— 而「读者跳过」正是安全面板最该避免的结局。
+
+改成：正文点名前 12 个（provider 优先，它最危险），明写「另有 N 个未列出」，
+证据行上限 20。`count` 永远是真实总数，不缩水。
+
+### 12.5 修复后的真实样本结果
+
+| 样本 | debuggable | allowBackup | cleartext / NSC | 导出/未声明 | 触发 |
+|---|---|---|---|---|---|
+| `49af6cnn-1018.apk` | null | false | true / 无 | 17 / 6 | `EXPORTED-COMPONENT` **P2**（10 个）、`RULE-D-ESCALATED` **P1** |
+| `app.apk` | null | false | null / 无 | 16 / 58 | `EXPORTED-COMPONENT` **P2**（11 个） |
+| `抖音-v40.7.0.apk` | null | false | true / 有 | 195 / 1249 | `EXPORTED-COMPONENT` **P2**（159 个，点名 12 + 147） |
+| `飞牛-v1.37.1.apk` | null | **true** | true / 有 | 11 / 47 | `EXPORTED-COMPONENT` P3（7）、`ALLOW-BACKUP` P3 |
+| `飞牛TV-v1.4.1.apk` | null | false | true / 有 | 4 / 28 | `EXPORTED-COMPONENT` P3（2） |
+
+`debuggable` 全为 `null` 是**正确**的：release 包不会声明它。
+
+启动页排除也实测有效：飞牛TV 的启动页是 `SplashActivity`（被排除），
+而 `MainActivity` 是另一个导出 activity（保留报告）—— 两者不是同一个组件。
+
+### 12.6 对前三轮结论的影响
+
+- 第 9–11 节的**能力扩展结论仍然成立**（那些规则读的是 DEX 字面量、权限、
+  plist，与 AXML 属性表无关）。
+- 但**凡是以 `usesCleartextTraffic` / `exported` / `debuggable` / `allowBackup`
+  为前提的说法，在此之前的版本里都是未经验证的** —— 它们从未在真实包上读到值。
+  本报告 §3 的实测表里没有这几项，正是因为当时读不到；现在补上了。
+- 教训已经写进 `packages/apk_parser/lib/src/binary_xml.dart` 的注释与
+  `framework_attr_names_test.dart` 的文件头：**框架属性 ID 只能从 android.jar
+  取，不能凭印象写**；**期望值必须来自外部工具，不能从本项目的解析器取**。
+
+### 12.7 评分影响
+
+**78 → 81/100**：新增清单配置维度（3 条规则），同时修正了两处「输出看起来
+正常但内容是错的」缺陷 —— 后者的价值高于前者，因为它影响的是**已有**结论的
+可信度。
+
+扣分项仍在：NSC 内容未展开（这一维现在明确标为「未判定」而非「已覆盖」）、
+`Assets.car` 未实现、动态分析缺失。

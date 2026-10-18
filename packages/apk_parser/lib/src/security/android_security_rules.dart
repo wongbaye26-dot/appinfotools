@@ -92,7 +92,25 @@ class AndroidRuleFacts {
           c.type == ComponentType.service || c.type == ComponentType.receiver);
 
   /// 是否存在明文流量配置。
-  bool get allowsCleartext => meta.applicationUsesCleartextTraffic == true;
+  ///
+  /// **`android:networkSecurityConfig` 存在时 `usesCleartextTraffic` 被平台忽略。**
+  /// AOSP 的 `ApplicationInfo` 里写得很清楚：API 24 起，只要声明了 NSC，
+  /// 这个标志就不再生效，一切由 NSC 决定。
+  ///
+  /// 所以 NSC 存在时**不能用这个属性下结论** —— 那不是说重了，是**说错了**。
+  /// 我们尚未展开 NSC 的内容（需要 res id → `res/xml/...` 的路径解析），
+  /// 这一维此时**不予判定**，由 [cleartextPolicyUnknown] 在覆盖率里如实标出。
+  ///
+  /// 实测（5 个真实包）：4 个 `usesCleartextTraffic=true`，其中 3 个同时声明了
+  /// NSC —— 不做这个区分的话，规则 D 会在 80% 的应用上以 P1 出现。
+  bool get allowsCleartext =>
+      meta.applicationUsesCleartextTraffic == true &&
+      meta.networkSecurityConfig == null;
+
+  /// NSC 存在 → 明文策略由 NSC 决定，而 NSC 我们没展开。
+  bool get cleartextPolicyUnknown =>
+      meta.networkSecurityConfig != null &&
+      meta.applicationUsesCleartextTraffic == true;
 
   /// 规则 D 的升级条件：明文流量**同时**存在图像 / 识别 / 上传 / 域名线索。
   bool get hasSensitiveAlongsideCleartext =>
@@ -134,6 +152,26 @@ class AndroidSecurityRule {
 
 /// 全部组合规则。**顺序即报告里的输出顺序**，与抽表前一致。
 const List<AndroidSecurityRule> androidSecurityRules = [
+  // **清单配置类缺陷排在最前**：它们是完全可判定的事实（清单里写了就是写了），
+  // 而且后果最直接（debuggable 等于把应用交给任何人）。线索推断类规则排在后面。
+  AndroidSecurityRule(
+    id: 'ANDROID-DEBUGGABLE',
+    summary: '发布包声明了 android:debuggable="true" —— 任何拿到设备的人都能调试它。',
+    matches: _matchesDebuggable,
+    build: _buildDebuggable,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-EXPORTED-COMPONENT',
+    summary: '组件导出但没有 android:permission 保护（启动页除外）。',
+    matches: _matchesExportedComponent,
+    build: _buildExportedComponent,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-ALLOW-BACKUP',
+    summary: '显式声明 android:allowBackup="true" —— adb backup 可整包导出应用数据。',
+    matches: _matchesAllowBackup,
+    build: _buildAllowBackup,
+  ),
   AndroidSecurityRule(
     id: 'ANDROID-RULE-A',
     summary: '广泛相册 / 存储访问，但未见对应的图片业务用途线索。',
@@ -183,6 +221,167 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     build: _buildRuleF,
   ),
 ];
+
+// ---------------------------------------------------------------------------
+// 清单配置类缺陷（完全可判定，不靠推断）
+// ---------------------------------------------------------------------------
+
+bool _matchesDebuggable(AndroidRuleFacts f) =>
+    f.meta.applicationDebuggable == true;
+
+SecurityFinding _buildDebuggable(AndroidRuleFacts f) => SecurityFinding(
+      ruleId: 'ANDROID-DEBUGGABLE',
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.configuration,
+      // P1：这不是「疑似」——`debuggable` 打开后，任何能连上设备的人都可以
+      // `run-as` 进应用目录、读内存、替换代码。发布包出现这一条就是硬缺陷。
+      severity: SecuritySeverity.p1,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'The application declares android:debuggable="true". Anyone '
+          'with access to the device can debug the app, read its memory and '
+          'replace its code. Release builds must not set this.',
+      messageCode: 'android.debuggable',
+      evidence: const [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'AndroidManifest.xml / application[@android:debuggable]',
+          detail: 'android:debuggable="true"',
+        ),
+      ],
+      limitation: 'This is a manifest attribute; it is reported as declared. '
+          'Whether the build was actually shipped to users cannot be '
+          'determined statically.',
+      limitationCode: 'android.debuggable.limitation',
+      recommendation: 'Remove android:debuggable from the release build (it is '
+          'normally injected by debug tooling / build variants).',
+      recommendationCode: 'android.debuggable.remove',
+    );
+
+/// 导出且没有 `android:permission` 保护的组件，**排除启动页**。
+///
+/// 启动页必须导出（否则桌面图标点不开），报它等于每个应用都报一条。
+/// `exported` 为 `null` 时不判 —— 默认值取决于有没有 intent-filter 与
+/// targetSdk，静态猜它就是在编造。
+List<AndroidComponent> _unprotectedExported(AndroidRuleFacts f) {
+  final launchers = {for (final a in f.meta.launchableActivities) a.name};
+  return [
+    for (final c in f.meta.components)
+      if (c.exported == true &&
+          (c.permission == null || c.permission!.isEmpty) &&
+          !launchers.contains(c.name))
+        c,
+  ];
+}
+
+bool _matchesExportedComponent(AndroidRuleFacts f) =>
+    _unprotectedExported(f).isNotEmpty;
+
+/// 一条发现里最多点名几个组件。
+///
+/// 真实包上这个数字很大：抖音有 **159 个**导出且无 `android:permission`
+/// 的组件。全列出来会变成一段 6 KB 的文字 + 159 行证据，读者只会跳过它 ——
+/// 而「读者跳过」正是安全面板最该避免的结局。
+///
+/// 截断是**显示层**的取舍：`count` 永远是真实总数，正文里也明写省略了多少，
+/// 所以不会让人误以为只有这 12 个。
+const int _kMaxNamedExportedComponents = 12;
+
+/// 证据行最多列几条（比点名多给一些，便于核对）。
+const int _kMaxExportedEvidence = 20;
+
+/// 组件类型的危险程度排序：provider 直接暴露数据，排在前面。
+int _exportedTypeRank(ComponentType type) => switch (type) {
+      ComponentType.provider => 0,
+      ComponentType.service => 1,
+      ComponentType.receiver => 2,
+      ComponentType.activity => 3,
+      _ => 4,
+    };
+
+SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
+  final components = _unprotectedExported(f);
+  // ContentProvider 直接暴露数据，比 activity / service 更危险 → P2。
+  final hasProvider = components.any((c) => c.type == ComponentType.provider);
+  final ordered = [...components]..sort((a, b) {
+      final byType =
+          _exportedTypeRank(a.type).compareTo(_exportedTypeRank(b.type));
+      if (byType != 0) return byType;
+      return (a.name ?? '').compareTo(b.name ?? '');
+    });
+  final names = [for (final c in ordered) c.name ?? '<unnamed>'];
+  final shown = names.take(_kMaxNamedExportedComponents).toList();
+  final omitted = names.length - shown.length;
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-EXPORTED-COMPONENT',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.configuration,
+    severity: hasProvider ? SecuritySeverity.p2 : SecuritySeverity.p3,
+    confidence: SecurityConfidence.confirmed,
+    finding: omitted > 0
+        ? '${names.length} component(s) are exported without an '
+            'android:permission guard, including ${shown.join(', ')} '
+            'and $omitted more. Other apps on the device can invoke them.'
+        : '${names.length} component(s) are exported without an '
+            'android:permission guard: ${shown.join(', ')}. Other apps on the '
+            'device can invoke them.',
+    messageCode: omitted > 0
+        ? 'android.exported_component_many'
+        : 'android.exported_component',
+    messageArgs: {
+      'count': names.length,
+      'names': shown,
+      if (omitted > 0) 'more': omitted,
+    },
+    evidence: [
+      for (final c in ordered.take(_kMaxExportedEvidence))
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'AndroidManifest.xml / ${c.type.name}'
+              '[@name="${c.name ?? '?'}"]',
+          detail: 'android:exported="true" without android:permission',
+        ),
+    ],
+    limitation: 'Exported is reported only when it is explicitly declared; '
+        'components without the attribute are not judged (the default depends '
+        'on the intent filters and targetSdk). Some exported components are '
+        'intended to be called by other apps.',
+    limitationCode: 'android.exported_component.limitation',
+    recommendation: 'For each component: add android:permission, or set '
+        'android:exported="false" if other apps do not need it.',
+    recommendationCode: 'android.exported_component.review',
+  );
+}
+
+bool _matchesAllowBackup(AndroidRuleFacts f) =>
+    f.meta.applicationAllowBackup == true;
+
+SecurityFinding _buildAllowBackup(AndroidRuleFacts f) => SecurityFinding(
+      ruleId: 'ANDROID-ALLOW-BACKUP',
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.configuration,
+      severity: SecuritySeverity.p3,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'The application declares android:allowBackup="true": '
+          '`adb backup` can export its private data on devices that still '
+          'honour it.',
+      messageCode: 'android.allow_backup',
+      evidence: const [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'AndroidManifest.xml / application[@android:allowBackup]',
+          detail: 'android:allowBackup="true"',
+        ),
+      ],
+      limitation: 'Only an explicit allowBackup="true" is reported; the '
+          'platform default is also true, but treating an absent attribute as '
+          'the app\'s choice would flag every package. Android 12+ restricts '
+          'adb backup further.',
+      limitationCode: 'android.allow_backup.limitation',
+      recommendation: 'If the app stores sensitive data, set '
+          'android:allowBackup="false" or provide explicit backup rules.',
+      recommendationCode: 'android.allow_backup.review',
+    );
 
 // ---------------------------------------------------------------------------
 // 各规则的判定

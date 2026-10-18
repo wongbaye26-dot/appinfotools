@@ -61,17 +61,76 @@
 
 ### 质量
 
-- 测试 **1,303 → 1,377**（+74）。新增 `audit_coverage_honesty_test.dart`（9）、
+- 测试 **1,303 → 1,408**（+105）。新增 `audit_coverage_honesty_test.dart`（9）、
   `android_sensitive_source_rule_test.dart`（10）、
   `audit_permission_and_rulef_test.dart`（6）、
   `ios_native_symbols_nested_test.dart`（7）、
   `android_sensitive_source_extended_test.dart`（19）、
   `ios_usage_capability_matrix_test.dart`（15）、
-  `android_camera_and_screen_capture_test.dart`（8）。
+  `android_camera_and_screen_capture_test.dart`（8）、
+  `android_manifest_hygiene_test.dart`（19）、
+  `manifest_attr_resolution_test.dart`（12）、
+  `framework_attr_names_test.dart`（5，在 `packages/apk_parser`）。
 - 真实样本回归：抖音 55/55 DEX、端到端 **14.13 s**；
   `sun_signed.ipa` 静态解析 **239.9 ms**（+7.8%，预算从 16 提到 64 MiB 的代价）。
 - **仍未验证**：界面目视（本机构建不了任何平台产物）、真实 XAPK 样本、
   联网下载、Windows / Linux。
+
+### 第四轮：清单配置维度 —— 以及两处「输出正常但内容是错的」的解析缺陷
+
+#### 新增检测（清单层，此前完全没查过）
+
+- **`ANDROID-DEBUGGABLE`（P1）**：`android:debuggable="true"` 出现在发布包里，
+  任何人拿到设备就能 `run-as` 进应用、读内存、替换代码。
+- **`ANDROID-EXPORTED-COMPONENT`（P2 / P3）**：导出且没有 `android:permission`
+  保护的组件。有 `ContentProvider` 时 P2（直接暴露数据），否则 P3。
+  **启动页（MAIN/LAUNCHER）排除** —— 它必须导出，报它等于每个应用都报一条；
+  `exported` 未声明时不替平台猜默认值（默认取决于 intent-filter 与 targetSdk）。
+  实测抖音有 **159 个**，正文只点名前 12 个（provider 优先）并明写「另有 N 个」，
+  证据行上限 20 —— 6 KB 正文 + 159 行证据只会让人跳过整块面板。
+- **`ANDROID-ALLOW-BACKUP`（P3）**：显式 `allowBackup="true"`，`adb backup`
+  可整包导出应用私有数据。只报显式 true；未声明时默认也是 true，
+  但那样每个包都会报。
+
+#### 修掉的解析缺陷（严重性高于上面三条新规则）
+
+- **框架属性表 63 条里 51 条 ID 错位。** `_kFrameworkAttrNames` 把
+  `0x01010010` 记成 `resource`（实为 **`exported`**）、`0x01010280` 记成
+  `screenSize`（实为 **`allowBackup`**）、`0x01010018` 记成 `debuggable`
+  （实为 `authorities`）…… 而 `_resolveStringOrResourceId` 是**表优先**的
+  （混淆包会重写字符串池里的属性名，资源 ID 改不动）。于是
+  `android:exported` / `debuggable` / `allowBackup` / `usesCleartextTraffic`
+  在**所有真实包**上都读不到 —— 意味着 **`RULE-D`（明文流量）从上线起就在
+  真实包上静默失效**，`AndroidComponent.exported` 恒为 `null`。
+  **单测一直是绿的**，因为用例都手工构造 `ApkMeta`：测的是「拿到一个 bool
+  之后规则怎么判」，不是「这个 bool 能不能从字节里拿到」。
+  修法：表重写为 aapt2 权威值并**裁剪到解析器真正消费的 20 条**；新增
+  `packages/apk_parser/test/fixtures/android_34_attrs.txt`（aapt2 输出的
+  1,545 条快照）逐条比对；新增 `test/fixtures/apk/attr-fixture.apk`
+  （`aapt2 link` 真实产出）走完整条「字节 → ApkMeta」链路。
+- **每一个 `true` 都被读成 `false`。** AXML 的 `tvData` 按**有符号** 32 位读，
+  而 `true` 的规范编码是 `0xffffffff`（即 `-1`），旧代码写
+  `data == 0xffffffff` —— 永远不成立。这比「读不到」更糟：读不到至少是 `null`
+  能被发现，读成 `false` 是一个看起来很正常的具体值。改成平台侧同一条判据
+  （非 0 即真）。
+
+#### 属性一旦能读，两个事实错误立刻显形
+
+- **`RULE-D` 与 `networkSecurityConfig` 的优先级。** 修完上两条后，5 个真实包
+  里 **4 个** `usesCleartextTraffic=true`，规则 D 以 **P1** 出现在 80% 的应用上。
+  而 AOSP `ApplicationInfo` 明确写着：API 24 起，只要声明了
+  `android:networkSecurityConfig`，`usesCleartextTraffic` **就不再生效**。
+  也就是说其中 3 个（抖音、飞牛、飞牛TV）的报告是**事实错误**，不只是说得太重。
+  改为：NSC 存在时这一维**不予判定**，并在覆盖率里单列
+  `android.cleartextPolicy`（partial + 说明），**不能静默消失** ——
+  否则用户会把「我们没看」读成「没有问题」。
+- **导出组件列表刷屏。** 见上面的点名上限。
+
+#### 评分
+
+安全分析能力 **78 → 81 / 100**（`docs/audit/2026-10-18-security-analysis-capability-audit.md` §12）。
+新增的是清单配置维度；更值钱的是修正了两处「输出看起来正常但内容是错的」缺陷 ——
+它影响的是**已有**结论的可信度。
 
 ## 2.4.13 — 2026-10-18
 

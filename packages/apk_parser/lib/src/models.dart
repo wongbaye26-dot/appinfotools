@@ -68,6 +68,12 @@ class ApkMeta {
   /// `<application android:debuggable>`。未声明时为 `null`。
   bool? applicationDebuggable;
 
+  /// `android:allowBackup`；未声明为 `null`（平台默认为 **true**）。
+  ///
+  /// 只报**显式写了 true** 的情况：默认值 true 是平台行为，把它当成应用的
+  /// 选择会冤枉所有没写这个属性的包。
+  bool? applicationAllowBackup;
+
   List<String> permissions = [];
   List<String> features = [];
   List<String> featuresNotRequired = [];

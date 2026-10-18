@@ -620,6 +620,7 @@ class AnalysisReport {
       'android.dex.callSites' => d.android_dex_callSites,
       'android.nativeSymbols' => d.android_nativeSymbols,
       'android.arsc' => d.android_arsc,
+      'android.cleartextPolicy' => d.android_cleartextPolicy,
       'ios.infoPlist' => d.ios_infoPlist,
       'ios.usageDescriptions' => d.ios_usageDescriptions,
       'ios.privacyManifest' => d.ios_privacyManifest,
@@ -667,6 +668,8 @@ class AnalysisReport {
     final rule = name is String ? _permissionRuleText(name, t) : null;
     final scope = finding.messageArgs['scope'];
     final api = finding.messageArgs['api'];
+    // 被截断的点名数量（导出组件可达上百个，正文只列前若干个）。
+    final more = finding.messageArgs['more'];
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -741,6 +744,17 @@ class AnalysisReport {
           ? null
           : f.android_rule_b(inputClues: inputClues, ocrClues: ocrClues),
       'android.rule_c' => f.android_rule_c,
+      'android.debuggable' => f.android_debuggable,
+      'android.exported_component' => (count == null || names == null)
+          ? null
+          : f.android_exported_component(count: count, names: names),
+      // 组件数超过点名上限时的措辞（真实包上可达 159 个，全列出来没人看）。
+      'android.exported_component_many' =>
+        (count == null || names == null || more == null)
+            ? null
+            : f.android_exported_component_many(
+                count: count, names: names, more: more),
+      'android.allow_backup' => f.android_allow_backup,
       'android.rule_g' =>
         sources == null ? null : f.android_rule_g(sources: sources),
       'android.special_access' =>
@@ -804,6 +818,10 @@ class AnalysisReport {
         f.android_permission_uncategorized_manual_review,
       'android.permission_sdk23_conditional.verify' =>
         f.android_permission_sdk23_conditional_verify,
+      'android.debuggable.remove' => f.android_debuggable_remove,
+      'android.exported_component.review' =>
+        f.android_exported_component_review,
+      'android.allow_backup.review' => f.android_allow_backup_review,
       'android.rule_g.manual_review' => f.android_rule_g_manual_review,
       'android.special_access.review' => f.android_special_access_review,
       'android.screen_capture.review' => f.android_screen_capture_review,
@@ -899,6 +917,10 @@ class AnalysisReport {
       'ios.rule_f.limitation' => f.ios_rule_f_limitation,
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
+      'android.debuggable.limitation' => f.android_debuggable_limitation,
+      'android.exported_component.limitation' =>
+        f.android_exported_component_limitation,
+      'android.allow_backup.limitation' => f.android_allow_backup_limitation,
       'android.rule_g.limitation' => f.android_rule_g_limitation,
       'android.special_access.limitation' =>
         f.android_special_access_limitation,
@@ -1305,6 +1327,7 @@ class AnalysisReport {
       'ios.native_symbols.stripped' => n.ios_native_symbols_stripped,
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
       'android.split_apk.base_only' => n.android_split_apk_base_only,
+      'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
       'android.manifest.unparsed' =>
         reason == null ? null : n.android_manifest_unparsed(reason: reason),
       'android.dex.budget' => (name == null ||

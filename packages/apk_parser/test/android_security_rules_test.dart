@@ -79,6 +79,10 @@ void main() {
       expect(
         androidSecurityRules.map((r) => r.id).toList(),
         [
+          // 清单配置类缺陷排在最前（完全可判定、后果最直接）。
+          'ANDROID-DEBUGGABLE',
+          'ANDROID-EXPORTED-COMPONENT',
+          'ANDROID-ALLOW-BACKUP',
           'ANDROID-RULE-A',
           'ANDROID-RULE-B',
           'ANDROID-RULE-C',
@@ -144,6 +148,25 @@ void main() {
               'Landroid/telephony/TelephonyManager;',
               'multipart/form-data',
             ],
+          ),
+      // 清单配置类缺陷：完全可判定，不需要代码线索。
+      'ANDROID-DEBUGGABLE': () => _audit(
+            meta: _meta(targetSdk: 34)..applicationDebuggable = true,
+          ),
+      'ANDROID-EXPORTED-COMPONENT': () => _audit(
+            meta: _meta(
+              targetSdk: 34,
+              components: const [
+                AndroidComponent(
+                  type: ComponentType.activity,
+                  name: 'com.example.Exported',
+                  exported: true,
+                ),
+              ],
+            ),
+          ),
+      'ANDROID-ALLOW-BACKUP': () => _audit(
+            meta: _meta(targetSdk: 34)..applicationAllowBackup = true,
           ),
       // 特殊访问能力：**清单层的组件权限**才是判据（不需要上传）。
       // 用 DEX 字面量判会误伤 Material 的 `AccessibilityServiceInfo` 查询。

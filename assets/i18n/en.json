@@ -543,6 +543,15 @@
       "android_rule_g_relationship": "The source API and the upload API both appear in the package, but they are not proven to lie on the same call path — whether the data actually flows into the request is not established.",
       "android_rule_g_limitation": "Co-occurrence is not data flow: the source may be read for an unrelated feature (analytics, fraud detection), and the upload may carry something else entirely. No disassembly or taint analysis was performed.",
       "android_rule_g_manual_review": "Review manually: check whether this data is actually sent out, and whether the user was told about it. This is a candidate for review, not a malicious verdict.",
+      "android_debuggable": "The application declares android:debuggable=\"true\". Anyone with access to the device can debug the app, read its memory and replace its code. Release builds must not set this.",
+      "android_debuggable_limitation": "This is a manifest attribute, reported as declared. Whether this build was actually shipped to users cannot be determined statically.",
+      "android_debuggable_remove": "Remove android:debuggable from the release build (it is normally injected by debug tooling or build variants).",
+      "android_exported_component": "{count} component(s) are exported without an android:permission guard: {names}. Other apps on the device can invoke them.",
+      "android_exported_component_limitation": "Exported is reported only when it is explicitly declared; components without the attribute are not judged (the default depends on the intent filters and targetSdk). Some exported components are meant to be called by other apps.",
+      "android_exported_component_review": "For each component: add android:permission, or set android:exported=\"false\" if other apps do not need it.",
+      "android_allow_backup": "The application declares android:allowBackup=\"true\": adb backup can export its private data on devices that still honour it.",
+      "android_allow_backup_limitation": "Only an explicit allowBackup=\"true\" is reported. The platform default is also true, but treating an absent attribute as the app's choice would flag every package. Android 12+ restricts adb backup further.",
+      "android_allow_backup_review": "If the app stores sensitive data, set android:allowBackup=\"false\" or provide explicit backup rules.",
       "android_special_access": "The package declares or references special-access capabilities: {sources}. These are high-privilege facts the user should be told about; declaring them does not mean they are abused.",
       "android_special_access_limitation": "This is a declaration/reference fact, not a behaviour finding: accessibility services, device admin and notification listeners all have legitimate uses (automation, password managers, watch companions). No runtime behaviour was observed.",
       "android_special_access_review": "Check what the app does with this capability and whether the user is told about it. This is a fact to review, not a malicious verdict.",
@@ -594,7 +603,8 @@
       "android_permission_rule": "{description}",
       "android_permission_rule_with_note": "{description} ({note})",
       "android_permission_rule_risk_note": "{riskNote}",
-      "android_permission_rule_limitation": "A permission declaration is only an intent; it does not prove the app actually accessed the corresponding data at runtime."
+      "android_permission_rule_limitation": "A permission declaration is only an intent; it does not prove the app actually accessed the corresponding data at runtime.",
+      "android_exported_component_many": "{count} component(s) are exported without an android:permission guard, including {names} and {more} more. Other apps on the device can invoke them."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -750,7 +760,8 @@
       "android_container_unusual_native_library": "{name} violates the lib*.so naming convention under lib/<abi>/.",
       "android_container_executable_in_assets": "{name} is executable code inside assets/, which a normal build never ships.",
       "android_container_resource_table_missing": "resources.arsc is missing while a DEX entry is at least 64 KiB. A normal build always has a resource table.",
-      "android_container_resource_table_too_small": "resources.arsc is only {size} bytes, far below any plausible resource table."
+      "android_container_resource_table_too_small": "resources.arsc is only {size} bytes, far below any plausible resource table.",
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored by the platform; the config file itself was not expanded, so the cleartext policy is not judged"
     },
     "findings": "Findings"
   },
@@ -787,6 +798,7 @@
       "android_dex_callSites": "DEX call sites",
       "android_nativeSymbols": "Native symbols",
       "android_arsc": "Resource table",
+      "android_cleartextPolicy": "Cleartext traffic policy",
       "ios_infoPlist": "Info.plist",
       "ios_usageDescriptions": "Usage descriptions",
       "ios_privacyManifest": "Privacy manifest",
