@@ -632,7 +632,10 @@
       "android_native_exec_stack": "有 {count} 個原生庫把棧標記為可執行（PT_GNU_STACK 含 PF_X）：{names}。棧上的資料可以被當成程式碼執行。",
       "android_native_exec_stack_many": "有 {count} 個原生庫把棧標記為可執行（PT_GNU_STACK 含 PF_X），其中包括 {names}，另有 {more} 個未列出。棧上的資料可以被當成程式碼執行。",
       "android_native_exec_stack_limitation": "只判定真正讀到的原生庫；因預算被跳過的庫不在覆蓋範圍內。可執行棧本身不代表這個庫是惡意的 —— 它只是去掉了 NX 這道屏障。",
-      "android_native_exec_stack_review": "去掉 -z execstack 重新編譯這個庫（NDK 預設就是不可執行棧）；如果庫來自第三方，向供應商索取修復後的構建。"
+      "android_native_exec_stack_review": "去掉 -z execstack 重新編譯這個庫（NDK 預設就是不可執行棧）；如果庫來自第三方，向供應商索取修復後的構建。",
+      "android_third_party_sdk": "程式碼裡發現了 {count} 個第三方服務類 SDK：{names}。這些庫會把資料發到各自的伺服器；這個清單本身是資訊，不是風險結論。",
+      "android_third_party_sdk_limitation": "只按類名前綴匹配，且只匹配本目錄裡收錄的服務類 SDK：基礎庫（HTTP 客戶端、JSON、UI、動畫）刻意不收，因為幾乎每個應用都有。引用數是「帶該前綴的類名條數」，不是呼叫次數。混淆或重打包過的 SDK 認不出來。只覆蓋真正讀到的 DEX —— 具體條數見覆蓋率。",
+      "android_third_party_sdk_review": "逐個核對每個 SDK 與應用隱私政策是否一致：它收集什麼資料、發到哪裡。移除應用其實不需要的那些。"
     },
     "sources": {
       "photo_library": "完整相片庫（PhotoKit）",
@@ -794,9 +797,23 @@
       "ios_entitlements_empty": "找到了描述檔，但它沒有聲明任何授權項",
       "android_native_hardening_not_provided": "沒有提供原生庫內容，因此未讀取二進制加固屬性",
       "android_native_hardening_some_without_relro": "{total} 個原生庫中有 {count} 個缺少 RELRO；這沒有作為發現項報出，因為它是合法的構建選擇（例如 Flutter 的 libapp.so），否則所有 Flutter 應用都會被報一條",
-      "android_container_dex_in_native_library": "{name}：內容是 DEX 位元組碼，不是原生庫"
+      "android_container_dex_in_native_library": "{name}：內容是 DEX 位元組碼，不是原生庫",
+      "android_sdk_inventory_no_dex": "沒有提供 DEX 內容，因此未建立第三方 SDK 清單",
+      "android_sdk_inventory_incomplete": "{truncated} 個 DEX 被截斷、{failed} 個讀不出來；只出現在那些區域的 SDK 不會被列出"
     },
-    "findings": "發現項"
+    "findings": "發現項",
+    "sdk_categories": {
+      "analytics": "統計 / 歸因",
+      "push": "推送",
+      "captcha": "驗證碼 / 風控",
+      "social": "社交登入 / 支付",
+      "maps": "地圖 / 定位",
+      "crash": "崩潰上報",
+      "storage": "物件儲存 / CDN",
+      "ads": "廣告",
+      "rtc": "實時音視訊",
+      "platform": "平台基礎服務"
+    }
   },
   "detail_tab": {
     "overview": "概覽",
@@ -840,7 +857,8 @@
       "ios_nativeSymbols": "原生庫符號",
       "ios_signature": "簽名",
       "ios_entitlements": "授權項",
-      "android_nativeHardening": "原生庫加固"
+      "android_nativeHardening": "原生庫加固",
+      "android_sdkInventory": "第三方 SDK 清單"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 無法解析（{reason}）",

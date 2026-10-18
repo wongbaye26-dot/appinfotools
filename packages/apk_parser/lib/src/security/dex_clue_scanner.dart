@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 
 import 'code_markers.dart';
+import 'sdk_catalog.dart';
 
 /// 一个待扫描的 DEX 文件：名字 + 字节。
 ///
@@ -90,6 +91,12 @@ class DexScanResult {
   final int scannedDexCount;
   final int scannedBytes;
 
+  /// 命中的第三方**服务类** SDK（见 `sdk_catalog.dart`）。
+  ///
+  /// 在**同一次字符串遍历**里累积：真实包的 DEX 合计 400+ MiB，
+  /// 为了这一步再解码一遍不划算。
+  final List<SdkHit> sdkHits;
+
   /// 因预算被跳过的 DEX。**必须**出现在报告的未覆盖范围里。
   ///
   /// 是结构化记录而不是一句英文 —— 界面上要按语言拼出「只扫了前 8 MiB（共
@@ -103,6 +110,7 @@ class DexScanResult {
     required this.scannedDexCount,
     required this.scannedBytes,
     required this.skippedForBudget,
+    this.sdkHits = const [],
   });
 
   bool hasClue(String markerId) => clues.any((c) => c.markerId == markerId);
@@ -179,6 +187,72 @@ class DexClueScanner {
   /// 默认值就是上面两个常量 —— 调用方不传时行为与之前完全一致。做成参数是
   /// 因为「预算到底卡掉了多少」只能靠实测回答：拿同一个包分别按 8 / 32 MiB
   /// 扫一遍，才知道多扫出来的字节有没有换来新线索。
+  /// SDK 引用数下限：低于这个值的当作噪声。
+  ///
+  /// 实测区分度：真打包进来的 SDK 在**几百到几千**（`com/adjust/sdk` 215、
+  /// `cn/jpush` 336、`com/tencent/bugly` 974），而「只在某个配置字符串里
+  /// 提了一句」的通常是个位数到几十（`com/huawei/hms` 8）。
+  static const int minSdkOccurrences = 20;
+
+  /// 前缀索引：`L` 之后的**前两段** → 对应的 SDK 目录项。
+  ///
+  /// 为什么按两段：24 个前缀逐个对几百万条字符串做 `startsWith`，
+  /// 真实包上是几十亿次比较。算一次 key 再查表，每个字符串只多一次
+  /// `indexOf` 与一次哈希。
+  static _SdkIndex _buildSdkIndex() => _SdkIndex.build();
+
+  static void _markSdk(
+    String str,
+    String dexName,
+    _SdkIndex index,
+    Map<String, int> counts,
+    Map<String, Set<String>> dexes,
+  ) {
+    if (str.isEmpty || str.codeUnitAt(0) != 0x4C) return; // 只认 'L' 开头
+    final key = _twoSegmentKey(str);
+    if (key == null) return;
+    final candidates = index.byKey[key];
+    if (candidates == null) return;
+    for (final descriptor in candidates) {
+      final prefix = descriptor.packagePrefix;
+      // key 只保证前两段相同，这里补一次精确的边界检查：
+      // `L<prefix>/` 或 `L<prefix>;`，否则 `com/tencent/mm` 会吃掉
+      // `com/tencent/mmkv`。
+      final end = 1 + prefix.length;
+      if (str.length <= end) {
+        if (str.length == end && str.codeUnitAt(0) == 0x4C) {
+          // 极短串，不可能命中
+        }
+        continue;
+      }
+      if (str.codeUnitAt(end) != 0x2F && str.codeUnitAt(end) != 0x3B) {
+        continue;
+      }
+      if (!str.startsWith(prefix, 1)) continue;
+      counts[descriptor.id] = (counts[descriptor.id] ?? 0) + 1;
+      (dexes[descriptor.id] ??= <String>{}).add(dexName);
+      return;
+    }
+  }
+
+  /// 取 `L` 之后的前两段路径，例如：
+  ///   `Lcom/adjust/sdk/Foo;` → `com/adjust`
+  ///   `Lcom/adjust;`          → `com/adjust`
+  ///   `Lokhttp3/Request;`     → `okhttp3/Request`（单段时退化为两段含第二段）
+  ///
+  /// 单段前缀（如 `okhttp3`）在当前目录里没有，但保留退化行为以免以后加
+  /// 单段前缀时静默不命中。
+  static String? _twoSegmentKey(String str) {
+    final slash1 = str.indexOf('/', 1);
+    if (slash1 < 0) return null;
+    final slash2 = str.indexOf('/', slash1 + 1);
+    final end = slash2 < 0 ? str.length : slash2;
+    // 去掉尾部的 ';'
+    final stop = (end > 1 && str.codeUnitAt(end - 1) == 0x3B) ? end - 1 : end;
+    if (stop <= 1) return null;
+    return str.substring(1, stop);
+  }
+
   static DexScanResult scan(
     List<DexBytes> entries, {
     int maxBytesPerDex = DexClueScanner.maxBytesPerDex,
@@ -193,6 +267,15 @@ class DexClueScanner {
     var scannedDexCount = 0;
     var scannedBytes = 0;
     var totalSeen = 0;
+
+    // SDK 计数：key 是「L 之后的前两段」，值是命中数。
+    //
+    // 为什么要这个索引：24 个前缀逐个对**几百万条**字符串做 startsWith，
+    // 在 400 MiB 的包上是几十亿次比较。按前两段索引后，每条字符串只需要
+    // 算一次 key、查一次表。
+    final sdkIndex = _buildSdkIndex();
+    final sdkCounts = <String, int>{};
+    final sdkDexes = <String, Set<String>>{};
 
     for (final entry in entries) {
       if (totalSeen >= maxTotalBytes) {
@@ -222,6 +305,7 @@ class DexClueScanner {
       for (final str in _extractStrings(entry.bytes, limit)) {
         _markString(str, entry.name, markerSamples, markerDexes);
         _collectEndpoints(str, domains, ips);
+        _markSdk(str, entry.name, sdkIndex, sdkCounts, sdkDexes);
       }
     }
 
@@ -244,6 +328,18 @@ class DexClueScanner {
       return byCategory != 0 ? byCategory : a.markerId.compareTo(b.markerId);
     });
 
+    // SDK 命中：按引用数过滤掉「只在配置字符串里提了一句」的噪声。
+    final sdkHits = <SdkHit>[
+      for (final entry in sdkCounts.entries)
+        if (entry.value >= minSdkOccurrences)
+          SdkHit(
+            descriptor: sdkIndex.byId[entry.key]!,
+            occurrences: entry.value,
+            dexNames: (sdkDexes[entry.key] ?? const <String>{}).toList()
+              ..sort(),
+          ),
+    ]..sort((a, b) => b.occurrences.compareTo(a.occurrences));
+
     return DexScanResult(
       clues: clues,
       domains: domains.take(maxEndpoints).toList()..sort(),
@@ -251,6 +347,7 @@ class DexClueScanner {
       scannedDexCount: scannedDexCount,
       scannedBytes: scannedBytes,
       skippedForBudget: skipped,
+      sdkHits: sdkHits,
     );
   }
 
@@ -297,5 +394,26 @@ class DexClueScanner {
     for (final match in _ipPattern.allMatches(value)) {
       ips.add(match.group(0)!);
     }
+  }
+}
+
+/// SDK 前缀的两段索引。
+class _SdkIndex {
+  final Map<String, List<SdkDescriptor>> byKey;
+  final Map<String, SdkDescriptor> byId;
+
+  const _SdkIndex(this.byKey, this.byId);
+
+  static _SdkIndex build() {
+    final byKey = <String, List<SdkDescriptor>>{};
+    for (final descriptor in sdkCatalog) {
+      final parts = descriptor.packagePrefix.split('/');
+      final key = parts.length >= 2 ? '${parts[0]}/${parts[1]}' : parts[0];
+      (byKey[key] ??= <SdkDescriptor>[]).add(descriptor);
+    }
+    return _SdkIndex(
+      byKey,
+      {for (final d in sdkCatalog) d.id: d},
+    );
   }
 }

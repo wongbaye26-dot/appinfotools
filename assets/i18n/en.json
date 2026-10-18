@@ -632,7 +632,10 @@
       "android_native_exec_stack": "{count} native libraries mark the stack as executable (PT_GNU_STACK with PF_X): {names}. Data on the stack can be executed as code.",
       "android_native_exec_stack_many": "{count} native libraries mark the stack as executable (PT_GNU_STACK with PF_X), including {names} and {more} more: data on the stack can be executed as code.",
       "android_native_exec_stack_limitation": "Only the native libraries that were actually read are judged; libraries skipped for budget are not covered. An executable stack does not by itself mean the library is malicious — it only removes the NX barrier.",
-      "android_native_exec_stack_review": "Rebuild the library without -z execstack (the NDK default is a non-executable stack) and ask the vendor for a fixed build."
+      "android_native_exec_stack_review": "Rebuild the library without -z execstack (the NDK default is a non-executable stack) and ask the vendor for a fixed build.",
+      "android_third_party_sdk": "{count} third-party service SDK(s) were found in the code: {names}. These libraries send data to their own servers; the list itself is an inventory, not a risk verdict.",
+      "android_third_party_sdk_limitation": "Only class-name prefixes are matched, and only for the service SDKs in this catalogue: basic libraries (HTTP client, JSON, UI, animation) are deliberately excluded because they appear in almost every app. The reference count is the number of class names with that prefix, not the number of calls. An obfuscated or repackaged SDK will not be recognised. Only the DEX files that were read are covered — see the coverage entry for how many.",
+      "android_third_party_sdk_review": "Check each SDK against the app's privacy policy: what data does it collect, and where does it send it. Remove the ones the app does not actually need."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -794,9 +797,23 @@
       "ios_entitlements_empty": "The provisioning profile was found but declares no entitlements",
       "android_native_hardening_not_provided": "No native library content was provided, so the binary hardening attributes were not read",
       "android_native_hardening_some_without_relro": "{count} of {total} native library(ies) lack RELRO; this is not reported as a finding because it is a legitimate build choice (for example Flutter's libapp.so) and would otherwise flag every Flutter app",
-      "android_container_dex_in_native_library": "{name}: the content is DEX bytecode, not a shared library"
+      "android_container_dex_in_native_library": "{name}: the content is DEX bytecode, not a shared library",
+      "android_sdk_inventory_no_dex": "No DEX content was provided, so the third-party SDK inventory was not built",
+      "android_sdk_inventory_incomplete": "{truncated} DEX file(s) were truncated and {failed} could not be read; SDKs that only appear in those regions are not listed"
     },
-    "findings": "Findings"
+    "findings": "Findings",
+    "sdk_categories": {
+      "analytics": "Analytics / attribution",
+      "push": "Push notifications",
+      "captcha": "CAPTCHA / bot defence",
+      "social": "Social login / payment",
+      "maps": "Maps / location",
+      "crash": "Crash reporting",
+      "storage": "Object storage / CDN",
+      "ads": "Advertising",
+      "rtc": "Real-time audio / video",
+      "platform": "Platform services"
+    }
   },
   "detail_tab": {
     "overview": "Overview",
@@ -840,7 +857,8 @@
       "ios_nativeSymbols": "Native symbols",
       "ios_signature": "Signature",
       "ios_entitlements": "Entitlements",
-      "android_nativeHardening": "Native library hardening"
+      "android_nativeHardening": "Native library hardening",
+      "android_sdkInventory": "Third-party SDK inventory"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",

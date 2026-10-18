@@ -466,7 +466,9 @@
       "ios_entitlements_empty": "プロビジョニングプロファイルは見つかりましたが、権利が宣言されていません",
       "android_native_hardening_not_provided": "ネイティブライブラリの内容が提供されなかったため、バイナリの堅牢化属性は読み取っていません",
       "android_native_hardening_some_without_relro": "{total} 個中 {count} 個のネイティブライブラリに RELRO がありません。正当なビルド選択（例：Flutter の libapp.so）であり、そうでなければ全 Flutter アプリが該当するため、指摘としては報告していません",
-      "android_container_dex_in_native_library": "{name}：内容は DEX バイトコードであり、ネイティブライブラリではありません"
+      "android_container_dex_in_native_library": "{name}：内容は DEX バイトコードであり、ネイティブライブラリではありません",
+      "android_sdk_inventory_no_dex": "DEX の内容が提供されなかったため、サードパーティ SDK の一覧を作成していません",
+      "android_sdk_inventory_incomplete": "{truncated} 個の DEX が切り詰められ、{failed} 個が読み取れませんでした。それらの領域にのみ存在する SDK は一覧に含まれません"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -637,7 +639,22 @@
       "android_native_exec_stack": "{count} 個のネイティブライブラリがスタックを実行可能にしています（PT_GNU_STACK に PF_X）：{names}。スタック上のデータがコードとして実行され得ます。",
       "android_native_exec_stack_many": "{count} 個のネイティブライブラリがスタックを実行可能にしています（PT_GNU_STACK に PF_X、{names} など他 {more} 個）。スタック上のデータがコードとして実行され得ます。",
       "android_native_exec_stack_limitation": "実際に読み取れたネイティブライブラリだけを判定します。予算で省略されたライブラリは対象外です。実行可能スタック自体は悪意を示すものではなく、NX の防壁が外れているというだけです。",
-      "android_native_exec_stack_review": "-z execstack を外して再ビルドしてください（NDK の既定は非実行スタックです）。サードパーティ製なら修正版の提供を依頼してください。"
+      "android_native_exec_stack_review": "-z execstack を外して再ビルドしてください（NDK の既定は非実行スタックです）。サードパーティ製なら修正版の提供を依頼してください。",
+      "android_third_party_sdk": "コード内に {count} 個のサードパーティ製サービス SDK が見つかりました：{names}。これらのライブラリは各自のサーバーへデータを送信します。この一覧は情報であり、リスク判定ではありません。",
+      "android_third_party_sdk_limitation": "クラス名の接頭辞のみを照合し、対象は本カタログに収録されたサービス SDK のみです。基本ライブラリ（HTTP クライアント、JSON、UI、アニメーション）はほぼすべてのアプリに存在するため意図的に除外しています。参照数はその接頭辞を持つクラス名の件数であり、呼び出し回数ではありません。難読化・再パッケージされた SDK は認識できません。実際に読めた DEX のみが対象です（件数はカバレッジを参照）。",
+      "android_third_party_sdk_review": "各 SDK がアプリのプライバシーポリシーと一致するか確認してください。どのデータを収集し、どこへ送るのか。実際に不要なものは削除してください。"
+    },
+    "sdk_categories": {
+      "analytics": "分析 / アトリビューション",
+      "push": "プッシュ通知",
+      "captcha": "CAPTCHA / ボット対策",
+      "social": "ソーシャルログイン / 決済",
+      "maps": "地図 / 位置情報",
+      "crash": "クラッシュレポート",
+      "storage": "オブジェクトストレージ / CDN",
+      "ads": "広告",
+      "rtc": "リアルタイム音声 / 映像",
+      "platform": "プラットフォームサービス"
     }
   },
   "report": {
@@ -684,7 +701,8 @@
       "ios_signature": "署名",
       "ios_usageDescriptions": "用途の説明",
       "ios_entitlements": "権利（Entitlements）",
-      "android_nativeHardening": "ネイティブライブラリの堅牢化"
+      "android_nativeHardening": "ネイティブライブラリの堅牢化",
+      "android_sdkInventory": "サードパーティ SDK 一覧"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",

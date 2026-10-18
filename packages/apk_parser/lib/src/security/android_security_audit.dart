@@ -8,6 +8,7 @@ import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
 import 'native_symbol_scanner.dart';
 import 'permission_catalog.dart';
+import 'sdk_inventory_scanner.dart';
 
 /// Android 侧的安全审计编排。
 ///
@@ -621,6 +622,18 @@ class AndroidSecurityAudit {
         readElfHardening(entry.name, entry.bytes),
     ];
 
+    // ---- 第三方服务类 SDK 的盘点 ----
+    //
+    // **单独一条扫描路径**，不复用 `DexClueScanner`：
+    // 后者是暴力扫全部字节、单 DEX 上限 8 MiB，而 DEX 的 `string_data`
+    // 在文件后半部分 —— 实测抖音（55 DEX / 437 MiB）在默认预算下命中 **0**。
+    // 这里按 `string_ids` 精确索引，只受 64 MiB/文件的硬上限约束。
+    final dexByName = {for (final entry in dexEntries) entry.name: entry.bytes};
+    final sdkInventory = SdkInventoryScanner.scan(
+      [for (final entry in dexEntries) entry.name],
+      (name) => dexByName[name],
+    );
+
     // 资源表是否读到：`locales` / `densities` 任一非空即说明 arsc 解析成功
     // （两者都由 arsc 提供）。两个都空既可能是「资源表确实没有多语言/密度
     // 变体」，也可能是「资源表没读到」—— 因此只用它判「读到过没有」，
@@ -1058,6 +1071,7 @@ class AndroidSecurityAudit {
         for (final h in hardening)
           if (h.parsed) h,
       ],
+      sdkInventory: sdkInventory,
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));
@@ -1278,6 +1292,41 @@ class AndroidSecurityAudit {
       // `limit` 用**真正读过加固属性的库数**（不是传进来的条目数）——
       // 与 `android.nativeSymbols` 同一个口径问题：用后者会把
       // 「266 个库只看了 24 个」显示成「24/24 已覆盖」。
+      // SDK 盘点：**这条盘点是独立于 DEX 字符串扫描的**，所以覆盖率要单列。
+      //
+      // 用 `string_ids` 精确索引（`SdkInventory.scannedDexCount`），
+      // 不受 `android.dex.strings` 那个 48 MiB 总预算的约束 —— 这也是它
+      // 能在抖音（55 DEX / 437 MiB）上扫到东西的原因。
+      CoverageEntry.noted(
+        id: 'android.sdkInventory',
+        status: facts.sdkInventory.totalDexCount == 0
+            ? CoverageStatus.notApplicable
+            : (facts.sdkInventory.complete
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        covered: facts.sdkInventory.scannedDexCount,
+        limit: facts.sdkInventory.totalDexCount,
+        note: facts.sdkInventory.totalDexCount == 0
+            ? (
+                'android.sdk_inventory.no_dex',
+                'No DEX content was provided, so the third-party SDK '
+                    'inventory was not built',
+                const <String, Object>{},
+              )
+            : (facts.sdkInventory.complete
+                ? null
+                : (
+                    'android.sdk_inventory.incomplete',
+                    '${facts.sdkInventory.truncated.length} DEX file(s) were '
+                        'truncated and ${facts.sdkInventory.failures.length} '
+                        'could not be read; SDKs that only appear in those '
+                        'regions are not listed',
+                    {
+                      'truncated': facts.sdkInventory.truncated.length,
+                      'failed': facts.sdkInventory.failures.length,
+                    },
+                  )),
+      ),
       CoverageEntry.noted(
         id: 'android.nativeHardening',
         status: facts.nativeHardening.isEmpty

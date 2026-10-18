@@ -620,6 +620,7 @@ class AnalysisReport {
       'android.dex.callSites' => d.android_dex_callSites,
       'android.nativeSymbols' => d.android_nativeSymbols,
       'android.nativeHardening' => d.android_nativeHardening,
+      'android.sdkInventory' => d.android_sdkInventory,
       'android.arsc' => d.android_arsc,
       'android.cleartextPolicy' => d.android_cleartextPolicy,
       'ios.infoPlist' => d.ios_infoPlist,
@@ -769,6 +770,9 @@ class AnalysisReport {
             ? null
             : f.android_exported_component_weak_many(
                 count: count, names: names, more: more),
+      'android.third_party_sdk' => (count == null || names == null)
+          ? null
+          : f.android_third_party_sdk(count: count, names: names),
       'android.native_exec_stack' => (count == null || names == null)
           ? null
           : f.android_native_exec_stack(count: count, names: names),
@@ -853,6 +857,7 @@ class AnalysisReport {
       'android.exported_component.review' =>
         f.android_exported_component_review,
       'android.shared_user_id.review' => f.android_shared_user_id_review,
+      'android.third_party_sdk.review' => f.android_third_party_sdk_review,
       'android.native_exec_stack.review' => f.android_native_exec_stack_review,
       'android.v1_only_signing.review' => f.android_v1_only_signing_review,
       'android.webview_bridge.review' => f.android_webview_bridge_review,
@@ -960,6 +965,8 @@ class AnalysisReport {
       'android.debuggable.limitation' => f.android_debuggable_limitation,
       'android.shared_user_id.limitation' =>
         f.android_shared_user_id_limitation,
+      'android.third_party_sdk.limitation' =>
+        f.android_third_party_sdk_limitation,
       'android.native_exec_stack.limitation' =>
         f.android_native_exec_stack_limitation,
       'android.v1_only_signing.limitation' =>
@@ -1329,6 +1336,9 @@ class AnalysisReport {
     final count = a['count'];
     // 总数（原生库加固那条说明要用「N 个里 M 个」的措辞）。
     final total = a['total'];
+    // SDK 盘点：截断 / 读不出的 DEX 数。
+    final truncated = a['truncated'];
+    final failed = a['failed'];
     final path = a['path'];
     final bytes = a['bytes'];
     final limit = a['limit'];
@@ -1383,6 +1393,12 @@ class AnalysisReport {
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
       'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
+      'android.sdk_inventory.no_dex' => n.android_sdk_inventory_no_dex,
+      'android.sdk_inventory.incomplete' =>
+        (truncated == null || failed == null)
+            ? null
+            : n.android_sdk_inventory_incomplete(
+                truncated: truncated, failed: failed),
       'android.native_hardening.not_provided' =>
         n.android_native_hardening_not_provided,
       'android.native_hardening.some_without_relro' =>

@@ -2,6 +2,7 @@ import 'package:analysis_model/analysis_model.dart';
 
 import '../apk_signing_block.dart';
 import '../native/elf_hardening.dart';
+import 'sdk_inventory_scanner.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
@@ -40,6 +41,7 @@ class AndroidRuleFacts {
     required this.webViewCodeRefs,
     required this.unusedPermissionNames,
     required this.nativeHardening,
+    required this.sdkInventory,
   });
 
   final ApkMeta meta;
@@ -76,6 +78,13 @@ class AndroidRuleFacts {
 
   /// 是否存在「非图片」的敏感数据来源（设备标识 / 通讯录）。
   final bool hasSensitiveSource;
+
+  /// 第三方**服务类** SDK 的盘点结果（含覆盖情况）。
+  ///
+  /// 用 `string_ids` 精确索引扫的（`SdkInventoryScanner`），
+  /// 不复用 `DexClueScanner` 的字节扫描 —— 后者的单 DEX 8 MiB 上限会
+  /// 把 `string_data` 整段截掉，在大包上返回 0。
+  final SdkInventory sdkInventory;
 
   /// 本次**真正解析了加固属性**的原生库（只含 `parsed == true` 的）。
   final List<ElfHardening> nativeHardening;
@@ -325,6 +334,13 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     matches: _matchesSpecialAccess,
     build: _buildSpecialAccess,
   ),
+  // SDK 盘点排在**所有**风险规则之后（它在 info 级，是清单不是结论）。
+  AndroidSecurityRule(
+    id: 'ANDROID-THIRD-PARTY-SDK',
+    summary: '代码里出现第三方服务类 SDK（统计 / 推送 / 验证码 / 登录 / 地图…）。',
+    matches: _matchesThirdPartySdk,
+    build: _buildThirdPartySdk,
+  ),
   AndroidSecurityRule(
     id: 'ANDROID-RULE-F',
     summary: '未发现上传特征时的显式「未发现」结论（不得读成「安全」）。',
@@ -560,6 +576,9 @@ SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
 
 bool _matchesAllowBackup(AndroidRuleFacts f) =>
     f.meta.applicationAllowBackup == true && !f.backupDisabledByRules;
+
+bool _matchesThirdPartySdk(AndroidRuleFacts f) =>
+    f.sdkInventory.hits.isNotEmpty;
 
 bool _matchesExecStack(AndroidRuleFacts f) =>
     f.executableStackLibraries.isNotEmpty;
@@ -857,6 +876,13 @@ SecurityFinding _buildUnusedPermission(AndroidRuleFacts f) {
 /// 备份规则属性是否指向一份 XML 规则文件（本解析器的引用表示法是 `@res/`）。
 bool _isRuleFileRef(String? value) =>
     value != null && value.trim().startsWith('@res/');
+
+/// 第三方**服务类** SDK 的盘点结果。
+///
+/// 这是 **info 级**的清单，不是风险结论 —— 构造逻辑在
+/// `sdk_catalog.dart` 里（与目录表放在一起，改了表就能看到措辞）。
+SecurityFinding _buildThirdPartySdk(AndroidRuleFacts f) =>
+    buildSdkInventoryFinding(f.sdkInventory);
 
 /// `android:sharedUserId` —— 与同签名的其它应用共享 UID。
 ///

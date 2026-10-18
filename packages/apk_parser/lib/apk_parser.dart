@@ -43,6 +43,11 @@ export 'src/security/native_symbol_scanner.dart';
 // `android:usesCleartextTraffic` 就被平台忽略，明文策略完全由它决定。
 export 'src/security/network_security_config.dart';
 export 'src/security/permission_catalog.dart';
+// 第三方**服务类** SDK 目录（统计 / 推送 / 验证码 / 登录 / 地图 …）。
+// 与 `code_markers` 分开：那个回答「有什么能力」，这个回答「数据流向谁」。
+export 'src/security/sdk_catalog.dart';
+// SDK 盘点的扫描器：按 DEX `string_ids` 精确索引（不复用字节扫描）。
+export 'src/security/sdk_inventory_scanner.dart';
 
 // ZIP 容器安全原语已下沉到 `archive_safety` —— 它们与「里面装的是 APK 还是
 // IPA」无关，IPA 解析器也要用同一份实现（复制一份安全防护意味着两边的阈值

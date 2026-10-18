@@ -417,6 +417,78 @@ NDK 默认就带 `-z relro -z now` 与 NX 栈。所以：
 其中 `hardening-default` 是一个**反例夹具**：同样的源码与默认 flags，
 它没有 `__stack_chk_fail` —— 所以「没有这个符号」不能读成「没开栈保护」。
 
+### 第四档：第三方服务类 SDK 盘点 —— 以及一次「在最需要它的包上返回 0」的返工
+
+测试 1,520 → **1,520**（新增 24 条在 `apk_parser` 包内）。
+
+#### 先量，再决定收哪些前缀
+
+候选 60 个前缀在 4 个真实包（86 DEX / 431 MiB）上量了一遍：
+
+| 前缀 | 4 个包里的命中数 |
+|---|---|
+| `okhttp3` | **4** |
+| `com/google/gson` | **4** |
+| `com/google/android/material` | **4** |
+| `com/airbnb/lottie` | **4** |
+| `com/geetest` | 1 |
+| `com/hcaptcha` | 1 |
+| `com/sensorsdata` | 1 |
+| `com/tencent/bugly` | 1 |
+
+前四个是**基础工具库**（HTTP / JSON / UI / 动画）—— 它们出现在几乎每个应用里，
+列出来等于「每个应用都有第三方库」，一句废话。所以目录**只收有服务含义的**
+24 个：统计归因、推送、验证码风控、社交登录、地图、崩溃上报、对象存储、RTC。
+
+#### 一次返工：`string_ids` 取代字节扫描
+
+第一版复用 `DexClueScanner`（暴力扫全部字节、单 DEX 8 MiB、总计 48 MiB）。
+真实样本立刻打脸 —— **抖音 55 个 DEX 命中 0 个**，而直接搜字节能找到 175 次
+`com/tencent/mm/opensdk`。
+
+量了成本才看清原因：
+
+| `maxTotalBytes` | 耗时 | 命中的服务类 SDK |
+|---|---|---|
+| 48 MiB（生产默认） | 1.9 s | **0 个** |
+| 128 MiB | 5.2 s | 2 个 |
+| 512 MiB | 14.4 s | 3 个 |
+
+**不是阈值的问题，是位置的问题**：DEX 的 `string_data` 在文件后半部分
+（头 → id 表 → class_defs → data），单文件 8 MiB 的上限把它整段截掉了。
+抖音的 DEX 平均就有 8 MiB —— 也就是说**在最需要这个功能的包上，它返回 0**。
+
+改成按 `string_ids` 精确索引（`SdkInventoryScanner`）：读 DEX 头两个字段、
+按每个 `string_id_item` 的偏移跳到 `string_data_item` 读前缀，不需要扫全部字节。
+结果：
+
+| 包 | 修复前 | 修复后 |
+|---|---|---|
+| 49af6cnn | 5 个 | **8 个**（覆盖 6/6 DEX）|
+| app.apk | 7 个 | **8 个**（5/5）|
+| 抖音 | **0 个** | **5 个**（40/40）|
+| 飞牛 | 1 个 | **2 个**（3/3）|
+
+#### 顺带修正一处分类
+
+`Google Play services` 与 `Firebase` 原本归在 `analytics`。它们是**一组**
+API（地图 / 认证 / 推送 / Analytics），不是「一个分析 SDK」—— 实测
+49af6cnn 里 `gms` 有 4,276 个类，归到 analytics 会让「分析 SDK」那一栏永远
+排第一，盖住读者真正想看的 Adjust（211 个）。新增 `platform` 类别。
+
+#### 判据与边界
+
+- **阈值 20 条引用**：真打包进来的 SDK 是几百到几千，配置字符串里提一句的是个位数；
+- **边界必须精确**：`L<prefix>/` 或 `L<prefix>;` —— 否则 `com/tencent/mm`
+  会吃掉 `com/tencent/mmkv`（有测试钉住）；
+- **info 级 + independentCapability**：这是清单，不是风险结论；
+- **不提供出厂判定**：目录里没有单段前缀（会把整片包名卷进来），有测试守着。
+
+#### 覆盖率
+
+新增 `android.sdkInventory`：`covered` / `limit` 用**真正读到的 DEX 数**，
+`complete` 要求「没有读不出、没有截断」。实测抖音 40/40、飞牛 3/3。
+
 ## 2.4.13 — 2026-10-18
 
 > 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论

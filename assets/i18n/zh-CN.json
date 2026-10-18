@@ -632,7 +632,10 @@
       "android_native_exec_stack": "有 {count} 个原生库把栈标记为可执行（PT_GNU_STACK 含 PF_X）：{names}。栈上的数据可以被当成代码执行。",
       "android_native_exec_stack_many": "有 {count} 个原生库把栈标记为可执行（PT_GNU_STACK 含 PF_X），其中包括 {names}，另有 {more} 个未列出。栈上的数据可以被当成代码执行。",
       "android_native_exec_stack_limitation": "只判定真正读到的原生库；因预算被跳过的库不在覆盖范围内。可执行栈本身不代表这个库是恶意的 —— 它只是去掉了 NX 这道屏障。",
-      "android_native_exec_stack_review": "去掉 -z execstack 重新编译这个库（NDK 默认就是不可执行栈）；如果库来自第三方，向供应商索取修复后的构建。"
+      "android_native_exec_stack_review": "去掉 -z execstack 重新编译这个库（NDK 默认就是不可执行栈）；如果库来自第三方，向供应商索取修复后的构建。",
+      "android_third_party_sdk": "代码里发现了 {count} 个第三方服务类 SDK：{names}。这些库会把数据发到各自的服务器；这个清单本身是信息，不是风险结论。",
+      "android_third_party_sdk_limitation": "只按类名前缀匹配，且只匹配本目录里收录的服务类 SDK：基础库（HTTP 客户端、JSON、UI、动画）刻意不收，因为几乎每个应用都有。引用数是「带该前缀的类名条数」，不是调用次数。混淆或重打包过的 SDK 认不出来。只覆盖真正读到的 DEX —— 具体条数见覆盖率。",
+      "android_third_party_sdk_review": "逐个核对每个 SDK 与应用隐私政策是否一致：它收集什么数据、发到哪里。移除应用其实不需要的那些。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -794,9 +797,23 @@
       "ios_entitlements_empty": "找到了描述文件，但它没有声明任何授权项",
       "android_native_hardening_not_provided": "没有提供原生库内容，因此未读取二进制加固属性",
       "android_native_hardening_some_without_relro": "{total} 个原生库中有 {count} 个缺少 RELRO；这没有作为发现项报出，因为它是合法的构建选择（例如 Flutter 的 libapp.so），否则所有 Flutter 应用都会被报一条",
-      "android_container_dex_in_native_library": "{name}：内容是 DEX 字节码，不是原生库"
+      "android_container_dex_in_native_library": "{name}：内容是 DEX 字节码，不是原生库",
+      "android_sdk_inventory_no_dex": "没有提供 DEX 内容，因此未建立第三方 SDK 清单",
+      "android_sdk_inventory_incomplete": "{truncated} 个 DEX 被截断、{failed} 个读不出来；只出现在那些区域的 SDK 不会被列出"
     },
-    "findings": "发现项"
+    "findings": "发现项",
+    "sdk_categories": {
+      "analytics": "统计 / 归因",
+      "push": "推送",
+      "captcha": "验证码 / 风控",
+      "social": "社交登录 / 支付",
+      "maps": "地图 / 定位",
+      "crash": "崩溃上报",
+      "storage": "对象存储 / CDN",
+      "ads": "广告",
+      "rtc": "实时音视频",
+      "platform": "平台基础服务"
+    }
   },
   "detail_tab": {
     "overview": "概览",
@@ -840,7 +857,8 @@
       "ios_nativeSymbols": "原生库符号",
       "ios_signature": "签名",
       "ios_entitlements": "授权项",
-      "android_nativeHardening": "原生库加固"
+      "android_nativeHardening": "原生库加固",
+      "android_sdkInventory": "第三方 SDK 清单"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",

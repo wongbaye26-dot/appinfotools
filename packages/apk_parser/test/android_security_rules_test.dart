@@ -14,6 +14,8 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:test/test.dart';
 
+import 'support/minimal_dex.dart';
+
 /// 造一份最小的 DEX 字节（内容只是可打印字符串，供字符串扫描命中）。
 Uint8List _blob(List<String> strings) {
   final bytes = <int>[];
@@ -70,6 +72,13 @@ SecurityAnalysisResult _auditWithNativeBytes(List<int> bytes) =>
       ],
     );
 
+/// 用一份真实 DEX 字节跑审计（SDK 盘点走 `string_ids`，必须真 DEX）。
+SecurityAnalysisResult _auditWithDex(List<int> dexBytes) =>
+    AndroidSecurityAudit.audit(
+      meta: _meta(targetSdk: 34),
+      dexEntries: [DexBytes('classes.dex', Uint8List.fromList(dexBytes))],
+    );
+
 List<String> _ids(SecurityAnalysisResult r) =>
     r.findings.map((f) => f.ruleId).toList();
 
@@ -113,6 +122,8 @@ void main() {
           'ANDROID-RULE-E',
           'ANDROID-RULE-G',
           'ANDROID-SPECIAL-ACCESS',
+          // SDK 盘点在 info 级，排在所有风险规则之后、兜底的 F 之前。
+          'ANDROID-THIRD-PARTY-SDK',
           'ANDROID-RULE-F',
         ],
       );
@@ -228,6 +239,13 @@ void main() {
                 ),
               ],
             ),
+          ),
+      // SDK 盘点：需要 DEX 里出现 `L<prefix>/` 且过引用数下限（20）。
+      // 用最小 DEX 构造器（`test/support/minimal_dex.dart`）造 25 个真实
+      // 类名 —— 传一段纸条不行：扫描器走 `string_ids` 精确索引，
+      // 非 DEX 字节会直接判成「不是 DEX」。
+      'ANDROID-THIRD-PARTY-SDK': () => _auditWithDex(
+            buildDexWithClassPrefix('com/adjust/sdk', 25),
           ),
       // 没有任何上传线索 → 显式「未发现」。
       'ANDROID-RULE-F': () => _audit(strings: ['unrelated']),
