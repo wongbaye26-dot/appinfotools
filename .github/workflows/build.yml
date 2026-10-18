@@ -552,6 +552,11 @@ jobs:
             printf '## 更新内容\n\n'
             emit_typed '新功能' 'feat'
             emit_typed '修复' 'fix'
+            # `revert` **必须**有自己的小节。它出现在 $TYPES 里，所以「其它」
+            # 那一节的否定式会把它排除掉；如果这里也没有用它，那条提交就
+            # 从 changelog 里凭空消失，并触发下面的「条数 == 条数」断言。
+            # v2.4.16 首次发布就栽在这里（`revert(ui):` 那条不见了）。
+            emit_typed '回退' 'revert'
             emit_typed '重构与优化' 'perf|refactor'
             emit_typed '工程与构建' 'build|ci|chore'
             emit_typed '文档' 'docs'
