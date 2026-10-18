@@ -704,7 +704,20 @@
       "android_native_symbols_semantics": "原生符號來自 ELF 的 .dynsym 節：它說明這個函式庫匯入了哪些系統能力，不說明這些能力被呼叫過、更不說明呼叫的參數。本次未反組譯原生程式碼。",
       "android_native_symbols_unstripped": "{count} 個原生函式庫沒有剝離符號表（{names}）：能讀到內部函式名。發行版本通常會剝離，這是一條事實，不是風險判定。",
       "android_offline_static_analysis": "本次為離線靜態分析：未安裝、未執行、未觀察網路流量。因此不存在任何執行時證據，報告不得據此聲稱已完成行為確認。",
-      "android_analysis_based_on_cooccurrence": "OCR / 上傳 / 背景的判定基於字串標記同現，未做反組譯與跨方法資料流還原；混淆與動態載入可能改變結論。"
+      "android_analysis_based_on_cooccurrence": "OCR / 上傳 / 背景的判定基於字串標記同現，未做反組譯與跨方法資料流還原；混淆與動態載入可能改變結論。",
+      "android_container_decoy_entries": "{count} 個項目把「一個檔案」當作目錄前綴（例如 {samples}）。正常封存檔不會這樣，它專門用來打斷「按路徑解包」的擷取器。",
+      "android_manifest_attribute_start_nonstandard": "{count} 個元素宣告了非標準的 attributeStart（最大 {largest}，出現在 <{element}> 上；標準值是 {standard}）。合規的解析器會跳過那段空隙，按固定佈局硬編碼偏移的會被誘餌位元組帶偏。",
+      "android_manifest_attribute_size_nonstandard": "{count} 個元素宣告了非標準的 attributeSize（最大 {largest}；標準值是 {standard}）。",
+      "android_manifest_namespace_chunk_nonstandard": "{count} 個命名空間 chunk 宣告了非標準尺寸（最大 {largest}；標準值是 {standard}）。",
+      "android_manifest_unknown_chunk": "{count} 種 chunk 類型不屬於標準 AXML 元素區：{chunks}。",
+      "android_container_missing_primary_dex": "封存檔根目錄裡沒有 classes.dex / classesN.dex。正常建置一定有；缺失通常意味著主 DEX 被改名、移走或加密。",
+      "android_container_multiple_dex_files": "有 {count} 個 DEX 分片：{names}。單憑分片不足以說明加固 —— 現代應用因 64K 方法數上限也會分片。",
+      "android_container_dex_header_unreadable": "{name} 讀不出來，因此沒有檢查它的 DEX 標頭。",
+      "android_container_dex_header_not_standard": "{name} 的開頭不是標準 DEX 魔數（實際是 {header}）。正常建置不會產出這種檔案。",
+      "android_container_unusual_native_library": "{name} 不符合 lib/<abi>/ 下 lib*.so 的命名慣例。",
+      "android_container_executable_in_assets": "{name} 是放在 assets/ 裡的可執行程式碼 —— 正常建置不會這樣發佈。",
+      "android_container_resource_table_missing": "resources.arsc 缺失，而封裝裡有至少 64 KiB 的 DEX。正常建置一定有資源表。",
+      "android_container_resource_table_too_small": "resources.arsc 只有 {size} 位元組，遠低於任何合理的資源表。"
     },
     "findings": "發現項"
   },

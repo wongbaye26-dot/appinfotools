@@ -1,3 +1,4 @@
+import 'package:analysis_model/analysis_model.dart';
 // APK 解析流水线性能探针（**不进质量门禁**，默认 `flutter test` 跑不到它）。
 //
 // 用法：
@@ -136,9 +137,11 @@ void main() {
       final (_, auditMs) = _timedSync(() => AndroidSecurityAudit.audit(
             meta: meta!,
             dexEntries: dexEntries,
-            containerAnomalies: [
-              for (final obs in hardening) obs.evidence,
-              if (reader.structureAnomaly case final anomaly?) anomaly,
+            containerAnomalyNotes: [
+              for (final obs in hardening) obs.asNote,
+              if (reader.structureAnomaly case final anomaly?)
+                AnalysisNote('android.container.structure_anomaly', anomaly,
+                    {'anomaly': anomaly}),
             ],
             nativeEntries: nativeEntries,
           ));
@@ -175,9 +178,11 @@ void main() {
         AndroidSecurityAudit.audit(
           meta: m!,
           dexEntries: dex,
-          containerAnomalies: [
-            for (final o in hardening) o.evidence,
-            if (e2eReader.structureAnomaly case final a?) a,
+          containerAnomalyNotes: [
+            for (final o in hardening) o.asNote,
+            if (e2eReader.structureAnomaly case final a?)
+              AnalysisNote(
+                  'android.container.structure_anomaly', a, {'anomaly': a}),
           ],
           nativeEntries: native,
         );

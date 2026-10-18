@@ -633,8 +633,8 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       meta: meta,
       dexEntries: dexEntries,
       nativeEntries: nativeEntries,
-      containerAnomalies: [
-        for (final obs in reader.scanHardeningSignals()) obs.evidence,
+      containerAnomalyNotes: [
+        for (final obs in reader.scanHardeningSignals()) obs.asNote,
       ],
     );
     return result.withLimitation(const AnalysisNote(

@@ -1,3 +1,5 @@
+import 'package:analysis_model/analysis_model.dart';
+
 import 'package:archive/archive.dart';
 
 /// 从容器结构中观察到的、与加固相关的特征。
@@ -70,9 +72,26 @@ enum HardeningSignal {
 /// 而是「因为看到了什么」。
 class HardeningObservation {
   final HardeningSignal signal;
+
+  /// 英文证据（日志、加固线索列表、报告的回退文本）。
   final String evidence;
 
-  const HardeningObservation(this.signal, this.evidence);
+  /// **结构化版本**：稳定 code + 参数，界面按 code 查本地化模板。
+  ///
+  /// `null` 表示这条证据还没有迁移 —— 此时界面会退回 [evidence] 的英文原文
+  /// （见 [asNote]）。迁移是增量的，不必一次做完。
+  final AnalysisNote? note;
+
+  const HardeningObservation(this.signal, this.evidence, {this.note});
+
+  /// 报告用的结构化说明：优先 [note]，否则把英文证据包成通用 code。
+  ///
+  /// 通用 code 的文案模板是「容器/解析异常可能影响覆盖完整性：{anomaly}」——
+  /// 中文前缀 + 英文正文，比完全不显示要好，但仍不如 [note] 精确。
+  AnalysisNote get asNote =>
+      note ??
+      AnalysisNote(
+          'android.container.anomaly', evidence, {'anomaly': evidence});
 
   @override
   String toString() => '${signal.name}: $evidence';
@@ -116,14 +135,27 @@ class HardeningScanner {
       observations.add(const HardeningObservation(
         HardeningSignal.missingPrimaryDex,
         'no classes.dex / classesN.dex entry in the archive root',
+        note: AnalysisNote(
+          'android.container.missing_primary_dex',
+          'no classes.dex / classesN.dex entry in the archive root',
+        ),
       ));
     } else {
       if (dexEntries.length > 1) {
         final dexNames = dexEntries.map((f) => f.name).toList()..sort();
+        final shown = '${dexNames.take(8).join(', ')}'
+            '${dexNames.length > 8 ? ', …' : ''}';
         observations.add(HardeningObservation(
           HardeningSignal.multipleDexFiles,
-          '${dexEntries.length} DEX entries: ${dexNames.take(8).join(', ')}'
-          '${dexNames.length > 8 ? ', …' : ''}',
+          '${dexEntries.length} DEX entries: $shown',
+          note: AnalysisNote(
+            'android.container.multiple_dex_files',
+            '${dexEntries.length} DEX entries: $shown',
+            {
+              'count': dexEntries.length,
+              'names': dexNames.take(8).toList(),
+            },
+          ),
         ));
       }
 
@@ -133,6 +165,11 @@ class HardeningScanner {
           observations.add(HardeningObservation(
             HardeningSignal.dexHeaderNotStandard,
             '${entry.name}: entry could not be read',
+            note: AnalysisNote(
+              'android.container.dex_header_unreadable',
+              '${entry.name}: entry could not be read',
+              {'name': entry.name},
+            ),
           ));
           continue;
         }
@@ -141,6 +178,11 @@ class HardeningScanner {
             HardeningSignal.dexHeaderNotStandard,
             '${entry.name}: header is ${_hex(header)} '
             '(expected "dex\\n0xx")',
+            note: AnalysisNote(
+              'android.container.dex_header_not_standard',
+              '${entry.name}: header is ${_hex(header)}',
+              {'name': entry.name, 'header': _hex(header)},
+            ),
           ));
         }
       }
@@ -156,6 +198,11 @@ class HardeningScanner {
         observations.add(HardeningObservation(
           HardeningSignal.unusualNativeLibraryName,
           entry.name,
+          note: AnalysisNote(
+            'android.container.unusual_native_library',
+            entry.name,
+            {'name': entry.name},
+          ),
         ));
       }
     }
@@ -170,6 +217,11 @@ class HardeningScanner {
         observations.add(HardeningObservation(
           HardeningSignal.executableInAssets,
           entry.name,
+          note: AnalysisNote(
+            'android.container.executable_in_assets',
+            entry.name,
+            {'name': entry.name},
+          ),
         ));
       }
     }
@@ -202,6 +254,12 @@ class HardeningScanner {
         HardeningSignal.decoyArchiveEntries,
         '${decoyEntries.length} entries use a file entry as a directory '
         'prefix, e.g. $samples',
+        note: AnalysisNote(
+          'android.container.decoy_entries',
+          '${decoyEntries.length} entries use a file entry as a directory '
+              'prefix, e.g. $samples',
+          {'count': decoyEntries.length, 'samples': samples},
+        ),
       ));
     }
 
@@ -214,11 +272,20 @@ class HardeningScanner {
         observations.add(const HardeningObservation(
           HardeningSignal.resourceTableAnomaly,
           'resources.arsc is missing while a DEX entry is >= 64 KiB',
+          note: AnalysisNote(
+            'android.container.resource_table_missing',
+            'resources.arsc is missing while a DEX entry is >= 64 KiB',
+          ),
         ));
       } else if (arsc.first.size < resourceTableMinPlausibleSize) {
         observations.add(HardeningObservation(
           HardeningSignal.resourceTableAnomaly,
           'resources.arsc is only ${arsc.first.size} bytes',
+          note: AnalysisNote(
+            'android.container.resource_table_too_small',
+            'resources.arsc is only ${arsc.first.size} bytes',
+            {'size': arsc.first.size},
+          ),
         ));
       }
     }

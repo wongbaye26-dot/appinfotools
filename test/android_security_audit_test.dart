@@ -407,7 +407,9 @@ void main() {
       final result = AndroidSecurityAudit.audit(
         meta: meta,
         dexEntries: const [],
-        containerAnomalies: const ['decoyArchiveEntries: 78 entries'],
+        containerAnomalyNotes: const [
+          AnalysisNote('android.container.decoy_entries', 'f', {'count': 78}),
+        ],
       );
 
       expect(result.findings, isNotEmpty);

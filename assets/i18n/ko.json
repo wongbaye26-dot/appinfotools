@@ -431,7 +431,20 @@
       "ios_privacy_info_absent": "개인정보 매니페스트(PrivacyInfo.xcprivacy)를 찾지 못했습니다: 그 자체로 이상은 아니지만(제공하는 앱은 일부뿐입니다), 선언된 데이터 수집 유형을 대조할 수 없다는 뜻입니다.",
       "ios_privacy_info_unparsable": "개인정보 매니페스트가 있지만 해석에 실패했습니다: {reason}. 선언을 대조할 수 없습니다.",
       "ios_scan_truncated": "예산 때문에 일부 스캔 범위가 잘렸으므로 결론이 완전하지 않습니다.",
-      "ios_url_schemes_unreadable": "CFBundleURLTypes를 읽을 수 없었습니다 ({reason}): 등록된 URL 스킴은 커버리지에 포함되지 않았습니다."
+      "ios_url_schemes_unreadable": "CFBundleURLTypes를 읽을 수 없었습니다 ({reason}): 등록된 URL 스킴은 커버리지에 포함되지 않았습니다.",
+      "android_container_decoy_entries": "{count}개 항목이 \"파일\"을 디렉터리 접두사로 사용합니다(예: {samples}). 정상 아카이브에서는 일어나지 않으며, 경로를 디렉터리로 간주하는 추출기를 깨뜨리기 위한 장치입니다.",
+      "android_manifest_attribute_start_nonstandard": "{count}개 요소가 비표준 attributeStart를 선언합니다(최대 {largest}, <{element}>에서, 표준값 {standard}). 규격을 지키는 리더는 그 간격을 건너뛰지만, 고정 레이아웃을 가정하는 리더는 미끼 바이트를 읽습니다.",
+      "android_manifest_attribute_size_nonstandard": "{count}개 요소가 비표준 attributeSize를 선언합니다(최대 {largest}, 표준값 {standard}).",
+      "android_manifest_namespace_chunk_nonstandard": "{count}개 네임스페이스 청크가 비표준 크기를 선언합니다(최대 {largest}, 표준 크기 {standard}).",
+      "android_manifest_unknown_chunk": "{count}가지 청크 유형이 표준 AXML 요소 범위를 벗어납니다: {chunks}.",
+      "android_container_missing_primary_dex": "아카이브 루트에 classes.dex / classesN.dex가 없습니다. 정상 빌드에는 반드시 있으며, 없다면 메인 DEX가 이름 변경·이동·암호화되었을 가능성이 큽니다.",
+      "android_container_multiple_dex_files": "DEX 항목 {count}개: {names}. DEX 분할만으로는 난독화 근거가 되지 않습니다(64K 메서드 한계로도 분할됩니다).",
+      "android_container_dex_header_unreadable": "{name}을(를) 읽지 못해 DEX 헤더를 확인하지 않았습니다.",
+      "android_container_dex_header_not_standard": "{name}의 시작이 표준 DEX 매직이 아닙니다(실제: {header}). 정상 빌드에서는 생성되지 않습니다.",
+      "android_container_unusual_native_library": "{name}은(는) lib/<abi>/ 아래 lib*.so 명명 규칙을 위반합니다.",
+      "android_container_executable_in_assets": "{name}은(는) assets/ 안의 실행 코드입니다. 정상 빌드에서는 포함되지 않습니다.",
+      "android_container_resource_table_missing": "64 KiB 이상의 DEX가 있는데 resources.arsc가 없습니다. 정상 빌드에는 항상 리소스 테이블이 있습니다.",
+      "android_container_resource_table_too_small": "resources.arsc가 {size}바이트뿐이라 정상적인 리소스 테이블보다 훨씬 작습니다."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",

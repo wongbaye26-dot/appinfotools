@@ -1212,6 +1212,16 @@ class AnalysisReport {
     final scannedBytes = a['scannedBytes'];
     final totalBytes = a['totalBytes'];
     final percent = a['percent'];
+    // 加固/清单结构异常的参数（V2.4.11：这些说明改成 code + 参数，
+    // 否则中文界面上是「容器/解析异常可能影响覆盖完整性：21 elements
+    // declare a non-standard attributeStart…」这种半中半英）。
+    final samples = a['samples'];
+    final largest = a['largest'];
+    final element = a['element'];
+    final standard = a['standard'];
+    final chunks = a['chunks'];
+    final header = a['header'];
+    final size = a['size'];
 
     final String? localized = switch (note.code) {
       'ios.url_schemes.unreadable' =>
@@ -1284,6 +1294,68 @@ class AnalysisReport {
         count == null ? null : n.android_dex_invoke_custom(count: count),
       'android.container.anomaly' =>
         anomaly == null ? null : n.android_container_anomaly(anomaly: anomaly),
+      // 结构异常（EOCD 条目数与实际不符）与「通用容器异常」同一个模板：
+      // 正文就是那句英文/中文的结构说明。
+      'android.container.structure_anomaly' =>
+        anomaly == null ? null : n.android_container_anomaly(anomaly: anomaly),
+      'android.container.decoy_entries' => (count == null || samples == null)
+          ? null
+          : n.android_container_decoy_entries(count: count, samples: samples),
+      'android.manifest.attribute_start_nonstandard' => (count == null ||
+              largest == null ||
+              element == null ||
+              standard == null)
+          ? null
+          : n.android_manifest_attribute_start_nonstandard(
+              count: count,
+              largest: largest,
+              element: element,
+              standard: standard,
+            ),
+      'android.manifest.attribute_size_nonstandard' =>
+        (count == null || largest == null || standard == null)
+            ? null
+            : n.android_manifest_attribute_size_nonstandard(
+                count: count,
+                largest: largest,
+                standard: standard,
+              ),
+      'android.manifest.namespace_chunk_nonstandard' =>
+        (count == null || largest == null || standard == null)
+            ? null
+            : n.android_manifest_namespace_chunk_nonstandard(
+                count: count,
+                largest: largest,
+                standard: standard,
+              ),
+      'android.manifest.unknown_chunk' => (count == null || chunks == null)
+          ? null
+          : n.android_manifest_unknown_chunk(count: count, chunks: chunks),
+      // 其余加固信号（V2.4.11 一次补完，否则面板里仍会剩英文尾巴）。
+      'android.container.missing_primary_dex' =>
+        n.android_container_missing_primary_dex,
+      'android.container.multiple_dex_files' => (count == null || names == null)
+          ? null
+          : n.android_container_multiple_dex_files(count: count, names: names),
+      'android.container.dex_header_unreadable' => name == null
+          ? null
+          : n.android_container_dex_header_unreadable(name: name),
+      'android.container.dex_header_not_standard' =>
+        (name == null || header == null)
+            ? null
+            : n.android_container_dex_header_not_standard(
+                name: name, header: header),
+      'android.container.unusual_native_library' => name == null
+          ? null
+          : n.android_container_unusual_native_library(name: name),
+      'android.container.executable_in_assets' => name == null
+          ? null
+          : n.android_container_executable_in_assets(name: name),
+      'android.container.resource_table_missing' =>
+        n.android_container_resource_table_missing,
+      'android.container.resource_table_too_small' => size == null
+          ? null
+          : n.android_container_resource_table_too_small(size: size),
       'android.native_symbols.budget' =>
         name == null ? null : n.android_native_symbols_budget(name: name),
       'android.native_symbols.not_traversable' =>

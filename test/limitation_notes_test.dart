@@ -119,6 +119,66 @@ void main() {
       }
     });
 
+    test('加固/清单结构异常的证据也是中文（V2.4.11）', () async {
+      // 这 5 条此前是「中文前缀 + 英文正文」，用户两次点名看不懂。
+      // 现在各自带 code + 参数，走同一条本地化链路。
+      const notes = [
+        AnalysisNote(
+          'android.container.decoy_entries',
+          'f',
+          {'count': 159, 'samples': 'AndroidManifest.xml/..xml'},
+        ),
+        AnalysisNote(
+          'android.manifest.attribute_start_nonstandard',
+          'f',
+          {
+            'count': 21,
+            'largest': 343,
+            'element': 'application',
+            'standard': 20
+          },
+        ),
+        AnalysisNote(
+          'android.manifest.attribute_size_nonstandard',
+          'f',
+          {'count': 88, 'largest': 26, 'standard': 20},
+        ),
+        AnalysisNote(
+          'android.manifest.namespace_chunk_nonstandard',
+          'f',
+          {'count': 1, 'largest': 1476, 'standard': 24},
+        ),
+        AnalysisNote(
+          'android.manifest.unknown_chunk',
+          'f',
+          {'count': 1, 'chunks': '0x0200 x1'},
+        ),
+      ];
+
+      for (final note in notes) {
+        final text = await _render(note);
+        expect(
+          text,
+          isNot(note.fallback),
+          reason: '${note.code} 没有命中本地化模板',
+        );
+        expect(RegExp(r'[\u4e00-\u9fa5]').hasMatch(text), isTrue,
+            reason: '${note.code} 不是中文：$text');
+        expect(text, isNot(contains('{')), reason: note.code);
+        // 参数确实填进去了（不是把模板原样吐出来）。
+        expect(text, isNot(contains('elements declare')), reason: text);
+      }
+    });
+
+    test('加固证据缺参数时整条回退英文，不渲染半截模板', () async {
+      const note = AnalysisNote(
+        'android.manifest.attribute_start_nonstandard',
+        'fallback text',
+        {'count': 21},
+      );
+      expect(await _render(note), 'fallback text');
+    });
+
     test('英文界面下不混进中文', () async {
       await LocaleSettings.setLocaleRaw('en');
       const note = AnalysisNote(

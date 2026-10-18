@@ -62,7 +62,13 @@ class ZipHelper {
   Future<Uint8List?> readFileContent(String fileName) async {
     try {
       final file = _archive?.findFile(fileName);
-      return file?.content;
+      if (file == null) return null;
+      final read = ZipBudget.readEntry(file);
+      if (!read.isOk) {
+        log.severe('Refusing to read $fileName: ${read.violation}');
+        return null;
+      }
+      return read.bytes;
     } catch (e) {
       log.severe('Failed to read file content: $e');
       return null;
@@ -99,8 +105,15 @@ class ZipHelper {
     final root = path.dirname(path.absolute(outputPath));
     try {
       final out = ZipGuard.safeJoin(root, path.basename(outputPath));
+      // **落盘前也要过闸**：中央目录撒谎时，`file.content` 会产出远超声明值的
+      // 字节 —— 直接写盘等于让一个几 MB 的包写满磁盘。
+      final read = ZipBudget.readEntry(file);
+      if (!read.isOk) {
+        log.severe('Refusing to extract $entryName: ${read.violation}');
+        return false;
+      }
       await Directory(path.dirname(out)).create(recursive: true);
-      await File(out).writeAsBytes(file.content as List<int>, flush: true);
+      await File(out).writeAsBytes(read.bytes!, flush: true);
       return true;
     } on ArgumentError catch (e) {
       log.severe('Refusing unsafe zip entry $entryName: ${e.message}');

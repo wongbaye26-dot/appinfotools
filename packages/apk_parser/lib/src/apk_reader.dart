@@ -276,17 +276,31 @@ class ApkReader {
       // 与容器层分开是因为它们来自不同的解析阶段：容器层只看条目名，
       // 这一层要先把 manifest 解出来。两处的判据都是「正常构建流程不会
       // 产出这个结构」，与具体是哪家的加固器无关。
-      for (final evidence in _meta?.manifestLayoutAnomalies ?? const [])
+      // 字符串版与结构化版**按下标一一对应**（`manifest_parser` 同时填两份）。
+      for (final (i, evidence)
+          in (_meta?.manifestLayoutAnomalies ?? const <String>[]).indexed)
         HardeningObservation(
           HardeningSignal.manifestLayoutAnomaly,
           evidence,
+          note: i < (_meta?.manifestLayoutNotes.length ?? 0)
+              ? _meta!.manifestLayoutNotes[i]
+              : null,
         ),
     ];
   }
 
   Uint8List? readFile(String fileName) {
     final file = _archive?.findFile(fileName);
-    return file?.content;
+    if (file == null) return null;
+    // **两道闸**：声明值 + 实际产出。中央目录可以撒谎 —— 实测把 100 MiB 条目的
+    // CD `uncompressedSize` 改成 1024，`ZipBudget.check` 会放行。见
+    // `ZipBudget.readEntry` 的注释（含「峰值内存仍不受限」这条已知局限）。
+    final read = ZipBudget.readEntry(file);
+    if (!read.isOk) {
+      _log.warning('readFile refused: ${read.violation}');
+      return null;
+    }
+    return read.bytes;
   }
 
   List<String> listFiles({String? extension}) {

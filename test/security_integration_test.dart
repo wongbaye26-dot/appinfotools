@@ -513,6 +513,38 @@ void main() {
       AnalysisNote('android.dex.method_semantics', 'f'),
       AnalysisNote('android.dex.invoke_custom', 'f', {'count': 1}),
       AnalysisNote('android.container.anomaly', 'f', {'anomaly': 'a'}),
+      AnalysisNote(
+          'android.container.structure_anomaly', 'f', {'anomaly': 'a'}),
+      AnalysisNote(
+          'android.container.decoy_entries', 'f', {'count': 1, 'samples': 's'}),
+      AnalysisNote('android.manifest.attribute_start_nonstandard', 'f', {
+        'count': 1,
+        'largest': 2,
+        'element': 'e',
+        'standard': 20,
+      }),
+      AnalysisNote('android.manifest.attribute_size_nonstandard', 'f',
+          {'count': 1, 'largest': 2, 'standard': 20}),
+      AnalysisNote('android.manifest.namespace_chunk_nonstandard', 'f',
+          {'count': 1, 'largest': 2, 'standard': 24}),
+      AnalysisNote(
+          'android.manifest.unknown_chunk', 'f', {'count': 1, 'chunks': 'c'}),
+      AnalysisNote('android.container.missing_primary_dex', 'f'),
+      AnalysisNote('android.container.multiple_dex_files', 'f', {
+        'count': 2,
+        'names': ['a']
+      }),
+      AnalysisNote(
+          'android.container.dex_header_unreadable', 'f', {'name': 'n'}),
+      AnalysisNote('android.container.dex_header_not_standard', 'f',
+          {'name': 'n', 'header': 'h'}),
+      AnalysisNote(
+          'android.container.unusual_native_library', 'f', {'name': 'n'}),
+      AnalysisNote(
+          'android.container.executable_in_assets', 'f', {'name': 'n'}),
+      AnalysisNote('android.container.resource_table_missing', 'f'),
+      AnalysisNote(
+          'android.container.resource_table_too_small', 'f', {'size': 12}),
       AnalysisNote('android.native_symbols.budget', 'f', {'name': 'n'}),
       AnalysisNote('android.native_symbols.not_traversable', 'f', {
         'count': 1,

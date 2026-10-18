@@ -4,7 +4,7 @@ homepage: https://feng.to
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
 # Git release 时会自动从tag同步
-version: 2.4.10
+version: 2.4.11
 
 environment:
   sdk: ">=3.0.6 <4.0.0"

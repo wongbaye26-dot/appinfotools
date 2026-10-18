@@ -1,3 +1,4 @@
+import 'package:analysis_model/analysis_model.dart';
 // ignore_for_file: constant_identifier_names
 // from: https://github.com/google/android-classyshark/blob/master/ClassySharkWS/src/com/google/classyshark/silverghost/translator/xml/XmlDecompressor.java
 
@@ -109,9 +110,80 @@ class AxmlLayoutAnomalies {
     if (chunkSize > maxNamespaceChunkSize) maxNamespaceChunkSize = chunkSize;
   }
 
+  /// 面向用户与报告的**结构化**说明（V2.4.11）。
+  ///
+  /// 与 [evidence] 一一对应，但每条带**稳定 code + 参数**，界面按 code 查
+  /// 本地化模板 —— 否则中文界面上会是「容器/解析异常可能影响覆盖完整性：
+  /// 21 elements declare a non-standard attributeStart…」这种半中半英。
+  List<AnalysisNote> notes() {
+    final out = <AnalysisNote>[];
+
+    if (nonStandardAttributeStart > 0) {
+      out.add(AnalysisNote(
+        'android.manifest.attribute_start_nonstandard',
+        '$nonStandardAttributeStart elements declare a non-standard '
+            'attributeStart (largest $maxAttributeStart on '
+            '<${maxAttributeStartElement ?? '?'}>), the standard value is '
+            '$standardAttributeLayout',
+        {
+          'count': nonStandardAttributeStart,
+          'largest': maxAttributeStart,
+          'element': maxAttributeStartElement ?? '?',
+          'standard': standardAttributeLayout,
+        },
+      ));
+    }
+
+    if (nonStandardAttributeSize > 0) {
+      out.add(AnalysisNote(
+        'android.manifest.attribute_size_nonstandard',
+        '$nonStandardAttributeSize elements declare a non-standard '
+            'attributeSize (largest $maxAttributeSize, the standard value is '
+            '$standardAttributeLayout)',
+        {
+          'count': nonStandardAttributeSize,
+          'largest': maxAttributeSize,
+          'standard': standardAttributeLayout,
+        },
+      ));
+    }
+
+    if (nonStandardNamespaceChunks > 0) {
+      out.add(AnalysisNote(
+        'android.manifest.namespace_chunk_nonstandard',
+        '$nonStandardNamespaceChunks namespace chunk(s) declare a '
+            'non-standard size (largest $maxNamespaceChunkSize, the standard '
+            'size is $standardNamespaceChunkSize)',
+        {
+          'count': nonStandardNamespaceChunks,
+          'largest': maxNamespaceChunkSize,
+          'standard': standardNamespaceChunkSize,
+        },
+      ));
+    }
+
+    if (unknownChunks.isNotEmpty) {
+      final described = unknownChunks.entries
+          .map(
+              (e) => '0x${e.key.toRadixString(16).padLeft(4, '0')} x${e.value}')
+          .join(', ');
+      out.add(AnalysisNote(
+        'android.manifest.unknown_chunk',
+        '${unknownChunks.length} chunk type(s) are not part of the standard '
+            'AXML element range: $described',
+        {'count': unknownChunks.length, 'chunks': described},
+      ));
+    }
+
+    return out;
+  }
+
   /// 面向用户与报告的说明。
   ///
   /// 每一条都说清「看到了什么」与「这意味着什么」，而不是只丢一个数字。
+  ///
+  /// **保留它是为了英文回退与日志**：界面走 [notes]，`note.fallback` 就是
+  /// 这里同一句话。
   List<String> evidence() {
     final lines = <String>[];
 

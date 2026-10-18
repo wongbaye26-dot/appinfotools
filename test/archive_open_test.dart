@@ -16,6 +16,39 @@ final Uint8List _emptyZip = Uint8List.fromList(ZipEncoder().encode(Archive()));
 /// `AndroidManifest.xml` 是 72.3 MiB）。
 const int _paddedProbeBytes = 17 * 1024 * 1024;
 
+/// 把 ZIP 中央目录里某个条目的「解压后大小」改小 —— 制造**声明值撒谎**的样本。
+///
+/// 中央目录文件头布局（偏移量相对头起点）：
+/// `0 签名(4) | 20 compressedSize(4) | 24 uncompressedSize(4) | 28 文件名长度(2)`
+/// 只改 `uncompressedSize`，deflate 流一个字不动 —— 解压出来仍是原始大小。
+Uint8List _patchCdUncompressedSize(
+  Uint8List zip,
+  String name,
+  int fakeSize,
+) {
+  final out = Uint8List.fromList(zip);
+  for (var i = 0; i + 46 < out.length; i++) {
+    if (out[i] != 0x50 ||
+        out[i + 1] != 0x4b ||
+        out[i + 2] != 0x01 ||
+        out[i + 3] != 0x02) {
+      continue;
+    }
+    final nameLen = out[i + 28] | (out[i + 29] << 8);
+    final start = i + 46;
+    if (start + nameLen > out.length) continue;
+    if (String.fromCharCodes(out.sublist(start, start + nameLen)) != name) {
+      continue;
+    }
+    out[i + 24] = fakeSize & 0xff;
+    out[i + 25] = (fakeSize >> 8) & 0xff;
+    out[i + 26] = (fakeSize >> 16) & 0xff;
+    out[i + 27] = (fakeSize >> 24) & 0xff;
+    return out;
+  }
+  throw StateError('中央目录里没找到 $name');
+}
+
 void main() {
   group('looksLikeZip', () {
     test('accepts the three legal ZIP signatures', () {
@@ -158,6 +191,59 @@ void main() {
             ArchiveFile('AndroidManifest.xml', 72 * 1024 * 1024, const []))
         ..addFile(ArchiveFile('resources.arsc', 20 * 1024 * 1024, const []));
       expect(ZipBudget.check(archive), isNull);
+    });
+
+    test('单条目声明超限 -> readEntry 直接拒绝，不做解压', () {
+      // 第一道闸看 `file.size`（声明值）。注意：声明超限的归档在
+      // `ApkReader.open` 那一步就会被 `ZipBudget.check` 拒掉，因此这里
+      // 直接对 `readEntry` 断言 —— 它是**冗余的第二道防线**，防的是
+      // 「先 open 成功、之后归档内容被替换」这类构造。
+      final archive = Archive()
+        ..addFile(ArchiveFile('big.bin', 300 * 1024 * 1024, const []));
+      final read = ZipBudget.readEntry(archive.files.first);
+      expect(read.isOk, isFalse);
+      expect(read.violation, contains('declares 314572800 bytes'));
+      expect(read.violation, contains('big.bin'));
+    });
+
+    test('中央目录撒谎的条目会被拒绝（第二道闸看真实产出）', () async {
+      // 1 MiB 真实内容，但把 CD 的 uncompressedSize 改成 1024。
+      const real = 1024 * 1024;
+      final archive = Archive()
+        ..addFile(ArchiveFile.string('liar.bin', '\u0000' * real));
+      final honest = Uint8List.fromList(ZipEncoder().encode(archive));
+      final liar = _patchCdUncompressedSize(honest, 'liar.bin', 1024);
+
+      final decoded = ZipDecoder().decodeBytes(liar);
+      final entry = decoded.files.first;
+      // 前提：CD 确实撒谎了（声明 1 KiB），而 `ZipBudget.check` 会因此放行。
+      expect(entry.size, 1024);
+      expect(ZipBudget.check(decoded), isNull,
+          reason: '第一道闸只看声明值，撒谎的条目能过 —— 这正是要补的洞');
+
+      // 第二道闸：用一个小上限把「实际产出超限」这条路径逼出来。
+      final read = ZipBudget.readEntry(entry, maxBytes: 64 * 1024);
+      expect(read.isOk, isFalse);
+      expect(read.violation, contains('declared 1024 bytes but produced'));
+      expect(read.violation, contains('liar.bin'));
+      expect(read.bytes, isNull);
+
+      // 上限足够时不误伤：同样撒谎，但产出在预算内。
+      final ok = ZipBudget.readEntry(entry, maxBytes: real + 1024);
+      expect(ok.isOk, isTrue);
+      expect(ok.bytes!.length, real);
+    });
+
+    test('正常条目读取不受影响', () async {
+      final archive = Archive()
+        ..addFile(ArchiveFile.string('ok.bin', 'hello world'));
+      final path = await write('normal.zip', ZipEncoder().encode(archive));
+
+      final reader = ApkReader();
+      addTearDown(reader.close);
+      expect(await reader.open(path), ArchiveOpenResult.ok);
+      expect(reader.readFile('ok.bin'), isNotNull);
+      expect(reader.readFile('ok.bin')!.length, 11);
     });
 
     test('随机输入永不抛异常，且结果始终是合法枚举值', () async {

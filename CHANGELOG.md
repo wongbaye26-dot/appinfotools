@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.4.11 — 2026-10-18
+
+> 落实 2026-10-18 审计报告里的 **P1-1**（解压预算可被绕过）与 **P1-2**（加固
+> 证据半中半英）。取证见 `docs/audit/APPINFOTOOL_COMPLETENESS_AUDIT_2026-10-18.md`
+> 与 `docs/plans/V2.4.11_PROGRESS.md`。
+
+### 安全修复（P1-1）
+
+- **解压预算从「只看声明值」改成两道闸。** 审计实测：把 100 MiB 条目的中央
+  目录 `uncompressedSize` 改成 1024，`ZipBudget.check` 会放行，而
+  `readFile` 仍产出 104,857,600 字节（RSS +201 MiB）—— 因为
+  `archive` 包在 IO 平台走 native zlib，**忽略声明尺寸**。
+  新增 `ZipBudget.readEntry()`：
+  1. **声明值超限 → 不解压就拒绝**；
+  2. **实际产出超限 → 丢弃并拒绝**，日志里留下「声明 X 实际 Y」。
+  接到三个读取点：`ApkReader.readFile`、`ZipHelper.readFileContent`、
+  `ZipHelper.extractFile`（后者防的是「一个几 MB 的包写满磁盘」）。
+  **已知局限（如实记录）**：峰值内存仍不受限 —— `archive` 的公开 API 不暴露
+  条目的压缩字节，无法在解压过程中按字节中止。真正的解法是换库或自己解析
+  local file header 接一个有上限的 `Sink`，见进度文档 §2.3。
+
+### 修复（P1-2）
+
+- **加固证据全部结构化，「覆盖不足」面板不再半中半英。** 此前是
+  「容器/解析异常可能影响覆盖完整性：21 elements declare a non-standard
+  attributeStart…」—— 中文前缀 + 英文正文。
+  现在 `HardeningObservation` 带 `note`（稳定 code + 参数），
+  `AxmlLayoutAnomalies.notes()` 产出 4 条，`containerAnomalies` 参数改成
+  `List<AnalysisNote>`，**13 条加固/清单证据**各自有本地化模板（6 语言包）。
+  实测 `49af6cnn-1018.apk`：诱饵条目、多 DEX 分片、清单布局异常全部显示中文。
+
+### 测试
+
+- `test/archive_open_test.dart`：新增「中央目录撒谎的条目会被拒绝」
+  （构造 CD 声明 1024 / 实际 1 MiB 的样本）、「声明超限直接拒绝」、「正常条目
+  不受影响」，共 20 条。
+- `test/limitation_notes_test.dart`：新增「加固/清单结构异常的证据也是中文」
+  与「缺参数时整条回退英文」。
+- `test/security_integration_test.dart`：守卫清单补入 13 个新 code
+  （四个语言包都能取到、不留占位符）。
+
 ## 2.4.10 — 2026-10-18
 
 > 用户报「这个应用怎么解析不了」—— 提示「已拒绝打开：归档超出安全解压上限」。

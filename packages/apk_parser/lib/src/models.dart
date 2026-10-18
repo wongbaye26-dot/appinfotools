@@ -1,3 +1,5 @@
+import 'package:analysis_model/analysis_model.dart';
+
 /// manifest 中声明的一条权限请求。
 ///
 /// [maxSdkVersion] 是 Android 平台的「版本适用条件」：超过该 API 级别后
@@ -127,6 +129,13 @@ class ApkMeta {
   /// 例如属性区之前塞了诱饵字节、chunk 类型不在标准范围内。如实记下来，
   /// 因为它直接影响「这个包为什么看起来不正常」的判断。
   List<String> manifestLayoutAnomalies = [];
+
+  /// [manifestLayoutAnomalies] 的**结构化版本**（同一批事实，带 code + 参数）。
+  ///
+  /// 两者顺序一一对应：`manifestLayoutAnomalies[i]` 就是
+  /// `manifestLayoutNotes[i].fallback`。保留字符串版是因为
+  /// `HardeningObservation.evidence` 与日志仍需要一句可直接读的英文。
+  List<AnalysisNote> manifestLayoutNotes = [];
 
   /// `AndroidManifest.xml` **解析失败**的原因；成功时为 `null`。
   ///

@@ -34,7 +34,13 @@ class AndroidSecurityAudit {
     List<NativeLibraryBytes> nativeEntries = const [],
     bool manifestParsed = true,
     String? manifestFailureReason,
-    List<String> containerAnomalies = const [],
+
+    /// 容器/清单层的结构异常，**结构化**（code + 参数）。
+    ///
+    /// V2.4.11 之前这里是 `List<String>`，界面只能拼出
+    /// 「容器/解析异常可能影响覆盖完整性：21 elements declare a non-standard…」
+    /// 这种半中半英的句子。现在每条自带 code，界面按 code 查本地化模板。
+    List<AnalysisNote> containerAnomalyNotes = const [],
   }) {
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
@@ -225,14 +231,10 @@ class AndroidSecurityAudit {
     }
 
     // 加固特征直接转化为覆盖不足说明（HardeningScanner 的输出）。
-    for (final anomaly in containerAnomalies) {
-      limitations.add(AnalysisNote(
-        'android.container.anomaly',
-        'Container/parse anomalies may affect the completeness of the coverage: '
-            '$anomaly',
-        {'anomaly': anomaly},
-      ));
-    }
+    //
+    // 已经是 `AnalysisNote`，**原样并入** —— 再包一层会让它退回通用 code，
+    // 白丢了结构化。
+    limitations.addAll(containerAnomalyNotes);
 
     final ocrClues = scan.clues
         .where((c) => c.category == SecurityCategory.ocrImage)

@@ -223,9 +223,14 @@ void _parseEntryPoint(_ParseRequest request) async {
         dexEntries: const [],
         manifestParsed: false,
         manifestFailureReason: reason,
-        containerAnomalies: [
-          for (final obs in reader.scanHardeningSignals()) obs.evidence,
-          if (reader.structureAnomaly case final anomaly?) anomaly,
+        containerAnomalyNotes: [
+          for (final obs in reader.scanHardeningSignals()) obs.asNote,
+          if (reader.structureAnomaly case final anomaly?)
+            AnalysisNote(
+              'android.container.structure_anomaly',
+              anomaly,
+              {'anomaly': anomaly},
+            ),
         ],
       );
       request.reply.send(ParseFailed(reason, security: failedSecurity));
@@ -263,11 +268,16 @@ void _parseEntryPoint(_ParseRequest request) async {
     final security = AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
-      containerAnomalies: [
-        for (final obs in hardeningObservations) obs.evidence,
+      containerAnomalyNotes: [
+        for (final obs in hardeningObservations) obs.asNote,
         // 结构异常（EOCD 声明的条目数与实际不符）也要进覆盖说明 ——
         // 「这个包的结构与声明对不上」直接影响本次结论的可信范围。
-        if (reader.structureAnomaly case final anomaly?) anomaly,
+        if (reader.structureAnomaly case final anomaly?)
+          AnalysisNote(
+            'android.container.structure_anomaly',
+            anomaly,
+            {'anomaly': anomaly},
+          ),
       ],
       nativeEntries: nativeLibraries,
     );
