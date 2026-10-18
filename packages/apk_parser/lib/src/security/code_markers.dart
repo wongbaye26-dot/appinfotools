@@ -67,6 +67,19 @@ const List<CodeMarker> codeMarkers = [
       'file upload call', 'ploadFile'),
   CodeMarker('uploadimage', SecurityCategory.dataExfiltration,
       'image upload call', 'ploadImage'),
+  // ---- 敏感数据来源（B：审计报告 P2-2）----
+  //
+  // 此前这三类**完全没有标记**：设备标识与通讯录只有一条 INFO 级权限条目，
+  // 动态加载连线索都没有。于是「设备标识 → 上传」这种最常见的外传模式
+  // 在报告里根本不存在。
+  CodeMarker('device-id', SecurityCategory.deviceData,
+      'device identifier API (TelephonyManager)', 'TelephonyManager'),
+  CodeMarker('contacts', SecurityCategory.deviceData,
+      'contacts API (ContactsContract)', 'ContactsContract'),
+  // 动态加载：被加载的代码不在 DEX 里，静态分析看不到 —— 消费方是
+  // 「覆盖不足」说明（`android.dex.dynamic_loading`），不是风险结论。
+  CodeMarker('dynamic-loading', SecurityCategory.backgroundTask,
+      'runtime DEX loading (DexClassLoader)', 'DexClassLoader'),
   // ---- 后台 ----
   CodeMarker('jobscheduler', SecurityCategory.backgroundTask, 'JobScheduler',
       'JobScheduler'),

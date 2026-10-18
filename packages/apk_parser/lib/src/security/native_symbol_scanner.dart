@@ -187,6 +187,20 @@ class NativeSymbolScanner {
   ///
   /// 返回的是**名字**，读取由调用方按自己的 IO 方式完成（本方法不碰内容，
   /// 因此可测、也不受 IO 方式影响）。
+  /// 全包里**唯一库名**的数量（不按 ABI 重复计）。
+  ///
+  /// 覆盖率的 `limit` 必须用它，而不是「选中扫描的个数」—— 后者会让
+  /// 「266 个唯一库只扫了 24 个」显示成「24/24 已覆盖」。
+  static int uniqueLibraryCount(List<({String name, int size})> candidates) {
+    final names = <String>{};
+    for (final candidate in candidates) {
+      final slash = candidate.name.lastIndexOf('/');
+      names.add(
+          slash < 0 ? candidate.name : candidate.name.substring(slash + 1));
+    }
+    return names.length;
+  }
+
   static NativeLibrarySelection selectLibraries(
     List<({String name, int size})> candidates,
   ) {

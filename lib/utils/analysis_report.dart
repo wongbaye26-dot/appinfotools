@@ -737,6 +737,8 @@ class AnalysisReport {
           ? null
           : f.android_rule_b(inputClues: inputClues, ocrClues: ocrClues),
       'android.rule_c' => f.android_rule_c,
+      'android.rule_g' =>
+        sources == null ? null : f.android_rule_g(sources: sources),
       'android.permission_expired' => (name == null || note == null)
           ? null
           : f.android_permission_expired(name: name, note: note),
@@ -792,6 +794,7 @@ class AnalysisReport {
         f.android_permission_uncategorized_manual_review,
       'android.permission_sdk23_conditional.verify' =>
         f.android_permission_sdk23_conditional_verify,
+      'android.rule_g.manual_review' => f.android_rule_g_manual_review,
       'android.rule_a.manual_review' => f.android_rule_a_manual_review,
       'android.rule_d.manual_review' => f.android_rule_d_manual_review,
       'android.rule_e.manual_review' => f.android_rule_e_manual_review,
@@ -835,6 +838,7 @@ class AnalysisReport {
       'ios.rule_b.relationship' => f.ios_rule_b_relationship,
       'ios.rule_c.relationship' => f.ios_rule_c_relationship,
       'ios.rule_e.relationship' => f.ios_rule_e_relationship,
+      'android.rule_g.relationship' => f.android_rule_g_relationship,
       'android.rule_e.relationship' => f.android_rule_e_relationship,
       'android.ocr_capability.relationship_code_refs' =>
         f.android_ocr_capability_relationship_code_refs,
@@ -881,6 +885,7 @@ class AnalysisReport {
       'ios.rule_f.limitation' => f.ios_rule_f_limitation,
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
+      'android.rule_g.limitation' => f.android_rule_g_limitation,
       'android.rule_a.limitation' => f.android_rule_a_limitation,
       'android.rule_d.limitation' => f.android_rule_d_limitation,
       'android.rule_e.limitation' => f.android_rule_e_limitation,
@@ -984,11 +989,16 @@ class AnalysisReport {
     final samples = evidence.detailArgs['samples'];
     final symbol = evidence.detailArgs['symbol'];
     final rawNames = evidence.detailArgs['rawNames'];
+    final dex = evidence.detailArgs['dex'];
+    final callSites = evidence.detailArgs['callSites'];
 
     final String? localized = switch (code) {
       'code.reference' => (marker == null || samples == null)
           ? null
           : e.code_reference(marker: marker, samples: samples),
+      'rule_f.scope' => (dex == null || callSites == null)
+          ? null
+          : e.android_rule_f_scope(dex: dex, callSites: callSites),
       'code.call_site' => (marker == null || samples == null)
           ? null
           : e.code_call_site(marker: marker, samples: samples),
@@ -1399,6 +1409,11 @@ class AnalysisReport {
       'android.native_symbols.unstripped' => (count == null || names == null)
           ? null
           : n.android_native_symbols_unstripped(count: count, names: names),
+      // 选择阶段就被丢掉的库（连打开都没打开过）—— 与 `...symbols.skipped`
+      // 不是一回事：那条是「打开了，但符号表条目读不出来」，这条是「根本没打开」。
+      'android.native_symbols.not_scanned' => count == null
+          ? null
+          : n.android_native_symbols_not_scanned(count: count),
       'android.offline_static_analysis' => n.android_offline_static_analysis,
       'android.analysis.based_on_cooccurrence' =>
         n.android_analysis_based_on_cooccurrence,
@@ -1428,6 +1443,8 @@ class AnalysisReport {
               'photo_picker' => names.photo_picker,
               'camera' => names.camera,
               'clipboard' => names.clipboard,
+              'device_id' => names.device_id,
+              'contacts' => names.contacts,
               _ => id,
             })
         .join(t.security.list_join);

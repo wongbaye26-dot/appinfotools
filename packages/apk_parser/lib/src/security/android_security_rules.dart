@@ -29,6 +29,10 @@ class AndroidRuleFacts {
     required this.hasOcrCapability,
     required this.hasUploadCapability,
     required this.hasDexContent,
+    required this.sensitiveSourceClues,
+    required this.sensitiveSourceCodeRefs,
+    required this.hasSensitiveSource,
+    required this.hasDynamicLoading,
   });
 
   final ApkMeta meta;
@@ -56,6 +60,18 @@ class AndroidRuleFacts {
 
   /// 本次是否读到了 DEX 内容。影响规则 F 的置信度。
   final bool hasDexContent;
+
+  /// 设备标识 / 通讯录的字符串线索。
+  final List<CodeClue> sensitiveSourceClues;
+
+  /// 同一批标记在**代码引用**层面的命中（比字符串强，但仍不等于调用）。
+  final List<CodeReference> sensitiveSourceCodeRefs;
+
+  /// 是否存在「非图片」的敏感数据来源（设备标识 / 通讯录）。
+  final bool hasSensitiveSource;
+
+  /// 是否存在运行时 DEX 加载线索（被加载的代码静态分析看不到）。
+  final bool hasDynamicLoading;
 
   /// 是否存在图像输入来源（权限或代码线索）。
   bool get hasImageInput =>
@@ -142,6 +158,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     build: _buildRuleE,
   ),
   AndroidSecurityRule(
+    id: 'ANDROID-RULE-G',
+    summary: '设备标识 / 通讯录来源与上传能力同现（非图片类敏感数据外传候选）。',
+    matches: _matchesRuleG,
+    build: _buildRuleG,
+  ),
+  AndroidSecurityRule(
     id: 'ANDROID-RULE-F',
     summary: '未发现上传特征时的显式「未发现」结论（不得读成「安全」）。',
     matches: _matchesRuleF,
@@ -166,6 +188,13 @@ bool _matchesRuleE(AndroidRuleFacts f) =>
     f.hasBackground &&
     (f.hasImageInput || f.hasOcrCapability) &&
     f.hasUploadCapability;
+
+/// 规则 G：非图片类敏感数据来源（设备标识 / 通讯录）**同时**存在上传能力。
+///
+/// 与规则 C 分开：C 说的是「图片 → OCR → 上传」这条链，G 说的是
+/// 「设备标识 / 通讯录 → 上传」。两者的数据来源不同，各自成立。
+bool _matchesRuleG(AndroidRuleFacts f) =>
+    f.hasSensitiveSource && f.hasUploadCapability;
 
 /// 规格规则 F：**没有上传线索时必须显式产出这一条**，而不是留一个空列表
 /// 让人以为查过了就等于安全。
@@ -293,6 +322,61 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
   );
 }
 
+SecurityFinding _buildRuleG(AndroidRuleFacts f) {
+  // 说清**是哪一类**来源：设备标识与通讯录对用户的含义完全不同。
+  final sourceIds = <String>{
+    if (f.sensitiveSourceClues.any((c) => c.markerId == 'device-id') ||
+        f.sensitiveSourceCodeRefs.any((r) => r.markerId == 'device-id'))
+      'device_id',
+    if (f.sensitiveSourceClues.any((c) => c.markerId == 'contacts') ||
+        f.sensitiveSourceCodeRefs.any((r) => r.markerId == 'contacts'))
+      'contacts',
+  }.toList()
+    ..sort();
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-RULE-G',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.dataExfiltration,
+    // P2 而不是 P1：设备标识与通讯录的读取本身极常见（很多 SDK 都读），
+    // 单凭「同现」不足以给到 P1。规则 C 之所以是 P1，是因为「图片 → 识别 →
+    // 上传」这条链本身就更可疑。
+    severity: SecuritySeverity.p2,
+    confidence: SecurityConfidence.suspected,
+    finding: 'A non-image sensitive data source (device identifier / contacts) '
+        'and upload capability were both found. This is a suspected '
+        'exfiltration path: static analysis could not prove that the data '
+        'read here actually reaches an upload request.',
+    messageCode: 'android.rule_g',
+    messageArgs: {'sources': sourceIds},
+    evidence: [
+      ...clueEvidence(f.sensitiveSourceClues),
+      ...referenceEvidence(f.sensitiveSourceCodeRefs),
+      ...clueEvidence(f.uploadClues),
+      ...referenceEvidence(f.uploadCodeRefs),
+    ],
+    dataSource: '设备标识 / 通讯录（TelephonyManager / ContactsContract）',
+    dataSink: '上传请求（multipart / upload API）',
+    // 这一条**没有** dataTransform：字符串线索没有方法上下文，
+    // 拿不到「同一方法体」的定位。留空而不是编一个。
+    relationship: 'The source API and the upload API both appear in the '
+        'package, but they are not proven to lie on the same call path — '
+        'whether the data actually flows into the request is **not '
+        'established**.',
+    relationshipCode: 'android.rule_g.relationship',
+    limitation: 'Co-occurrence is not data flow: the source may be read for '
+        'an unrelated feature (analytics, fraud detection), and the upload '
+        'may carry something else entirely. No disassembly or taint '
+        'analysis was performed.',
+    limitationCode: 'android.rule_g.limitation',
+    recommendation: 'Review manually: check whether the device identifier / '
+        'contacts data is actually sent out, and whether the user was told '
+        'about it. This item is a candidate for review, not a malicious '
+        'verdict.',
+    recommendationCode: 'android.rule_g.manual_review',
+  );
+}
+
 SecurityFinding _buildRuleD(AndroidRuleFacts f) {
   final withSensitive = f.hasSensitiveAlongsideCleartext;
   return SecurityFinding(
@@ -385,7 +469,22 @@ SecurityFinding _buildRuleF(AndroidRuleFacts f) {
         'upload APIs or similar markers). This does not mean the app has '
         'no upload behaviour — it only means this static scan found none.',
     messageCode: 'android.rule_f',
-    evidence: const [],
+    // **否定结论也要有依据。** 空证据会让它与「根本没查」在数据上无法区分；
+    // 这条证据回答「查了什么」：几个 DEX、多少个调用点、结论从哪来。
+    evidence: [
+      SecurityEvidence(
+        source: SecurityEvidenceSource.dexMethodReference,
+        location: 'classes*.dex (${f.methodScan.walkedDexCount} DEX)',
+        detail: '${f.methodScan.walkedDexCount} DEX / '
+            '${f.methodScan.callSiteCount} call site(s) scanned; no upload '
+            'marker matched',
+        detailCode: 'rule_f.scope',
+        detailArgs: {
+          'dex': f.methodScan.walkedDexCount,
+          'callSites': f.methodScan.callSiteCount,
+        },
+      ),
+    ],
     limitation: noDex
         ? 'No DEX content was read this time, so the confidence of the '
             '"not found" conclusion is incomplete.'

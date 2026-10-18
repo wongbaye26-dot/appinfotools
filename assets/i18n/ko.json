@@ -311,7 +311,8 @@
       "code_reference": "{marker} (참조): {samples}",
       "dex_strings_location": "{count}개 DEX 파일의 문자열",
       "native_symbol_imported": "{symbol} (가져옴): {description}",
-      "native_symbol_imported_raw": "{symbol} (가져옴): {description} | 원시 심볼: {rawNames}"
+      "native_symbol_imported_raw": "{symbol} (가져옴): {description} | 원시 심볼: {rawNames}",
+      "android_rule_f_scope": "이 부정 결론의 범위: DEX {dex}개와 호출 지점 {callSites}개를 스캔했으며 업로드 마커는 발견되지 않았습니다."
     },
     "list_join": ", ",
     "native_symbols": {
@@ -393,7 +394,9 @@
       "camera": "카메라",
       "clipboard": "클립보드",
       "photo_library": "전체 사진 보관함 (PhotoKit)",
-      "photo_picker": "시스템 사진 선택기"
+      "photo_picker": "시스템 사진 선택기",
+      "device_id": "기기 식별자",
+      "contacts": "연락처"
     },
     "verdicts": {
       "max_api_effective_above": "targetSdk={targetSdk}가 API {maxApi}보다 높아, 이 권한의 실제 효과는 범위 지정 저장소로 크게 약화되었습니다.",
@@ -405,6 +408,7 @@
       "android_container_anomaly": "컨테이너/해석 이상이 커버리지의 완전성에 영향을 줄 수 있습니다: {anomaly}",
       "android_dex_budget": "DEX 스캔 예산: {name}은(는) {totalBytes}바이트 중 처음 {scannedBytes}바이트만 스캔되었습니다(약 {percent}%). 남은 바이트는 검색되지 않아 그 안의 단서는 발견되지 않습니다. 이는 의도적으로 설정한 상한이며 파싱 실패가 아닙니다.",
       "android_dex_checksum_not_verified": "{name}은 {limitMiB} MiB를 초과하므로 체크섬을 검증하지 않았습니다 — '체크섬 이상 보고 없음'을 '체크섬이 올바름'으로 읽지 마세요.",
+      "android_dex_dynamic_loading": "런타임 DEX 로딩(DexClassLoader) 단서가 발견되었습니다. 로딩되는 코드는 아카이브에 없으므로 이 분석의 대상이 아닙니다.",
       "android_dex_desynced_bodies": "{count}개의 메서드 본문이 명령 경계에 정렬되지 않았습니다 ({names}): 이 메서드 본문의 호출 지점은 신뢰할 수 없습니다 — 폭 테이블이나 페이로드 길이가 실제 파일 형태와 맞지 않을 수 있습니다.",
       "android_dex_invoke_custom": "invoke-custom 명령이 {count}개 있습니다: 이것들은 method_ids가 아니라 call_site_ids를 참조하며 해석하지 않았으므로, 이 호출은 호출 지점 커버리지에 포함되지 않습니다.",
       "android_dex_method_budget": "메서드 참조 순회가 예산 한도에 도달했습니다. {names}은 일부만 분석했습니다.",
@@ -420,6 +424,7 @@
       "android_native_symbols_not_traversable": "{count}개의 네이티브 라이브러리는 구조를 신뢰할 수 없어 심볼 테이블을 읽지 않았습니다 ({names}): 이 라이브러리들에서 '심볼을 찾지 못함'은 '보지 않음'이지 '없음'이 아닙니다.",
       "android_native_symbols_semantics": "네이티브 심볼은 ELF의 `.dynsym` 섹션에서 얻어집니다: 라이브러리가 어떤 시스템 기능을 가져오는지를 보여줄 뿐, 그 기능이 호출되었다는 것, 하물며 어떤 인자로 호출되었는지는 보여주지 않습니다. 네이티브 코드를 디스어셈블하지 않았습니다.",
       "android_native_symbols_skipped": "네이티브 심볼 테이블에서 {count}개 항목을 읽을 수 없었습니다(이름이 범위를 벗어났거나 항목이 섹션 밖으로 나갑니다). 따라서 그 항목들의 심볼은 확인하지 않았습니다.",
+      "android_native_symbols_not_scanned": "네이티브 라이브러리 {count}개는 전혀 스캔되지 않았습니다(선택 상한 24개 / 96 MiB). 네이티브 심볼 결론은 이들을 포함하지 않습니다.",
       "android_native_symbols_truncated": "일부 네이티브 라이브러리의 심볼 테이블 읽기가 예산 한도에 도달해, 항목의 일부만 분석했습니다.",
       "android_native_symbols_unstripped": "{count}개의 네이티브 라이브러리가 심볼 테이블을 제거하지 않았습니다 ({names}): 내부 함수 이름을 읽을 수 있습니다. 릴리스 빌드는 보통 제거됩니다. 이것은 사실이며 위험 판정이 아닙니다.",
       "android_offline_static_analysis": "이것은 오프라인 정적 분석입니다: 앱을 설치하거나 실행하지 않았고 네트워크 트래픽도 관찰하지 않았습니다. 따라서 런타임 증거는 존재하지 않으며, 이를 근거로 동작이 확인되었다고 보고해서는 안 됩니다.",
@@ -504,6 +509,10 @@
       "android_rule_e_manual_review": "격리된 환경에서 실행하고 네트워크 동작을 관찰한 뒤 확인하세요.",
       "android_rule_e_relationship": "백그라운드 진입점 + 민감한 데이터 원천 + 업로드 종착점: 세 종류의 증거가 함께 나타나지만 '앱이 실제로 백그라운드에서 미디어 데이터를 처리해 업로드하는지'는 증명되지 않았습니다.",
       "android_rule_f": "현재 분석 범위에서는 업로드 관련 코드 특징을 찾지 못했습니다(멀티파트 업로드, 파일 업로드 API, 유사 마커에 적중하지 않았습니다). 이것은 앱에 업로드 동작이 없다는 뜻이 아닙니다 — 이 정적 스캔에서 찾지 못했을 뿐입니다.",
+      "android_rule_g": "이미지가 아닌 민감 데이터 출처와 업로드 기능이 함께 발견되었습니다: {sources} → 업로드. 유출 의심 경로이지만, 여기서 읽은 데이터가 실제로 업로드 요청에 전달되는지는 정적 분석으로 확인하지 못했습니다.",
+      "android_rule_g_relationship": "출처 API와 업로드 API가 모두 패키지에 있지만, 같은 호출 경로에 있다는 것은 확인되지 않았습니다. \"데이터가 실제로 그 요청으로 흘러갔다\"는 결론은 성립하지 않습니다.",
+      "android_rule_g_limitation": "동시 출현은 데이터 흐름이 아닙니다. 출처는 다른 기능(통계, 부정 탐지)을 위해 읽혔을 수 있고, 업로드는 전혀 다른 내용일 수 있습니다. 디스어셈블과 테인트 분석은 수행하지 않았습니다.",
+      "android_rule_g_manual_review": "직접 확인하세요: 이 데이터가 실제로 전송되는지, 사용자에게 고지되었는지. 이는 검토 후보이며 악성 판정이 아닙니다.",
       "android_rule_f_limitation_no_dex": "이번에는 DEX 내용을 읽지 않았으므로 '찾지 못함'이라는 결론의 확신도는 불완전합니다.",
       "android_rule_f_limitation_scope": "문자열 스캔은 네이티브 라이브러리, 리소스, 난독화 셸 내부 코드를 대상으로 하지 않습니다.",
       "android_rule_f_runtime_traffic": "업로드 동작을 배제하려면 동적 트래픽 관찰과 함께 사용하세요(이 버전에서는 제공하지 않습니다).",

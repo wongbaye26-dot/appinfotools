@@ -311,7 +311,8 @@
       "code_reference": "{marker}（参照）: {samples}",
       "dex_strings_location": "{count} 個の DEX ファイルの文字列",
       "native_symbol_imported": "{symbol}（インポート）: {description}",
-      "native_symbol_imported_raw": "{symbol}（インポート）: {description} | 生のシンボル: {rawNames}"
+      "native_symbol_imported_raw": "{symbol}（インポート）: {description} | 生のシンボル: {rawNames}",
+      "android_rule_f_scope": "この否定結論の範囲：{dex} 個の DEX と {callSites} 個の呼び出し箇所をスキャンし、アップロードのマーカーは見つかりませんでした。"
     },
     "list_join": "、",
     "native_symbols": {
@@ -393,7 +394,9 @@
       "camera": "カメラ",
       "clipboard": "クリップボード",
       "photo_library": "フォトライブラリ全体（PhotoKit）",
-      "photo_picker": "システムのフォトピッカー"
+      "photo_picker": "システムのフォトピッカー",
+      "device_id": "デバイス識別子",
+      "contacts": "連絡先"
     },
     "verdicts": {
       "max_api_effective_above": "targetSdk={targetSdk} は API {maxApi} より高いため、この権限の実際の効果はスコープ付きストレージによって大きく弱められています。",
@@ -405,6 +408,7 @@
       "android_container_anomaly": "コンテナ／解析の異常がカバレッジの完全性に影響する可能性があります: {anomaly}",
       "android_dex_budget": "DEX スキャン予算：{name} は先頭 {scannedBytes} バイトのみスキャンされました（ファイル全体は {totalBytes} バイト、約 {percent}%）。残りのバイトは検索されておらず、そこにある手がかりは見つかりません。これは意図的に設けた上限であり、解析失敗ではありません。",
       "android_dex_checksum_not_verified": "{name} は {limitMiB} MiB を超えるため、チェックサムは検証していません — 「チェックサム異常の報告なし」を「チェックサムが正しい」と読まないでください。",
+      "android_dex_dynamic_loading": "実行時の DEX 読み込み（DexClassLoader）の手がかりが見つかりました。読み込まれるコードはアーカイブ内にないため、本分析の対象外です。",
       "android_dex_desynced_bodies": "{count} 件のメソッド本体が命令境界に整列していません（{names}）: これらのメソッド本体の呼び出し箇所は信用できません — 幅テーブルやペイロード長が実際のファイル形状と一致していない可能性があります。",
       "android_dex_invoke_custom": "invoke-custom 命令が {count} 件あります: これらは method_ids ではなく call_site_ids を参照しており、解析していないため、これらの呼び出しは呼び出し箇所のカバレッジに含まれません。",
       "android_dex_method_budget": "メソッド参照の走査が予算上限に達しました。{names} は一部しか分析していません。",
@@ -420,6 +424,7 @@
       "android_native_symbols_not_traversable": "{count} 個のネイティブライブラリは構造を信頼できないため、シンボルテーブルを読み取っていません（{names}）: これらのライブラリでの「シンボルが見つからない」は「見ていない」であって「存在しない」ではありません。",
       "android_native_symbols_semantics": "ネイティブシンボルは ELF の `.dynsym` セクションから得られます: ライブラリがどのシステム機能をインポートしているかを示すもので、それらの機能が呼ばれたこと、ましてやどんな引数で呼ばれたかは示しません。ネイティブコードの逆アセンブルは行っていません。",
       "android_native_symbols_skipped": "ネイティブのシンボルテーブルで {count} 件のエントリを読み取れませんでした（名前が範囲外、またはエントリがセクション外にはみ出しています）。そのためこれらのエントリのシンボルは見ていません。",
+      "android_native_symbols_not_scanned": "{count} 個のネイティブライブラリはまったくスキャンされていません（選択上限 24 ライブラリ / 96 MiB）。ネイティブシンボル層の結論はこれらを対象にしていません。",
       "android_native_symbols_truncated": "一部のネイティブライブラリのシンボルテーブル読み取りが予算上限に達したため、エントリの一部しか分析していません。",
       "android_native_symbols_unstripped": "{count} 個のネイティブライブラリがシンボルテーブルを削除していません（{names}）: 内部関数名を読み取れます。リリースビルドは通常削除されます。これは事実であり、リスク判定ではありません。",
       "android_offline_static_analysis": "これはオフラインの静的解析です: アプリはインストールも実行もされておらず、ネットワーク通信も観測していません。そのため実行時の証拠は存在せず、これに基づいて挙動が確認できたと報告してはいけません。",
@@ -504,6 +509,10 @@
       "android_rule_e_manual_review": "隔離環境で実行し、ネットワークの挙動を観測してから確認してください。",
       "android_rule_e_relationship": "バックグラウンドの入口 + 機微なデータ源 + アップロード先: 三種類の証拠が同時に現れていますが、「アプリが実際にバックグラウンドでメディアデータを処理してアップロードするか」は証明されていません。",
       "android_rule_f": "現在の分析範囲では、アップロードに関連するコードの特徴は見つかりませんでした（マルチパートアップロード、ファイルアップロード API、類似のマーカーにヒットしません）。これはアプリにアップロード挙動がないという意味ではありません — この静的スキャンで見つからなかっただけです。",
+      "android_rule_g": "画像以外の機微なデータ取得元とアップロード能力が同時に見つかりました：{sources} → アップロード。漏えいの疑いがある経路ですが、ここで読んだデータが実際にアップロード要求へ渡っていることは静的分析では確認できていません。",
+      "android_rule_g_relationship": "取得元 API とアップロード API はどちらもパッケージ内にありますが、同じ呼び出し経路上にあることは確認できていません。「データが実際にその要求へ流れ込んだ」という結論は成立していません。",
+      "android_rule_g_limitation": "同時出現はデータフローではありません。取得元は別機能（統計・不正検知）のために読まれている可能性があり、アップロードはまったく別の内容かもしれません。逆アセンブルとテイント解析は行っていません。",
+      "android_rule_g_manual_review": "手動で確認してください：このデータが実際に送信されているか、ユーザーに明示されているか。これは確認候補であり、悪意の判定ではありません。",
       "android_rule_f_limitation_no_dex": "今回は DEX の内容を読み取っていないため、「見つからなかった」という結論の確度は不完全です。",
       "android_rule_f_limitation_scope": "文字列スキャンはネイティブライブラリ、リソース、難読化シェル内のコードを対象としていません。",
       "android_rule_f_runtime_traffic": "アップロード挙動を排除するには、動的な通信観測と組み合わせてください（本バージョンでは提供していません）。",

@@ -69,7 +69,9 @@ void main() {
     });
 
     test('表里的顺序就是报告里的输出顺序', () {
-      // A → F：先具体（广泛访问、组合线索），再兜底（「未发现」）。
+      // A → G → F：先具体（广泛访问、组合线索），再兜底（「未发现」）。
+      // **F 必须最后** —— 它是「没有上传线索」的否定结论，排在具体发现前面
+      // 会让读者先看到「没发现」再看「发现了什么」。
       expect(
         androidSecurityRules.map((r) => r.id).toList(),
         [
@@ -78,6 +80,7 @@ void main() {
           'ANDROID-RULE-C',
           'ANDROID-RULE-D',
           'ANDROID-RULE-E',
+          'ANDROID-RULE-G',
           'ANDROID-RULE-F',
         ],
       );
@@ -129,6 +132,13 @@ void main() {
               ],
             ),
             strings: ['multipart/form-data'],
+          ),
+      // 设备标识 + 上传（非图片类来源；没有相册/OCR，所以不会命中 B/C）。
+      'ANDROID-RULE-G': () => _audit(
+            strings: [
+              'Landroid/telephony/TelephonyManager;',
+              'multipart/form-data',
+            ],
           ),
       // 没有任何上传线索 → 显式「未发现」。
       'ANDROID-RULE-F': () => _audit(strings: ['unrelated']),

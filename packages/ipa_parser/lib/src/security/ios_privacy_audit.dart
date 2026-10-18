@@ -11,7 +11,13 @@ import 'ios_native_symbol_audit.dart';
 /// 与 Android 侧 `DexClueScanner` 的预算口径一致：先定上限再读，
 /// 超限的部分如实记为未覆盖。
 class _Budget {
-  static const int maxBytes = 16 * 1024 * 1024;
+  /// 单个可执行文件的字符串扫描上限（64 MiB）。
+  ///
+  /// 原先是 16 MiB —— 实测 `sun_signed.ipa` 的主可执行文件 34.3 MiB，
+  /// 后 19.2 MiB（47%）**完全没扫**，而 `AVCapture` 恰好就在那一段里
+  /// （B-6 的误报就是这么来的）。真实 App 的主二进制 30–80 MB 很常见，
+  /// 16 MiB 太小。
+  static const int maxBytes = 64 * 1024 * 1024;
   static const int minStringLength = 6;
   static const int maxSamplesPerMarker = 5;
 }
@@ -124,7 +130,17 @@ class IosPrivacyAudit {
     /// 阶段 5b 起扫描范围不再只有主应用：App Extension 里的代码同样是这个
     /// 应用的一部分，而且扩展常常**正是**处理照片与 OCR 的地方。
     List<IosNestedExecutableInput> nestedExecutables = const [],
+
+    /// **测试用**：覆盖单文件扫描预算。
+    ///
+    /// 生产不传（走 [_Budget.maxBytes] = 64 MiB）。测试要验证「被预算截断时
+    /// 不判缺失」，如果只能靠真造 64 MiB 字节来触发，那个用例会很慢。
+    ///
+    /// 不加 `@visibleForTesting`：`meta` 不是本包的依赖，为一个注解引入一个
+    /// 依赖不划算。命名与文档已经说清用途。
+    int? scanBudgetBytes,
   }) {
+    final budgetBytes = scanBudgetBytes ?? _Budget.maxBytes;
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
 
@@ -308,23 +324,22 @@ class IosPrivacyAudit {
       }
       scannedPaths.add(target.path);
 
-      if (bytes.length > _Budget.maxBytes) {
+      if (bytes.length > budgetBytes) {
         truncated = true;
         limitations.add(AnalysisNote(
           'ios.executable.over_budget',
           '${target.path} is ${bytes.length} bytes, over the '
-              '${_Budget.maxBytes}-byte scan budget: only the first '
-              '${_Budget.maxBytes} bytes were scanned, and the uncovered '
+              '$budgetBytes-byte scan budget: only the first '
+              '$budgetBytes bytes were scanned, and the uncovered '
               'part may contain clues that were not found.',
           {
             'path': target.path,
             'bytes': bytes.length,
-            'limit': _Budget.maxBytes,
+            'limit': budgetBytes,
           },
         ));
       }
-      final limit =
-          bytes.length < _Budget.maxBytes ? bytes.length : _Budget.maxBytes;
+      final limit = bytes.length < budgetBytes ? bytes.length : budgetBytes;
       scanned += limit;
 
       for (final str in AsciiStrings.extract(
@@ -568,7 +583,7 @@ class IosPrivacyAudit {
     // 两个必须排除的情况：
     //
     // 1. **一个字节都没读到** —— 那是覆盖不足，不是矛盾。
-    // 2. **扫描被预算截断**（`_Budget.maxBytes`）—— 线索可能在截断之后。
+    // 2. **扫描被预算截断**（`budgetBytes`）—— 线索可能在截断之后。
     //    实测：`sun_signed.ipa` 的主可执行文件 45 MB，只扫前 16 MB，而
     //    `AVCapture` 出现在 16 MB 之后 —— 不排除截断就会误报「声明了相机
     //    但没有实现」。
@@ -1033,6 +1048,12 @@ class IosPrivacyAudit {
     final nativeResult = IosNativeSymbolAudit.scan(
       executableBytes: executableBytes,
       executablePath: executablePath,
+      // **嵌套可执行文件也要看符号表**：扩展 / 框架里的 C/C++ 代码不在主
+      // 二进制里，此前完全没进符号层（实测 25 个可执行文件只看了 1 个）。
+      nested: [
+        for (final nested in nestedExecutables)
+          if (nested.bytes case final bytes?) (path: nested.path, bytes: bytes),
+      ],
     );
     final nativeReport = IosNativeSymbolAudit.report(
       result: nativeResult,
@@ -1141,6 +1162,11 @@ class IosPrivacyAudit {
                 ? CoverageStatus.partial
                 : CoverageStatus.covered),
         covered: nativeResult.scannedImages,
+        // `limit` 是「尝试解析的镜像数」。没有它，`covered: 1` 看不出
+        // 「25 个可执行文件只看了 1 个」。
+        limit: nativeResult.imagesAttempted == 0
+            ? null
+            : nativeResult.imagesAttempted,
         note: nativeResult.scannedImages == 0
             ? (
                 'ios.native_symbols.no_symtab',

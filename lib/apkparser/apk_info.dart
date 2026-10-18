@@ -627,9 +627,9 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
           apk_parser.DexBytes(name, bytes),
     ];
     // 原生库与 DEX 一样**先挑再读**（同一个库只取一个 ABI、超限不读）。
-    final nativeSelection = apk_parser.NativeSymbolScanner.selectLibraries(
-      reader.listFilesWithSize(extension: '.so'),
-    );
+    final nativeCandidates = reader.listFilesWithSize(extension: '.so');
+    final nativeSelection =
+        apk_parser.NativeSymbolScanner.selectLibraries(nativeCandidates);
     final nativeEntries = <apk_parser.NativeLibraryBytes>[
       for (final name in nativeSelection.selected)
         if (reader.readFile(name) case final bytes?)
@@ -639,6 +639,9 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       meta: meta,
       dexEntries: dexEntries,
       nativeEntries: nativeEntries,
+      nativeLibraryTotal:
+          apk_parser.NativeSymbolScanner.uniqueLibraryCount(nativeCandidates),
+      nativeSkipped: nativeSelection.skipped,
       containerAnomalyNotes: [
         for (final obs in reader.scanHardeningSignals()) obs.asNote,
       ],

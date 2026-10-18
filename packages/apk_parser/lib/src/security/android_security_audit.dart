@@ -26,6 +26,23 @@ class AndroidSecurityAudit {
   static const String rulesVersion = PermissionCatalog.rulesVersion;
 
   /// [manifestParsed] 为 false 时必须给出原因（记入覆盖不足）。
+  /// 去掉**精确重复**的权限声明（名字 + maxSdkVersion + sdk23Only 三项全同）。
+  ///
+  /// 只去精确重复：同名但 `maxSdkVersion` 不同的是两条不同的声明
+  /// （一条可能已过期、一条仍然生效），合并会把版本条件吃掉。
+  static List<AndroidPermissionRequest> _dedupePermissions(
+    List<AndroidPermissionRequest> input,
+  ) {
+    final seen = <String>{};
+    final out = <AndroidPermissionRequest>[];
+    for (final request in input) {
+      final key = '${request.name}\u0000${request.maxSdkVersion}'
+          '\u0000${request.sdk23Only}';
+      if (seen.add(key)) out.add(request);
+    }
+    return out;
+  }
+
   static SecurityAnalysisResult audit({
     required ApkMeta meta,
     required List<DexBytes> dexEntries,
@@ -41,9 +58,34 @@ class AndroidSecurityAudit {
     /// 「容器/解析异常可能影响覆盖完整性：21 elements declare a non-standard…」
     /// 这种半中半英的句子。现在每条自带 code，界面按 code 查本地化模板。
     List<AnalysisNote> containerAnomalyNotes = const [],
+
+    /// 全包里**唯一库名**的数量（含未被选中扫描的）。
+    ///
+    /// 为什么需要它：`nativeEntries` 只是「传进来准备扫描的那几个」。
+    /// 用它当覆盖率的 `limit`，会让「266 个唯一库只扫了 24 个」显示成
+    /// 「24/24 已覆盖」—— 读者据此以为原生层全查过了。
+    ///
+    /// 不传时退回旧口径（`limit = nativeEntries.length`），不编造总数。
+    int? nativeLibraryTotal,
+
+    /// 因预算 / 数量上限**未被选中扫描**的库（`selectLibraries` 的 `skipped`）。
+    ///
+    /// 必须进 `limitations`：`selectLibraries` 挑剩下的那些，此前在报告里
+    /// **完全不可见**（`grep -rn "\.skipped" lib/` 零命中）。
+    List<String> nativeSkipped = const [],
   }) {
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
+
+    // **精确重复的权限声明只审一次。**
+    //
+    // 实测（抖音）：manifest 把 `ACCESS_COARSE_LOCATION` 声明了两次，审计产出
+    // 两张完全一样的卡片 —— 用户会以为「这里有两个问题」。
+    //
+    // 只去**精确重复**（名字 + maxSdkVersion + sdk23Only 三项全同）：同名但
+    // maxSdkVersion 不同的是两条不同的声明（一条可能已过期、一条仍然生效），
+    // 合并会把版本条件吃掉。
+    final permissionRequests = _dedupePermissions(meta.permissionRequests);
 
     if (!manifestParsed) {
       limitations.add(AnalysisNote(
@@ -280,6 +322,20 @@ class AndroidSecurityAudit {
     // 规则输入用「能力是否存在」而不是「有没有字符串线索」：只看字符串会漏掉
     // 「代码引用了 MultipartBody，但字面量 multipart/form-data 从未出现」这类
     // 情况。两者分开保存，陈述时也要分开。
+    // ---- 非图片类敏感数据来源（B：审计报告 P2-2）----
+    final sensitiveSourceClues = scan.clues
+        .where((c) => c.markerId == 'device-id' || c.markerId == 'contacts')
+        .toList();
+    final sensitiveSourceCodeRefs = codeRefsOf({'device-id', 'contacts'});
+    final hasSensitiveSource =
+        sensitiveSourceClues.isNotEmpty || sensitiveSourceCodeRefs.isNotEmpty;
+
+    // 运行时 DEX 加载：被加载的代码不在 DEX 里，静态分析**看不到**。
+    // 这不是风险结论，是覆盖范围的说明。
+    final hasDynamicLoading =
+        scan.clues.any((c) => c.markerId == 'dynamic-loading') ||
+            methodScan.references.any((r) => r.markerId == 'dynamic-loading');
+
     final hasOcrCapability = ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty;
     final hasUploadCapability =
         uploadClues.isNotEmpty || uploadCodeRefs.isNotEmpty;
@@ -289,7 +345,7 @@ class AndroidSecurityAudit {
     final broadStorage = <AndroidPermissionRequest>[];
     final backgroundPermissions = <AndroidPermissionRequest>[];
 
-    for (final request in meta.permissionRequests) {
+    for (final request in permissionRequests) {
       // sdk-23 声明单独在下面处理（它的生效条件无法静态判定），
       // 不走常规目录，否则同一条权限会产出两份重复的发现。
       if (request.sdk23Only) continue;
@@ -392,7 +448,7 @@ class AndroidSecurityAudit {
     }
 
     // 未编目权限：汇总一条，不逐条刷屏。
-    final uncatalogued = meta.permissionRequests
+    final uncatalogued = permissionRequests
         .where((r) => !r.sdk23Only && PermissionCatalog.lookup(r.name) == null)
         .toList();
     if (uncatalogued.isNotEmpty) {
@@ -423,7 +479,7 @@ class AndroidSecurityAudit {
         recommendationCode: 'android.permission_uncategorized.manual_review',
       ));
     }
-    for (final request in meta.permissionRequests.where((r) => r.sdk23Only)) {
+    for (final request in permissionRequests.where((r) => r.sdk23Only)) {
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-PERMISSION-SDK23-CONDITIONAL',
         platform: SecurityPlatform.android,
@@ -482,6 +538,29 @@ class AndroidSecurityAudit {
             if (nativeScan.notTraversable.length > 3) '…',
           ],
         },
+      ));
+    }
+    if (hasDynamicLoading) {
+      // **必须说出来**：DexClassLoader 加载进来的代码不在归档里，
+      // 静态分析的结论对那部分代码**不成立**。
+      limitations.add(const AnalysisNote(
+        'android.dex.dynamic_loading',
+        'Runtime DEX loading clues (DexClassLoader) were found: code loaded '
+            'at runtime is not inside the archive, so this analysis does not '
+            'cover it.',
+      ));
+    }
+    if (nativeSkipped.isNotEmpty) {
+      // **这些库连打开都没打开过。** 此前 `selectLibraries` 挑剩下的那些
+      // 在报告里完全不可见（`skipped` 字段没有消费者），于是读者看到
+      // 「24/24 已覆盖」就以为原生层全查过了。
+      limitations.add(AnalysisNote(
+        'android.native_symbols.not_scanned',
+        '${nativeSkipped.length} native library(ies) were not scanned at all '
+            '(the selection cap is 24 libraries / 96 MiB): '
+            '${nativeSkipped.take(3).join(', ')}'
+            '${nativeSkipped.length > 3 ? ', …' : ''}',
+        {'count': nativeSkipped.length},
       ));
     }
     if (nativeScan.skippedSymbols > 0) {
@@ -817,6 +896,10 @@ class AndroidSecurityAudit {
       hasOcrCapability: hasOcrCapability,
       hasUploadCapability: hasUploadCapability,
       hasDexContent: dexEntries.isNotEmpty,
+      sensitiveSourceClues: sensitiveSourceClues,
+      sensitiveSourceCodeRefs: sensitiveSourceCodeRefs,
+      hasSensitiveSource: hasSensitiveSource,
+      hasDynamicLoading: hasDynamicLoading,
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));
@@ -864,7 +947,7 @@ class AndroidSecurityAudit {
         id: 'android.permissions',
         status:
             manifestParsed ? CoverageStatus.covered : CoverageStatus.notCovered,
-        covered: manifestParsed ? meta.permissionRequests.length : null,
+        covered: manifestParsed ? permissionRequests.length : null,
         note: manifestParsed
             ? null
             : (
@@ -905,6 +988,11 @@ class AndroidSecurityAudit {
                 ? CoverageStatus.covered
                 : CoverageStatus.partial),
         covered: scan.scannedBytes,
+        // `limit` = 所有 DEX 的字节数之和。没有它，`covered` 只是一个孤立
+        // 的大数字（实测 50,648,616），读者算不出「那是 437 MiB 的 11%」。
+        limit: dexEntries.isEmpty
+            ? null
+            : dexEntries.fold<int>(0, (sum, e) => sum + e.bytes.length),
         note: dexEntries.isEmpty
             ? (
                 'android.dex.no_content',
@@ -975,11 +1063,15 @@ class AndroidSecurityAudit {
             ? CoverageStatus.notApplicable
             : ((nativeScan.skippedForBudget.isNotEmpty ||
                     nativeScan.notTraversable.isNotEmpty ||
-                    nativeScan.truncated)
+                    nativeScan.truncated ||
+                    // **被选中阶段跳过的库也算未覆盖** —— 它们根本没被打开过。
+                    nativeSkipped.isNotEmpty)
                 ? CoverageStatus.partial
                 : CoverageStatus.covered),
         covered: nativeScan.libraries.length,
-        limit: nativeEntries.length,
+        // `limit` 用**全包唯一库名数**，不是「传进来几个」。用后者会让
+        // 「266 个唯一库只扫了 24 个」显示成「24/24 已覆盖」。
+        limit: nativeLibraryTotal ?? nativeEntries.length,
         note: nativeEntries.isEmpty
             ? (
                 'android.native_symbols.not_provided',

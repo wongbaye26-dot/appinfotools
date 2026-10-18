@@ -536,6 +536,10 @@
       "android_rule_e_limitation": "No dynamic analysis was run, so the actual triggering and execution of background tasks cannot be observed.",
       "android_rule_e_manual_review": "Run it in an isolated environment and confirm after observing the network behaviour.",
       "android_rule_f": "No upload-related code characteristics were found within the current analysis scope (no hits for multipart upload, file upload APIs or similar markers). This does not mean the app has no upload behaviour — it only means this static scan found none.",
+      "android_rule_g": "A non-image sensitive data source and upload capability were both found: {sources} → upload. This is a suspected exfiltration path; static analysis could not prove that the data read here actually reaches an upload request.",
+      "android_rule_g_relationship": "The source API and the upload API both appear in the package, but they are not proven to lie on the same call path — whether the data actually flows into the request is not established.",
+      "android_rule_g_limitation": "Co-occurrence is not data flow: the source may be read for an unrelated feature (analytics, fraud detection), and the upload may carry something else entirely. No disassembly or taint analysis was performed.",
+      "android_rule_g_manual_review": "Review manually: check whether this data is actually sent out, and whether the user was told about it. This is a candidate for review, not a malicious verdict.",
       "android_rule_f_limitation_no_dex": "No DEX content was read this time, so the confidence of the “not found” conclusion is incomplete.",
       "android_rule_f_limitation_scope": "String scanning does not cover native libraries, resources or code inside a hardened shell.",
       "android_rule_f_runtime_traffic": "To rule out upload behaviour, combine this with dynamic traffic observation (not provided in this version).",
@@ -587,7 +591,9 @@
       "photo_library": "full photo library (PhotoKit)",
       "photo_picker": "system photo picker",
       "camera": "camera",
-      "clipboard": "clipboard"
+      "clipboard": "clipboard",
+      "device_id": "device identifier",
+      "contacts": "contacts"
     },
     "list_join": ", ",
     "evidence_texts": {
@@ -595,7 +601,8 @@
       "code_call_site": "{marker} (call site): {samples}",
       "native_symbol_imported": "{symbol} (imported): {description}",
       "native_symbol_imported_raw": "{symbol} (imported): {description} | raw symbol: {rawNames}",
-      "dex_strings_location": "strings of {count} DEX file(s)"
+      "dex_strings_location": "strings of {count} DEX file(s)",
+      "android_rule_f_scope": "Scope of this negative result: {dex} DEX file(s) and {callSites} call site(s) were scanned; no upload marker matched."
     },
     "native_symbols": {
       "line": "{text} ({symbol})",
@@ -698,6 +705,7 @@
       "android_dex_scan_summary": "The DEX string scan only covered {dexCount} file(s), {bytes} bytes in total, and only extracted printable ASCII strings: non-ASCII literals, native libraries (lib/.so), resource files and code inside a hardened shell are all outside the coverage.",
       "android_dex_structure_anomaly": "{name} has a structural anomaly ({code}): {message}",
       "android_dex_checksum_not_verified": "{name} is over {limitMiB} MiB, so the checksum was not verified — do not read “no checksum anomaly reported” as “the checksum is correct”.",
+      "android_dex_dynamic_loading": "Runtime DEX loading clues (DexClassLoader) were found: code loaded at runtime is not inside the archive, so this analysis does not cover it.",
       "android_dex_structure_untrusted": "{count} DEX file(s) have an untrustworthy structure ({names}): the string clues from these files are not a complete conclusion, and the uncovered bytes may contain clues that were not found.",
       "android_dex_method_not_traversable": "{count} DEX file(s) have an untrustworthy structure, so no method reference analysis was done ({names}): “no code reference found” on these files means “not looked at”, not “none”.",
       "android_dex_method_budget": "The method reference walk hit the budget limit; {names} were only partially analysed.",
@@ -709,6 +717,7 @@
       "android_native_symbols_budget": "Native library scan budget: {name} — this library was not analysed.",
       "android_native_symbols_not_traversable": "{count} native library(ies) have an untrustworthy structure, so their symbol tables were not read ({names}): “no symbols found” on these libraries means “not looked at”, not “none”.",
       "android_native_symbols_skipped": "{count} entries in the native symbol tables could not be read (name out of bounds or the entry crosses outside its section), so the symbols in those entries were not seen.",
+      "android_native_symbols_not_scanned": "{count} native library(ies) were not scanned at all (selection cap: 24 libraries / 96 MiB). The native-symbol conclusion does not cover them.",
       "android_native_symbols_truncated": "Reading the symbol tables of some native libraries hit the budget limit, so only part of the entries were analysed.",
       "android_native_symbols_semantics": "The native symbols come from the ELF .dynsym section: they show which system capabilities the library imports, and do not show that those capabilities were called, let alone with what arguments. The native code was not disassembled.",
       "android_native_symbols_unstripped": "{count} native library(ies) have not stripped their symbol table ({names}): internal function names can be read. Release builds are usually stripped; this is a fact, not a risk verdict.",

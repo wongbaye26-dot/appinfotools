@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.4.14 — 2026-10-18
+
+> 安全分析能力审计（`docs/audit/2026-10-18-security-analysis-capability-audit.md`）
+> 提出的 7 项建议**全部落地**。评分 65 → **74/100**。
+> 核心不是「多查了什么」，而是**让报告里的覆盖率数字说真话**。
+
+### 安全修复
+
+- **原生库覆盖率此前是虚高的。** 抖音 343 MB 的包有 **266 个唯一库名**，
+  只扫了 24 个，覆盖表却写「24/24 已覆盖」—— 因为 `limit` 用的是「传进审计
+  的条目数」，而 `selectLibraries` 挑剩下的 242 个库**没有任何消费者**，
+  在报告里完全不可见。现在 `limit` 用全包唯一库名数，`status` 把「选择阶段
+  被跳过」也算 `partial`，并新增一条带数量的未扫描说明。
+  **修后：`partial 24/266` + 「242 个原生库完全没有被扫描」。**
+- **大包字符串扫描只覆盖约 11%，而覆盖表看不出比例。** `dex.strings` 的
+  `limit` 改为 DEX 总字节。实测：抖音 **11.0%**、`49af6cnn` 90.0%、
+  `138_1018` **5.8%**（一个 145 MB 的单 DEX 只扫了前 8 MiB）。
+- **iOS 主可执行文件有 47% 没扫。** 单文件预算 16 → **64 MiB**。
+  `sun_signed.ipa` 的主二进制 34.3 MiB，原先后 19.2 MiB 完全没看 ——
+  2.4.13 那个「声明了相机但没实现」的误报就是这么来的。
+  **修后 `ios.macho.strings` 从 `partial` 变 `covered`，`IOS-CAMERA` 正常产出。**
+- **iOS 原生符号只扫主可执行文件。** 25 个可执行文件里 24 个的符号表没看。
+  现在嵌套 bundle 一并扫描：`ios.nativeSymbols` 从 `covered 1` 变
+  **`covered 25/25`**（并有了分母）。
+- **权限重复声明产生重复发现项。** 抖音把 `ACCESS_COARSE_LOCATION` 声明了两次，
+  界面出现两张一模一样的卡片。按 `(name, maxSdkVersion, sdk23Only)` 精确去重 ——
+  同名但 `maxSdkVersion` 不同的仍是两条（一条可能已过期、一条仍生效）。
+
+### 新增检测
+
+- **`ANDROID-RULE-G`**：设备标识 / 通讯录 + 上传（P2/suspected）。此前 6 条组合
+  规则里 4 条是图片链，而「通讯录 → 上传」「设备标识 → 上传」这类最常见的外传
+  模式**一条规则都没有**，只有一条 INFO 级权限条目。
+  三条防误报约束都写了测试：只有来源不报、只有上传不报、只有字符串线索时
+  `dataTransform` 留 null。
+- **三个新标记**：`TelephonyManager`（设备标识）、`ContactsContract`（通讯录）、
+  `DexClassLoader`（运行时加载）。最后一个**不产出风险结论**，只进「覆盖不足」——
+  被加载的代码不在归档里，静态分析的结论对那部分不成立。
+- **`ANDROID-RULE-F` 补证据**：否定结论也要说明「查了什么」（N 个 DEX /
+  M 个调用点），否则它与「根本没查」在数据上无法区分。
+
+### 质量
+
+- 测试 **1,303 → 1,335**（+32）。新增 `audit_coverage_honesty_test.dart`（9）、
+  `android_sensitive_source_rule_test.dart`（10）、
+  `audit_permission_and_rulef_test.dart`（6）、
+  `ios_native_symbols_nested_test.dart`（7）。
+- 真实样本回归：抖音 55/55 DEX、端到端 **14.13 s**；
+  `sun_signed.ipa` 静态解析 **239.9 ms**（+7.8%，预算从 16 提到 64 MiB 的代价）。
+- **仍未验证**：界面目视（本机构建不了任何平台产物）、真实 XAPK 样本、
+  联网下载、Windows / Linux。
+
 ## 2.4.13 — 2026-10-18
 
 > 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论

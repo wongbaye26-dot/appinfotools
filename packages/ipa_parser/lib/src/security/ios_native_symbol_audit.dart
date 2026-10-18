@@ -24,12 +24,27 @@ class IosNativeSymbol {
   });
 }
 
+/// 一个参与符号扫描的可执行文件（主可执行文件或嵌套 bundle 里的）。
+///
+/// 单独定义而不是复用 `IosNestedExecutableInput`：那个类型带着「为什么没读到」
+/// 之类的审计语义，符号层只需要「路径 + 字节」。
+typedef IosNativeImage = ({String path, Uint8List bytes});
+
 /// iOS 原生符号审计的结果。
 class IosNativeSymbolResult {
   final List<IosNativeSymbol> symbols;
 
   /// 读到了符号表的镜像数。
   final int scannedImages;
+
+  /// 尝试解析的镜像数（主可执行文件 + 参与扫描的嵌套可执行文件里的 slice 数）。
+  ///
+  /// 与 [scannedImages] 一起构成覆盖率的分子/分母 —— 只报「读到了几个」而不报
+  /// 「一共有几个」，读者没法判断原生符号层查得全不全。
+  final int imagesAttempted;
+
+  /// 真正参与扫描的可执行文件路径（主 + 嵌套）。
+  final List<String> scannedPaths;
 
   /// 符号表**没读成**的镜像（结构越界等）。
   ///
@@ -45,6 +60,8 @@ class IosNativeSymbolResult {
   const IosNativeSymbolResult({
     this.symbols = const [],
     this.scannedImages = 0,
+    this.imagesAttempted = 0,
+    this.scannedPaths = const [],
     this.unreadableImages = const [],
     this.hasImageWithoutSymtab = false,
     this.importedCount = 0,
@@ -83,43 +100,58 @@ class IosNativeSymbolAudit {
   static const String rulesVersion = 'ios-native-symbols-2026.10.15';
 
   /// 从可执行文件字节里扫原生符号。
+  ///
+  /// [nested] 是**嵌套可执行文件**（App Extension / 框架）。此前只看主可执行
+  /// 文件 —— 而扩展常常正是处理照片与 OCR 的地方，它的 C/C++ 代码完全不进
+  /// 符号层。实测 `sun_signed.ipa`：25 个可执行文件只看了 1 个。
   static IosNativeSymbolResult scan({
     required Uint8List? executableBytes,
     required String? executablePath,
+    List<IosNativeImage> nested = const [],
   }) {
-    final bytes = executableBytes;
-    if (bytes == null || bytes.isEmpty) {
-      return const IosNativeSymbolResult();
-    }
-
-    final file = MachOParser.parse(bytes);
     final hits = <String, Set<String>>{};
     final unreadable = <String>[];
+    final scannedPaths = <String>[];
     var scannedImages = 0;
+    var imagesAttempted = 0;
     var hasImageWithoutSymtab = false;
     var importedCount = 0;
     var exportedCount = 0;
 
-    for (final image in file.images) {
-      if (image.symtab == null) {
-        hasImageWithoutSymtab = true;
-        continue;
-      }
-      if (!image.symbolsRead) {
-        // 符号表越界：**没查**，不是「没有」。
-        unreadable
-            .add('$image.cpuTypeName @0x${image.offset.toRadixString(16)}');
-        continue;
-      }
-      scannedImages++;
-      importedCount += image.importedSymbols.length;
-      exportedCount += image.exportedSymbols.length;
+    // 主可执行文件与嵌套可执行文件走**同一段**解析逻辑，只是路径前缀不同 ——
+    // 两边各写一份必然漂移。
+    for (final target in [
+      if (executableBytes != null && executableBytes.isNotEmpty)
+        (path: executablePath ?? '<main>', bytes: executableBytes),
+      ...nested,
+    ]) {
+      final file = MachOParser.parse(target.bytes);
+      if (file.images.isEmpty) continue;
+      scannedPaths.add(target.path);
+      for (final image in file.images) {
+        imagesAttempted++;
+        if (image.symtab == null) {
+          hasImageWithoutSymtab = true;
+          continue;
+        }
+        if (!image.symbolsRead) {
+          // 符号表越界：**没查**，不是「没有」。
+          unreadable.add(
+            '${target.path}: $image.cpuTypeName '
+            '@0x${image.offset.toRadixString(16)}',
+          );
+          continue;
+        }
+        scannedImages++;
+        importedCount += image.importedSymbols.length;
+        exportedCount += image.exportedSymbols.length;
 
-      for (final symbol in image.importedSymbols) {
-        // Mach-O 的 C 符号带前导下划线；标记表用的是不带下划线的名字。
-        final marker = nativeSymbolMarkerIndex[symbol.cName];
-        if (marker == null) continue;
-        (hits[marker.symbol] ??= <String>{}).add(symbol.name);
+        for (final symbol in image.importedSymbols) {
+          // Mach-O 的 C 符号带前导下划线；标记表用的是不带下划线的名字。
+          final marker = nativeSymbolMarkerIndex[symbol.cName];
+          if (marker == null) continue;
+          (hits[marker.symbol] ??= <String>{}).add(symbol.name);
+        }
       }
     }
 
@@ -143,6 +175,8 @@ class IosNativeSymbolAudit {
     return IosNativeSymbolResult(
       symbols: symbols,
       scannedImages: scannedImages,
+      imagesAttempted: imagesAttempted,
+      scannedPaths: scannedPaths,
       unreadableImages: unreadable,
       hasImageWithoutSymtab: hasImageWithoutSymtab,
       importedCount: importedCount,

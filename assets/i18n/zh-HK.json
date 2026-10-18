@@ -536,6 +536,10 @@
       "android_rule_e_limitation": "未執行動態分析，背景任務的真實觸發與執行無法觀察。",
       "android_rule_e_manual_review": "在隔離環境執行並觀察網路行為後確認。",
       "android_rule_f": "目前分析範圍內未發現上傳相關程式碼特徵（未命中 multipart 上傳、檔案上傳介面等標記）。這不表示應用不存在上傳行為 —— 只說明本次靜態掃描沒有發現。",
+      "android_rule_g": "同時發現非圖片類的敏感資料來源與上傳能力：{sources} → 上傳。這是一條疑似外傳路徑；靜態分析未能證實這裡讀到的資料真的進入了上傳請求。",
+      "android_rule_g_relationship": "來源 API 與上傳 API 都出現在封裝裡，但未證實兩者在同一條呼叫路徑上 —— 「資料真的流進了那個請求」這個結論並未成立。",
+      "android_rule_g_limitation": "同現不是資料流：來源可能是為別的功能讀的（統計、風控），上傳也可能傳的是完全另一份內容。本版本未做反組譯與污點分析。",
+      "android_rule_g_manual_review": "建議人工核查：這份資料是否真的被發送出去，以及使用者是否被明確告知。這是一條待複核項，不是惡意結論。",
       "android_rule_f_limitation_no_dex": "本次未讀取到 DEX 內容，「未發現」的置信度是不完整的。",
       "android_rule_f_limitation_scope": "字串掃描不覆蓋原生庫、資源與加固外殼內程式碼。",
       "android_rule_f_runtime_traffic": "如需排除上傳行為，請結合動態流量觀察（本版本不提供）。",
@@ -587,7 +591,9 @@
       "photo_library": "完整相片庫（PhotoKit）",
       "photo_picker": "系統相片選擇器",
       "camera": "相機",
-      "clipboard": "剪貼板"
+      "clipboard": "剪貼板",
+      "device_id": "裝置識別碼",
+      "contacts": "通訊錄"
     },
     "list_join": "、",
     "evidence_texts": {
@@ -595,7 +601,8 @@
       "code_call_site": "{marker}（呼叫點）: {samples}",
       "native_symbol_imported": "{symbol}（匯入）: {description}",
       "native_symbol_imported_raw": "{symbol}（匯入）: {description} ｜ 符號：{rawNames}",
-      "dex_strings_location": "{count} 個 DEX 的字串"
+      "dex_strings_location": "{count} 個 DEX 的字串",
+      "android_rule_f_scope": "這條否定結論的範圍：掃描了 {dex} 個 DEX、{callSites} 個呼叫點，未命中任何上傳標記。"
     },
     "native_symbols": {
       "line": "{text}（{symbol}）",
@@ -698,6 +705,7 @@
       "android_dex_scan_summary": "DEX 字串掃描只覆蓋 {dexCount} 個檔案、共 {bytes} 位元組，且僅擷取可列印 ASCII 字串：非 ASCII 字面量、原生庫（lib/.so）、資源檔案與加固外殼內的程式碼均不在覆蓋範圍內。",
       "android_dex_structure_anomaly": "{name} 結構異常（{code}）：{message}",
       "android_dex_checksum_not_verified": "{name} 超過 {limitMiB} MiB，本次未驗證校驗和 —— 不要把「沒報校驗和異常」讀成「校驗和正確」。",
+      "android_dex_dynamic_loading": "發現執行時 DEX 載入線索（DexClassLoader）：被載入的程式碼不在封裝裡，本次分析不覆蓋這部分程式碼。",
       "android_dex_structure_untrusted": "{count} 個 DEX 的結構不可信（{names}）：這些檔案上的字串線索不構成完整結論，未覆蓋的位元組中可能存在未被發現的線索。",
       "android_dex_method_not_traversable": "{count} 個 DEX 結構不可信，未做方法引用分析（{names}）：這些檔案上的「沒發現程式碼引用」是「沒查到」，不是「沒有」。",
       "android_dex_method_budget": "方法引用走訪達到預算上限，{names} 只分析了部分條目。",
@@ -709,6 +717,7 @@
       "android_native_symbols_budget": "原生庫掃描預算：{name} —— 該庫未參與分析。",
       "android_native_symbols_not_traversable": "{count} 個原生庫的結構不可信，未讀取符號表（{names}）：這些庫上的「沒發現符號」是「沒查到」，不是「沒有」。",
       "android_native_symbols_skipped": "原生符號表裡有 {count} 個條目讀不出來（名字越界或條目跨出節外），這些條目裡的符號未被看到。",
+      "android_native_symbols_not_scanned": "有 {count} 個原生庫完全沒有被掃描（選擇上限 24 個庫 / 96 MiB）。原生符號層的結論不覆蓋這些庫。",
       "android_native_symbols_truncated": "部分原生庫的符號表讀取達到預算上限，只分析了部分條目。",
       "android_native_symbols_semantics": "原生符號來自 ELF 的 .dynsym 節：它說明這個庫匯入了哪些系統能力，不說明這些能力被呼叫過、更不說明呼叫的參數。本次未反組譯原生程式碼。",
       "android_native_symbols_unstripped": "{count} 個原生庫沒有剝離符號表（{names}）：能讀到內部函式名。發行版本通常會剝離，這是一條事實，不是風險判定。",

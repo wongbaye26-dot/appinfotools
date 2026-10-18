@@ -260,9 +260,9 @@ void _parseEntryPoint(_ParseRequest request) async {
     // 原生库：**先按声明尺寸挑，再读** —— 读进来才知道大小就已经晚了。
     // `selectLibraries` 会按库名去重（同一个库只取一个 ABI）、跳过超大库、
     // 并受数量与总体积上限约束；被跳过的都会记进覆盖范围说明。
-    final nativeSelection = NativeSymbolScanner.selectLibraries(
-      reader.listFilesWithSize(extension: '.so'),
-    );
+    final nativeCandidates = reader.listFilesWithSize(extension: '.so');
+    final nativeSelection =
+        NativeSymbolScanner.selectLibraries(nativeCandidates);
     final nativeLibraries = <NativeLibraryBytes>[
       for (final name in nativeSelection.selected)
         if (reader.readFile(name) case final bytes?)
@@ -289,6 +289,10 @@ void _parseEntryPoint(_ParseRequest request) async {
           ),
       ],
       nativeEntries: nativeLibraries,
+      // 覆盖率口径要「包里有几个唯一库」，不是「传进来几个」。
+      nativeLibraryTotal:
+          NativeSymbolScanner.uniqueLibraryCount(nativeCandidates),
+      nativeSkipped: nativeSelection.skipped,
     );
 
     request.reply.send(ParseSucceeded(ParsedApkData(

@@ -72,6 +72,7 @@ SecurityAnalysisResult _audit(
   String macho = 'unrelated\n',
   bool withExecutable = true,
   Uint8List? rawBytes,
+  int? scanBudgetBytes,
   List<IosNestedExecutableInput> nested = const [],
 }) =>
     IosPrivacyAudit.audit(
@@ -80,6 +81,7 @@ SecurityAnalysisResult _audit(
           (withExecutable ? const Utf8Encoder().convert(macho) : null),
       executablePath: '$_bundlePath/Example',
       nestedExecutables: nested,
+      scanBudgetBytes: scanBudgetBytes,
     );
 
 List<SecurityFinding> _usageWithoutApi(SecurityAnalysisResult r) =>
