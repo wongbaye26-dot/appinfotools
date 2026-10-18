@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.4.16 — 2026-10-19
+
+### 界面
+
+- **详情页恢复为「每字段一张 `Card` + 顶部 `TabBar`」。**
+
+  2.4.15 把详情页改成了「文档流（卡片压平 + 行间分割线）+ 左侧竖排导航」。
+  按使用反馈，**整体回退**到改动前的版式。
+
+  回退做得尽量可核对 —— 不是「重新写一份像原来的代码」，而是直接取回旧文件：
+
+  ```
+  git checkout a886481^ -- lib/pages/info_page.dart lib/widgets/detail_tab_view.dart
+  ```
+
+  ```
+  git diff --stat v2.4.14 -- lib/widgets/detail_tab_view.dart lib/pages/info_page.dart
+  # 无输出 —— 与 2.4.14 逐字节一致
+  ```
+
+  这是比截图更硬的验证：两个文件就是 2.4.14 出厂那份代码，视觉必然一致。
+
+  同一次提交里**保留不动**的是文件关联修复（Windows 注册表 + macOS 指引）——
+  两件事本来捆在一个 commit 里，所以没有整体 `git revert`，只回退了界面部分。
+
+### 清理
+
+- 删 i18n 键 `detail_tab.no_data`：只被回退掉的代码使用，留着就是死键。
+  四个语言包（zh-CN / zh-TW / zh-HK / en）同步移除后重跑 `dart run slang`。
+- 2.4.15 的 CHANGELOG 段落补了一句指向本节，避免读那一版的人以为界面还是新的。
+
+### 质量
+
+- 测试 1,546 → **1,537**（-9，删掉的是只服务于已回退版式的
+  `test/detail_tab_view_test.dart`）。
+
 ## 2.4.15 — 2026-10-19
 
 ### 修复
@@ -59,24 +95,22 @@
 
 ### 界面
 
-- **详情页 6 个 Tab 曾试过「文档流 + 左侧竖排导航」，随后整体回退。**
+- **详情页 6 个 Tab 改成「文档流 + 左侧竖排导航」。**
+  此前每个字段一张 `Card`（`info_page` 里有 35 处
+  `Card(child: TitleValueLayout(...))`），每个卡片自带 4px 外边距、圆角边框
+  与表面色，屏幕上是一列**互不相连的小盒子** —— 扫读时视线要不断跨越边框，
+  读起来像清单而不像报告。
 
-  这一版短暂引入过「卡片压平 + 行间分割线 + 左侧竖排导航」的版式
-  （commit `a886481`）。**它已被回退**，详情页恢复为原来的
-  「每字段一张 `Card` + 顶部 TabBar」：
+  三处改动：卡片压平（`detailDocumentTheme`，用主题覆盖而不是改 43 处调用点）、
+  行间细分割线（`DetailRowDivider`，标题后不画）、左侧竖排导航
+  （≥ 720px 时 220px 竖排 + 文档流，窄窗口退回顶部 TabBar）。
 
-  ```
-  git diff v2.4.14 -- lib/widgets/detail_tab_view.dart lib/pages/info_page.dart
-  # 无输出 —— 与 v2.4.14 逐字节一致
-  ```
+  `_SectionHeader` 提升为公开的 `DetailSectionHeader`
+  （`lib/widgets/detail_section.dart`）：`DetailTabView` 需要靠类型判断
+  「这一项是标题」才能决定要不要画分隔线。
 
-  回退同时删掉了随之引入的 `lib/widgets/detail_section.dart`、
-  `test/detail_tab_view_test.dart`，以及只为它加的 i18n 键
-  `detail_tab.no_data`（留着就是死键）。
-
-  **保留的事实**：`info_page` 里确实有 35 处
-  `Card(child: TitleValueLayout(...))`，一个字段一张卡片。这是当前
-  设计的**有意选择**，不是疏漏 —— 不再当作缺陷去「优化」。
+  > **这套界面在 2.4.16 已整体回退。** 保留本段是为了让读到 2.4.15 的人
+  > 知道那一版长什么样、为什么改；回退原因见 2.4.16。
 
 ### 质量
 
