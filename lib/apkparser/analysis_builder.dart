@@ -250,6 +250,9 @@ class AnalysisBuilder {
         HardeningSignal.missingPrimaryDex ||
         HardeningSignal.dexHeaderNotStandard ||
         HardeningSignal.executableInAssets ||
+        // 名字是 lib*.so、内容是 DEX：正常构建链不可能产出，
+        // 而且它正是「绕过只扫 classes*.dex 的工具」的手段。
+        HardeningSignal.dexDisguisedAsNativeLibrary ||
         // 正常构建流程不会产出「文件同时被当目录前缀」的结构 ——
         // 与上面几条同属「单条即可说明异常」。
         HardeningSignal.decoyArchiveEntries ||

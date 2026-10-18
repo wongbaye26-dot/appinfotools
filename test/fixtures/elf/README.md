@@ -86,3 +86,77 @@ $ llvm-nm -D --defined-only arm64-v8a-libnative.so
 ELF32 的 `e_shoff` 在 0x20、`e_shentsize/shnum/shstrndx` 在 0x2E/0x30/0x32。
 
 条目尺寸：`Elf32_Sym` 16 / `Elf64_Sym` 24；`Elf32_Shdr` 40 / `Elf64_Shdr` 64。
+
+## 加固属性夹具（`hardening-*.so`）
+
+七个由 **NDK 25.1** 的 clang 真实编译的 `.so`，用来钉住原生库的**二进制加固属性**。
+源码见 `hardening-native.c`。
+
+```sh
+NDK=~/Library/Android/sdk/ndk/25.1.8937393
+BIN=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin
+CC=$BIN/aarch64-linux-android21-clang
+
+$CC -shared -fPIC -O1 -o hardening-default.so        native.c
+$CC -shared -fPIC -O1 -Wl,-z,execstack     -o hardening-execstack.so     native.c
+$CC -shared -fPIC -O1 -Wl,-z,norelro       -o hardening-norelro.so       native.c
+$CC -shared -fPIC -O1 -Wl,-z,relro,-z,lazy -o hardening-partial-relro.so native.c
+$CC -shared -fPIC -O1 -fno-stack-protector -o hardening-no-canary.so     native.c
+$CC -shared -fPIC -O1 -fstack-protector-all -o hardening-canary.so       native.c
+$CC -shared -fPIC -O1 -fstack-protector-all -o hardening-canary-stripped.so native.c
+$BIN/llvm-strip --strip-all hardening-canary-stripped.so
+```
+
+### 期望值（用 `llvm-readelf` / `llvm-nm` 独立核对）
+
+| 夹具 | `GNU_STACK` | `GNU_RELRO` | `BIND_NOW` | `__stack_chk_fail` | `.symtab` |
+|---|---|---|---|---|---|
+| `hardening-default` | `RW` | ✓ | ✓ | ✗ | ✓ |
+| `hardening-execstack` | **`RWE`** | ✓ | ✓ | ✗ | ✓ |
+| `hardening-norelro` | `RW` | **✗** | ✓ | ✗ | ✓ |
+| `hardening-partial-relro` | `RW` | ✓ | **✗** | ✗ | ✓ |
+| `hardening-no-canary` | `RW` | ✓ | ✓ | **✗** | ✓ |
+| `hardening-canary` | `RW` | ✓ | ✓ | **✓** | ✓ |
+| `hardening-canary-stripped` | `RW` | ✓ | ✓ | **✓** | **✗** |
+
+```sh
+$ llvm-readelf -l hardening-execstack.so | grep GNU_STACK
+  GNU_STACK  0x000000 0x0 0x0 0x000000 0x000000 RWE 0x0
+$ llvm-readelf -d hardening-default.so | grep -E "BIND_NOW|\(NOW\)"
+  0x000000000000001e (FLAGS)   BIND_NOW
+  0x000000006ffffffb (FLAGS_1) NOW
+$ llvm-nm -D --undefined-only hardening-canary.so | grep stack_chk
+  U __stack_chk_fail@LIBC
+```
+
+### 三个容易踩的坑（都踩过）
+
+1. **`llvm-readelf -l` 的行末是 `Flg Align`**，所以 `RWE` / `RW` 要按**倒数
+   第二列**取。用 `awk '{print $NF}'` 会拿到对齐值 `0x0` —— 于是「可执行栈」
+   与「NX 栈」看起来一模一样。
+2. **`p_flags` 的位置在 32/64 位下不同**：64 位在 `p_type` 之后（偏移 4），
+   32 位在 `p_offset…p_memsz` 之后（偏移 24）。用错位置读到的是 `p_offset`，
+   一个看起来完全合理的地址值 —— 不报错，只是错。
+3. **`hardening-default` 没有 `__stack_chk_fail`**：同样的源码、同样的默认
+   flags，它就是没触发 canary。所以「没有这个符号」**不能**读成「没开栈保护」。
+
+## 真实样本上的分布（决定「该报哪几条」）
+
+4 个真实包的 **386 个** arm64 `.so`（用 `llvm-readelf` 逐个数）：
+
+| 属性 | 不满足的库数 |
+|---|---|
+| 可执行栈 | **0** |
+| 缺 RELRO | **1**（Flutter 的 `libapp.so`） |
+| 缺 BIND_NOW | **1**（同一个） |
+| 未 strip | **0** |
+
+**结论：这一维在真实包上几乎全绿。** 所以本项目**只**对「可执行栈」产出
+发现项；缺 RELRO 写进覆盖率的说明里（`android.native_hardening.some_without_relro`），
+因为它是合法构建选择，逐库报会命中**所有** Flutter 应用。
+
+### 顺带发现：`lib/` 下藏着 DEX
+
+抖音的 `lib/arm64-v8a/libsm_impl.so`（162,912 字节）头部是 `dex\n035` ——
+**不是 ELF，是一段 DEX 字节码**。文件名完全合规，只看名字的检查永远发现不了。
+已加信号 `HardeningSignal.dexDisguisedAsNativeLibrary`（`strong` 级）。

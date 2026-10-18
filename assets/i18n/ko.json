@@ -463,7 +463,10 @@
       "android_container_resource_table_too_small": "resources.arsc가 {size}바이트뿐이라 정상적인 리소스 테이블보다 훨씬 작습니다.",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 확장하지 못했습니다(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음). 따라서 평문 트래픽 정책은 판정하지 않았습니다",
       "ios_entitlements_no_profile": "embedded.mobileprovision 이 없습니다(App Store 배포는 권한을 서명 안에 둡니다). 따라서 권한 목록을 정적으로 읽을 수 없습니다",
-      "ios_entitlements_empty": "프로비저닝 프로파일은 찾았지만 선언된 권한이 없습니다"
+      "ios_entitlements_empty": "프로비저닝 프로파일은 찾았지만 선언된 권한이 없습니다",
+      "android_native_hardening_not_provided": "네이티브 라이브러리 내용이 제공되지 않아 바이너리 강화 속성을 읽지 않았습니다",
+      "android_native_hardening_some_without_relro": "{total}개 중 {count}개 네이티브 라이브러리에 RELRO 가 없습니다. 정당한 빌드 선택(예: Flutter 의 libapp.so)이며, 그렇지 않으면 모든 Flutter 앱이 해당되므로 지적으로 보고하지 않습니다",
+      "android_container_dex_in_native_library": "{name}: 내용이 DEX 바이트코드이며 네이티브 라이브러리가 아닙니다"
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -630,7 +633,11 @@
       "ios_rule_g": "민감 데이터 출처와 네트워크 업로드 기능이 동시에 나타납니다: 한쪽은 {sources}, 다른 쪽은 네트워크 요청(NSURLSession / 업로드)입니다. 두 단계 모두 근거가 있지만 데이터가 실제로 요청 본문에 들어가는지는 입증되지 않았습니다.",
       "ios_rule_g_common": "위치 접근과 네트워크 업로드 기능이 동시에 나타납니다: {sources} 와 네트워크 요청(NSURLSession / 업로드). 둘 다 일반 앱에서 매우 흔하므로 낮은 심각도로 보고합니다.",
       "ios_rule_g_limitation": "이것은 동시 출현 관찰이며 데이터 흐름이 아닙니다. 읽은 내용이 전송된다는 것은 입증되지 않았습니다. 구체적인 요청 본문은 런타임 검사가 필요합니다.",
-      "ios_rule_g_manual_review": "이러한 민감 읽기가 정말 필요한지, 반환된 데이터가 업로드 내용에 포함되는지 확인하세요."
+      "ios_rule_g_manual_review": "이러한 민감 읽기가 정말 필요한지, 반환된 데이터가 업로드 내용에 포함되는지 확인하세요.",
+      "android_native_exec_stack": "{count}개 네이티브 라이브러리가 스택을 실행 가능으로 표시합니다(PT_GNU_STACK 에 PF_X): {names}. 스택의 데이터가 코드로 실행될 수 있습니다.",
+      "android_native_exec_stack_many": "{count}개 네이티브 라이브러리가 스택을 실행 가능으로 표시합니다(PT_GNU_STACK 에 PF_X, {names} 외 {more}개). 스택의 데이터가 코드로 실행될 수 있습니다.",
+      "android_native_exec_stack_limitation": "실제로 읽은 네이티브 라이브러리만 판정합니다. 예산 때문에 건너뛴 라이브러리는 대상이 아닙니다. 실행 가능 스택 자체가 악의적이라는 뜻은 아니며, NX 방어벽이 사라졌다는 뜻입니다.",
+      "android_native_exec_stack_review": "-z execstack 없이 다시 빌드하세요(NDK 기본값은 실행 불가 스택입니다). 서드파티라면 수정된 빌드를 요청하세요."
     }
   },
   "report": {
@@ -676,7 +683,8 @@
       "ios_privacyManifest": "개인정보 매니페스트",
       "ios_signature": "서명",
       "ios_usageDescriptions": "용도 설명",
-      "ios_entitlements": "권한(Entitlements)"
+      "ios_entitlements": "권한(Entitlements)",
+      "android_nativeHardening": "네이티브 라이브러리 강화"
     },
     "gap_count": "{count}개 항목에 누락이 있습니다",
     "hint": "'누락'은 결론이 모든 것을 포괄하지 못한다는 뜻입니다. 여기서 '찾을 수 없음'은 '없음'이 아닙니다.",

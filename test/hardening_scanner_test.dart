@@ -22,6 +22,53 @@ HardeningObservation _find(List<HardeningObservation> obs, HardeningSignal s) =>
     obs.firstWhere((o) => o.signal == s);
 
 void main() {
+  group('HardeningScanner — 内容是 DEX 的「原生库」', () {
+    // 这是一种具体的隐藏手法：只扫 `classes*.dex` 的工具完全看不到这段代码，
+    // 运行时用 `DexClassLoader` 从 `lib/` 目录直接加载它。
+    //
+    // **实测来源**：`抖音-v40.7.0` 的 `lib/arm64-v8a/libsm_impl.so`
+    // （162,912 字节，头部 `dex\n035`）。文件名完全合规，只看名字永远发现不了。
+
+    test('lib/<abi>/ 下的 .so 内容是 DEX → 命中', () {
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('lib/arm64-v8a/libsm_impl.so', _dexMagic));
+
+      final obs = HardeningScanner.scan(archive);
+
+      expect(_has(obs, HardeningSignal.dexDisguisedAsNativeLibrary), isTrue);
+      expect(
+        _find(obs, HardeningSignal.dexDisguisedAsNativeLibrary).evidence,
+        contains('lib/arm64-v8a/libsm_impl.so'),
+      );
+    });
+
+    test('正常的 ELF 库不命中', () {
+      // ELF 魔数 \x7fELF
+      final elfMagic = [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0];
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('lib/arm64-v8a/libnative.so', elfMagic));
+
+      final obs = HardeningScanner.scan(archive);
+
+      expect(_has(obs, HardeningSignal.dexDisguisedAsNativeLibrary), isFalse);
+    });
+
+    test('与「DEX 头不标准」是两件事，不能互相顶替', () {
+      // 文件名像 DEX、内容不是 DEX → dexHeaderNotStandard
+      final archive = Archive()
+        ..addFile(_file('classes.dex', _dexMagic))
+        ..addFile(_file('classes2.dex', List.filled(16, 0x9d)));
+
+      final obs = HardeningScanner.scan(archive);
+
+      expect(_has(obs, HardeningSignal.dexHeaderNotStandard), isTrue);
+      expect(_has(obs, HardeningSignal.dexDisguisedAsNativeLibrary), isFalse,
+          reason: '这条是「文件名像 DEX 但内容不是」，不该命中反向的那条');
+    });
+  });
+
   group('HardeningScanner — DEX 结构', () {
     test('标准单 DEX 结构不报 DEX 相关线索', () {
       final archive = Archive()
@@ -190,7 +237,12 @@ void main() {
       // 已确认：`manifestLayoutAnomaly` 描述的是「AXML 的二进制布局不符合
       // 标准」（attributeStart/attributeSize 被放大、chunk 类型越界），
       // 是一个可复现的结构事实，与具体是哪家加固器无关。
-      expect(HardeningSignal.values, hasLength(8));
+      //
+      // 已确认：`dexDisguisedAsNativeLibrary` 描述的是「lib/<abi>/xxx.so 的
+      // 内容是 DEX 字节码」—— 一个可复现的内容事实（读前 8 字节比对
+      // `dex\n0xx` 魔数），同样与厂商无关。实测来源：抖音的
+      // `lib/arm64-v8a/libsm_impl.so`。
+      expect(HardeningSignal.values, hasLength(9));
       final names = HardeningSignal.values.map((s) => s.name).join(' ');
       for (final vendor in [
         'jiagu',

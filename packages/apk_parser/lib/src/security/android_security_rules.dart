@@ -1,6 +1,7 @@
 import 'package:analysis_model/analysis_model.dart';
 
 import '../apk_signing_block.dart';
+import '../native/elf_hardening.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
@@ -38,6 +39,7 @@ class AndroidRuleFacts {
     required this.webViewClues,
     required this.webViewCodeRefs,
     required this.unusedPermissionNames,
+    required this.nativeHardening,
   });
 
   final ApkMeta meta;
@@ -74,6 +76,34 @@ class AndroidRuleFacts {
 
   /// 是否存在「非图片」的敏感数据来源（设备标识 / 通讯录）。
   final bool hasSensitiveSource;
+
+  /// 本次**真正解析了加固属性**的原生库（只含 `parsed == true` 的）。
+  final List<ElfHardening> nativeHardening;
+
+  /// 栈可执行的库（真正的缺陷：栈上数据能被当代码跑）。
+  List<ElfHardening> get executableStackLibraries => [
+        for (final h in nativeHardening)
+          if (h.stackExecutable == true) h,
+      ];
+
+  /// 缺少 `PT_GNU_STACK` 的库。
+  ///
+  /// 旧工具链的产物；内核在部分架构上会按「可执行」处理。属于**未知**，
+  /// 与「可执行栈」分开报 —— 前者是缺陷，后者是我们看不出来。
+  List<ElfHardening> get unknownStackLibraries => [
+        for (final h in nativeHardening)
+          if (h.stackExecutable == null) h,
+      ];
+
+  /// 缺 RELRO 的库。
+  ///
+  /// **不单独报**：实测 121 个真实 .so 里只有 1 个缺（Flutter 的
+  /// `libapp.so`，Dart AOT 快照，合法的构建选择）。逐库报等于给所有
+  /// Flutter 应用刷一条噪声。
+  List<ElfHardening> get noRelroLibraries => [
+        for (final h in nativeHardening)
+          if (h.relro == false) h,
+      ];
 
   /// WebView / JS 桥的字符串线索（`addJavascriptInterface` 等）。
   final List<CodeClue> webViewClues;
@@ -228,6 +258,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     summary: '声明了 android:sharedUserId —— 与同签名的其它应用共享 UID 与沙箱。',
     matches: _matchesSharedUserId,
     build: _buildSharedUserId,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-NATIVE-EXEC-STACK',
+    summary: '原生库把栈标记为可执行（PT_GNU_STACK 含 PF_X）。',
+    matches: _matchesExecStack,
+    build: _buildExecStack,
   ),
   AndroidSecurityRule(
     id: 'ANDROID-V1-ONLY-SIGNING',
@@ -525,6 +561,9 @@ SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
 bool _matchesAllowBackup(AndroidRuleFacts f) =>
     f.meta.applicationAllowBackup == true && !f.backupDisabledByRules;
 
+bool _matchesExecStack(AndroidRuleFacts f) =>
+    f.executableStackLibraries.isNotEmpty;
+
 /// 只有 v1 签名。
 ///
 /// **只在真的读到了签名块结构时才判**：`signingSchemes == null` 表示
@@ -593,6 +632,68 @@ SecurityFinding _buildAllowBackup(AndroidRuleFacts f) => SecurityFinding(
           'android:allowBackup="false" or provide explicit backup rules.',
       recommendationCode: 'android.allow_backup.review',
     );
+
+/// 原生库把栈标记为可执行。
+///
+/// `PT_GNU_STACK` 的 `p_flags` 含 `PF_X` —— 栈上的数据可以被当成代码执行。
+/// 这是**没有正当理由**的配置：没有哪种正常构建需要它，只有手写汇编的
+/// 老代码或刻意规避 NX 的壳会这么做。
+///
+/// 等级 P2 + `confirmed`：这是文件里的结构事实，没有推断成分。
+/// 但它只说明「这个库允许执行栈」，不说明「已经被利用」。
+///
+/// ## 为什么这一维只有这一条规则
+///
+/// 实测 4 个真实包的 121 个 arm64 `.so`：可执行栈 **0**、缺 RELRO **1**
+/// （Flutter 的 `libapp.so`，Dart AOT 快照的合法选择）、未 strip **0**。
+/// NDK 默认就带 `-z relro -z now` 与 NX 栈，所以逐库报「缺 RELRO」是噪声 ——
+/// 它会稳定命中所有 Flutter 应用。只有「可执行栈」值得单独一条。
+SecurityFinding _buildExecStack(AndroidRuleFacts f) {
+  final libs = f.executableStackLibraries;
+  final names = [for (final h in libs) h.name]..sort();
+  const shown = 5;
+  final listed = names.take(shown).join(', ');
+  return SecurityFinding(
+    ruleId: 'ANDROID-NATIVE-EXEC-STACK',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.configuration,
+    severity: SecuritySeverity.p2,
+    confidence: SecurityConfidence.confirmed,
+    finding: names.length > shown
+        ? '${names.length} native libraries mark the stack as executable '
+            '(PT_GNU_STACK with PF_X), including $listed and '
+            '${names.length - shown} more: data on the stack can be executed '
+            'as code.'
+        : '${names.length} native libraries mark the stack as executable '
+            '(PT_GNU_STACK with PF_X): $listed. Data on the stack can be '
+            'executed as code.',
+    messageCode: names.length > shown
+        ? 'android.native_exec_stack_many'
+        : 'android.native_exec_stack',
+    messageArgs: {
+      'count': names.length,
+      'names': names.take(shown).toList(),
+      if (names.length > shown) 'more': names.length - shown,
+    },
+    evidence: [
+      for (final h in libs.take(8))
+        SecurityEvidence(
+          source: SecurityEvidenceSource.nativeSymbol,
+          location: h.name,
+          detail: 'PT_GNU_STACK has PF_X (executable stack)',
+        ),
+    ],
+    limitation: 'Only the native libraries that were actually read are '
+        'judged; libraries skipped for budget are not covered. An executable '
+        'stack does not by itself mean the library is malicious — it only '
+        'removes the NX barrier.',
+    limitationCode: 'android.native_exec_stack.limitation',
+    recommendation: 'Rebuild the library without -z execstack '
+        '(the NDK default is a non-executable stack) and ask the vendor for '
+        'a fixed build.',
+    recommendationCode: 'android.native_exec_stack.review',
+  );
+}
 
 /// 只有 v1（JAR）签名。
 ///

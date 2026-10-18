@@ -463,7 +463,10 @@
       "android_container_resource_table_too_small": "resources.arsc は {size} バイトしかなく、妥当なリソーステーブルよりはるかに小さいです。",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できませんでした（リソース、ファイルパス、XML 自体のいずれかが読めません）。そのため平文通信ポリシーは判定していません",
       "ios_entitlements_no_profile": "embedded.mobileprovision がありません（App Store 配布では権利が署名の中にあります）。そのため権利の一覧を静的に読み取れません",
-      "ios_entitlements_empty": "プロビジョニングプロファイルは見つかりましたが、権利が宣言されていません"
+      "ios_entitlements_empty": "プロビジョニングプロファイルは見つかりましたが、権利が宣言されていません",
+      "android_native_hardening_not_provided": "ネイティブライブラリの内容が提供されなかったため、バイナリの堅牢化属性は読み取っていません",
+      "android_native_hardening_some_without_relro": "{total} 個中 {count} 個のネイティブライブラリに RELRO がありません。正当なビルド選択（例：Flutter の libapp.so）であり、そうでなければ全 Flutter アプリが該当するため、指摘としては報告していません",
+      "android_container_dex_in_native_library": "{name}：内容は DEX バイトコードであり、ネイティブライブラリではありません"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -630,7 +633,11 @@
       "ios_rule_g": "機密データの取得元とネットワーク送信能力が同時に現れています：一方が {sources}、他方がネットワーク要求（NSURLSession / アップロード）です。両段階に証拠がありますが、データが実際に要求本文へ入ることは示されていません。",
       "ios_rule_g_common": "位置情報へのアクセスとネットワーク送信能力が同時に現れています：{sources} とネットワーク要求（NSURLSession / アップロード）。どちらも通常のアプリで非常に一般的なため、低い重大度で報告します。",
       "ios_rule_g_limitation": "これは同時出現の観察であり、データフローではありません。読み取った内容が送信されることは示されていません。具体的な要求本文は実行時の検査が必要です。",
-      "ios_rule_g_manual_review": "これらの機密読み取りが本当に必要か、また返されたデータがアップロード内容に含まれるかを確認してください。"
+      "ios_rule_g_manual_review": "これらの機密読み取りが本当に必要か、また返されたデータがアップロード内容に含まれるかを確認してください。",
+      "android_native_exec_stack": "{count} 個のネイティブライブラリがスタックを実行可能にしています（PT_GNU_STACK に PF_X）：{names}。スタック上のデータがコードとして実行され得ます。",
+      "android_native_exec_stack_many": "{count} 個のネイティブライブラリがスタックを実行可能にしています（PT_GNU_STACK に PF_X、{names} など他 {more} 個）。スタック上のデータがコードとして実行され得ます。",
+      "android_native_exec_stack_limitation": "実際に読み取れたネイティブライブラリだけを判定します。予算で省略されたライブラリは対象外です。実行可能スタック自体は悪意を示すものではなく、NX の防壁が外れているというだけです。",
+      "android_native_exec_stack_review": "-z execstack を外して再ビルドしてください（NDK の既定は非実行スタックです）。サードパーティ製なら修正版の提供を依頼してください。"
     }
   },
   "report": {
@@ -676,7 +683,8 @@
       "ios_privacyManifest": "プライバシーマニフェスト",
       "ios_signature": "署名",
       "ios_usageDescriptions": "用途の説明",
-      "ios_entitlements": "権利（Entitlements）"
+      "ios_entitlements": "権利（Entitlements）",
+      "android_nativeHardening": "ネイティブライブラリの堅牢化"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",

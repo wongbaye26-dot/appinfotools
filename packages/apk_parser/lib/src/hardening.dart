@@ -31,6 +31,22 @@ enum HardeningSignal {
   /// 4.2 明确禁止据此类单一特征判定厂商。代价是漏报，换来的是不误导。
   unusualNativeLibraryName,
 
+  /// `lib/<abi>/` 下的 `.so` **内容其实是 DEX 字节码**。
+  ///
+  /// 与 [dexHeaderNotStandard] 是两件事：
+  ///
+  /// | 信号 | 含义 |
+  /// |---|---|
+  /// | `dexHeaderNotStandard` | **文件名像 DEX**，但头部不是 `dex\n0xx`（被加密/改写） |
+  /// | `dexDisguisedAsNativeLibrary` | **文件名像原生库**，但内容是真的 DEX |
+  ///
+  /// 后者是一种具体的隐藏手法：只扫 `classes*.dex` 的工具会完全看不到这段代码，
+  /// 而运行时用 `DexClassLoader` 从 `lib/` 目录直接加载它。
+  ///
+  /// 实测来源：`抖音-v40.7.0` 的 `lib/arm64-v8a/libsm_impl.so`（162,912 字节，
+  /// 头部 `dex\n035`）。**只看文件名的检查永远发现不了它。**
+  dexDisguisedAsNativeLibrary,
+
   /// `assets/` 下存在代码类文件（`.dex` / `.jar` / `.so`）。
   ///
   /// `assets/` 是给应用读取的原始资源目录，正常构建不会往里放可执行代码。
@@ -207,6 +223,29 @@ class HardeningScanner {
           note: AnalysisNote(
             'android.container.unusual_native_library',
             entry.name,
+            {'name': entry.name},
+          ),
+        ));
+      }
+    }
+
+    // ---- 原生库内容其实是 DEX ----
+    //
+    // 只读前 8 字节（`dex\n0xx`），走同一套有界读取。
+    // 这是**内容**判据，与上面的命名判据互补：命名的检查抓的是
+    // `lib/arm64-v8a/shell.so` 这种不合约定，这里抓的是
+    // `lib/arm64-v8a/libsm_impl.so` 这种**名字完全合规、内容是代码**的。
+    for (final entry in fileEntries) {
+      if (_nativeLibPattern.firstMatch(entry.name) == null) continue;
+      final header = _readHeader(entry, 8, readLedger);
+      if (header == null) continue;
+      if (_hasDexMagic(header)) {
+        observations.add(HardeningObservation(
+          HardeningSignal.dexDisguisedAsNativeLibrary,
+          '${entry.name}: content is DEX (${_hex(header)})',
+          note: AnalysisNote(
+            'android.container.dex_in_native_library',
+            '${entry.name}: content is DEX, not a shared library',
             {'name': entry.name},
           ),
         ));

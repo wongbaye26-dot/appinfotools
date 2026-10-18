@@ -2,6 +2,7 @@ import 'package:analysis_model/analysis_model.dart';
 
 import '../dex/dex_structure.dart';
 import '../models.dart';
+import '../native/elf_hardening.dart';
 import 'android_security_rules.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
@@ -610,6 +611,16 @@ class AndroidSecurityAudit {
     // 这一块：导入的符号是精确的标识符，比字符串命中确定得多。
     final nativeScan = NativeSymbolScanner.scan(nativeEntries);
 
+    // ---- 原生库的二进制加固属性 ----
+    //
+    // 只看**传进来的那些**库（与符号扫描同一批预算），并如实报出条数。
+    // 不逐库产出发现项 —— 一个应用可能有上百个 .so，逐库报会把面板刷满，
+    // 而绝大多数库的加固都是一样的（NDK 默认就对）。
+    final hardening = <ElfHardening>[
+      for (final entry in nativeEntries)
+        readElfHardening(entry.name, entry.bytes),
+    ];
+
     // 资源表是否读到：`locales` / `densities` 任一非空即说明 arsc 解析成功
     // （两者都由 arsc 提供）。两个都空既可能是「资源表确实没有多语言/密度
     // 变体」，也可能是「资源表没读到」—— 因此只用它判「读到过没有」，
@@ -1043,6 +1054,10 @@ class AndroidSecurityAudit {
       webViewClues: webViewClues,
       webViewCodeRefs: webViewCodeRefs,
       unusedPermissionNames: unusedPermissionNames,
+      nativeHardening: [
+        for (final h in hardening)
+          if (h.parsed) h,
+      ],
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));
@@ -1254,6 +1269,49 @@ class AndroidSecurityAudit {
                 const <String, Object>{},
               )
             : null,
+      ),
+      // 原生库二进制加固：**数字比逐库列举有用**。
+      //
+      // 「121 个库里 120 个是 Full RELRO」一眼就知道整体状况；
+      // 而列 120 条「已加固」只会让人滚很久才看到那 1 个例外。
+      //
+      // `limit` 用**真正读过加固属性的库数**（不是传进来的条目数）——
+      // 与 `android.nativeSymbols` 同一个口径问题：用后者会把
+      // 「266 个库只看了 24 个」显示成「24/24 已覆盖」。
+      CoverageEntry.noted(
+        id: 'android.nativeHardening',
+        status: facts.nativeHardening.isEmpty
+            ? CoverageStatus.notApplicable
+            : (facts.nativeHardening.length == nativeLibraryTotal ||
+                    nativeLibraryTotal == null
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        covered: facts.nativeHardening
+            .where((h) => h.fullRelro && h.stackExecutable == false)
+            .length,
+        limit: facts.nativeHardening.length,
+        note: facts.nativeHardening.isEmpty
+            ? (
+                'android.native_hardening.not_provided',
+                'No native library content was provided, so the binary '
+                    'hardening attributes were not read',
+                const <String, Object>{},
+              )
+            : (facts.noRelroLibraries.isNotEmpty
+                ? (
+                    'android.native_hardening.some_without_relro',
+                    '${facts.noRelroLibraries.length} of '
+                        '${facts.nativeHardening.length} native library(ies) '
+                        'lack RELRO; this is not reported as a finding '
+                        'because it is a legitimate build choice (for '
+                        'example Flutter\'s libapp.so) and would otherwise '
+                        'flag every Flutter app',
+                    {
+                      'count': facts.noRelroLibraries.length,
+                      'total': facts.nativeHardening.length,
+                    },
+                  )
+                : null),
       ),
       CoverageEntry.noted(
         id: 'android.arsc',

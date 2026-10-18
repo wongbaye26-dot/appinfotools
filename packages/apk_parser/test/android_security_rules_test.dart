@@ -7,6 +7,7 @@
 // 现在每条规则只从 `AndroidRuleFacts` 取输入，因此可以**逐条驱动**：
 // 给一份只命中某一条的输入，断言结果里恰好出现那一条。
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
@@ -52,6 +53,23 @@ SecurityAnalysisResult _audit({
           : [DexBytes('classes.dex', _blob(strings))],
     );
 
+/// 真实带可执行栈的 `.so`：NDK 用 `-Wl,-z,execstack` 编出来的。
+///
+/// 路径相对**包目录**（`dart test` 的 cwd 是 `packages/apk_parser`），
+/// 指回仓库根的共享夹具 —— 不在包里再放一份，免得两份漂移。
+final _execStackBytes =
+    File('../../test/fixtures/elf/hardening-execstack.so').readAsBytesSync();
+
+/// 用一份真实的原生库跑审计（加固规则需要真实字节才立得住）。
+SecurityAnalysisResult _auditWithNativeBytes(List<int> bytes) =>
+    AndroidSecurityAudit.audit(
+      meta: _meta(targetSdk: 34),
+      dexEntries: const [],
+      nativeEntries: [
+        NativeLibraryBytes('lib/arm64-v8a/libx.so', Uint8List.fromList(bytes))
+      ],
+    );
+
 List<String> _ids(SecurityAnalysisResult r) =>
     r.findings.map((f) => f.ruleId).toList();
 
@@ -84,6 +102,7 @@ void main() {
           'ANDROID-EXPORTED-COMPONENT',
           'ANDROID-ALLOW-BACKUP',
           'ANDROID-SHARED-USER-ID',
+          'ANDROID-NATIVE-EXEC-STACK',
           'ANDROID-V1-ONLY-SIGNING',
           'ANDROID-WEBVIEW-BRIDGE',
           'ANDROID-PERMISSION-WITHOUT-API',
@@ -175,6 +194,9 @@ void main() {
       'ANDROID-SHARED-USER-ID': () => _audit(
             meta: _meta(targetSdk: 34)..sharedUserId = 'com.example.shared',
           ),
+      // 栈可执行的库：手搓一个 ElfHardening 记录即可 —— 这一条不依赖
+      // 真文件，解析由 elf_hardening_test.dart 单独钉住。
+      'ANDROID-NATIVE-EXEC-STACK': () => _auditWithNativeBytes(_execStackBytes),
       // 只有 v1 签名：签名块解析成功但里面没有 v2/v3。
       'ANDROID-V1-ONLY-SIGNING': () => _audit(
             meta: _meta(targetSdk: 34)

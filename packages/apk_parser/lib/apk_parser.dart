@@ -19,6 +19,9 @@ export 'src/dex/dex_method_bodies.dart';
 // 原生库（`lib/**.so`）的 ELF 解析。与 DEX 一样是**静态**分析：
 // 只读结构、节表与符号表，不反汇编、不执行。
 export 'src/native/elf.dart';
+// 原生库的二进制加固属性（NX 栈 / RELRO / BIND_NOW / 栈保护 / strip）。
+// 与符号表解析分开：那是「导入了哪些敏感函数」，这是「库本身编得硬不硬」。
+export 'src/native/elf_hardening.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';

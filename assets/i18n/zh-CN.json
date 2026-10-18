@@ -628,7 +628,11 @@
       "ios_rule_g": "敏感数据来源与网络上传能力同时出现：一侧是 {sources}，另一侧是网络请求（NSURLSession / 上传）。两段都有证据，但没有证明数据真的进了请求体。",
       "ios_rule_g_common": "定位访问与网络上传能力同时出现：{sources} 加上网络请求（NSURLSession / 上传）。这两件事在普通应用里极其常见，因此只按低等级报告。",
       "ios_rule_g_limitation": "这是「同现」观察，不是数据流：没有证明读到的内容被发了出去。具体请求体需要运行时检查。",
-      "ios_rule_g_manual_review": "确认应用是否真的需要这些敏感读取，以及它们返回的数据是否进入了上传内容。"
+      "ios_rule_g_manual_review": "确认应用是否真的需要这些敏感读取，以及它们返回的数据是否进入了上传内容。",
+      "android_native_exec_stack": "有 {count} 个原生库把栈标记为可执行（PT_GNU_STACK 含 PF_X）：{names}。栈上的数据可以被当成代码执行。",
+      "android_native_exec_stack_many": "有 {count} 个原生库把栈标记为可执行（PT_GNU_STACK 含 PF_X），其中包括 {names}，另有 {more} 个未列出。栈上的数据可以被当成代码执行。",
+      "android_native_exec_stack_limitation": "只判定真正读到的原生库；因预算被跳过的库不在覆盖范围内。可执行栈本身不代表这个库是恶意的 —— 它只是去掉了 NX 这道屏障。",
+      "android_native_exec_stack_review": "去掉 -z execstack 重新编译这个库（NDK 默认就是不可执行栈）；如果库来自第三方，向供应商索取修复后的构建。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -787,7 +791,10 @@
       "android_container_resource_table_too_small": "resources.arsc 只有 {size} 字节，远低于任何合理的资源表。",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略",
       "ios_entitlements_no_profile": "没有 embedded.mobileprovision（App Store 分发把授权项放在签名里），因此无法静态读取授权项列表",
-      "ios_entitlements_empty": "找到了描述文件，但它没有声明任何授权项"
+      "ios_entitlements_empty": "找到了描述文件，但它没有声明任何授权项",
+      "android_native_hardening_not_provided": "没有提供原生库内容，因此未读取二进制加固属性",
+      "android_native_hardening_some_without_relro": "{total} 个原生库中有 {count} 个缺少 RELRO；这没有作为发现项报出，因为它是合法的构建选择（例如 Flutter 的 libapp.so），否则所有 Flutter 应用都会被报一条",
+      "android_container_dex_in_native_library": "{name}：内容是 DEX 字节码，不是原生库"
     },
     "findings": "发现项"
   },
@@ -832,7 +839,8 @@
       "ios_macho_strings": "Mach-O 字符串",
       "ios_nativeSymbols": "原生库符号",
       "ios_signature": "签名",
-      "ios_entitlements": "授权项"
+      "ios_entitlements": "授权项",
+      "android_nativeHardening": "原生库加固"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",

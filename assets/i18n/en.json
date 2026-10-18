@@ -628,7 +628,11 @@
       "ios_rule_g": "Sensitive data sources and network upload capability appear together: {sources} on one side, network requests (NSURLSession / upload) on the other. Both stages have evidence, but it is not shown that the data actually reaches the request.",
       "ios_rule_g_common": "Location access and network upload capability appear together: {sources} plus network requests (NSURLSession / upload). Both are extremely common in ordinary apps, so this is reported at low severity.",
       "ios_rule_g_limitation": "This is a co-occurrence observation, not a data flow: it is not shown that what was read is sent. The specific request body would need runtime inspection.",
-      "ios_rule_g_manual_review": "Check whether the app really needs these sensitive reads, and whether the data they return is part of an upload payload."
+      "ios_rule_g_manual_review": "Check whether the app really needs these sensitive reads, and whether the data they return is part of an upload payload.",
+      "android_native_exec_stack": "{count} native libraries mark the stack as executable (PT_GNU_STACK with PF_X): {names}. Data on the stack can be executed as code.",
+      "android_native_exec_stack_many": "{count} native libraries mark the stack as executable (PT_GNU_STACK with PF_X), including {names} and {more} more: data on the stack can be executed as code.",
+      "android_native_exec_stack_limitation": "Only the native libraries that were actually read are judged; libraries skipped for budget are not covered. An executable stack does not by itself mean the library is malicious — it only removes the NX barrier.",
+      "android_native_exec_stack_review": "Rebuild the library without -z execstack (the NDK default is a non-executable stack) and ask the vendor for a fixed build."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -787,7 +791,10 @@
       "android_container_resource_table_too_small": "resources.arsc is only {size} bytes, far below any plausible resource table.",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig could not be expanded (the resource, its file path, or the XML itself was unreadable), so the cleartext policy is not judged",
       "ios_entitlements_no_profile": "No embedded.mobileprovision (App Store distribution keeps the entitlements inside the signature), so the entitlement list cannot be read statically",
-      "ios_entitlements_empty": "The provisioning profile was found but declares no entitlements"
+      "ios_entitlements_empty": "The provisioning profile was found but declares no entitlements",
+      "android_native_hardening_not_provided": "No native library content was provided, so the binary hardening attributes were not read",
+      "android_native_hardening_some_without_relro": "{count} of {total} native library(ies) lack RELRO; this is not reported as a finding because it is a legitimate build choice (for example Flutter's libapp.so) and would otherwise flag every Flutter app",
+      "android_container_dex_in_native_library": "{name}: the content is DEX bytecode, not a shared library"
     },
     "findings": "Findings"
   },
@@ -832,7 +839,8 @@
       "ios_macho_strings": "Mach-O strings",
       "ios_nativeSymbols": "Native symbols",
       "ios_signature": "Signature",
-      "ios_entitlements": "Entitlements"
+      "ios_entitlements": "Entitlements",
+      "android_nativeHardening": "Native library hardening"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",

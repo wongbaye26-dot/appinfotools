@@ -628,7 +628,11 @@
       "ios_rule_g": "敏感資料來源與網路上傳能力同時出現：一側是 {sources}，另一側是網路請求（NSURLSession / 上傳）。兩段都有證據，但沒有證明資料真的進了請求內容。",
       "ios_rule_g_common": "定位存取與網路上傳能力同時出現：{sources} 加上網路請求（NSURLSession / 上傳）。這兩件事在一般應用程式裡極為常見，因此只按低等級報告。",
       "ios_rule_g_limitation": "這是「同現」觀察，不是資料流：沒有證明讀到的內容被送了出去。具體請求內容需要執行時檢查。",
-      "ios_rule_g_manual_review": "確認應用程式是否真的需要這些敏感讀取，以及它們返回的資料是否進入了上傳內容。"
+      "ios_rule_g_manual_review": "確認應用程式是否真的需要這些敏感讀取，以及它們返回的資料是否進入了上傳內容。",
+      "android_native_exec_stack": "有 {count} 個原生函式庫把堆疊標記為可執行（PT_GNU_STACK 含 PF_X）：{names}。堆疊上的資料可以被當成程式碼執行。",
+      "android_native_exec_stack_many": "有 {count} 個原生函式庫把堆疊標記為可執行（PT_GNU_STACK 含 PF_X），其中包括 {names}，另有 {more} 個未列出。堆疊上的資料可以被當成程式碼執行。",
+      "android_native_exec_stack_limitation": "只判定真正讀到的原生函式庫；因預算被跳過的庫不在覆蓋範圍內。可執行堆疊本身不代表這個函式庫是惡意的 —— 它只是去掉了 NX 這道屏障。",
+      "android_native_exec_stack_review": "去掉 -z execstack 重新編譯這個函式庫（NDK 預設就是不可執行堆疊）；如果函式庫來自第三方，向供應商索取修復後的建置。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",
@@ -787,7 +791,10 @@
       "android_container_resource_table_too_small": "resources.arsc 只有 {size} 位元組，遠低於任何合理的資源表。",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略",
       "ios_entitlements_no_profile": "沒有 embedded.mobileprovision（App Store 散佈把授權項放在簽章裡），因此無法靜態讀取授權項列表",
-      "ios_entitlements_empty": "找到了描述檔，但它沒有宣告任何授權項"
+      "ios_entitlements_empty": "找到了描述檔，但它沒有宣告任何授權項",
+      "android_native_hardening_not_provided": "沒有提供原生函式庫內容，因此未讀取二進位加固屬性",
+      "android_native_hardening_some_without_relro": "{total} 個原生函式庫中有 {count} 個缺少 RELRO；這沒有作為發現項報出，因為它是合法的建置選擇（例如 Flutter 的 libapp.so），否則所有 Flutter 應用程式都會被報一條",
+      "android_container_dex_in_native_library": "{name}：內容是 DEX 位元碼，不是原生函式庫"
     },
     "findings": "發現項"
   },
@@ -832,7 +839,8 @@
       "ios_macho_strings": "Mach-O 字串",
       "ios_nativeSymbols": "原生庫符號",
       "ios_signature": "簽名",
-      "ios_entitlements": "授權項"
+      "ios_entitlements": "授權項",
+      "android_nativeHardening": "原生函式庫加固"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 無法解析（{reason}）",

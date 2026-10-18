@@ -351,6 +351,72 @@ A/B/C/E/F。现在补上，分级按来源稀有度：通讯录 / 麦克风 → 
 
 三条规则各自成立不合并：C 是图片链、E 要后台、G 只要两段。
 
+### 第三档：原生库二进制加固 —— 以及一个只在真实包上才看得见的发现
+
+测试 1,491 → **1,520**。
+
+#### 新增：`ElfHardening`（NX 栈 / RELRO / BIND_NOW / 栈保护 / strip）
+
+读程序头与动态段，不反汇编：
+
+| 属性 | 判据 |
+|---|---|
+| NX 栈 | 有 `PT_GNU_STACK` 且 `p_flags` 不含 `PF_X` |
+| RELRO | 有 `PT_GNU_RELRO` |
+| BIND_NOW | `DT_FLAGS & DF_BIND_NOW` 或 `DT_FLAGS_1 & DF_1_NOW`（**两个都要查**）|
+| 栈保护 | `.dynsym` 里导入 `__stack_chk_fail` |
+| 已 strip | 没有 `.SHT_SYMTAB` 节 |
+
+三个容易错的二进制细节：`p_flags` 在 64 位位于偏移 4、**32 位位于偏移 24**；
+`DT_FLAGS` 与 `DT_FLAGS_1` 是两个 tag；`.symtab` 会被 strip 掉，所以栈保护
+必须查 `.dynsym`。
+
+#### 最重要的决定：这一维**只报一条**
+
+实测 4 个真实包的 **386 个** arm64 `.so`（`llvm-readelf` 逐个数）：
+
+| 属性 | 不满足的库数 |
+|---|---|
+| 可执行栈 | **0** |
+| 缺 RELRO | **1**（Flutter 的 `libapp.so`，Dart AOT 快照）|
+| 缺 BIND_NOW | **1**（同一个）|
+| 未 strip | **0** |
+
+NDK 默认就带 `-z relro -z now` 与 NX 栈。所以：
+
+- **只对「可执行栈」产出 `ANDROID-NATIVE-EXEC-STACK`（P2）** —— 没有哪种正常
+  构建需要它，出现即缺陷；
+- 缺 RELRO 写进覆盖率的说明（`android.native_hardening.some_without_relro`），
+  因为它是合法构建选择，逐库报会命中**所有** Flutter 应用；
+- 覆盖率给**数字**（「386 个库里 385 个是 Full RELRO + NX」），不逐库列举。
+
+#### 顺带抓到一个只在真实包上出现的发现
+
+抖音的 `lib/arm64-v8a/libsm_impl.so`（162,912 字节）头部是 **`dex\n035`** ——
+**不是 ELF，是一段 DEX 字节码**。文件名完全合规（`lib*.so`、在 `lib/arm64-v8a/` 下），
+**只看名字的检查永远发现不了**。
+
+新增信号 `HardeningSignal.dexDisguisedAsNativeLibrary`（`strong` 级）。
+它与既有的 `dexHeaderNotStandard` 是反向的两件事：
+
+| 信号 | 含义 |
+|---|---|
+| `dexHeaderNotStandard` | 文件名像 DEX，内容不是 |
+| `dexDisguisedAsNativeLibrary` | 文件名像原生库，**内容是 DEX** |
+
+后者是具体的隐藏手法：只扫 `classes*.dex` 的工具完全看不到这段代码，
+运行时用 `DexClassLoader` 从 `lib/` 目录直接加载。
+
+#### 夹具
+
+七个 `.so` 由 **NDK 25.1** 的 clang 真实编译（`hardening-native.c`），
+期望值用 `llvm-readelf` / `llvm-nm` 独立核对：
+`default` / `execstack` / `norelro` / `partial-relro` / `no-canary` /
+`canary` / `canary-stripped`。
+
+其中 `hardening-default` 是一个**反例夹具**：同样的源码与默认 flags，
+它没有 `__stack_chk_fail` —— 所以「没有这个符号」不能读成「没开栈保护」。
+
 ## 2.4.13 — 2026-10-18
 
 > 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论

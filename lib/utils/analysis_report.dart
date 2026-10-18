@@ -619,6 +619,7 @@ class AnalysisReport {
       'android.dex.methodReferences' => d.android_dex_methodReferences,
       'android.dex.callSites' => d.android_dex_callSites,
       'android.nativeSymbols' => d.android_nativeSymbols,
+      'android.nativeHardening' => d.android_nativeHardening,
       'android.arsc' => d.android_arsc,
       'android.cleartextPolicy' => d.android_cleartextPolicy,
       'ios.infoPlist' => d.ios_infoPlist,
@@ -768,6 +769,14 @@ class AnalysisReport {
             ? null
             : f.android_exported_component_weak_many(
                 count: count, names: names, more: more),
+      'android.native_exec_stack' => (count == null || names == null)
+          ? null
+          : f.android_native_exec_stack(count: count, names: names),
+      'android.native_exec_stack_many' =>
+        (count == null || names == null || more == null)
+            ? null
+            : f.android_native_exec_stack_many(
+                count: count, names: names, more: more),
       'android.v1_only_signing' => f.android_v1_only_signing,
       'android.webview_bridge' => f.android_webview_bridge,
       'android.permission_without_api' =>
@@ -844,6 +853,7 @@ class AnalysisReport {
       'android.exported_component.review' =>
         f.android_exported_component_review,
       'android.shared_user_id.review' => f.android_shared_user_id_review,
+      'android.native_exec_stack.review' => f.android_native_exec_stack_review,
       'android.v1_only_signing.review' => f.android_v1_only_signing_review,
       'android.webview_bridge.review' => f.android_webview_bridge_review,
       'android.permission_without_api.review' =>
@@ -950,6 +960,8 @@ class AnalysisReport {
       'android.debuggable.limitation' => f.android_debuggable_limitation,
       'android.shared_user_id.limitation' =>
         f.android_shared_user_id_limitation,
+      'android.native_exec_stack.limitation' =>
+        f.android_native_exec_stack_limitation,
       'android.v1_only_signing.limitation' =>
         f.android_v1_only_signing_limitation,
       'android.webview_bridge.limitation' =>
@@ -1315,6 +1327,8 @@ class AnalysisReport {
     final a = note.args;
     final reason = a['reason'];
     final count = a['count'];
+    // 总数（原生库加固那条说明要用「N 个里 M 个」的措辞）。
+    final total = a['total'];
     final path = a['path'];
     final bytes = a['bytes'];
     final limit = a['limit'];
@@ -1369,6 +1383,13 @@ class AnalysisReport {
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
       'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
+      'android.native_hardening.not_provided' =>
+        n.android_native_hardening_not_provided,
+      'android.native_hardening.some_without_relro' =>
+        (count == null || total == null)
+            ? null
+            : n.android_native_hardening_some_without_relro(
+                count: count, total: total),
       'ios.entitlements.no_profile' => n.ios_entitlements_no_profile,
       'ios.entitlements.empty' => n.ios_entitlements_empty,
       'android.manifest.unparsed' =>
@@ -1466,6 +1487,9 @@ class AnalysisReport {
             ? null
             : n.android_container_dex_header_not_standard(
                 name: name, header: header),
+      'android.container.dex_in_native_library' => name == null
+          ? null
+          : n.android_container_dex_in_native_library(name: name),
       'android.container.unusual_native_library' => name == null
           ? null
           : n.android_container_unusual_native_library(name: name),
