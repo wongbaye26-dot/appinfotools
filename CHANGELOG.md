@@ -1,27 +1,61 @@
 # Changelog
 
-## 2.4.15 — 未发布
+## 2.4.15 — 2026-10-19
 
 ### 修复
 
-- **「文件关联 → 打开设置」点了没反应。** 原来 macOS 上跳的是
+- **Windows 下 `.apk` / `.ipa` 关联不了 AppInfoTool。**
+  两个独立的原因叠在一起：
+
+  1. **安装器根本不写注册表。** 安装包由 `inno_bundle` 生成，它产出的
+     Inno Setup 脚本里**没有 `[Registry]` 段**（`script_builder.dart` 只生成
+     `[Setup]/[InstallDelete]/[Tasks]/[Icons]/[Run]`），所以装完什么都没有。
+  2. **`file_association` 方法通道只有 macOS 实现。**
+     `windows/runner/` 下压根没有对应代码，Dart 侧
+     `getInitialFilePath` 抛 `MissingPluginException` 被 catch 成 `null`。
+     结果是：即使手工关联成功，双击也只是打开一个空窗口。
+
+  新增 `windows/runner/file_association_channel.cpp/.h`：
+
+  - `getInitialFilePath` —— 从命令行参数取启动时要打开的文件。
+    要求「不是开关 + 扩展名受支持 + 路径确实存在」，三者缺一不可
+    （否则 `--enable-dart-profiling` 会被当成文件路径）；
+  - `registerAssociations` —— 写 `HKCU\Software\Classes`，登记
+    `AppInfoTool.<ext>` 的 ProgID（描述 / 图标 / 打开命令）并写
+    `OpenWithProgids`，让本程序出现在「打开方式 → 选择其他应用」里；
+  - `isDefaultHandler` —— 查当前是不是默认，供界面判断要不要给引导。
+
+  **关于「设为默认」**：Windows 10/11 的默认程序写在
+  `HKCU\...\FileExts\<ext>\UserChoice`，那个键带哈希校验，**程序不能合法
+  改写**。所以只在**没有任何 UserChoice** 时写扩展名默认值；已有用户选择时
+  一律不碰 —— 「装完就悄悄抢默认程序」既不合法也不是我们想做的事。
+
+  注册在**每次启动**时做一次（`HKCU`，不需要管理员权限，不阻塞首帧）：
+  安装器不写注册表、ZIP 免安装版没有安装器、关联也可能被别的程序抢走 ——
+  启动即修复比「只在安装时写一次」可靠。设置页另有「重新登记」按钮兜底。
+
+  覆盖 `.apk` / `.ipa` / `.xapk` / `.apks` / `.apkm`，与
+  `kPickableExtensions` 同源派生，不再各写一份。
+
+- **macOS 下「文件关联 → 打开设置」点了没反应。** 原来跳的是
   `x-apple.systempreferences:com.apple.preferences.extensions` —— 两处都不对：
   那是 **macOS 12 及更早**的「扩展」面板锚点，13 重写系统设置后失效（实测
   macOS 27 上 `open` 仍返回 0，但系统设置停在默认页，**没有任何跳转**）；
-  而且「扩展」面板管的是 Finder 扩展 / Quick Look 插件，
-  **根本不是文件关联**。
+  而且「扩展」面板管的是 Finder 扩展 / Quick Look 插件，**根本不是文件关联**。
 
   事实是：**macOS 没有「默认应用」设置面板**，也没有任何 URL scheme 能跳到
   不存在的东西上。文件关联在 Finder 的「显示简介 → 打开方式」里。
 
   所以 macOS 分支不再「假装能跳转」，改为弹出**四步操作指引**；Windows 的
-  `ms-settings:defaultapps` 是真实面板，跳转保留。同时这一行现在带副标题
+  `ms-settings:defaultapps` 是真实面板，跳转保留。设置页那一行现在带副标题
   说明两种情况的差别 —— 原来只有「文件关联 + 打开设置」，用户点之前不知道
-  会发生什么。
+  会发生什么；Windows 上还多一个「重新登记」按钮。
 
-  新增 5 个 i18n 键（zh-CN / zh-TW / zh-HK / en）：
-  `file_association_hint_panel` / `file_association_hint_manual` /
-  `how_to_set` / `file_association_steps` / `got_it`。
+  新增 10 个 i18n 键（zh-CN / zh-TW / zh-HK / en）：前 5 个是 macOS 的指引
+  （`file_association_hint_panel` / `..._hint_manual` / `how_to_set` /
+  `file_association_steps` / `got_it`），后 5 个是 Windows 的登记状态
+  （`file_association_register` / `..._hint_registered` /
+  `..._hint_register_failed` / `..._register_ok` / `..._register_failed_hint`）。
 
 ### 界面
 
@@ -54,15 +88,30 @@
 
 ### 质量
 
-- 测试 1,531 → **1,540**。新增 `test/detail_tab_view_test.dart`（9 条）。
-- 该文件存在的原因值得单独说：`DetailTabView` 在测试环境里会**自动回退**成
-  连续列表（否则跨分组的 widget 断言不到，`real_samples_ui_test` 依赖这个行为），
-  代价是**侧栏与顶部 TabBar 两条真实分支在测试里永远跑不到**。
-  所以版式抽成可注入的 `DetailLayout`，测试显式指定版式，三条分支都走一遍。
+- 测试 1,531 → **1,546**（+15）。
+- 新增 `test/detail_tab_view_test.dart`（9 条）。它存在的原因值得单独说：
+  `DetailTabView` 在测试环境里会**自动回退**成连续列表（否则跨分组的 widget
+  断言不到，`real_samples_ui_test` 依赖这个行为），代价是**侧栏与顶部 TabBar
+  两条真实分支在测试里永远跑不到**。所以版式抽成可注入的 `DetailLayout`，
+  测试显式指定版式，三条分支都走一遍。
+- 新增 `test/file_association_consistency_test.dart`（6 条）。这个守卫
+  **第一版是假的**：从整个 C++ 文件抓 `L".xxx"` 字面量，而 `associations`
+  数组里恰好也有同样的扩展名 —— 于是「把 `kSupportedExtensions` 里的
+  `.apkm` 删掉」这个真实破坏**测不出来**。改成只解析那一个数组后，同样的
+  破坏立刻报「Dart 里多出的：{.apkm}」。
 - 界面目视走 web 构建 + 无头 Chrome 截图，再用**像素级分析**代替看图确认：
   卡片背景与页面同色（压平生效）、侧栏右边框落在 x=219（220px 宽度）、
   首个导航项高亮 38px、分隔线 4 条且位置符合「标题后不画」的规则、
   窄窗口下 TabBar 下边线横跨 700px。
+
+### 未验证项（写清楚，不粉饰）
+
+- **Windows 编译与注册表写入在本机无法验证**（本机是 macOS）。C++ 侧只做过
+  Flutter Windows C++ API 的签名核对：`EncodableList = std::vector<EncodableValue>`、
+  `MethodChannel(BinaryMessenger*, const std::string&, const MethodCodec<T>*)`、
+  `engine->messenger()` 均对照 Flutter 引擎源码确认。真正的编译验证在 CI 的
+  `build-windows` job。
+- 「已经关联成功、双击能打开」这一步只能在 Windows 真机上验；本机没有环境。
 
 ## 2.4.14 — 2026-10-18
 

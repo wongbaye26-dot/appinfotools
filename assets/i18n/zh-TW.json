@@ -152,7 +152,12 @@
     "file_association_hint_manual": "macOS 沒有這個設定頁，需要在 Finder 裡手動指定",
     "how_to_set": "如何設定",
     "file_association_steps": "macOS 沒有「預設應用程式」設定頁，檔案關聯要在 Finder 裡改：\n\n1. 在 Finder 裡找到任意一個 .apk 或 .ipa 檔案\n2. 按右鍵，選擇「顯示簡介」\n3. 展開「打開方式」，選中 AppInfoTool\n4. 按下面的「全部更改…」，確認套用到所有同類檔案",
-    "got_it": "知道了"
+    "got_it": "知道了",
+    "file_association_register": "重新登記",
+    "file_association_hint_registered": "已登記為候選開啟方式；設為預設需要在系統「預設應用程式」裡選擇",
+    "file_association_hint_register_failed": "登記失敗，請用完整安裝包，或改用「開啟設定」手動指定",
+    "file_association_register_ok": "已登記，現在可以在「開啟方式」裡選到本程式",
+    "file_association_register_failed_hint": "登記失敗。請確認使用的是安裝版，或手動在「開啟方式」裡指定程式"
   },
   "signature": {
     "status_verified": "簽名驗證通過",

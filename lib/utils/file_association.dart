@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:apk_info_tool/utils/package_file_type.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 打开「文件关联」设置的结果。
@@ -21,7 +23,7 @@ enum FileAssociationOutcome {
   unsupported,
 }
 
-/// 文件关联管理类
+/// 文件关联管理。
 ///
 /// ## macOS 为什么不是「打开设置」
 ///
@@ -40,10 +42,38 @@ enum FileAssociationOutcome {
 ///
 /// 所以 macOS 分支不做「假装能跳转」，而是明确告诉调用方
 /// [FileAssociationOutcome.needsManualGuidance] —— 由界面给出手动步骤。
-/// 让它「看起来成功了但什么也没发生」，比说清「这里没有这个设置」糟得多。
 ///
-/// Windows 的 `ms-settings:defaultapps` 是真实存在的面板，保留跳转。
+/// ## Windows 为什么必须注册注册表
+///
+/// Windows 的 `.apk` 双击由注册表决定。安装器（`inno_bundle`）生成的
+/// Inno Setup 脚本**没有 `[Registry]` 段**，所以此前装完根本没有任何关联；
+/// 而且 runner 里也**没有 `file_association` 通道的 Windows 实现**
+/// （只有 macOS 有），于是即使手工关联上，双击也只会打开一个空窗口。
+///
+/// 两处都已补齐（`windows/runner/file_association_channel.cpp`）。
+///
+/// 关于「设为默认」：Windows 10/11 的默认程序写在
+/// `HKCU\...\Explorer\FileExts\<ext>\UserChoice`，那个键带哈希校验，
+/// **程序不能合法地改写**。所以这里做的是「登记为候选」——
+/// 用户能在「打开方式」里看到本程序，但要不要设为默认由用户决定。
+/// 已经有 `UserChoice` 时不去抢。
 class FileAssociationManager {
+  FileAssociationManager._();
+
+  static const MethodChannel _channel = MethodChannel('file_association');
+
+  /// 支持文件关联的扩展名。
+  ///
+  /// **从 [kPickableExtensions] 派生**，不另写一份 —— 两处不一致会出现
+  /// 「关联了但应用拒收」这种最难查的现象。
+  ///
+  /// 过滤掉多段后缀（`apk.1` / `apk.1.1`）：那是下载渠道给重名文件加的，
+  /// 不是可注册的文件类型。
+  static final List<String> extensions = [
+    for (final extension in kPickableExtensions)
+      if (!extension.contains('.')) '.$extension',
+  ];
+
   /// 检查当前平台是否有可跳转的设置面板。
   ///
   /// 注意：**为 false 不代表不能设置文件关联**，只代表没有可跳转的页面。
@@ -52,6 +82,50 @@ class FileAssociationManager {
 
   /// 当前平台是否支持设置文件关联（无论是否可跳转）。
   static bool get isSupported => Platform.isWindows || Platform.isMacOS;
+
+  /// 当前平台是否支持**由应用自己登记**关联。
+  ///
+  /// 只有 Windows：macOS 的关联由 `Info.plist` 的 `CFBundleDocumentTypes`
+  /// 在打包时声明，应用运行时改不了。
+  static bool get canRegisterItself => Platform.isWindows;
+
+  /// 把本程序登记为 [extensions] 的候选打开方式。
+  ///
+  /// 返回 `true` 表示登记成功。**不代表已成为默认程序** ——
+  /// 那需要用户在系统里确认（见类注释）。
+  ///
+  /// 非 Windows 平台直接返回 `false`，不抛异常：调用方通常在启动时
+  /// 无脑调一次，不该因为平台不同而崩。
+  static Future<bool> registerAssociations() async {
+    if (!Platform.isWindows) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('registerAssociations');
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      // 通道没注册（例如 native 侧没编进去）。返回 false，
+      // 让界面能如实说「本版本没有登记成功」。
+      return false;
+    }
+  }
+
+  /// 某个扩展名当前是否由本程序处理。
+  ///
+  /// [extension] 可带点或不带点。无法判断时返回 `false`。
+  static Future<bool> isDefaultHandler(String extension) async {
+    if (!Platform.isWindows) return false;
+    final normalized = extension.startsWith('.') ? extension : '.$extension';
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('isDefaultHandler', [normalized]);
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 
   /// 尝试打开文件关联设置。
   ///

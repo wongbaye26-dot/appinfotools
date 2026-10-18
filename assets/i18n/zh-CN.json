@@ -152,7 +152,12 @@
     "file_association_hint_manual": "macOS 没有这个设置页，需要在 Finder 里手动指定",
     "how_to_set": "如何设置",
     "file_association_steps": "macOS 没有「默认应用」设置页，文件关联要在 Finder 里改：\n\n1. 在 Finder 里找到任意一个 .apk 或 .ipa 文件\n2. 右键点它，选择「显示简介」\n3. 展开「打开方式」，选中 AppInfoTool\n4. 点下面的「全部更改…」，确认应用到所有同类文件",
-    "got_it": "知道了"
+    "got_it": "知道了",
+    "file_association_register": "重新登记",
+    "file_association_hint_registered": "已登记为候选打开方式；设为默认需要在系统「默认应用」里选择",
+    "file_association_hint_register_failed": "登记失败，请用完整安装包，或改用「打开设置」手动指定",
+    "file_association_register_ok": "已登记，现在可以在「打开方式」里选到本程序",
+    "file_association_register_failed_hint": "登记失败。请确认使用的是安装版，或手动在「打开方式」里指定程序"
   },
   "signature": {
     "status_verified": "签名验证通过",

@@ -2,7 +2,9 @@
 
 #include <optional>
 
+#include "file_association_channel.h"
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +27,18 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  // 文件关联通道**必须在插件之后、首帧之前**注册：
+  // Dart 侧在 `_initPlatformState` 里调 `getInitialFilePath`，
+  // 那是页面首次 build 时发生的。晚一步就是 MissingPluginException，
+  // 表现为「双击 apk 打开了应用，但什么都没加载」。
+  //
+  // 参数从 `GetCommandLineArguments()` 重新取（它只是解析
+  // `GetCommandLineW`，可重复调用，无副作用），而不是从 main.cpp
+  // 传进来 —— 后者已经 `std::move` 给了 DartProject。
+  FileAssociationChannel::Register(flutter_controller_->engine(),
+                                   GetCommandLineArguments());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

@@ -145,7 +145,12 @@
     "file_association_hint_manual": "macOS has no such settings pane; set it in Finder instead",
     "how_to_set": "How to set",
     "file_association_steps": "macOS has no \"Default apps\" pane — file associations live in Finder:\n\n1. In Finder, locate any .apk or .ipa file\n2. Right-click it and choose \"Get Info\"\n3. Under \"Open with\", pick AppInfoTool\n4. Click \"Change All…\" to apply it to every file of that type",
-    "got_it": "Got it"
+    "got_it": "Got it",
+    "file_association_register": "Register again",
+    "file_association_hint_registered": "Registered as a candidate handler; choosing the default still happens in system settings",
+    "file_association_hint_register_failed": "Registration failed — use the full installer, or set it manually via \"Open settings\"",
+    "file_association_register_ok": "Registered — the app now appears under \"Open with\"",
+    "file_association_register_failed_hint": "Registration failed. Make sure you are running the installed build, or pick the app manually under \"Open with\""
   },
   "signature": {
     "status_verified": "Signature verified",

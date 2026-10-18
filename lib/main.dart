@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/ui/shell/app_shell.dart';
+import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
 import 'package:flutter/foundation.dart';
@@ -64,6 +67,30 @@ void main(List<String> arguments) async {
   log.info("main: arguments=$arguments");
   if (arguments.isNotEmpty) {
     apkByArgs = arguments.first;
+  }
+
+  // Windows：把本程序登记为 .apk / .ipa 等扩展名的候选打开方式。
+  //
+  // 为什么在**每次启动**都做，而不是只在安装时做一次：
+  //
+  // - 安装器（`inno_bundle`）生成的 Inno Setup 脚本**没有 `[Registry]` 段**，
+  //   装完根本没有任何关联 —— 这是「Windows 下关联不了」的根因；
+  // - ZIP 免安装版没有安装器，只能靠这一步；
+  // - 用户升级 / 系统清理 / 另一个程序抢了关联之后，启动一次就自动恢复。
+  //
+  // 写入的是 `HKCU`，不需要管理员权限。**不阻塞启动**：注册表写入是
+  // 微秒级，但没必要让它挡在首帧前面；失败也不弹窗（用户此刻要的是
+  // 打开文件，不是看错误提示）。
+  //
+  // 注意它**不会**把本程序设成默认 —— Windows 10/11 的默认程序由带哈希
+  // 校验的 `UserChoice` 决定，程序改不了。这里只保证「打开方式」列表里
+  // 有我们，要不要设为默认由用户在系统里决定。
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    unawaited(
+      FileAssociationManager.registerAssociations().then((registered) {
+        log.info('main: registerAssociations -> $registered');
+      }),
+    );
   }
 
   if (isDesktop) {

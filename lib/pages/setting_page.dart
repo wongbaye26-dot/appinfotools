@@ -34,6 +34,12 @@ class SettingPage extends ConsumerStatefulWidget {
 class _SettingPageState extends ConsumerState<SettingPage> {
   final _maxLinesController = TextEditingController();
 
+  /// 文件关联是否已登记；`null` 表示还没试过（Windows 之外的平台一直是 `null`）。
+  ///
+  /// 只在用户点「重新登记」后更新，不在 build 里查 —— 每次重建都打一次
+  /// 方法通道既浪费，也会让副标题在「已登记 / 未登记」之间闪。
+  bool? _fileAssociationRegistered;
+
   @override
   void initState() {
     super.initState();
@@ -512,21 +518,68 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           ListTile(
             title: Text(t.settings.file_association),
             subtitle: Text(
-              FileAssociationManager.hasSettingsPanel
-                  ? t.settings.file_association_hint_panel
-                  : t.settings.file_association_hint_manual,
+              _fileAssociationHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.hintColor,
               ),
             ),
-            trailing: TextButton(
-              onPressed: () => _openFileAssociationSettings(context),
-              child: Text(FileAssociationManager.hasSettingsPanel
-                  ? t.settings.open_settings
-                  : t.settings.how_to_set),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 只有 Windows 能由应用自己写注册表（macOS 的关联由
+                // `Info.plist` 在打包时声明，运行时改不了）。
+                if (FileAssociationManager.canRegisterItself)
+                  TextButton(
+                    onPressed: _registerFileAssociations,
+                    child: Text(t.settings.file_association_register),
+                  ),
+                TextButton(
+                  onPressed: () => _openFileAssociationSettings(context),
+                  child: Text(FileAssociationManager.hasSettingsPanel
+                      ? t.settings.open_settings
+                      : t.settings.how_to_set),
+                ),
+              ],
             ),
           ),
       ],
+    );
+  }
+
+  /// 文件关联那一行的副标题。
+  ///
+  /// 三种状态分开说，**不混成一句「打开设置」**：
+  ///
+  /// - Windows 且已登记：说明「已是候选，设为默认要在系统里选」——
+  ///   用户点完「打开设置」看到列表里没有我们时，才知道去哪找；
+  /// - Windows 但登记失败：如实说失败。静默失败会让人以为已经好了；
+  /// - macOS：系统里没有这个面板，指向 Finder。
+  String get _fileAssociationHint {
+    if (!FileAssociationManager.hasSettingsPanel) {
+      return t.settings.file_association_hint_manual;
+    }
+    final registered = _fileAssociationRegistered;
+    if (registered == null) return t.settings.file_association_hint_panel;
+    return registered
+        ? t.settings.file_association_hint_registered
+        : t.settings.file_association_hint_register_failed;
+  }
+
+  /// 主动重新登记文件关联（Windows）。
+  ///
+  /// 应用启动时会自动做一次（见 `main.dart`），这个按钮是给
+  /// 「关联被别的程序抢了 / 被系统清理了」的情况用的 ——
+  /// 用户不必卸载重装。
+  Future<void> _registerFileAssociations() async {
+    final registered = await FileAssociationManager.registerAssociations();
+    if (!mounted) return;
+    setState(() => _fileAssociationRegistered = registered);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(registered
+            ? t.settings.file_association_register_ok
+            : t.settings.file_association_register_failed_hint),
+      ),
     );
   }
 
