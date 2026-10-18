@@ -489,6 +489,53 @@ API（地图 / 认证 / 推送 / Analytics），不是「一个分析 SDK」—�
 新增 `android.sdkInventory`：`covered` / `limit` 用**真正读到的 DEX 数**，
 `complete` 要求「没有读不出、没有截断」。实测抖音 40/40、飞牛 3/3。
 
+### 第五档：`Assets.car` 索引 —— 能列出图，但不提像素
+
+测试 1,520 → **1,521**（`ipa_parser` 54 → **74**）。
+
+#### 做了什么
+
+新增 `parseAssetsCar`：解析 BOMStore 容器，把每个 `ISTC` 块读成
+「rendition 名 + 宽高 + 像素格式 + 压缩方式 + 字节数」。
+
+`IpaIconResolver` 的 `CFBundleIconName` 分支不再只说「需要一个解析器」——
+现在**真的读一遍那个容器**，把「里面有什么」说出来：
+
+```
+the icon lives inside Assets.car: 3 image(s) with pixel data, but none is
+named like AppIcon, ... The pixel data is LZFSE-compressed in any case,
+so it could not be previewed without a decoder either
+```
+
+#### 明确的边界：不解码像素
+
+测了 5 个系统 `Assets.car`：**一个 PNG/JPEG 都没有**，全是 ARGB/BGRA 原始像素
+**再经 LZFSE 压缩**（`bvx2`）。1024×1024 图标未压缩 4,194,304 字节，
+`SizeOnDisk` 只有 311,137（13.5:1）。
+
+Dart 侧没有 LZFSE 实现，**所以这一档只交付索引**。要真正取图还需要
+LZFSE 解码器（500–700 行）+ PNG 编码器（~200 行）——那是独立的一件事，
+写了 `docs/notes/assets-car.md` 留档。
+
+#### 四个实测踩过的坑（都写进了测试）
+
+1. **端序混用**：`BOMStore` 头与块表是**大端**，`RATC` 与 `ISTC` 头是**小端**。
+   按大端读 `RATC` 的版本字段会得到 285212672 / 4077060096。
+2. **块表条目数不是 `indexOffset` 处的那个 u32**（读出 256，真实是头里的
+   `blockCount`）。四种候选布局里只有 `delta=4, stride=8` 能自洽。
+3. **4CC 反序存**：文件里 `BGRA` 表示 `ARGB`、`GA8 ` 读出来是 ` 8AG`。
+4. **「空壳」rendition**：宽高齐全但块只有 334 字节、内容全 0
+   （Music.app 有 5,694 个）。新增 `embedsPixels` 判据把它们与真图分开。
+
+#### 期望值来源
+
+**唯一的独立实现是 macOS 自带的 `/usr/bin/assetutil --info`**，输出 JSON 里有
+`PixelWidth`/`PixelHeight`/`Encoding`/`SizeOnDisk`/`RenditionName` ——
+正好覆盖本实现的每个字段。夹具 `test/fixtures/car/installer-progress.car`
+是系统真实产物（18 KB、4 张图），README 里存了 assetutil 的原始输出。
+
+逐条对照全部一致：`Gray` ↔ `GA8 `、`ARGB` ↔ `ARGB`、字节数逐字节相等。
+
 ## 2.4.13 — 2026-10-18
 
 > 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论

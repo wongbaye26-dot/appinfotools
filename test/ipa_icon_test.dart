@@ -236,10 +236,48 @@ void main() {
       expect(
           resolution.unresolved.single.source, IosIconSource.assetCatalogName);
       expect(resolution.unresolved.single.reason, contains('Assets.car'));
+      // 措辞升级了：以前说「需要一个解析器」，现在真的解析一遍并说清
+      // 「索引读不出来」—— `List.filled(128, 0)` 不是 BOMStore。
       expect(resolution.unresolved.single.reason,
-          contains('cannot be previewed directly'));
+          contains('could not be parsed'),
+          reason: '读不出索引时要说清是解析失败，不能说「无法预览」了事');
+      expect(resolution.assetCatalog, isNotNull);
+      expect(resolution.assetCatalog!.parsed, isFalse);
       expect(resolution.unresolved.single.archivePath,
           'Payload/MyApp.app/Assets.car');
+    });
+
+    test('真实的 Assets.car 会被真的解析一遍（不再是「需要一个解析器」）', () {
+      // 用 macOS 自带的真实资产目录做夹具：18 KB、4 张图。
+      // 期望值来自 `assetutil --info`，详见 test/fixtures/car/README.md。
+      final car =
+          File('test/fixtures/car/installer-progress.car').readAsBytesSync();
+      final archive = _ipa(
+        iconConfig: '<key>CFBundleIcons</key><dict>'
+            '<key>CFBundlePrimaryIcon</key><dict>'
+            '<key>CFBundleIconName</key><string>AppIcon</string>'
+            '</dict></dict>',
+        extraEntries: {'Assets.car': car},
+      );
+
+      final resolution = _resolve(archive);
+
+      // 仍然没有可预览的候选 —— 像素是 LZFSE 压缩的。
+      expect(resolution.candidates, isEmpty);
+      expect(resolution.assetCatalogOnly, isTrue);
+      // 但容器里有什么，现在说得出来了。
+      final catalog = resolution.assetCatalog;
+      expect(catalog, isNotNull);
+      expect(catalog!.parsed, isTrue, reason: catalog.failure);
+      expect(catalog.storageVersion, 17);
+      expect(catalog.images, hasLength(4));
+      expect(catalog.rasterImages, hasLength(3),
+          reason: 'LowBatteryFlashing.png 是空壳（739 字节装不下 30×72 像素）');
+      expect(
+        catalog.rasterImages
+            .where((i) => i.compression == CarCompression.lzfseV2),
+        hasLength(3),
+      );
     });
 
     test('CFBundleIconName 声明了但 Assets.car 不存在 → 提示缺文件', () {

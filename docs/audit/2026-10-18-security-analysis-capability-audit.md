@@ -22,8 +22,9 @@
 > §14 第一档落地（sharedUserId / protectionLevel / 备份规则 / iOS entitlements）后 **84**，
 > §15 第二档（签名方案 / WebView 桥 / 权限交叉核对 / iOS 组合规则）后 **86**，
 > §16 第三档（原生库二进制加固 + 藏在 `lib/` 下的 DEX）后 **87**，
-> §17 第四档（第三方服务类 SDK 盘点）后 **88**。
-> **§0 的表格是首轮基线，保留原样作为对照** —— 想看当前分数请看 §17.6。
+> §17 第四档（第三方服务类 SDK 盘点）后 **88**，
+> §18 第五档（`Assets.car` 索引，不解像素）后 **89**。
+> **§0 的表格是首轮基线，保留原样作为对照** —— 想看当前分数请看 §18.6。
 >
 > ⚠️ **§12.4(a) 的结论已被 §13.1 推翻**：那一节说「NSC 存在时不予判定」，
 > 实测展开后那 3 个包确实允许明文 —— 原文保留并加了批注，不要照它实现。
@@ -1338,3 +1339,98 @@ API（地图 / 认证 / 推送 / Analytics），不是「一个分析 SDK」—�
 
 剩下的唯一一项是 `Assets.car`（iOS 图标提取）—— 它不属于安全分析，
 是「包详情」的能力，且需要写一个 Apple 私有格式的解析器。
+
+## 18. 第五档：`Assets.car` 索引 —— 能列出图，但不提像素
+
+`ipa_parser` 54 → **74** 条测试。评分 **88 → 89**。
+
+### 18.1 先确认「能验证到什么程度」，再定范围
+
+`Assets.car` 是 Apple 私有格式，没有公开文档。开工前先查了两件事：
+
+1. **有没有独立实现能核对？** 有 —— macOS 自带 `/usr/bin/assetutil --info`
+   输出 JSON，含 `PixelWidth` / `PixelHeight` / `Encoding` / `SizeOnDisk` /
+   `RenditionName`。这正好覆盖索引需要给出的每个字段。
+2. **有没有工具能导出图？** **没有。** `assetutil --output` 是「清理废弃
+   资产」，不是导出。
+
+第 1 条让「做索引」可行；第 2 条决定了「做提取」要靠自己写解码器。
+
+然后量了 5 个系统 `Assets.car` 的编码分布：**一个 PNG/JPEG 都没有**，
+全是 ARGB/BGRA 原始像素**再经 LZFSE 压缩**（块内 `bvx2`）。1024×1024 图标
+未压缩 4,194,304 字节、`SizeOnDisk` 311,137（13.5:1）。
+
+所以范围定为：**做索引，不做解码**。这也是用户选的方向。
+
+### 18.2 四个实测踩过的坑
+
+| 坑 | 症状 | 正确做法 |
+|---|---|---|
+| **端序混用** | `RATC` 的版本读成 285212672 / 4077060096 | `BOMStore` 头与块表**大端**；`RATC` 与 `ISTC` 头**小端** |
+| **块表条目数** | 按 `indexOffset` 处的 u32 读得 256，而真实块数 23/87 | 用头里的 `blockCount`；`indexOffset + 4` 起每 8 字节一条 |
+| **4CC 反序** | 文件里 `BGRA`、`GA8 `、` 8AG` 看起来像乱码 | 反序后才是 `ARGB`、`GA8 `（与 assetutil 的 `Encoding` 一致）|
+| **空壳 rendition** | 宽高齐全但块只 334 字节、内容全 0 | `embedsPixels`：压缩过 → 有；未压缩 → 块要装得下 `w×h` 字节 |
+
+第二条是靠**自洽性约束**反解出来的：试了 `delta ∈ {0,4,8}` ×
+`stride ∈ {8,12}` 六种布局，只有 `delta=4, stride=8` 能给出
+「条目数 == blockCount」。
+
+第四条是读 `assetutil` 输出时发现的：`SizeOnDisk: 334` 出现成千上万次
+（Music.app 有 5,694 个）。实测这些块体全是 0 —— 它们是引用/占位，没有像素。
+不区分的话，「有 6592 张图」这个数字里绝大多数是空的。
+
+### 18.3 期望值只能是 assetutil
+
+这是本项目一贯的做法，但在私有格式上尤其关键：任何「按我理解的字段偏移」
+都必须拿独立实现核对，否则就是自证。
+
+夹具 `test/fixtures/car/installer-progress.car` 是系统真实产物
+（`/System/Library/CoreServices/Installer Progress.app`，18 KB、4 张图），
+README 里存了 `assetutil --info` 的完整原始输出。
+
+逐条对照结果：
+
+| assetutil | 本项目 |
+|---|---|
+| `StorageVersion: 17` / `CoreUIVersion: 1011` | ✓ |
+| `LowBatteryEmpty` 173×72 Gray 857B | ✓ `GA8 ` 857B |
+| `LowBatteryEmpty@2x` 346×144 Gray 1332B | ✓ `GA8 ` 1332B |
+| `LowBatteryFlashing` 30×72 ARGB 739B | ✓ `ARGB` 739B（空壳）|
+| `LowBatteryFlashing@2x` 60×144 ARGB 1155B | ✓ `ARGB` 1155B |
+
+### 18.4 措辞升级：从「需要解析器」到「里面有什么」
+
+`IpaIconResolver` 原来对 `CFBundleIconName` 只说：
+
+> the icon lives inside Assets.car, which needs an asset-catalog parser;
+> it cannot be previewed directly
+
+现在真的读一遍容器：
+
+> the icon lives inside Assets.car: 3 image(s) with pixel data, but none is
+> named like AppIcon, so the asset for CFBundleIconName=AppIcon cannot be
+> identified without parsing the RENDITIONS index. **The pixel data is
+> LZFSE-compressed in any case, so it could not be previewed without a
+> decoder either**
+
+差别不只是信息量：「需要一个解析器」是**我们的实现状态**，而
+「像素被 LZFSE 压缩了」是**这个文件的客观事实**。后者才是用户能据此判断的。
+
+三种状态严格分开：解析成功 / 索引解析失败 / 容器读不出。混成一句就会分不清
+「没有图」与「我们没读到」。
+
+### 18.5 还没做的
+
+| 项 | 理由 |
+|---|---|
+| 资产名（`AppIcon` / `AppIcon_Assets/...`） | 要解析 `RENDITIONS` 的 CPI key，其字段布局随 `StorageVersion` 变且无文档 |
+| 提取像素 | 需 LZFSE 解码器（500–700 行）+ PNG 编码器（~200 行） |
+
+**验证办法是有的**：macOS 有 `libcompression`，可以写个小 C 程序用
+`COMPRESSION_LZFSE` 压缩一段已知数据生成夹具，期望值就是原始字节 ——
+不必自证。这条路没走，但记在 `docs/notes/assets-car.md` 里了。
+
+### 18.6 评分影响
+
+**88 → 89/100**。补上了 `Assets.car` 这个「全仓 0 处实现」的空白，但只到
+索引层 —— 图标预览仍然要裸 PNG。加分有限是应该的。
