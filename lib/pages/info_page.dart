@@ -39,7 +39,6 @@ import 'package:ipa_parser/ipa_parser.dart'
     show IosBundle, IosNestedExecutableInput, IosPrivacyAudit;
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
-import 'package:apk_info_tool/widgets/detail_section.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
@@ -646,8 +645,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 还没解析出结果时，「应用信息」无从谈起，但**文件信息是事实** ——
     // 路径与大小在解析之前就已经知道了，照常显示。
     if (parsed == null || result == null || ios == null) {
-      cards.add(DetailSectionHeader(
-          title: t.file_info.group, tab: DetailTab.overview));
+      cards.add(
+          _SectionHeader(title: t.file_info.group, tab: DetailTab.overview));
       cards.add(card(t.file_info.file, fileState.filePath ?? '-',
           end: _buildFileActionMenu()));
       cards.add(card(
@@ -666,8 +665,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // **应用信息排在文件信息之前**（V2.4.6 调换）：用户打开一个包，第一眼
     // 要找的是「这是哪个应用、什么版本」，而不是「它在磁盘上的路径」——
     // 后者是排查时才需要的。Hero 卡片因此紧跟在平台行之后。
-    cards.add(DetailSectionHeader(
-        title: t.ios_info.group_app, tab: DetailTab.overview));
+    cards.add(
+        _SectionHeader(title: t.ios_info.group_app, tab: DetailTab.overview));
 
     // 容器里没有 `Payload/*.app` 时，后面每一项都会是「-」
     if (ios.mainApp == null) {
@@ -692,8 +691,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ));
 
     // ===== 文件信息 =====
-    cards.add(
-        DetailSectionHeader(title: t.file_info.group, tab: DetailTab.overview));
+    cards
+        .add(_SectionHeader(title: t.file_info.group, tab: DetailTab.overview));
     cards.add(card(t.file_info.file, fileState.filePath ?? '-',
         end: _buildFileActionMenu()));
     cards.add(card(
@@ -704,7 +703,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ));
 
     // ===== 应用详情（归入「应用」Tab，与 Android 侧对齐）=====
-    cards.add(DetailSectionHeader(
+    cards.add(_SectionHeader(
         title: t.detail_tab.application, tab: DetailTab.application));
 
     // 版本栏。图标只在 Hero 卡片里出现一次 —— 早先这里右侧还挂着
@@ -730,7 +729,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ios.backgroundModes.hasValue ||
         ios.requiredDeviceCapabilities.hasValue ||
         ios.hasMultipleMainApps) {
-      cards.add(DetailSectionHeader(
+      cards.add(_SectionHeader(
           title: t.detail_tab.permissions, tab: DetailTab.permissions));
     }
     // 「注册的 scheme」与「查询的 scheme」是**两个方向**的事实：
@@ -782,7 +781,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ));
 
     // ===== 容器与二进制 =====
-    cards.add(DetailSectionHeader(
+    cards.add(_SectionHeader(
         title: t.ios_info.group_container, tab: DetailTab.structure));
     final container = DetailRenderer.iosContainer(ios.container, t);
     if (container.isNotEmpty) {
@@ -799,7 +798,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     // ===== 签名与授权（拆成两张卡片）=====
-    cards.add(DetailSectionHeader(
+    cards.add(_SectionHeader(
         title: t.ios_info.group_signature, tab: DetailTab.signature));
     // 1. 静态签名材料（始终显示，哪怕没有材料也明确说明）
     final signatureBody = DetailRenderer.iosSignature(ios, t);
@@ -823,7 +822,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     // ===== 文件校验 =====
     if (enableHash) {
-      cards.add(DetailSectionHeader(
+      cards.add(_SectionHeader(
           title: t.ios_info.group_integrity, tab: DetailTab.signature));
       // 复制按钮由 `TitleValueLayout` 统一提供（默认就有），这里不再各挂一个
       // —— 否则同一张卡片上会出现两个一模一样的复制图标。
@@ -844,8 +843,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 从句子里反推「哪个维度没覆盖」既不可靠也没必要。
     final coverage = result.security?.coverage;
     if (coverage != null && !coverage.isEmpty) {
-      cards.add(DetailSectionHeader(
-          title: t.coverage.title, tab: DetailTab.security));
+      cards.add(
+          _SectionHeader(title: t.coverage.title, tab: DetailTab.security));
       cards.add(card(
         t.coverage.title,
         _coverageBody(coverage, t),
@@ -856,7 +855,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // ===== 解析诊断 =====
     final diagnostics = DetailRenderer.diagnostics(result.diagnostics, t);
     if (diagnostics.isNotEmpty) {
-      cards.add(DetailSectionHeader(
+      cards.add(_SectionHeader(
           title: t.apk_info.diagnostics, tab: DetailTab.security));
       cards.add(card(t.apk_info.diagnostics, diagnostics, selectable: true));
     }
@@ -901,7 +900,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final hasCoverageGaps = security.hasCoverageGaps;
 
     final cards = <Widget>[
-      DetailSectionHeader(title: t.security.title, tab: DetailTab.security),
+      _SectionHeader(title: t.security.title, tab: DetailTab.security),
       // 总览摘要卡片
       _buildSecurityOverviewCard(findings, hasCoverageGaps),
     ];
@@ -1330,7 +1329,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
-  /// 把卡片列表按 [DetailSectionHeader.tab] 切分为 Tab 内容。
+  /// 把卡片列表按 [_SectionHeader.tab] 切分为 Tab 内容。
   ///
   /// 切完之后会**丢掉每个 Tab 开头那个与 Tab 同名的分组标题**：Tab 栏本身
   /// 已经写着「应用」「权限」，内容里再来一行一模一样的字纯属噪音 ——
@@ -1343,7 +1342,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     var currentTab = DetailTab.overview;
 
     for (final widget in cards) {
-      if (widget is DetailSectionHeader) {
+      if (widget is _SectionHeader) {
         final tab = widget.tab;
         if (tab != null) {
           currentTab = tab;
@@ -1356,7 +1355,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       final list = entry.value;
       if (list.isEmpty) continue;
       final first = list.first;
-      if (first is DetailSectionHeader &&
+      if (first is _SectionHeader &&
           first.title == detailTabLabel(entry.key, t)) {
         list.removeAt(0);
       }
@@ -1498,7 +1497,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // **应用信息排在文件信息之前**（V2.4.6 调换，与 iOS 侧一致）：用户
       // 打开一个包，第一眼要找的是「这是哪个应用、什么版本」，而不是「它在
       // 磁盘上的路径」—— 后者是排查时才需要的。
-      DetailSectionHeader(title: t.apk_info.group_app, tab: DetailTab.overview),
+      _SectionHeader(title: t.apk_info.group_app, tab: DetailTab.overview),
       AndroidHeroCard(
         appName: _getDisplayLabel(apkInfo) ?? '-',
         packageName: apkInfo?.packageName ?? '',
@@ -1546,7 +1545,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: 3,
         )),
       // ===== 文件信息 =====
-      DetailSectionHeader(title: t.file_info.group, tab: DetailTab.overview),
+      _SectionHeader(title: t.file_info.group, tab: DetailTab.overview),
       Card(
           child: TitleValueLayout(
               title: t.file_info.file,
@@ -1561,7 +1560,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             : "",
       )),
       // ===== 应用详情（归入「应用」Tab，与 iOS 侧对齐）=====
-      DetailSectionHeader(
+      _SectionHeader(
           title: t.detail_tab.application, tab: DetailTab.application),
       Card(
           child: TitleValueLayout(
@@ -1650,8 +1649,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           title: t.apk_info.ui_mode_types,
           value: apkInfo!.uiModeTypes.join(" "),
         )),
-      DetailSectionHeader(
-          title: t.apk_info.permissions, tab: DetailTab.permissions),
+      _SectionHeader(title: t.apk_info.permissions, tab: DetailTab.permissions),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.permissions,
@@ -1685,8 +1683,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: true,
         )),
-      DetailSectionHeader(
-          title: t.apk_info.structure, tab: DetailTab.structure),
+      _SectionHeader(title: t.apk_info.structure, tab: DetailTab.structure),
       // XAPK / OBB / 结构
       if (apkInfo?.isXapk ?? false)
         Card(
@@ -1721,7 +1718,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: true,
         )),
-      DetailSectionHeader(
+      _SectionHeader(
           title: t.apk_info.signature_info, tab: DetailTab.signature),
       // MD5 哈希值
       if (enableHash)
@@ -1761,8 +1758,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: !fileState.isComputingSignature,
         )),
-      DetailSectionHeader(
-          title: t.apk_info.diagnostics, tab: DetailTab.security),
+      _SectionHeader(title: t.apk_info.diagnostics, tab: DetailTab.security),
       // 解析诊断：加固线索 + 诊断记录
       if (analysisNotes.isNotEmpty)
         Card(
@@ -2275,6 +2271,62 @@ class _SeverityCountChip extends StatelessWidget {
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: color.withValues(alpha: 0.9),
                 ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 分组标题分隔组件。
+///
+/// 用于 iOS 详情页将卡片组织成逻辑组：文件信息、应用信息、容器与二进制、
+/// 签名与授权、文件校验、解析诊断。
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final DetailTab? tab;
+
+  const _SectionHeader({required this.title, this.tab});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(
+              color: colorScheme.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.primary,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    colorScheme.primary.withValues(alpha: 0.2),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),

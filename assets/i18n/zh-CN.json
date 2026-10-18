@@ -831,8 +831,7 @@
     "permissions": "权限",
     "structure": "结构",
     "signature": "签名",
-    "security": "安全",
-    "no_data": "暂无数据"
+    "security": "安全"
   },
   "coverage": {
     "title": "分析覆盖",

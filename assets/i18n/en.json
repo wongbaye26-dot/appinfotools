@@ -831,8 +831,7 @@
     "permissions": "Permissions",
     "structure": "Structure",
     "signature": "Signature",
-    "security": "Security",
-    "no_data": "No data"
+    "security": "Security"
   },
   "coverage": {
     "title": "Analysis coverage",
