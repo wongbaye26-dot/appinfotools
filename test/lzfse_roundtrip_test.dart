@@ -89,4 +89,26 @@ void main() {
           .having((e) => e.code, 'code', 'block.unsupported_lzvn')),
     );
   });
+
+  test('索引色：调色板 + 逐块换板，跨块边界颜色不跳', () {
+    // 详细用例在 `packages/ipa_parser/test/assets_car_palette_test.dart`。
+    // 这里做端到端确认：夹具是 `actool` 编的三段纯色图，第二份切成了两块
+    // （行 0..698 有 3 条调色板，699 之后只有 1 条）。
+    //
+    // 两个夹具都从根 `test/` 引用一次 —— `acceptance_test.dart` 的
+    // 「没有死夹具」守卫只扫根 `test/`。
+    for (final name in ['palette-single.car', 'palette-banded.car']) {
+      final car = File('test/fixtures/car/$name').readAsBytesSync();
+      final catalog = parseAssetsCar(car);
+      expect(catalog.parsed, isTrue, reason: '$name: ${catalog.failure}');
+
+      final indexed =
+          catalog.rasterImages.where((i) => i.isIndexedColor).toList();
+      expect(indexed, hasLength(1), reason: '$name 应当有一个索引色 rendition');
+
+      final result = extractCarImagePng(car, indexed.single);
+      expect(result.ok, isTrue, reason: '$name: ${result.failure}');
+      expect(String.fromCharCodes(result.png!.sublist(1, 4)), 'PNG');
+    }
+  });
 }

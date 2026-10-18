@@ -124,6 +124,72 @@ enum AssetNameIndex {
   final String label;
 }
 
+/// 一个「索引色分块」：一段行范围的调色板。
+///
+/// ## 为什么要按块存调色板
+///
+/// 大字图会被 `actool` 切成若干条带（实测 1125×2436 的启动图切成
+/// 932 + 932 + 572 行），**每条带带一份自己的调色板**（252 / 240 / 244 条，
+/// 互不相同）。索引数据是拼接的（`w × h` 字节），但调色板不能共用 ——
+/// 套错一块，那 932 行的颜色就全错，而画面看起来仍然「像一张图」。
+///
+/// ## 布局（实测，`actool` 产出的两种模式之一）
+///
+/// ```
+/// "dmp2" | 04 01 0a 04 | u16 宽 | u16 本块行数 | u16 调色板条目数 | u16 每条的字节数
+///        | 条目数 × 每条的字节数 的调色板（**BGRA**）
+///        | u32 紧随其后的流字节数
+/// ```
+///
+/// 模式字节是 `04`（`02` 是另一种多层格式，本实现不解）。
+class CarPaletteChunk {
+  /// 本块覆盖的**首行**（在整图中的行号）。
+  final int firstRow;
+
+  /// 本块覆盖的行数。
+  final int rowCount;
+
+  /// 调色板条目数。
+  final int entryCount;
+
+  /// 调色板原始字节（`entryCount × stride`，**BGRA** 顺序）。
+  final Uint8List palette;
+
+  /// 每条调色板记录的字节数（实测 4）。
+  final int stride;
+
+  const CarPaletteChunk({
+    required this.firstRow,
+    required this.rowCount,
+    required this.entryCount,
+    required this.palette,
+    required this.stride,
+  });
+
+  /// 取第 [index] 个条目的 RGBA（已按 [AssetsCarImage] 的字节序规则反转）。
+  ///
+  /// 调色板条目是 `B,G,R,A`（与 `ARGB` 像素的内存布局相同 ——
+  /// 实测三色图的索引 0 落在图像右侧的蓝色区，而调色板[0] 是
+  /// `ff 00 00 ff`，只有按 BGRA 读才是蓝）。
+  List<int> rgbaAt(int index) {
+    final base = index * stride;
+    if (stride < 4) {
+      final v = palette[base];
+      return [v, v, v, stride == 2 ? palette[base + 1] : 255];
+    }
+    return [
+      palette[base + 2],
+      palette[base + 1],
+      palette[base],
+      palette[base + 3]
+    ];
+  }
+
+  @override
+  String toString() => 'CarPaletteChunk(rows $firstRow..'
+      '${firstRow + rowCount - 1}, $entryCount entries)';
+}
+
 /// 图像数据的压缩方式。
 ///
 /// 依据 `ISTC` 块内的 LZFSE 块魔数：
@@ -208,6 +274,14 @@ class AssetsCarImage {
   /// 键里的 `kCRThemeIdentifierName` 值；没有键块时为 `null`。
   final int? assetIdentifier;
 
+  /// 索引色的分块调色板；非索引色图为空。
+  ///
+  /// 非空表示这个 rendition 的像素数据是**每像素 1 字节的调色板索引**，
+  /// 不是 ISTC 声明的 ARGB。实测这类块解出的字节数恰好是 `宽 × 高`，
+  /// 而 ISTC 的 `pixelFormat` 仍然写着 `ARGB` —— 那个字段描述的是
+  /// **解码后的目标格式**，不是落盘的形态。
+  final List<CarPaletteChunk> paletteChunks;
+
   const AssetsCarImage({
     required this.renditionName,
     this.width,
@@ -219,7 +293,11 @@ class AssetsCarImage {
     this.payloadOffset,
     this.assetName,
     this.assetIdentifier,
+    this.paletteChunks = const [],
   });
+
+  /// 这张图的像素是调色板索引（每像素 1 字节）。
+  bool get isIndexedColor => paletteChunks.isNotEmpty;
 
   /// 这个 rendition 属于一个**图集**（`ZZZZPackedAsset-*`）。
   ///
@@ -770,6 +848,9 @@ AssetsCarImage? _parseIstc(
   final name = _readRenditionName(bytes, address + _istcNameOffset, length);
   if (name == null || name.isEmpty) return null;
   final detected = _detectCompression(bytes, address, length);
+  final paletteChunks = width == 0 || height == 0
+      ? const <CarPaletteChunk>[]
+      : _parsePaletteChunks(bytes, address, length, width, height);
 
   return AssetsCarImage(
     renditionName: name,
@@ -782,7 +863,102 @@ AssetsCarImage? _parseIstc(
     payloadOffset: detected.offset,
     assetName: assetName,
     assetIdentifier: assetIdentifier,
+    paletteChunks: paletteChunks,
   );
+}
+
+/// `dmp2` 描述符的魔数。
+const String _deepMapMagic = 'dmp2';
+
+/// 索引色模式的参数四字节（`dmp2` 之后）。
+const List<int> _indexedColorParams = [0x04, 0x01, 0x0A, 0x04];
+
+/// 解析块内所有「索引色分块」。
+///
+/// 逐条校验，任何一条不成立就**整体放弃**（返回空）—— 半套调色板比没有
+/// 调色板糟得多：调用方会以为这是索引色，然后按错的颜色出图。
+///
+/// 校验项：
+/// - 描述符参数是 `04 01 0a 04`（模式 04 = 索引色；`02` 是另一种格式，不认）；
+/// - 描述符里的宽 == ISTC 声明的宽；
+/// - 每条的字节数 ∈ {3, 4}，条目数 ∈ 1..256（索引是 8 位）；
+/// - 调色板整体落在块内；
+/// - **各块行数之和 == ISTC 声明的高**。
+List<CarPaletteChunk> _parsePaletteChunks(
+  Uint8List bytes,
+  int address,
+  int length,
+  int width,
+  int height,
+) {
+  final blockEnd = address + length;
+  final limit = blockEnd > bytes.length ? bytes.length : blockEnd;
+  final chunks = <CarPaletteChunk>[];
+  var row = 0;
+  var searchFrom = address;
+
+  while (searchFrom + 16 <= limit) {
+    final found = _findMagic(bytes, searchFrom, limit, _deepMapMagic);
+    if (found < 0) break;
+    searchFrom = found + 4;
+
+    // 参数四字节。
+    var paramsOk = found + 8 <= limit;
+    if (paramsOk) {
+      for (var i = 0; i < 4; i++) {
+        if (bytes[found + 4 + i] != _indexedColorParams[i]) {
+          paramsOk = false;
+          break;
+        }
+      }
+    }
+    if (!paramsOk) continue;
+
+    final header = ByteData.sublistView(bytes);
+    final chunkWidth = header.getUint16(found + 8, Endian.little);
+    final chunkRows = header.getUint16(found + 10, Endian.little);
+    final entryCount = header.getUint16(found + 12, Endian.little);
+    final stride = header.getUint16(found + 14, Endian.little);
+
+    if (chunkWidth != width) continue;
+    if (chunkRows <= 0 || row + chunkRows > height) continue;
+    if (entryCount < 1 || entryCount > 256) continue;
+    if (stride != 3 && stride != 4) continue;
+
+    final paletteStart = found + 16;
+    final paletteEnd = paletteStart + entryCount * stride;
+    if (paletteEnd > limit) continue;
+
+    chunks.add(CarPaletteChunk(
+      firstRow: row,
+      rowCount: chunkRows,
+      entryCount: entryCount,
+      palette: Uint8List.sublistView(bytes, paletteStart, paletteEnd),
+      stride: stride,
+    ));
+    row += chunkRows;
+    searchFrom = paletteEnd;
+  }
+
+  // 行数必须正好覆盖整张图，否则说明我们对结构的理解不成立。
+  if (chunks.isEmpty || row != height) return const [];
+  return chunks;
+}
+
+/// 在 [from, limit) 内找 [magic] 的首次出现；找不到返回 -1。
+int _findMagic(Uint8List bytes, int from, int limit, String magic) {
+  final last = limit - magic.length;
+  for (var i = from; i <= last; i++) {
+    var hit = true;
+    for (var k = 0; k < magic.length; k++) {
+      if (bytes[i + k] != magic.codeUnitAt(k)) {
+        hit = false;
+        break;
+      }
+    }
+    if (hit) return i;
+  }
+  return -1;
 }
 
 /// 4 字节 4CC → 可读字符串。

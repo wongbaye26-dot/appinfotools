@@ -112,12 +112,6 @@ CarImageExtraction extractCarImagePng(
   }
   final format = image.pixelFormat;
   final plan = format == null ? null : _channelPlan[format];
-  if (plan == null) {
-    return CarImageExtraction.failed(
-        'unsupported_format',
-        'pixel format "${format ?? 'none'}" is not handled (only ARGB / BGRA / '
-            'GA8 are)');
-  }
 
   final width = image.width!;
   final height = image.height!;
@@ -135,13 +129,29 @@ CarImageExtraction extractCarImagePng(
   try {
     final decoded = lzfseDecodeConcatenated(
       Uint8List.sublistView(carBytes, offset, blockEnd),
-      maxOutputBytes: 4 * width * height * plan.bytesPerPixel,
+      maxOutputBytes: 4 * width * height * (plan?.bytesPerPixel ?? 4),
     );
     pixels = decoded.bytes;
     streams = decoded.streamCount;
     trailing = decoded.trailingBytes;
   } on LzfseException catch (e) {
     return CarImageExtraction.failed('lzfse_${e.code}', e.message);
+  }
+
+  // 索引色优先：解出的字节数正好等于像素数，且块里带完整的调色板块。
+  //
+  // 顺序很重要 —— 这个判断必须**先于** ARGB 的尺寸校验。索引色的 ISTC
+  // 里 `pixelFormat` 写的是 `ARGB`（那是解码后的目标格式），照它算期望
+  // 字节数会得到「少了 3/4」的假象，于是被误报成 pixel_size_mismatch。
+  if (image.isIndexedColor && pixels.length == width * height) {
+    return _mapIndexedColor(pixels, width, height, image);
+  }
+
+  if (plan == null) {
+    return CarImageExtraction.failed(
+        'unsupported_format',
+        'pixel format "${format ?? 'none'}" is not handled (only ARGB / BGRA / '
+            'GA8 are)');
   }
 
   final expected = width * height * plan.bytesPerPixel;
@@ -152,7 +162,9 @@ CarImageExtraction extractCarImagePng(
         'pixel_size_mismatch',
         'decoded ${pixels.length} bytes from $streams LZFSE stream(s) '
             '($trailing trailing byte(s)) but ${width}x$height x '
-            '${plan.bytesPerPixel} channels needs $expected');
+            '${plan.bytesPerPixel} channels needs $expected'
+            '${image.isIndexedColor ? ' (the block has palette chunks, but the '
+                'index count does not match the pixel count)' : ''}');
   }
 
   // 通道重排（例如 B,G,R,A → R,G,B,A）。
@@ -170,6 +182,77 @@ CarImageExtraction extractCarImagePng(
     height: height,
     colorType: plan.colorType,
     pixels: reordered,
+  );
+  if (png == null) {
+    return const CarImageExtraction.failed(
+        'encode_failed', 'the PNG encoder rejected the pixel data');
+  }
+  return CarImageExtraction(png: png);
+}
+
+/// 事件统计：调色板索引越界的次数上限，超过就放弃出图。
+const int _maxPaletteOverflow = 0;
+
+/// 把「每像素 1 字节的调色板索引」映射成 RGBA 并编 PNG。
+///
+/// **按块换调色板**：实测 1125×2436 的启动图切成 932+932+572 行、每块一份
+/// 自己的调色板（252/240/244 条）。用第一份套全图会得到「看起来正常但颜色
+/// 错」的结果 —— 那是最糟的一类 bug。
+CarImageExtraction _mapIndexedColor(
+  Uint8List indices,
+  int width,
+  int height,
+  AssetsCarImage image,
+) {
+  final chunks = image.paletteChunks;
+  // 行 → 块 的查找表。块很少（实测 ≤ 4），直接建表比每次二分清楚。
+  final chunkOfRow = List<CarPaletteChunk?>.filled(height, null);
+  for (final chunk in chunks) {
+    for (var r = chunk.firstRow;
+        r < chunk.firstRow + chunk.rowCount && r < height;
+        r++) {
+      chunkOfRow[r] = chunk;
+    }
+  }
+  for (var r = 0; r < height; r++) {
+    if (chunkOfRow[r] == null) {
+      return CarImageExtraction.failed(
+          'palette_gap',
+          'row $r of $height has no palette chunk (chunks cover '
+              '${chunks.map((c) => '${c.firstRow}+${c.rowCount}').join(', ')})');
+    }
+  }
+
+  final rgba = Uint8List(width * height * 4);
+  var overflows = 0;
+  for (var y = 0; y < height; y++) {
+    final chunk = chunkOfRow[y]!;
+    final rowBase = y * width;
+    for (var x = 0; x < width; x++) {
+      final index = indices[rowBase + x];
+      if (index >= chunk.entryCount) {
+        overflows++;
+        if (overflows > _maxPaletteOverflow) {
+          return CarImageExtraction.failed(
+              'palette_index_overflow',
+              'index $index at ($x,$y) is outside the ${chunk.entryCount}-entry '
+                  'palette of the chunk covering that row');
+        }
+      }
+      final c = chunk.rgbaAt(index < chunk.entryCount ? index : 0);
+      final o = (rowBase + x) * 4;
+      rgba[o] = c[0];
+      rgba[o + 1] = c[1];
+      rgba[o + 2] = c[2];
+      rgba[o + 3] = c[3];
+    }
+  }
+
+  final png = encodePng(
+    width: width,
+    height: height,
+    colorType: PngColorType.rgba,
+    pixels: rgba,
   );
   if (png == null) {
     return const CarImageExtraction.failed(
