@@ -111,4 +111,32 @@ void main() {
       expect(String.fromCharCodes(result.png!.sublist(1, 4)), 'PNG');
     }
   });
+
+  test('deepmap2 的两种「不解」各说各的，且都不说成「尺寸不匹配」', () {
+    // 详细用例在 `packages/ipa_parser/test/assets_car_palette_test.dart`。
+    // 这里确认三件事：
+    //   1. 模式 0x02 的多平面变体 → deepmap2_variant（不是 pixel_size_mismatch）
+    //   2. 图集成员存根 → no_payload
+    //   3. 图集本身能解（模式 0x04 索引色）
+    final multi =
+        File('test/fixtures/car/deepmap2-multilayer.car').readAsBytesSync();
+    final multiImage = parseAssetsCar(multi).images.single;
+    expect(multiImage.deepMapMode, 0x02);
+    final multiResult = extractCarImagePng(multi, multiImage);
+    expect(multiResult.failureCode, 'deepmap2_variant');
+    expect(multiResult.failureCode, isNot('pixel_size_mismatch'));
+
+    final atlasCar =
+        File('test/fixtures/car/deepmap2-atlas.car').readAsBytesSync();
+    final catalog = parseAssetsCar(atlasCar);
+    final atlas = catalog.images
+        .firstWhere((i) => i.renditionName.startsWith('ZZZZPackedAsset'));
+    expect(atlas.isAtlasMember, isTrue);
+    expect(extractCarImagePng(atlasCar, atlas).ok, isTrue,
+        reason: '图集块本身是索引色，能解');
+
+    final stub = catalog.images
+        .firstWhere((i) => !i.renditionName.startsWith('ZZZZPackedAsset'));
+    expect(extractCarImagePng(atlasCar, stub).failureCode, 'no_payload');
+  });
 }

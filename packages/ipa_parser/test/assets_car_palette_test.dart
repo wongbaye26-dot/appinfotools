@@ -264,4 +264,105 @@ void main() {
       expect(result.failure, contains('outside the 1-entry palette'));
     });
   });
+
+  group('deepmap2 变体：不解的必须说得准', () {
+    // 这一组的重点是**措辞与分类**，不是解码。模式 0x02/0x03 是多平面
+    // 变体，本实现不解 —— 但报告里必须说「不解」，不能说「尺寸不匹配」。
+    // 后者听起来像文件损坏，实际是能力边界。
+    //
+    // 实测（84 个容器、1,602 张失败）：模式 0x02 有 1,089 张、0x03 有 160 张，
+    // 它们的字节数按「每像素 N 字节」整倍超出（ARGB 4 → 7.00，GA8 2 → 3.00）。
+
+    test('模式 0x02 的样本被识别为多平面变体，而不是尺寸不匹配', () {
+      final car = _fixture('deepmap2-multilayer.car');
+      final catalog = parseAssetsCar(car);
+      final image = catalog.images.single;
+
+      expect(image.width, 120);
+      expect(image.height, 120);
+      expect(image.deepMapMode, 0x02, reason: 'dmp2 参数四字节的第一个是模式');
+      expect(image.isUndecodedDeepMapVariant, isTrue);
+      expect(image.isIndexedColor, isFalse,
+          reason: '模式 02 没有调色板（字段 3 是流字节数，不是条目数）');
+
+      final result = extractCarImagePng(car, image);
+      expect(result.ok, isFalse);
+      expect(result.failureCode, 'deepmap2_variant');
+      expect(result.failure, contains('mode 0x02'));
+      expect(result.failure, contains('per pixel'),
+          reason: '要给出实测的每像素字节数，读者才能判断这是变体而不是损坏');
+      expect(result.failureCode, isNot('pixel_size_mismatch'));
+    });
+
+    test('两种模式的描述符字段含义不同（04=条目数 / 02=流长度）', () {
+      final mode4 = parseAssetsCar(_fixture('palette-single.car'));
+      final mode2 = parseAssetsCar(_fixture('deepmap2-multilayer.car'));
+
+      expect(mode4.images.single.deepMapMode, 0x04);
+      expect(mode4.images.single.isIndexedColor, isTrue);
+      // 模式 04 的字段 3 = 调色板条目数（三色图 = 3）。
+      expect(mode4.images.single.paletteChunks.single.entryCount,
+          inInclusiveRange(3, 4));
+
+      expect(mode2.images.single.deepMapMode, 0x02);
+      expect(mode2.images.single.isIndexedColor, isFalse);
+    });
+  });
+
+  group('图集（PackedImage）', () {
+    // 小图会被 `actool` 打包进 `ZZZZPackedAsset-*` 图集：成员自己的 ISTC
+    // 只有 330 字节存根，像素在**图集块**里。图集块本身是索引色，能解。
+
+    test('图集块是索引色，解出的颜色与生成时一致', () {
+      final car = _fixture('deepmap2-atlas.car');
+      final catalog = parseAssetsCar(car);
+      final atlas = catalog.images
+          .firstWhere((i) => i.renditionName.startsWith('ZZZZPackedAsset'));
+
+      expect(atlas.isAtlasMember, isTrue, reason: '标识符 0 = 图集');
+      expect(atlas.isIndexedColor, isTrue);
+      expect(atlas.deepMapMode, 0x04);
+      expect(atlas.width, 118);
+      expect(atlas.height, 110);
+
+      final result = extractCarImagePng(car, atlas);
+      expect(result.ok, isTrue, reason: result.failure);
+
+      // 生成时用的是 4 个纯色象限图，图集里应当**只有这 4 种颜色**
+      // 加上透明填充 —— 多一种都说明调色板或索引读错了。
+      final raster = _Raster.of(result.png!);
+      expect(raster.width, 118);
+      expect(raster.height, 110);
+      final colours = <String>{};
+      for (var y = 0; y < raster.height; y++) {
+        for (var x = 0; x < raster.width; x++) {
+          colours.add(raster.pixel(x, y).join(','));
+        }
+      }
+      expect(colours, {
+        '255,0,0,255', // 红
+        '0,255,0,255', // 绿
+        '0,0,255,255', // 蓝
+        '255,255,0,255', // 黄
+        '0,0,0,0', // 透明填充
+      });
+    });
+
+    test('图集成员自己是存根：报 no_payload，不报「解析失败」', () {
+      final car = _fixture('deepmap2-atlas.car');
+      final catalog = parseAssetsCar(car);
+      final stubs = catalog.images
+          .where((i) => !i.renditionName.startsWith('ZZZZPackedAsset'))
+          .toList();
+
+      expect(stubs, hasLength(4), reason: '32/40/48/64 四个成员');
+      for (final stub in stubs) {
+        expect(stub.payloadOffset, isNull, reason: '存根里没有压缩流');
+        final result = extractCarImagePng(car, stub);
+        expect(result.ok, isFalse);
+        expect(result.failureCode, 'no_payload');
+        expect(result.failure, contains('placeholder'));
+      }
+    });
+  });
 }

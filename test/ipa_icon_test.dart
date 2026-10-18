@@ -356,8 +356,8 @@ void main() {
     });
 
     test('声明的资产存在但解不开 → 如实报，不拿别的资产顶上', () {
-      // BrandMark 只有 80×80 那张有像素，而它解出来的字节数与 80×80×4
-      // 对不上（44,880 vs 25,600，见 README）。此时**不能**改用 AppIcon。
+      // BrandMark 只有 80×80 那张有像素，而它是 deepmap2 的多平面变体
+      // （模式 0x02），本实现不解 —— 所以取不到。此时**不能**改用 AppIcon。
       final archive = _ipa(
         iconConfig: iconConfig('BrandMark'),
         extraEntries: {'Assets.car': realCar()},
@@ -370,8 +370,9 @@ void main() {
       expect(reason, contains('BrandMark'));
       expect(reason, contains('none could be decoded'));
       expect(
-        resolution.diagnostics
-            .any((d) => d.message.contains('pixel_size_mismatch')),
+        resolution.diagnostics.any((d) =>
+            d.message.contains('deepmap2_variant') ||
+            d.message.contains('pixel_size_mismatch')),
         isTrue,
         reason: '要留下具体原因，否则没法排查',
       );

@@ -282,6 +282,21 @@ class AssetsCarImage {
   /// **解码后的目标格式**，不是落盘的形态。
   final List<CarPaletteChunk> paletteChunks;
 
+  /// `dmp2` 描述符的模式字节（参数四字节的第一个）；没有描述符时为 `null`。
+  ///
+  /// 实测取值与含义：
+  ///
+  /// | 值 | 含义 | 本实现 |
+  /// |---|---|---|
+  /// | `0x04` | 索引色 + 调色板 | **已实现** |
+  /// | `0x02` | 多层（实测 3 / 7 字节每像素） | **不解**，如实报 |
+  /// | `0x03` | 同上，另一种层数 | **不解**，如实报 |
+  ///
+  /// 这个字段存在的意义是**把「我们不解」与「数据坏了」分开**：
+  /// 前者是能力边界，后者才是缺陷。没有它，报告只会说
+  /// 「解出 100,928 字节、期望 57,600」，读者会以为文件损坏。
+  final int? deepMapMode;
+
   const AssetsCarImage({
     required this.renditionName,
     this.width,
@@ -294,10 +309,14 @@ class AssetsCarImage {
     this.assetName,
     this.assetIdentifier,
     this.paletteChunks = const [],
+    this.deepMapMode,
   });
 
   /// 这张图的像素是调色板索引（每像素 1 字节）。
   bool get isIndexedColor => paletteChunks.isNotEmpty;
+
+  /// 是不是 deepmap2 里**本实现不解**的变体（模式 2 / 3）。
+  bool get isUndecodedDeepMapVariant => deepMapMode != null && deepMapMode != 4;
 
   /// 这个 rendition 属于一个**图集**（`ZZZZPackedAsset-*`）。
   ///
@@ -848,6 +867,7 @@ AssetsCarImage? _parseIstc(
   final name = _readRenditionName(bytes, address + _istcNameOffset, length);
   if (name == null || name.isEmpty) return null;
   final detected = _detectCompression(bytes, address, length);
+  final deepMapMode = _readDeepMapMode(bytes, address, length);
   final paletteChunks = width == 0 || height == 0
       ? const <CarPaletteChunk>[]
       : _parsePaletteChunks(bytes, address, length, width, height);
@@ -864,7 +884,20 @@ AssetsCarImage? _parseIstc(
     assetName: assetName,
     assetIdentifier: assetIdentifier,
     paletteChunks: paletteChunks,
+    deepMapMode: deepMapMode,
   );
+}
+
+/// `dmp2` 描述符的模式字节（参数四字节的第一个）；找不到描述符时为 `null`。
+///
+/// 只取**第一个**描述符：多块的索引色图里每一块的模式都一样（实测
+/// 932/932/572 三块的参数都是 `04 01 0a 04`）。
+int? _readDeepMapMode(Uint8List bytes, int address, int length) {
+  final blockEnd = address + length;
+  final limit = blockEnd > bytes.length ? bytes.length : blockEnd;
+  final found = _findMagic(bytes, address, limit, _deepMapMagic);
+  if (found < 0 || found + 8 > limit) return null;
+  return bytes[found + 4];
 }
 
 /// `dmp2` 描述符的魔数。

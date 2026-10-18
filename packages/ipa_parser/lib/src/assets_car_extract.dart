@@ -89,32 +89,55 @@ CarImageExtraction extractCarImagePng(
     return CarImageExtraction.failed('not_raster',
         'this rendition is not a raster image (${image.pixelFormat ?? 'no pixel format'})');
   }
+  final width = image.width!;
+  final height = image.height!;
   final offset = image.payloadOffset;
   if (offset == null) {
-    return const CarImageExtraction.failed(
+    // 两种情形都不可能从这一条里取出像素，但原因不同，分开说：
+    // - 空壳 placeholder（Music.app 有 5,694 个 334 字节条目）；
+    // - 图集存根：`actool` 把小图打包进 `ZZZZPackedAsset-*`，存根只留元数据。
+    final size = image.sizeOnDisk;
+    return CarImageExtraction.failed(
         'no_payload',
-        'the rendition has no compressed payload — a placeholder entry with '
-            'dimensions but no pixel data');
+        'the rendition has no compressed payload ($size-byte block) — either '
+            'a placeholder entry with dimensions but no pixel data, or a stub '
+            'whose pixels live in a ZZZZPackedAsset atlas');
   }
   if (!image.compression.isCompressed &&
       image.compression != CarCompression.lzfseUncompressed) {
     return const CarImageExtraction.failed(
         'not_compressed', 'the payload is not a recognised LZFSE stream');
   }
-  // deepmap2 有像素，但不是 LZFSE —— 直接说「不解这个码」，不要拿
-  // LZFSE 解码器去试一个不是它的流（那只会得到 bad_magic，读者还不知道
-  // 真正原因）。
+  // deepmap2 有像素，但**不是** LZFSE —— 直接说「不解这个变体」，
+  // 不要拿 LZFSE 解码器去试一个不是它的流（那只会得到 bad_magic，
+  // 读者还不知道真正原因）。
   if (image.compression == CarCompression.deepmap2) {
+    if (image.isUndecodedDeepMapVariant) {
+      return CarImageExtraction.failed(
+          'deepmap2_variant',
+          'the pixel data uses deepmap2 mode 0x'
+              '${image.deepMapMode!.toRadixString(16).padLeft(2, '0')}, a '
+              'multi-plane variant this decoder does not implement (only '
+              'mode 0x04, palette-indexed, is decoded)');
+    }
+    if (image.deepMapMode == 4) {
+      // 模式 04 但没有 LZFSE 流 —— 这是图集存根（像素在
+      // `ZZZZPackedAsset-*` 里），不是「deepmap2 解不了」。
+      return CarImageExtraction.failed(
+          'no_stream_data',
+          'this rendition declares $width x $height but its block has no '
+              'pixel stream (${image.sizeOnDisk} bytes, palette-indexed '
+              'deepmap2 stub) — small images are packed into a '
+              'ZZZZPackedAsset atlas and keep only metadata here');
+    }
     return const CarImageExtraction.failed(
         'unsupported_deepmap2',
         'the pixel data uses Apple deepmap2, which this decoder does not '
-            'implement (only LZFSE is decoded)');
+            'implement (only LZFSE and deepmap2 mode 0x04 are decoded)');
   }
   final format = image.pixelFormat;
   final plan = format == null ? null : _channelPlan[format];
 
-  final width = image.width!;
-  final height = image.height!;
   final blockEnd = image.blockOffset + image.sizeOnDisk;
   if (offset < 0 || offset >= blockEnd || blockEnd > carBytes.length) {
     return CarImageExtraction.failed(
@@ -147,6 +170,8 @@ CarImageExtraction extractCarImagePng(
     return _mapIndexedColor(pixels, width, height, image);
   }
 
+  // 先判格式：格式本身不支持时，解出什么都不重要 —— 说「格式不支持」
+  // 比说「没有数据」更接近根因。
   if (plan == null) {
     return CarImageExtraction.failed(
         'unsupported_format',
@@ -154,8 +179,34 @@ CarImageExtraction extractCarImagePng(
             'GA8 are)');
   }
 
+  // 一条流都没有：小图会被 `actool` 打包进 `ZZZZPackedAsset-*` 图集，
+  // 它自己的 ISTC 只是一个**存根**，像素数据在别处。把它报成
+  // 「尺寸不匹配」会让人以为是数据坏了。
+  if (pixels.isEmpty) {
+    return CarImageExtraction.failed(
+        'no_stream_data',
+        'this rendition carries no pixel stream of its own (${width}x$height '
+            'declared, ${image.sizeOnDisk}-byte block) — small images are '
+            'packed into a ZZZZPackedAsset atlas and the stub keeps only '
+            'metadata');
+  }
+
   final expected = width * height * plan.bytesPerPixel;
   if (pixels.length != expected) {
+    // deepmap2 的多平面变体：字节数按「每像素 N 字节」整倍超出，
+    // 但结构本实现不解。单独报，不要混进「尺寸不匹配」——
+    // 后者听起来像文件损坏，实际是能力边界。
+    if (image.isUndecodedDeepMapVariant) {
+      final perPixel = pixels.length / (width * height);
+      return CarImageExtraction.failed(
+          'deepmap2_variant',
+          'the pixel data uses deepmap2 mode 0x'
+              '${image.deepMapMode!.toRadixString(16).padLeft(2, '0')}, a '
+              'multi-plane variant this decoder does not implement '
+              '(${pixels.length} bytes for '
+              '${width}x$height = ${perPixel.toStringAsFixed(2)} per pixel, '
+              'while ${plan.bytesPerPixel} would be the unpacked size)');
+    }
     // 把「几个流、拼出多少」写清楚：一个块里有 4 个流是常态，
     // 只解一个会看起来像「少了两成像素」，那是误导。
     return CarImageExtraction.failed(
