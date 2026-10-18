@@ -30,11 +30,20 @@
 
 ### 新增检测
 
-- **`ANDROID-RULE-G`**：设备标识 / 通讯录 + 上传（P2/suspected）。此前 6 条组合
-  规则里 4 条是图片链，而「通讯录 → 上传」「设备标识 → 上传」这类最常见的外传
-  模式**一条规则都没有**，只有一条 INFO 级权限条目。
+- **`ANDROID-RULE-G`**：敏感数据来源 + 上传。此前 6 条组合规则里 4 条是图片链，
+  而「通讯录 / 短信 / 定位 / 录音 / 剪贴板 / 设备标识 → 上传」这类最常见的外传
+  模式**一条规则都没有**，只有 INFO 级权限条目。
+  **按来源稀有度分级**：通讯录 / 短信 / 录音 → P2（正常应用里「读这些 + 上传」
+  并不常见），定位 / 剪贴板 / 设备标识 → P3（几乎每个应用都有，一律 P2 会让这条
+  规则在九成应用上出现，读者会学会忽略它）。
   三条防误报约束都写了测试：只有来源不报、只有上传不报、只有字符串线索时
   `dataTransform` 留 null。
+- **`ANDROID-SPECIAL-ACCESS`**（P3/confirmed）：无障碍服务 / 设备管理器 /
+  通知监听。判据是**清单里组件的 `android:permission="...BIND_*"`**，
+  不是 DEX 字面量 —— 后者在真实样本上立刻误报：飞牛TV 的「无障碍」来自
+  Material 的 `MaterialAutoCompleteTextView` 查询 `AccessibilityServiceInfo`，
+  子串匹配把 UI 库的正常调用算成了无障碍服务。修后只有真正声明了
+  `BIND_ACCESSIBILITY_SERVICE` 的包（如抖音）才报。
 - **三个新标记**：`TelephonyManager`（设备标识）、`ContactsContract`（通讯录）、
   `DexClassLoader`（运行时加载）。最后一个**不产出风险结论**，只进「覆盖不足」——
   被加载的代码不在归档里，静态分析的结论对那部分不成立。
@@ -43,10 +52,11 @@
 
 ### 质量
 
-- 测试 **1,303 → 1,335**（+32）。新增 `audit_coverage_honesty_test.dart`（9）、
+- 测试 **1,303 → 1,354**（+51）。新增 `audit_coverage_honesty_test.dart`（9）、
   `android_sensitive_source_rule_test.dart`（10）、
   `audit_permission_and_rulef_test.dart`（6）、
-  `ios_native_symbols_nested_test.dart`（7）。
+  `ios_native_symbols_nested_test.dart`（7）、
+  `android_sensitive_source_extended_test.dart`（19）。
 - 真实样本回归：抖音 55/55 DEX、端到端 **14.13 s**；
   `sun_signed.ipa` 静态解析 **239.9 ms**（+7.8%，预算从 16 提到 64 MiB 的代价）。
 - **仍未验证**：界面目视（本机构建不了任何平台产物）、真实 XAPK 样本、

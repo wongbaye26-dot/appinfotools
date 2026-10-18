@@ -540,6 +540,9 @@
       "android_rule_g_relationship": "来源 API 与上传 API 都出现在包里，但未证实两者在同一条调用路径上 —— 「数据真的流进了那个请求」这个结论并未成立。",
       "android_rule_g_limitation": "同现不是数据流：来源可能是为别的功能读的（统计、风控），上传也可能传的是完全另一份内容。本版本未做反汇编与污点分析。",
       "android_rule_g_manual_review": "建议人工核查：这份数据是否真的被发送出去，以及用户是否被明确告知。这是一条待复核项，不是恶意结论。",
+      "android_special_access": "应用声明或引用了特殊访问能力：{sources}。这些是高权限事实，用户应当知情；声明了不等于被滥用。",
+      "android_special_access_limitation": "这是「声明/引用」的事实，不是行为结论：无障碍服务、设备管理器、通知监听都有正当用途（自动化、密码管理器、手表配套）。本次未观察运行时行为。",
+      "android_special_access_review": "核查应用拿这个能力做了什么、用户是否被告知。这是一条待复核的事实，不是恶意结论。",
       "android_rule_f_limitation_no_dex": "本次未读取到 DEX 内容，「未发现」的置信度是不完整的。",
       "android_rule_f_limitation_scope": "字符串扫描不覆盖原生库、资源与加固壳内代码。",
       "android_rule_f_runtime_traffic": "如需排除上传行为，请结合动态流量观察（本版本不提供）。",
@@ -593,7 +596,13 @@
       "camera": "相机",
       "clipboard": "剪贴板",
       "device_id": "设备标识",
-      "contacts": "通讯录"
+      "contacts": "通讯录",
+      "sms": "短信",
+      "location": "定位",
+      "recording": "录音",
+      "accessibility": "无障碍服务",
+      "device_admin": "设备管理器",
+      "notification_listener": "通知监听"
     },
     "list_join": "、",
     "evidence_texts": {

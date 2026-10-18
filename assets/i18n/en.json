@@ -540,6 +540,9 @@
       "android_rule_g_relationship": "The source API and the upload API both appear in the package, but they are not proven to lie on the same call path — whether the data actually flows into the request is not established.",
       "android_rule_g_limitation": "Co-occurrence is not data flow: the source may be read for an unrelated feature (analytics, fraud detection), and the upload may carry something else entirely. No disassembly or taint analysis was performed.",
       "android_rule_g_manual_review": "Review manually: check whether this data is actually sent out, and whether the user was told about it. This is a candidate for review, not a malicious verdict.",
+      "android_special_access": "The package declares or references special-access capabilities: {sources}. These are high-privilege facts the user should be told about; declaring them does not mean they are abused.",
+      "android_special_access_limitation": "This is a declaration/reference fact, not a behaviour finding: accessibility services, device admin and notification listeners all have legitimate uses (automation, password managers, watch companions). No runtime behaviour was observed.",
+      "android_special_access_review": "Check what the app does with this capability and whether the user is told about it. This is a fact to review, not a malicious verdict.",
       "android_rule_f_limitation_no_dex": "No DEX content was read this time, so the confidence of the “not found” conclusion is incomplete.",
       "android_rule_f_limitation_scope": "String scanning does not cover native libraries, resources or code inside a hardened shell.",
       "android_rule_f_runtime_traffic": "To rule out upload behaviour, combine this with dynamic traffic observation (not provided in this version).",
@@ -593,7 +596,13 @@
       "camera": "camera",
       "clipboard": "clipboard",
       "device_id": "device identifier",
-      "contacts": "contacts"
+      "contacts": "contacts",
+      "sms": "SMS",
+      "location": "location",
+      "recording": "audio recording",
+      "accessibility": "accessibility service",
+      "device_admin": "device admin",
+      "notification_listener": "notification listener"
     },
     "list_join": ", ",
     "evidence_texts": {

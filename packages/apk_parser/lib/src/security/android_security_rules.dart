@@ -33,6 +33,7 @@ class AndroidRuleFacts {
     required this.sensitiveSourceCodeRefs,
     required this.hasSensitiveSource,
     required this.hasDynamicLoading,
+    required this.specialAccessKinds,
   });
 
   final ApkMeta meta;
@@ -72,6 +73,12 @@ class AndroidRuleFacts {
 
   /// 是否存在运行时 DEX 加载线索（被加载的代码静态分析看不到）。
   final bool hasDynamicLoading;
+
+  /// 声明了哪些特殊访问能力（`accessibility` / `device_admin` /
+  /// `notification_listener`）。
+  ///
+  /// **来自清单层的组件权限**，不是 DEX 字面量 —— 后者会被 UI 库误伤。
+  final List<String> specialAccessKinds;
 
   /// 是否存在图像输入来源（权限或代码线索）。
   bool get hasImageInput =>
@@ -164,6 +171,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     build: _buildRuleG,
   ),
   AndroidSecurityRule(
+    id: 'ANDROID-SPECIAL-ACCESS',
+    summary: '声明了特殊访问能力（无障碍 / 设备管理器 / 通知监听）—— 高权限事实。',
+    matches: _matchesSpecialAccess,
+    build: _buildSpecialAccess,
+  ),
+  AndroidSecurityRule(
     id: 'ANDROID-RULE-F',
     summary: '未发现上传特征时的显式「未发现」结论（不得读成「安全」）。',
     matches: _matchesRuleF,
@@ -188,6 +201,15 @@ bool _matchesRuleE(AndroidRuleFacts f) =>
     f.hasBackground &&
     (f.hasImageInput || f.hasOcrCapability) &&
     f.hasUploadCapability;
+
+/// 特殊访问能力：**不需要**「+上传」也报。
+///
+/// 无障碍（读屏/自动点击）、设备管理器（防卸载/锁屏/抹除）、通知监听
+/// （读通知里的验证码）这三类能力一旦被滥用，危害远大于普通权限；而它们
+/// 在正常应用里也确实存在（自动化、密码管理器、手表应用），所以只到 P3 +
+/// confirmed（确认的是**声明事实**，不是风险）。
+bool _matchesSpecialAccess(AndroidRuleFacts f) =>
+    f.specialAccessKinds.isNotEmpty;
 
 /// 规则 G：非图片类敏感数据来源（设备标识 / 通讯录）**同时**存在上传能力。
 ///
@@ -323,25 +345,49 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
 }
 
 SecurityFinding _buildRuleG(AndroidRuleFacts f) {
-  // 说清**是哪一类**来源：设备标识与通讯录对用户的含义完全不同。
-  final sourceIds = <String>{
-    if (f.sensitiveSourceClues.any((c) => c.markerId == 'device-id') ||
-        f.sensitiveSourceCodeRefs.any((r) => r.markerId == 'device-id'))
-      'device_id',
-    if (f.sensitiveSourceClues.any((c) => c.markerId == 'contacts') ||
-        f.sensitiveSourceCodeRefs.any((r) => r.markerId == 'contacts'))
-      'contacts',
-  }.toList()
-    ..sort();
+  // 说清**是哪几类**来源：设备标识 / 通讯录 / 短信 / 定位 / 录音 / 剪贴板
+  // 对用户的含义完全不同，混成一句「敏感数据」等于没说。
+  bool has(String markerId) =>
+      f.sensitiveSourceClues.any((c) => c.markerId == markerId) ||
+      f.sensitiveSourceCodeRefs.any((r) => r.markerId == markerId);
+
+  final sourceIds = <String>[
+    if (has('device-id')) 'device_id',
+    if (has('contacts')) 'contacts',
+    if (has('sms')) 'sms',
+    if (has('location')) 'location',
+    if (has('recording')) 'recording',
+    if (has('clipboard')) 'clipboard',
+  ]..sort();
+
+  // `dataSource` 是给界面/报告直接显示的一行字，用中文标签；
+  // `{sources}` 走 i18n，两者说的是同一批来源。
+  const sourceLabels = <String, String>{
+    'device_id': '设备标识',
+    'contacts': '通讯录',
+    'sms': '短信',
+    'location': '定位',
+    'recording': '录音',
+    'clipboard': '剪贴板',
+  };
+  final sourceText = sourceIds.map((id) => sourceLabels[id] ?? id).join(' / ');
+
+  // **按来源的稀有度分级**，而不是一律 P2。
+  //
+  // 实测（5 个真实包）：「设备标识 → 上传」「定位 → 上传」几乎每个应用都有
+  // （统计 SDK、地图），一律报 P2 会让这条规则在九成应用上出现 —— 那就成了
+  // 噪音，读者会学会忽略它。而「通讯录 / 短信 / 录音 → 上传」在正常应用里
+  // 并不常见，值得单独看一眼。
+  const higherSignalSources = {'contacts', 'sms', 'recording'};
+  final isHigherSignal = sourceIds.any(higherSignalSources.contains);
 
   return SecurityFinding(
     ruleId: 'ANDROID-RULE-G',
     platform: SecurityPlatform.android,
     category: SecurityCategory.dataExfiltration,
-    // P2 而不是 P1：设备标识与通讯录的读取本身极常见（很多 SDK 都读），
-    // 单凭「同现」不足以给到 P1。规则 C 之所以是 P1，是因为「图片 → 识别 →
-    // 上传」这条链本身就更可疑。
-    severity: SecuritySeverity.p2,
+    // P1 从不给：单凭「同现」不足以说「数据被传走了」。规则 C 之所以是 P1，
+    // 是因为「图片 → 识别 → 上传」这条链本身就更可疑。
+    severity: isHigherSignal ? SecuritySeverity.p2 : SecuritySeverity.p3,
     confidence: SecurityConfidence.suspected,
     finding: 'A non-image sensitive data source (device identifier / contacts) '
         'and upload capability were both found. This is a suspected '
@@ -355,7 +401,7 @@ SecurityFinding _buildRuleG(AndroidRuleFacts f) {
       ...clueEvidence(f.uploadClues),
       ...referenceEvidence(f.uploadCodeRefs),
     ],
-    dataSource: '设备标识 / 通讯录（TelephonyManager / ContactsContract）',
+    dataSource: sourceText,
     dataSink: '上传请求（multipart / upload API）',
     // 这一条**没有** dataTransform：字符串线索没有方法上下文，
     // 拿不到「同一方法体」的定位。留空而不是编一个。
@@ -452,6 +498,56 @@ SecurityFinding _buildRuleE(AndroidRuleFacts f) {
     recommendation: 'Run it in an isolated environment and confirm after '
         'observing the network behaviour.',
     recommendationCode: 'android.rule_e.manual_review',
+  );
+}
+
+/// 特殊访问能力：一条发现列出**全部**命中的能力（不刷屏）。
+///
+/// 等级只到 P3 + confirmed：确认的是「声明/引用了这个能力」这个事实，
+/// 不是「这个应用在滥用它」。无障碍与通知监听在自动化、密码管理器、手表
+/// 应用里都是正常需求。
+SecurityFinding _buildSpecialAccess(AndroidRuleFacts f) {
+  final ids = f.specialAccessKinds;
+  // 证据指回清单里的那个组件 —— 读者能自己去 manifest 里核对。
+  final evidence = <SecurityEvidence>[];
+  for (final component in f.meta.components) {
+    const bindPermissions = {
+      'android.permission.BIND_ACCESSIBILITY_SERVICE': 'accessibility',
+      'android.permission.BIND_DEVICE_ADMIN': 'device_admin',
+      'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE':
+          'notification_listener',
+    };
+    final kind = bindPermissions[component.permission];
+    if (kind == null) continue;
+    evidence.add(SecurityEvidence(
+      source: SecurityEvidenceSource.manifest,
+      location: 'AndroidManifest.xml / ${component.type.name}'
+          '[@name="${component.name ?? '?'}"]',
+      detail: 'android:permission="${component.permission}"',
+    ));
+  }
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-SPECIAL-ACCESS',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.backgroundTask,
+    severity: SecuritySeverity.p3,
+    confidence: SecurityConfidence.confirmed,
+    finding: 'The manifest declares special-access capabilities: '
+        '${ids.join(', ')}. These are high-privilege facts that the user '
+        'should be told about; declaring them does not mean they are abused.',
+    messageCode: 'android.special_access',
+    messageArgs: {'sources': ids},
+    evidence: evidence,
+    limitation: 'This is a manifest declaration fact, not a behaviour '
+        'finding: accessibility services, device admin and notification '
+        'listeners all have legitimate uses (automation, password managers, '
+        'watch companions). No runtime behaviour was observed.',
+    limitationCode: 'android.special_access.limitation',
+    recommendation: 'Check what the app does with this capability and whether '
+        'the user is told about it. This is a fact to review, not a '
+        'malicious verdict.',
+    recommendationCode: 'android.special_access.review',
   );
 }
 

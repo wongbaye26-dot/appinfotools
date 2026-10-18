@@ -498,3 +498,67 @@ Mach-O），或至少在覆盖说明里写明「只扫了主可执行文件」�
 - **工程健壮性 8 → 9**：iOS 主二进制不再被 16 MiB 截掉近一半。
 
 深度仍是 9/20（无数据流、iOS 无字节码），这是设计约束，不是这几项能改的。
+
+---
+
+## 10. 第二轮能力扩展（2026-10-18，同日晚）
+
+§9 修完七项后，继续补**检测广度**。新增 19 条测试，`flutter test` 1,335 → **1,354**。
+
+### 10.1 敏感来源从 2 类扩到 6 类
+
+规则 G 现在覆盖：设备标识、通讯录、**短信**（`SmsManager`）、**定位**
+（`LocationManager`）、**录音**（`MediaRecorder`）、**剪贴板**（`ClipboardManager`）。
+
+**按来源稀有度分级**（真实样本逼出来的）：5 个样本里 4 个都同时有「设备标识 /
+定位 / 剪贴板 + 上传」—— 一律 P2 会让这条规则在九成应用上出现，读者会学会
+忽略它。现在：
+
+| 来源 | 等级 | 理由 |
+|---|---|---|
+| 通讯录 / 短信 / 录音 | **P2** | 正常应用里「读这些 + 上传」并不常见 |
+| 定位 / 剪贴板 / 设备标识 | **P3** | 几乎每个应用都有（地图、剪贴板同步、统计 SDK） |
+
+### 10.2 新增 `ANDROID-SPECIAL-ACCESS`（P3/confirmed）
+
+无障碍服务 / 设备管理器 / 通知监听。这三类能力一旦被滥用，危害远大于普通权限
+（读屏、自动点击、盗取验证码、防卸载），但正常应用也确实在用（自动化、
+密码管理器、手表配套），所以只到 P3，`confirmed` 指的是**声明事实**已确认。
+
+### 10.3 真实样本抓到的第二个误报（本轮最重要）
+
+第一版用 DEX 字面量判（`AccessibilityService` / `DeviceAdminReceiver` /
+`NotificationListenerService`），**飞牛TV 立刻误报「无障碍服务」**。查证据发现
+它来自 Material 的 `MaterialAutoCompleteTextView` 查询
+`AccessibilityServiceInfo` —— 子串匹配把 UI 库的正常调用算成了无障碍服务。
+
+**改判据**：不用 DEX 字面量，改用**清单层组件的 `android:permission`**：
+
+```
+android.permission.BIND_ACCESSIBILITY_SERVICE          → accessibility
+android.permission.BIND_DEVICE_ADMIN                   → device_admin
+android.permission.BIND_NOTIFICATION_LISTENER_SERVICE  → notification_listener
+```
+
+这是「提供该能力的组件必须声明 BIND 权限」这一平台约束的直接落地，比在字节码里
+找类名可靠得多。修后实测：
+
+| 样本 | BIND 权限组件 | 是否报 SPECIAL-ACCESS |
+|---|---|---|
+| 抖音 | `BIND_ACCESSIBILITY_SERVICE`（1 个） | ✅ 报 `{sources: [accessibility]}` |
+| 飞牛TV | 无 | ❌ 不报（误报消失） |
+| 49af6cnn / 138 | 只有 `BIND_JOB_SERVICE` | ❌ 不报 |
+
+回归用例已补：`AccessibilityServiceInfo` 出现在 DEX 里**不算**无障碍服务。
+
+### 10.4 教训
+
+**「子串匹配一个类名」在真实样本上极容易误伤。** 同一个词根下往往有一个
+「查询它」的 API（`AccessibilityServiceInfo`、`AccessibilityManager`），而
+查询方可能是完全无关的 UI 库。判「谁提供了某能力」时，优先找**声明式证据**
+（清单权限、组件声明），而不是代码里的类名。
+
+### 10.5 评分影响
+
+**74 → 76/100**：检测广度 12 → 14（多了 4 类数据来源 + 3 类特殊访问能力）。
+覆盖诚实度、深度、证据可追溯不变。

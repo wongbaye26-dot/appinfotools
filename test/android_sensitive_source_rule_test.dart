@@ -79,14 +79,16 @@ void main() {
   });
 
   group('设备标识 / 通讯录 + 上传', () {
-    test('设备标识 + 上传 → 一条 P2/suspected，来源写清是设备标识', () {
+    test('设备标识 + 上传 → 一条 P3/suspected，来源写清是设备标识', () {
       final result = _audit([
         'Landroid/telephony/TelephonyManager;',
         'multipart/form-data',
       ]);
       final finding = _byId(result, 'ANDROID-RULE-G');
       expect(finding, isNotNull, reason: '这是最常见的外传模式，不该漏');
-      expect(finding!.severity, SecuritySeverity.p2);
+      // P3 而不是 P2：几乎每个应用都读设备标识并上传（统计 SDK），
+      // 报 P2 会让这条规则在九成应用上出现，反而没人看。
+      expect(finding!.severity, SecuritySeverity.p3);
       expect(
         finding.confidence,
         SecurityConfidence.suspected,

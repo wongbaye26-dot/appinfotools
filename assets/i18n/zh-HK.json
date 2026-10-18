@@ -540,6 +540,9 @@
       "android_rule_g_relationship": "來源 API 與上傳 API 都出現在封裝裡，但未證實兩者在同一條呼叫路徑上 —— 「資料真的流進了那個請求」這個結論並未成立。",
       "android_rule_g_limitation": "同現不是資料流：來源可能是為別的功能讀的（統計、風控），上傳也可能傳的是完全另一份內容。本版本未做反組譯與污點分析。",
       "android_rule_g_manual_review": "建議人工核查：這份資料是否真的被發送出去，以及使用者是否被明確告知。這是一條待複核項，不是惡意結論。",
+      "android_special_access": "應用宣告或引用了特殊存取能力：{sources}。這些是高權限事實，使用者應當知情；宣告了不等於被濫用。",
+      "android_special_access_limitation": "這是「宣告/引用」的事實，不是行為結論：無障礙服務、裝置管理員、通知監聽都有正當用途（自動化、密碼管理器、手錶配套）。本次未觀察執行時行為。",
+      "android_special_access_review": "核查應用拿這個能力做了什麼、使用者是否被告知。這是一條待複核的事實，不是惡意結論。",
       "android_rule_f_limitation_no_dex": "本次未讀取到 DEX 內容，「未發現」的置信度是不完整的。",
       "android_rule_f_limitation_scope": "字串掃描不覆蓋原生庫、資源與加固外殼內程式碼。",
       "android_rule_f_runtime_traffic": "如需排除上傳行為，請結合動態流量觀察（本版本不提供）。",
@@ -593,7 +596,13 @@
       "camera": "相機",
       "clipboard": "剪貼板",
       "device_id": "裝置識別碼",
-      "contacts": "通訊錄"
+      "contacts": "通訊錄",
+      "sms": "短訊",
+      "location": "定位",
+      "recording": "錄音",
+      "accessibility": "無障礙服務",
+      "device_admin": "裝置管理員",
+      "notification_listener": "通知監聽"
     },
     "list_join": "、",
     "evidence_texts": {

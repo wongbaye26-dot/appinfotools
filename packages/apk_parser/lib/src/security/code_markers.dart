@@ -76,10 +76,33 @@ const List<CodeMarker> codeMarkers = [
       'device identifier API (TelephonyManager)', 'TelephonyManager'),
   CodeMarker('contacts', SecurityCategory.deviceData,
       'contacts API (ContactsContract)', 'ContactsContract'),
+  CodeMarker(
+      'sms', SecurityCategory.deviceData, 'SMS API (SmsManager)', 'SmsManager'),
+  CodeMarker('location', SecurityCategory.deviceData,
+      'location API (LocationManager)', 'LocationManager'),
+  CodeMarker('recording', SecurityCategory.deviceData,
+      'audio recording API (MediaRecorder)', 'MediaRecorder'),
+  CodeMarker('clipboard', SecurityCategory.deviceData,
+      'clipboard API (ClipboardManager)', 'ClipboardManager'),
+
+  // **特殊访问能力不用 DEX 字面量判**。
+  //
+  // 试过 `AccessibilityService` / `DeviceAdminReceiver` /
+  // `NotificationListenerService` 三个字面量，真实样本立刻误报：飞牛TV 的
+  // 「无障碍」来自 Material 的 `MaterialAutoCompleteTextView` 查询
+  // `AccessibilityServiceInfo` —— 子串匹配把 UI 库的正常调用算成了无障碍服务。
+  //
+  // 可靠判据在**清单层**：提供这些能力的组件必须声明
+  // `android:permission="android.permission.BIND_*"`。
+  // 见 `AndroidSecurityAudit` 的 `specialAccessFromComponents`。
+
   // 动态加载：被加载的代码不在 DEX 里，静态分析看不到 —— 消费方是
   // 「覆盖不足」说明（`android.dex.dynamic_loading`），不是风险结论。
+  // 两个入口都要：`DexClassLoader` 与 `PathClassLoader` 是同一类东西。
   CodeMarker('dynamic-loading', SecurityCategory.backgroundTask,
       'runtime DEX loading (DexClassLoader)', 'DexClassLoader'),
+  CodeMarker('dynamic-loading-path', SecurityCategory.backgroundTask,
+      'runtime DEX loading (PathClassLoader)', 'PathClassLoader'),
   // ---- 后台 ----
   CodeMarker('jobscheduler', SecurityCategory.backgroundTask, 'JobScheduler',
       'JobScheduler'),

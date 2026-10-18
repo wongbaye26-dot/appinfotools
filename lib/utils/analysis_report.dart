@@ -739,6 +739,8 @@ class AnalysisReport {
       'android.rule_c' => f.android_rule_c,
       'android.rule_g' =>
         sources == null ? null : f.android_rule_g(sources: sources),
+      'android.special_access' =>
+        sources == null ? null : f.android_special_access(sources: sources),
       'android.permission_expired' => (name == null || note == null)
           ? null
           : f.android_permission_expired(name: name, note: note),
@@ -795,6 +797,7 @@ class AnalysisReport {
       'android.permission_sdk23_conditional.verify' =>
         f.android_permission_sdk23_conditional_verify,
       'android.rule_g.manual_review' => f.android_rule_g_manual_review,
+      'android.special_access.review' => f.android_special_access_review,
       'android.rule_a.manual_review' => f.android_rule_a_manual_review,
       'android.rule_d.manual_review' => f.android_rule_d_manual_review,
       'android.rule_e.manual_review' => f.android_rule_e_manual_review,
@@ -886,6 +889,8 @@ class AnalysisReport {
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
       'android.rule_g.limitation' => f.android_rule_g_limitation,
+      'android.special_access.limitation' =>
+        f.android_special_access_limitation,
       'android.rule_a.limitation' => f.android_rule_a_limitation,
       'android.rule_d.limitation' => f.android_rule_d_limitation,
       'android.rule_e.limitation' => f.android_rule_e_limitation,
@@ -1445,6 +1450,12 @@ class AnalysisReport {
               'clipboard' => names.clipboard,
               'device_id' => names.device_id,
               'contacts' => names.contacts,
+              'sms' => names.sms,
+              'location' => names.location,
+              'recording' => names.recording,
+              'accessibility' => names.accessibility,
+              'device_admin' => names.device_admin,
+              'notification_listener' => names.notification_listener,
               _ => id,
             })
         .join(t.security.list_join);

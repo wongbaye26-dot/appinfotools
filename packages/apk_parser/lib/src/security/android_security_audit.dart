@@ -26,6 +26,28 @@ class AndroidSecurityAudit {
   static const String rulesVersion = PermissionCatalog.rulesVersion;
 
   /// [manifestParsed] 为 false 时必须给出原因（记入覆盖不足）。
+  /// 从组件声明里认出**特殊访问能力**。
+  ///
+  /// 判据是组件上的 `android:permission`：提供这些能力的组件**必须**声明
+  /// 对应的 BIND 权限，否则系统不会把它们当作服务。这比在 DEX 里找类名可靠
+  /// 得多 —— 后者会被 UI 库的正常调用误伤（`AccessibilityServiceInfo`）。
+  static List<String> specialAccessFromComponents(
+    List<AndroidComponent> components,
+  ) {
+    const bindPermissions = {
+      'android.permission.BIND_ACCESSIBILITY_SERVICE': 'accessibility',
+      'android.permission.BIND_DEVICE_ADMIN': 'device_admin',
+      'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE':
+          'notification_listener',
+    };
+    final kinds = <String>{};
+    for (final component in components) {
+      final kind = bindPermissions[component.permission];
+      if (kind != null) kinds.add(kind);
+    }
+    return kinds.toList()..sort();
+  }
+
   /// 去掉**精确重复**的权限声明（名字 + maxSdkVersion + sdk23Only 三项全同）。
   ///
   /// 只去精确重复：同名但 `maxSdkVersion` 不同的是两条不同的声明
@@ -323,18 +345,37 @@ class AndroidSecurityAudit {
     // 「代码引用了 MultipartBody，但字面量 multipart/form-data 从未出现」这类
     // 情况。两者分开保存，陈述时也要分开。
     // ---- 非图片类敏感数据来源（B：审计报告 P2-2）----
+    const sensitiveSourceMarkers = {
+      'device-id',
+      'contacts',
+      'sms',
+      'location',
+      'recording',
+      'clipboard',
+    };
     final sensitiveSourceClues = scan.clues
-        .where((c) => c.markerId == 'device-id' || c.markerId == 'contacts')
+        .where((c) => sensitiveSourceMarkers.contains(c.markerId))
         .toList();
-    final sensitiveSourceCodeRefs = codeRefsOf({'device-id', 'contacts'});
+    final sensitiveSourceCodeRefs = codeRefsOf(sensitiveSourceMarkers);
+
+    // 特殊访问能力：**从清单层判**，不从 DEX 字面量判。
+    //
+    // 试过 DEX 字面量（`AccessibilityService` 等），真实样本立刻误报：
+    // 飞牛TV 的「无障碍」来自 Material 的 `MaterialAutoCompleteTextView`
+    // 查询 `AccessibilityServiceInfo` —— 子串匹配把 UI 库的正常调用算成了
+    // 无障碍服务。可靠判据是组件上的 `android:permission`。
+    final specialAccessKinds = specialAccessFromComponents(meta.components);
     final hasSensitiveSource =
         sensitiveSourceClues.isNotEmpty || sensitiveSourceCodeRefs.isNotEmpty;
 
     // 运行时 DEX 加载：被加载的代码不在 DEX 里，静态分析**看不到**。
     // 这不是风险结论，是覆盖范围的说明。
+    // 两个入口都要：`DexClassLoader` 与 `PathClassLoader` 是同一类东西。
+    const dynamicLoadingMarkers = {'dynamic-loading', 'dynamic-loading-path'};
     final hasDynamicLoading =
-        scan.clues.any((c) => c.markerId == 'dynamic-loading') ||
-            methodScan.references.any((r) => r.markerId == 'dynamic-loading');
+        scan.clues.any((c) => dynamicLoadingMarkers.contains(c.markerId)) ||
+            methodScan.references
+                .any((r) => dynamicLoadingMarkers.contains(r.markerId));
 
     final hasOcrCapability = ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty;
     final hasUploadCapability =
@@ -900,6 +941,7 @@ class AndroidSecurityAudit {
       sensitiveSourceCodeRefs: sensitiveSourceCodeRefs,
       hasSensitiveSource: hasSensitiveSource,
       hasDynamicLoading: hasDynamicLoading,
+      specialAccessKinds: specialAccessKinds,
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));

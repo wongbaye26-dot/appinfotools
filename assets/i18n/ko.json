@@ -396,7 +396,13 @@
       "photo_library": "전체 사진 보관함 (PhotoKit)",
       "photo_picker": "시스템 사진 선택기",
       "device_id": "기기 식별자",
-      "contacts": "연락처"
+      "contacts": "연락처",
+      "sms": "문자 메시지",
+      "location": "위치",
+      "recording": "녹음",
+      "accessibility": "접근성 서비스",
+      "device_admin": "기기 관리자",
+      "notification_listener": "알림 리스너"
     },
     "verdicts": {
       "max_api_effective_above": "targetSdk={targetSdk}가 API {maxApi}보다 높아, 이 권한의 실제 효과는 범위 지정 저장소로 크게 약화되었습니다.",
@@ -513,6 +519,9 @@
       "android_rule_g_relationship": "출처 API와 업로드 API가 모두 패키지에 있지만, 같은 호출 경로에 있다는 것은 확인되지 않았습니다. \"데이터가 실제로 그 요청으로 흘러갔다\"는 결론은 성립하지 않습니다.",
       "android_rule_g_limitation": "동시 출현은 데이터 흐름이 아닙니다. 출처는 다른 기능(통계, 부정 탐지)을 위해 읽혔을 수 있고, 업로드는 전혀 다른 내용일 수 있습니다. 디스어셈블과 테인트 분석은 수행하지 않았습니다.",
       "android_rule_g_manual_review": "직접 확인하세요: 이 데이터가 실제로 전송되는지, 사용자에게 고지되었는지. 이는 검토 후보이며 악성 판정이 아닙니다.",
+      "android_special_access": "패키지가 특수 접근 권한을 선언하거나 참조합니다: {sources}. 이는 고권한 사실이며 사용자에게 알려져야 합니다. 선언이 남용을 의미하지는 않습니다.",
+      "android_special_access_limitation": "이는 \"선언/참조\" 사실이며 동작 결론이 아닙니다. 접근성 서비스, 기기 관리자, 알림 리스너는 모두 정당한 용도(자동화, 비밀번호 관리자, 워치 연동)가 있습니다. 런타임 동작은 관찰하지 않았습니다.",
+      "android_special_access_review": "이 권한으로 무엇을 하는지, 사용자에게 고지되었는지 확인하세요. 이는 검토할 사실이며 악성 판정이 아닙니다.",
       "android_rule_f_limitation_no_dex": "이번에는 DEX 내용을 읽지 않았으므로 '찾지 못함'이라는 결론의 확신도는 불완전합니다.",
       "android_rule_f_limitation_scope": "문자열 스캔은 네이티브 라이브러리, 리소스, 난독화 셸 내부 코드를 대상으로 하지 않습니다.",
       "android_rule_f_runtime_traffic": "업로드 동작을 배제하려면 동적 트래픽 관찰과 함께 사용하세요(이 버전에서는 제공하지 않습니다).",

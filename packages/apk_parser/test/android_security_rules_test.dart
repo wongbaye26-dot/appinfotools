@@ -27,12 +27,14 @@ ApkMeta _meta({
   int? targetSdk,
   bool? usesCleartextTraffic,
   List<AndroidPermissionRequest> permissions = const [],
+  List<AndroidComponent> components = const [],
 }) {
   final meta = ApkMeta()
     ..permissionRequests = List.of(permissions)
     ..permissions = permissions.map((p) => p.name).toList()
     ..targetSdkVersion = targetSdk
-    ..applicationUsesCleartextTraffic = usesCleartextTraffic;
+    ..applicationUsesCleartextTraffic = usesCleartextTraffic
+    ..components = List.of(components);
   return meta;
 }
 
@@ -55,11 +57,13 @@ List<String> _ids(SecurityAnalysisResult r) =>
 
 void main() {
   group('组合规则表的结构', () {
-    test('id 唯一、以 ANDROID-RULE- 开头，且每条都写了说明', () {
+    test('id 唯一、以 ANDROID- 开头，且每条都写了说明', () {
       final ids = androidSecurityRules.map((r) => r.id).toList();
       expect(ids.toSet(), hasLength(ids.length), reason: '规则 id 必须唯一');
       for (final rule in androidSecurityRules) {
-        expect(rule.id, startsWith('ANDROID-RULE-'));
+        // 组合规则用 `ANDROID-RULE-X`；`ANDROID-SPECIAL-ACCESS` 是**能力事实**
+        // 而不是组合线索，因此不套 RULE- 前缀 —— 名字要说清它是什么。
+        expect(rule.id, startsWith('ANDROID-'));
         expect(
           rule.summary.trim(),
           isNotEmpty,
@@ -81,6 +85,7 @@ void main() {
           'ANDROID-RULE-D',
           'ANDROID-RULE-E',
           'ANDROID-RULE-G',
+          'ANDROID-SPECIAL-ACCESS',
           'ANDROID-RULE-F',
         ],
       );
@@ -139,6 +144,20 @@ void main() {
               'Landroid/telephony/TelephonyManager;',
               'multipart/form-data',
             ],
+          ),
+      // 特殊访问能力：**清单层的组件权限**才是判据（不需要上传）。
+      // 用 DEX 字面量判会误伤 Material 的 `AccessibilityServiceInfo` 查询。
+      'ANDROID-SPECIAL-ACCESS': () => _audit(
+            meta: _meta(
+              targetSdk: 34,
+              components: const [
+                AndroidComponent(
+                  type: ComponentType.service,
+                  name: 'com.example.A11y',
+                  permission: 'android.permission.BIND_ACCESSIBILITY_SERVICE',
+                ),
+              ],
+            ),
           ),
       // 没有任何上传线索 → 显式「未发现」。
       'ANDROID-RULE-F': () => _audit(strings: ['unrelated']),
