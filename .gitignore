@@ -74,6 +74,7 @@ lib/gen
 # 按类型逐条列出，不用 `!test/fixtures/**` 这种宽泛反包含 —— 那会把
 # 别人临时丢进来的大样本也一起放行。
 !test/fixtures/apk/*.apk
+!test/fixtures/xapk/*.xapk
 !test/fixtures/dex/*.dex
 !test/fixtures/elf/*.so
 !test/fixtures/macho/*.dylib

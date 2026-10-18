@@ -1,5 +1,7 @@
 import 'package:analysis_model/analysis_model.dart';
 
+import 'security/network_security_config.dart';
+
 /// manifest 中声明的一条权限请求。
 ///
 /// [maxSdkVersion] 是 Android 平台的「版本适用条件」：超过该 API 级别后
@@ -118,10 +120,30 @@ class ApkMeta {
   /// 但那与「应用显式声明了 false」是两回事，规则引擎需要区分。
   bool? applicationUsesCleartextTraffic;
 
-  /// `<application android:networkSecurityConfig>` 引用的资源路径；
-  /// 未声明为 `null`。存在该属性意味着 ATS 行为被自定义配置覆盖，
-  /// 静态层面只能记录，不能展开资源表里那份 XML 的每条配置。
+  /// `<application android:networkSecurityConfig>` 的**原始属性值**。
+  ///
+  /// 引用类型时形如 `@res/0x7f17001c`（这是本解析器的引用表示法），
+  /// 直接展示给用户没有意义 —— 界面应当用
+  /// [networkSecurityConfigInfo]?.path（真实路径，如
+  /// `res/xml/network_security_config.xml`）。
   String? networkSecurityConfig;
+
+  /// [networkSecurityConfig] 解析出的资源 id；未声明或不是引用时为 `null`。
+  ///
+  /// 有它才能去 `resources.arsc` 里查这条资源对应的**文件路径**。
+  int? networkSecurityConfigResId;
+
+  /// `res/xml/network_security_config.xml` 的解析结果。
+  ///
+  /// **这个字段很关键**：API 24 起，只要声明了 NSC，
+  /// `android:usesCleartextTraffic` 就被平台忽略，明文策略完全由它决定。
+  /// 不展开它，规则 D 在真实包上要么误报、要么静默失效。
+  ///
+  /// 三种状态必须区分：
+  /// - `null` —— 没有声明 NSC，明文策略看 [applicationUsesCleartextTraffic]；
+  /// - `info.parsed == true` —— 拿到了真实结论；
+  /// - `info.parsed == false` —— 声明了但读不出来，此时是「不知道」。
+  NetworkSecurityConfigInfo? networkSecurityConfigInfo;
 
   List<ActivityInfo> launchableActivities = [];
 

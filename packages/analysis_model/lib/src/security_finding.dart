@@ -142,6 +142,15 @@ enum SecurityEvidenceSource {
   /// Android `AndroidManifest.xml`。
   manifest,
 
+  /// Android `res/xml/network_security_config.xml`。
+  ///
+  /// 与 [manifest] 分开，是因为它**会被清单引用但不等同于清单**：
+  /// API 24 起只要声明了 NSC，`android:usesCleartextTraffic` 就被平台忽略，
+  /// 明文策略完全由这份 XML 决定。拿 `manifest` 当它的来源，界面上会打出
+  /// 「AndroidManifest.xml」的标签，而证据行写的是 `res/8G.xml` ——
+  /// 读者第一反应是「到底哪个说的算」。
+  networkSecurityConfig,
+
   /// iOS `Info.plist`。
   infoPlist,
 
@@ -186,6 +195,8 @@ enum SecurityEvidenceSource {
 
   String get label => switch (this) {
         SecurityEvidenceSource.manifest => 'AndroidManifest.xml',
+        SecurityEvidenceSource.networkSecurityConfig =>
+          'network security config',
         SecurityEvidenceSource.infoPlist => 'Info.plist',
         SecurityEvidenceSource.privacyInfo => 'PrivacyInfo.xcprivacy',
         SecurityEvidenceSource.dexString => 'DEX strings',

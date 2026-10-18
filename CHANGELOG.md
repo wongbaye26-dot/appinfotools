@@ -73,7 +73,7 @@
   `framework_attr_names_test.dart`（5，在 `packages/apk_parser`）。
 - 真实样本回归：抖音 55/55 DEX、端到端 **14.13 s**；
   `sun_signed.ipa` 静态解析 **239.9 ms**（+7.8%，预算从 16 提到 64 MiB 的代价）。
-- **仍未验证**：界面目视（本机构建不了任何平台产物）、真实 XAPK 样本、
+- **验证轮已把这几项做完**（见下一节）：界面目视、NSC 展开、真实 XAPK、
   联网下载、Windows / Linux。
 
 ### 第四轮：清单配置维度 —— 以及两处「输出正常但内容是错的」的解析缺陷
@@ -121,9 +121,13 @@
   而 AOSP `ApplicationInfo` 明确写着：API 24 起，只要声明了
   `android:networkSecurityConfig`，`usesCleartextTraffic` **就不再生效**。
   也就是说其中 3 个（抖音、飞牛、飞牛TV）的报告是**事实错误**，不只是说得太重。
-  改为：NSC 存在时这一维**不予判定**，并在覆盖率里单列
-  `android.cleartextPolicy`（partial + 说明），**不能静默消失** ——
-  否则用户会把「我们没看」读成「没有问题」。
+  当时的处理是：NSC 存在时这一维**不予判定**，并在覆盖率里单列
+  `android.cleartextPolicy`（partial + 说明），**不能静默消失**。
+
+  > **这一步走错了，见下面「验证轮」§1。** 「属性被忽略」不等于「策略不成立」：
+  > 真正该做的是**打开那份 NSC**。展开后这 3 个包的
+  > `base-config cleartextTrafficPermitted="true"` —— 它们确实允许明文，
+  > 规则 D 原本就报得对；「不判定」反而会把真发现吞掉。
 - **导出组件列表刷屏。** 见上面的点名上限。
 
 #### 评分
@@ -131,6 +135,85 @@
 安全分析能力 **78 → 81 / 100**（`docs/audit/2026-10-18-security-analysis-capability-audit.md` §12）。
 新增的是清单配置维度；更值钱的是修正了两处「输出看起来正常但内容是错的」缺陷 ——
 它影响的是**已有**结论的可信度。
+
+### 验证轮：把上一轮列的「未验证」逐项做掉
+
+五项里 **三项通过、一项部分通过、一项做不到**，并且**抓到一个让真实下载
+100% 失败的 bug**。测试 1,408 → **1,430**。
+
+#### 1. NSC 真正展开 —— 并推翻了上一轮的结论
+
+上一轮的处理是「声明了 `networkSecurityConfig` 就不判定明文策略」。推理没错
+（属性确实被平台忽略），**结论错了**：真正该做的是**打开那份 XML**。
+
+现在走完整条链路：资源 id → `resources.arsc` 里的文件路径 →
+归档条目（有界读取）→ AXML → `NetworkSecurityConfigInfo`。
+顺带给 AXML 补了**文本节点**：`<domain>api.example.com</domain>` 的域名在
+`RES_XML_CDATA_TYPE` 里，此前是显式跳过的 —— 不补就只能数出「有 2 条规则」。
+
+真实样本（aapt2 独立核对）：抖音 `r/7cm.xml`、飞牛与飞牛TV `res/8G.xml`，
+三份都是 `base-config cleartextTrafficPermitted="true"` —— **它们确实允许明文**，
+规则 D 原本就报得对。上一轮说的「3 个是事实错误」是错的；按「不判定」上线
+反而会把这 3 个真发现静默吞掉。
+
+证据改为指向真正生效的那份配置（`network security config (res/8G.xml) /
+base-config`），并新增 `SecurityEvidenceSource.networkSecurityConfig` ——
+否则界面上会打「AndroidManifest.xml」的标签，而证据行写的是 `res/8G.xml`。
+
+#### 2. 界面目视：换了一条路
+
+`RepaintBoundary.toImage()` 在本机**会让整个测试进程被 SIGKILL**（退出码 137，
+无任何输出，关掉工具沙箱也一样）。改走 web 构建 + 无头 Chrome 截图，
+步骤与症状记在 `docs/notes/ui-snapshot.md`。
+
+看到的：抖音的导出组件卡片 12 个名字 + 「另有 147 个未列出」，约 10 行；
+规则 D 正文是中文；覆盖率面板出现「明文流量策略 1/1」；
+三种夹具在 920px 宽下都没有溢出与竖排文字。
+
+#### 3. 联网下载：抓到 `Content-Encoding` 缺陷（本轮最值钱的一条）
+
+第一次真的联网跑，build-tools **100% 失败**：
+
+```
+incomplete download: got 81933386 of 81667633 bytes
+```
+
+收到的比声明的多 265,753 字节 —— `HttpClient` 默认 `autoUncompress: true`，
+`Content-Length` 是**编码后**长度而流里给的是**解码后**字节。同一个原因还让
+索引下载的进度变成 **946%**。
+
+修法：完整性检查只在 `compressionState == notCompressed` 时比字节数
+（真正的完整性由 SHA1 校验保证）；编码过的响应进度报「总量未知」。
+
+修复后真实下载通过：index ✓ → archive ✓ → **SHA1 verified** →
+`build-tools/37.0.0/aapt2` 可执行（`aapt2 version` 退出 0）→ 临时目录无残留。
+新增 `tool_download_encoding_test.dart`（2 条），并已确认这两条在旧实现下变红。
+
+#### 4. 真实 XAPK：只做到部分
+
+APKPure 的下载端点对非浏览器客户端一律 **403**（带 UA/Referer 也一样），
+没能下到线上样本。退一步：容器按公开规范自打，内层 APK 用 `aapt2 link --split`
+真实产出，`manifest.json` 里刻意把同一分包列两次。
+
+验证到：`getSplitApks` 去重后返回 2 条、返回的是**归档条目名**、
+两条都能被 `ApkReader` 解析（base 有启动页，config split 没有应用级字段）。
+**没验证到**：真实打包器的边角字段、obb 展开、真机 `adb install-multiple`。
+
+#### 5. Windows / Linux：只能静态审计
+
+CI 有 `build-windows`（windows-latest）与 `build-linux`（ubuntu-latest）两个 job；
+平台分支逐项核对过（`.exe`/`.bat` 后缀、`PATH` 分隔符与 `PATHEXT`、
+`chmod` 由 `!Platform.isWindows` 挡住、`explorer.exe`/`open`/`xdg-open` 齐全）。
+本轮新增的 NSC 展开只用归档条目名（`/` 分隔）做 `archive.findFile`，
+**从不落到文件系统**，不受平台分隔符影响。
+**没验证到**：真机运行、文件关联注册、安装对话框里的 `adb` 调用。
+
+#### 评分
+
+安全分析能力 **81 → 82 / 100**。方法论上的收获比分数重要：
+**五个「未验证」里两个一验就发现了真缺陷**（NSC 结论是反的、下载 100% 失败），
+而它们此前都通过全绿的门禁 —— 「测试全绿」只证明已写下的断言成立，
+不证明没写的那部分对。
 
 ## 2.4.13 — 2026-10-18
 

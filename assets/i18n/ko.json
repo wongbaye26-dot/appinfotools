@@ -461,7 +461,7 @@
       "android_container_executable_in_assets": "{name}은(는) assets/ 안의 실행 코드입니다. 정상 빌드에서는 포함되지 않습니다.",
       "android_container_resource_table_missing": "64 KiB 이상의 DEX가 있는데 resources.arsc가 없습니다. 정상 빌드에는 항상 리소스 테이블이 있습니다.",
       "android_container_resource_table_too_small": "resources.arsc가 {size}바이트뿐이라 정상적인 리소스 테이블보다 훨씬 작습니다.",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig 가 선언되어 있어 android:usesCleartextTraffic 는 플랫폼에서 무시됩니다. 설정 파일 내용을 확장하지 않았으므로 평문 트래픽 정책은 판정하지 않았습니다"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 확장하지 못했습니다(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음). 따라서 평문 트래픽 정책은 판정하지 않았습니다"
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -510,9 +510,9 @@
       "android_rule_c_manual_review": "먼저 수동으로 검토하세요. 실제 외부 통신 내용은 격리된 환경에서 캡처해 검증할 수 있습니다(동적 테스트가 필요하며 이 버전에서는 제공하지 않습니다).",
       "android_rule_c_relationship_method": "문자 인식과 업로드의 호출 명령이 **같은 메서드 본문**에 나타납니다({caller}). 다만 한 메서드 안에서의 동시 출현은 데이터 흐름이 아닙니다: 인식 결과가 업로드 요청으로 전달되는지는 증명되지 않았습니다. 사진 읽기 → 이미지 문자 인식 → 업로드 요청 구성: 세 단계 각각에 증거는 있지만 같은 코드 경로로 데이터가 흐른다는 것은 증명되지 않았습니다.",
       "android_rule_c_relationship_package": "문자 인식과 업로드의 호출 명령이 **같은 메서드 본문에 없습니다**(동시 출현은 패키지 전체 수준입니다). 사진 읽기 → 이미지 문자 인식 → 업로드 요청 구성: 세 단계 각각에 증거는 있지만 같은 코드 경로로 데이터가 흐른다는 것은 증명되지 않았습니다 — 증명되지 않은 도약은 인식 결과가 업로드 요청에 들어가는 지점입니다.",
-      "android_rule_d": "앱이 평문 통신을 허용합니다 (usesCleartextTraffic=true).",
-      "android_rule_d_escalated": "앱이 평문 통신을 허용하며(usesCleartextTraffic=true), 이미지/인식/업로드 단서가 동시에 존재합니다: 민감한 데이터가 암호화되지 않은 경로를 지날 수 있습니다.",
-      "android_rule_d_limitation": "설정에서 평문을 허용한다는 것과 실제로 평문을 사용한다는 것은 다릅니다. 구체적인 요청은 패킷 캡처로 확인해야 합니다. networkSecurityConfig의 예외 도메인은 전개하지 않았습니다.",
+      "android_rule_d": "앱이 평문(비 TLS) 트래픽을 허용합니다.",
+      "android_rule_d_escalated": "앱이 평문(비 TLS) 트래픽을 허용하고 있으며 이미지 / 인식 / 업로드 단서가 동시에 존재합니다. 민감한 데이터가 암호화되지 않은 경로로 전송될 수 있습니다.",
+      "android_rule_d_limitation": "설정에서 평문을 허용한다는 것이 실제로 평문을 사용한다는 뜻은 아닙니다. 개별 요청 확인에는 패킷 캡처가 필요합니다. 같은 설정의 인증서 피닝과 신뢰 앵커는 판정하지 않았습니다.",
       "android_rule_d_manual_review": "평문 요청이 실제로 존재하는지 확인하고, 불필요하면 스위치를 끄세요.",
       "android_rule_e": "백그라운드 작업, 민감한 데이터 접근, 업로드 호출 단서가 함께 나타나 서로를 뒷받침합니다: 런타임에서 추가 검증이 필요합니다. 백그라운드 작업이나 네트워크 권한만 발견되어도 악의의 증거가 되지 않습니다.",
       "android_rule_e_limitation": "동적 분석을 실행하지 않았으므로 백그라운드 작업의 실제 기동과 실행은 관찰할 수 없습니다.",

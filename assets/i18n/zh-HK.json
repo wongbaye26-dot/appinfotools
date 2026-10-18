@@ -530,9 +530,9 @@
       "android_rule_a": "發現廣泛儲存/相簿存取：{names}，列為待人工複核的中風險候選項。本次分析未從安裝包中發現與之對應的明顯圖片業務功能線索（如系統相片選擇器呼叫、圖片列表介面等）。",
       "android_rule_a_limitation": "「缺少業務用途」是靜態推斷：業務程式碼可能位於未掃描的原生庫、加固外殼或動態載入模組中。",
       "android_rule_a_manual_review": "人工複核該應用是否真的需要全盤檔案存取；如不需要，建議改用系統相片選擇器（Photo Picker）。本項為待複核候選項，不是惡意判定。",
-      "android_rule_d": "應用允許明文流量（usesCleartextTraffic=true）。",
-      "android_rule_d_escalated": "應用允許明文流量（usesCleartextTraffic=true），且同時存在圖像/識別/上傳相關線索：敏感資料可能經未加密鏈路傳輸。",
-      "android_rule_d_limitation": "設定允許明文不等同於實際使用了明文；具體請求需抓包確認。networkSecurityConfig 的例外網域未被展開。",
+      "android_rule_d": "應用允許明文（非 TLS）流量。",
+      "android_rule_d_escalated": "應用允許明文（非 TLS）流量，同時存在圖像 / 識別 / 上傳線索：敏感資料可能走未加密通道。",
+      "android_rule_d_limitation": "設定裡允許明文不等於真的用了明文，確認具體請求需要抓包。同一份設定裡的憑證固定（pinning）與信任錨未做判定。",
       "android_rule_d_manual_review": "確認是否存在明文傳輸的實際請求；如無必要應關閉該開關。",
       "android_rule_e": "背景任務、敏感資料存取與上傳呼叫三類線索同時存在，且相互印證：需在執行時進一步驗證。僅發現背景任務或網路權限不構成惡意證據。",
       "android_rule_e_relationship": "背景入口 + 敏感資料來源 + 上傳去路：三類證據同現，「背景是否實際處理並上傳媒體資料」未獲證實。",
@@ -761,7 +761,7 @@
       "android_container_executable_in_assets": "{name} 是放在 assets/ 裡的可執行程式碼 —— 正常建置不會這樣發佈。",
       "android_container_resource_table_missing": "resources.arsc 缺失，而封裝裡有至少 64 KiB 的 DEX。正常建置一定有資源表。",
       "android_container_resource_table_too_small": "resources.arsc 只有 {size} 位元組，遠低於任何合理的資源表。",
-      "android_cleartext_policy_unknown": "聲明了 android:networkSecurityConfig 時 android:usesCleartextTraffic 會被平台忽略；該設定檔的內容未展開，因此未判定明文流量策略"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略"
     },
     "findings": "發現項"
   },

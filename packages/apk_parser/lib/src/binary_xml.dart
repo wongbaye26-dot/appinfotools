@@ -13,6 +13,21 @@ class XmlElement {
   Map<String, String> attributes = {};
   List<XmlElement> children = [];
 
+  /// 紧跟在开始标签后面的文本节点（AXML 的 `RES_XML_CDATA_TYPE`）。
+  ///
+  /// 绝大多数清单属性都是 attribute，用不到它；但
+  /// `<network-security-config>` 的 `<domain>` 是**元素文本**：
+  ///
+  /// ```xml
+  /// <domain-config cleartextTrafficPermitted="true">
+  ///     <domain includeSubdomains="true">api.example.com</domain>
+  /// </domain-config>
+  /// ```
+  ///
+  /// 不取文本就只知道「有几条 domain-config」，说不出是哪些域名被放行 ——
+  /// 而「哪个域名被允许明文」才是这条配置的关键信息。
+  String text = "";
+
   /// 混淆属性中通过非标准字段（如 ns）恢复的额外字符串值，
   /// 供 ManifestParser 启发式查找使用
   List<String> extraStrings = [];
@@ -453,10 +468,16 @@ class BinaryXmlDecompressor {
           if (stack.length > 1) stack.removeLast();
           break;
         case CDATA_TAG:
-          // Skip CDATA in document mode
+          // ResXMLTree_cdataExt { ResStringPool_ref data; Res_value typedData; }
+          // 8 字节 node 头之后：lineNumber(4) + comment(4) + data(4) +
+          // Res_value(8) = 20。取 data 索引拿文本。
           reader.skipBytes(8);
-          reader.readInt32();
+          final textIndex = reader.readInt32();
           reader.skipBytes(8);
+          if (textIndex >= 0 && textIndex < packedStrings.length) {
+            final text = packedStrings[textIndex];
+            if (text.isNotEmpty) stack.last.text = text;
+          }
           break;
         default:
           // 标准 AXML 的元素区只有上面几种 chunk。出现别的类型说明这份文件

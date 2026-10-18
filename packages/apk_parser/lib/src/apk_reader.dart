@@ -10,6 +10,7 @@ import 'hardening.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
 import 'models.dart';
+import 'security/network_security_config.dart';
 
 final _log = Logger('ApkReader');
 
@@ -272,6 +273,10 @@ class ApkReader {
         // ICP 备案号：只能从字符串池里找（manifest 里没有标准字段）。
         // 放在这一支里是因为它要用刚解析好的字符串池 —— 没读到资源表就没有。
         meta.icpFilings = IcpFilingScanner.scan(parser.globalStringPool);
+        // 网络安全配置：声明了它之后 `usesCleartextTraffic` 就被平台忽略，
+        // 明文策略完全由这份 XML 决定。必须真的打开它，否则规则 D 在
+        // 真实包上要么误报、要么静默失效（实测 3/5 个真实包属于这种情况）。
+        _resolveNetworkSecurityConfig(meta);
       }
     }
 
@@ -408,6 +413,49 @@ class ApkReader {
     for (final entry in paths) {
       meta.iconPaths[entry.key] = entry.value;
     }
+  }
+
+  /// 展开 `<application android:networkSecurityConfig>` 指向的 XML。
+  ///
+  /// 链路：资源 id → `resources.arsc` 里的文件路径 → 归档条目 → AXML。
+  /// **每一步都可能失败**，而失败必须被记下来：`ApkMeta.networkSecurityConfigInfo`
+  /// 的 `failure` 非空即表示「声明了但没读到」，与「没声明」（`null`）
+  /// 是两件事，规则引擎与界面都要能分辨。
+  void _resolveNetworkSecurityConfig(ApkMeta meta) {
+    final resId = meta.networkSecurityConfigResId;
+    if (resId == null) return;
+    final parser = _arscParser;
+    final archive = _archive;
+    if (parser == null || archive == null) return;
+
+    final path = parser.getFilePath(resId);
+    if (path == null) {
+      meta.networkSecurityConfigInfo = NetworkSecurityConfigInfo(
+        path: '@res/0x${resId.toRadixString(16)}',
+        failure: 'the resource id does not resolve to a file path',
+      );
+      return;
+    }
+
+    final entry = archive.findFile(path);
+    if (entry == null) {
+      meta.networkSecurityConfigInfo = NetworkSecurityConfigInfo(
+        path: path,
+        failure: 'the resolved path is not present in the archive',
+      );
+      return;
+    }
+    // 与 manifest 一样走**有界读取**：这条 XML 同样可以被零填充撑大。
+    final read = ZipBudget.readEntry(entry, ledger: _ledger);
+    if (!read.isOk) {
+      meta.networkSecurityConfigInfo = NetworkSecurityConfigInfo(
+        path: path,
+        failure: 'the entry was refused: ${read.failure?.describe()}',
+      );
+      return;
+    }
+    meta.networkSecurityConfigInfo =
+        parseNetworkSecurityConfig(read.bytes, path: path);
   }
 
   List<String> _scanNativeCodes() {

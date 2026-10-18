@@ -1,0 +1,26 @@
+{
+  "xapk_version": 2,
+  "package_name": "com.example.xapkfixture",
+  "name": "XapkFixture",
+  "version_code": "12",
+  "version_name": "1.2",
+  "min_sdk_version": "21",
+  "target_sdk_version": "33",
+  "permissions": [
+    "android.permission.INTERNET"
+  ],
+  "split_apks": [
+    {
+      "file": "com.example.xapkfixture.apk",
+      "id": "base"
+    },
+    {
+      "file": "config.fr.apk",
+      "id": "config.fr"
+    },
+    {
+      "file": "config.fr.apk",
+      "id": "config.fr"
+    }
+  ]
+}

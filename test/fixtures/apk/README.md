@@ -199,3 +199,66 @@ $AAPT2 dump xmltree attr-fixture.apk --file AndroidManifest.xml
 `A: ...android:exported(0x01010010)=true` —— 这正是判定「解析器有没有
 读对属性」的第三方依据。完整的 ID 对照表快照在
 `packages/apk_parser/test/fixtures/android_34_attrs.txt`。
+
+## nsc-fixture.apk
+
+一份由 `aapt2` **真实产出**的最小 APK，用来钉住
+`android:networkSecurityConfig` 的**展开**（资源 id → 文件路径 → AXML）。
+
+### 为什么需要它
+
+AOSP `ApplicationInfo`：API 24 起，只要声明了 `android:networkSecurityConfig`，
+`android:usesCleartextTraffic` **就不再生效**，明文策略完全由那份 XML 决定。
+只读清单属性会在真实包上得出两种错误结论：
+
+- 照抄属性 → 证据指向一个平台根本不看的地方；
+- 因为「属性无效」就不判定 → 把真发现吞掉（假阴性）。
+
+唯一正确的做法是打开那份 XML。实测 5 个真实包里 4 个 `usesCleartextTraffic=true`，
+其中 3 个同时有 NSC，展开后 `base-config cleartextTrafficPermitted="true"`
+—— 它们确实允许明文，所以规则 D 报得对。
+
+### 内容（刻意做成「base 禁止、域名放行」）
+
+```xml
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors><certificates src="system" /></trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">api.example.com</domain>
+        <domain includeSubdomains="false">legacy.example.org</domain>
+    </domain-config>
+</network-security-config>
+```
+
+这个组合能一次测到三件事：
+
+1. `base-config` 的布尔值读到了（`false`）；
+2. `domain-config` 覆盖 base（整体仍然「允许明文」）；
+3. **域名是元素文本**（`<domain>api.example.com</domain>`），不是属性 ——
+   不取 AXML 的 `RES_XML_CDATA_TYPE` 就只能数出「有 2 条规则」，
+   说不出是哪两个域名。
+
+源文件见同目录的 `nsc-fixture.AndroidManifest.xml` 与
+`nsc-fixture.network_security_config.xml`。
+
+### 生成命令
+
+```sh
+AAPT2=~/Library/Android/sdk/build-tools/34.0.0/aapt2
+JAR=~/Library/Android/sdk/platforms/android-34/android.jar
+$AAPT2 compile --dir res -o compiled.zip
+$AAPT2 link -o nsc-fixture.apk -I "$JAR" \
+  --manifest AndroidManifest.xml compiled.zip
+```
+
+### 期望值（用 aapt2 独立核对）
+
+```sh
+$AAPT2 dump xmltree nsc-fixture.apk --file res/xml/network_security_config.xml
+```
+
+输出里能看到 `base-config cleartextTrafficPermitted=false`、
+`domain-config cleartextTrafficPermitted=true`，以及两条
+`T: 'api.example.com'` / `T: 'legacy.example.org'`。

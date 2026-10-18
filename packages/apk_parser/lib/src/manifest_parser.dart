@@ -157,6 +157,11 @@ class ManifestParser {
           _parseBool(application.attributes['usesCleartextTraffic']);
       meta.networkSecurityConfig =
           application.attributes['networkSecurityConfig'];
+      // 引用形式是 `@res/0x7f17001c`（本解析器的表示法）。取出数字 id，
+      // 才能去 `resources.arsc` 里查这条资源对应的**文件路径** ——
+      // 有了路径才能真的打开 `res/xml/network_security_config.xml`。
+      meta.networkSecurityConfigResId =
+          _parseResourceIdRef(meta.networkSecurityConfig);
 
       // 混淆 APK: name/label 可能无法通过标准属性名找到
       meta.applicationName ??= _guessClassName(application);
@@ -346,4 +351,19 @@ class ManifestParser {
     }
     return null;
   }
+}
+
+/// 把本解析器的引用表示法（`@res/0x7f17001c` / `@dyn/0x...`）解成数字 id。
+///
+/// 只认这一种形式：其它值（纯字符串、`@null`、空串）一律返回 `null` ——
+/// 猜一个 id 出来会让后面查错资源，比「查不到」危险得多。
+int? _parseResourceIdRef(String? raw) {
+  if (raw == null) return null;
+  const prefix = '@res/0x';
+  if (!raw.startsWith(prefix)) return null;
+  final hex = raw.substring(prefix.length);
+  if (hex.isEmpty || hex.length > 8) return null;
+  final value = int.tryParse(hex, radix: 16);
+  if (value == null || value == 0) return null;
+  return value;
 }

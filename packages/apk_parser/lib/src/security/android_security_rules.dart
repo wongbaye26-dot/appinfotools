@@ -91,26 +91,44 @@ class AndroidRuleFacts {
       meta.components.any((c) =>
           c.type == ComponentType.service || c.type == ComponentType.receiver);
 
-  /// 是否存在明文流量配置。
+  /// 明文流量策略：`true` 允许、`false` 禁止、`null` **不知道**。
   ///
   /// **`android:networkSecurityConfig` 存在时 `usesCleartextTraffic` 被平台忽略。**
-  /// AOSP 的 `ApplicationInfo` 里写得很清楚：API 24 起，只要声明了 NSC，
+  /// AOSP 的 `ApplicationInfo` 写得很清楚：API 24 起，只要声明了 NSC，
   /// 这个标志就不再生效，一切由 NSC 决定。
   ///
-  /// 所以 NSC 存在时**不能用这个属性下结论** —— 那不是说重了，是**说错了**。
-  /// 我们尚未展开 NSC 的内容（需要 res id → `res/xml/...` 的路径解析），
-  /// 这一维此时**不予判定**，由 [cleartextPolicyUnknown] 在覆盖率里如实标出。
+  /// 所以三种来源按优先级取：
+  /// 1. NSC **已展开** → 以 NSC 的 `base-config` / `domain-config` 为准；
+  /// 2. NSC **声明了但没展开**（资源表缺失、路径解不出、条目被预算拒绝）
+  ///    → `null`，**不是 false** —— 「不知道」与「不允许」是两件事；
+  /// 3. 没有 NSC → 看 `usesCleartextTraffic`；未声明时为 `null`。
   ///
   /// 实测（5 个真实包）：4 个 `usesCleartextTraffic=true`，其中 3 个同时声明了
-  /// NSC —— 不做这个区分的话，规则 D 会在 80% 的应用上以 P1 出现。
-  bool get allowsCleartext =>
-      meta.applicationUsesCleartextTraffic == true &&
-      meta.networkSecurityConfig == null;
+  /// NSC。展开那 3 份 NSC 后，`base-config cleartextTrafficPermitted="true"`
+  /// —— **它们确实允许明文**，所以规则 D 报得对。
+  ///
+  /// 这一条记录的是「差点走错的一步」：曾经因为「NSC 会覆盖清单属性」就
+  /// 直接**不判定**，那会让这 3 个包的真发现被静默吞掉（假阴性）。
+  /// 「属性被忽略」不等于「策略不成立」，必须去看 NSC 里到底写了什么。
+  bool? get cleartextPolicy {
+    final nsc = meta.networkSecurityConfigInfo;
+    if (nsc != null) {
+      return nsc.resolvedAllowsCleartext(
+        targetSdkVersion: meta.targetSdkVersion,
+      );
+    }
+    if (meta.networkSecurityConfig != null) return null;
+    // 没有 NSC 时只认**显式声明**。未声明时为 `false`（不主张允许）——
+    // 平台在 targetSdk < 28 上默认放行，但把「没写」当成「应用要求明文」
+    // 会让每个老包都报一条，而且报的不是应用的选择。
+    return meta.applicationUsesCleartextTraffic ?? false;
+  }
 
-  /// NSC 存在 → 明文策略由 NSC 决定，而 NSC 我们没展开。
-  bool get cleartextPolicyUnknown =>
-      meta.networkSecurityConfig != null &&
-      meta.applicationUsesCleartextTraffic == true;
+  /// 明文策略是否确定允许。
+  bool get allowsCleartext => cleartextPolicy == true;
+
+  /// 声明了 NSC 却没能得出结论 → 这一维**未判定**，覆盖率要如实标出。
+  bool get cleartextPolicyUnknown => cleartextPolicy == null;
 
   /// 规则 D 的升级条件：明文流量**同时**存在图像 / 识别 / 上传 / 域名线索。
   bool get hasSensitiveAlongsideCleartext =>
@@ -622,6 +640,48 @@ SecurityFinding _buildRuleG(AndroidRuleFacts f) {
   );
 }
 
+/// 规则 D 的证据：**必须指向真正让它成立的那份配置**。
+///
+/// 明文策略有两个来源，说错来源比不说更糟：
+/// - `android:usesCleartextTraffic="true"`（没有 NSC 时）；
+/// - `res/xml/network_security_config.xml` 里的 `base-config` 或
+///   `domain-config`（有 NSC 时 —— 此时清单属性**被平台忽略**，
+///   拿它当证据等于指向一个不生效的地方）。
+List<SecurityEvidence> _cleartextEvidence(AndroidRuleFacts f) {
+  final nsc = f.meta.networkSecurityConfigInfo;
+  if (nsc != null && nsc.parsed) {
+    final evidence = <SecurityEvidence>[];
+    if (nsc.baseCleartextPermitted == true) {
+      evidence.add(SecurityEvidence(
+        source: SecurityEvidenceSource.networkSecurityConfig,
+        location: 'network security config (${nsc.path}) / base-config',
+        detail: 'cleartextTrafficPermitted="true" (applies to all domains)',
+      ));
+    }
+    final domains = nsc.cleartextDomains;
+    if (domains.isNotEmpty) {
+      const shown = 8;
+      final listed = domains.take(shown).join(', ');
+      evidence.add(SecurityEvidence(
+        source: SecurityEvidenceSource.networkSecurityConfig,
+        location: 'network security config (${nsc.path}) / domain-config',
+        detail: domains.length > shown
+            ? 'cleartextTrafficPermitted="true" for ${domains.length} '
+                'domain(s), including $listed'
+            : 'cleartextTrafficPermitted="true" for: $listed',
+      ));
+    }
+    return evidence;
+  }
+  return const [
+    SecurityEvidence(
+      source: SecurityEvidenceSource.manifest,
+      location: 'AndroidManifest.xml / manifest / application',
+      detail: 'android:usesCleartextTraffic="true"',
+    ),
+  ];
+}
+
 SecurityFinding _buildRuleD(AndroidRuleFacts f) {
   final withSensitive = f.hasSensitiveAlongsideCleartext;
   return SecurityFinding(
@@ -630,25 +690,21 @@ SecurityFinding _buildRuleD(AndroidRuleFacts f) {
     category: SecurityCategory.configuration,
     severity: withSensitive ? SecuritySeverity.p1 : SecuritySeverity.p2,
     confidence: SecurityConfidence.confirmed,
+    // 正文**不点名**是清单属性还是 NSC —— 那是证据行的事。
+    // 两个来源在措辞上分叉的话，每种来源都要两套文案，而读者真正需要
+    // 知道的是「哪儿写的」，证据里就写着 `AndroidManifest.xml / ...` 或
+    // `res/xml/network_security_config.xml / base-config`。
     finding: withSensitive
-        ? 'The app allows cleartext traffic '
-            '(usesCleartextTraffic=true), and image / recognition / '
-            'upload clues are present at the same time: sensitive data '
-            'may travel over an unencrypted channel.'
-        : 'The app allows cleartext traffic '
-            '(usesCleartextTraffic=true).',
+        ? 'The app permits cleartext (non-TLS) traffic, and image / '
+            'recognition / upload clues are present at the same time: '
+            'sensitive data may travel over an unencrypted channel.'
+        : 'The app permits cleartext (non-TLS) traffic.',
     messageCode: withSensitive ? 'android.rule_d_escalated' : 'android.rule_d',
-    evidence: [
-      const SecurityEvidence(
-        source: SecurityEvidenceSource.manifest,
-        location: 'AndroidManifest.xml / manifest / application',
-        detail: 'android:usesCleartextTraffic="true"',
-      ),
-    ],
+    evidence: _cleartextEvidence(f),
     limitation: 'Allowing cleartext in the configuration is not the same '
         'as actually using cleartext; the specific requests would need '
-        'packet capture to confirm. The exception domains in '
-        'networkSecurityConfig are not expanded.',
+        'packet capture to confirm. Certificate pinning and trust anchors '
+        'in the same config are not evaluated.',
     limitationCode: 'android.rule_d.limitation',
     recommendation: 'Confirm whether cleartext requests actually exist; '
         'turn the switch off if it is not needed.',

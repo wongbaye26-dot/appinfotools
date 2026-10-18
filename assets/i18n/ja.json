@@ -461,7 +461,7 @@
       "android_container_executable_in_assets": "{name} は assets/ 内の実行可能コードです。正常なビルドでは同梱されません。",
       "android_container_resource_table_missing": "64 KiB 以上の DEX があるのに resources.arsc がありません。正常なビルドには必ずリソーステーブルがあります。",
       "android_container_resource_table_too_small": "resources.arsc は {size} バイトしかなく、妥当なリソーステーブルよりはるかに小さいです。",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig が宣言されているため android:usesCleartextTraffic はプラットフォームに無視されます。設定ファイルの内容は展開していないため、平文通信ポリシーは判定していません"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できませんでした（リソース、ファイルパス、XML 自体のいずれかが読めません）。そのため平文通信ポリシーは判定していません"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -510,9 +510,9 @@
       "android_rule_c_manual_review": "まず手動で確認してください。実際の外向き通信の内容は隔離環境で取得して検証できます（動的テストが必要で、本バージョンでは提供していません）。",
       "android_rule_c_relationship_method": "文字認識とアップロードの呼び出し命令が**同じメソッド本体**に現れています（{caller}）。ただし同一メソッド内の同時出現はデータフローではありません: 認識結果がアップロード要求に渡されるかは証明されていません。写真を読む → 画像の文字認識 → アップロード要求の組み立て: 三段階それぞれに証拠はありますが、「同じコード経路をデータが流れる」ことは証明されていません。",
       "android_rule_c_relationship_package": "文字認識とアップロードの呼び出し命令は**同じメソッド本体にはありません**（同時出現はパッケージ全体のレベルです）。写真を読む → 画像の文字認識 → アップロード要求の組み立て: 三段階それぞれに証拠はありますが、「同じコード経路をデータが流れる」ことは証明されていません — 証明できていない飛躍は、認識結果がアップロード要求に入るところです。",
-      "android_rule_d": "アプリが平文通信を許可しています（usesCleartextTraffic=true）。",
-      "android_rule_d_escalated": "アプリが平文通信を許可しており（usesCleartextTraffic=true）、画像／認識／アップロードの手がかりが同時に存在します: 機微なデータが暗号化されていない経路を通る可能性があります。",
-      "android_rule_d_limitation": "設定で平文を許可していることと、実際に平文を使っていることは別です。具体的な要求はパケットキャプチャで確認する必要があります。networkSecurityConfig の例外ドメインは展開していません。",
+      "android_rule_d": "アプリは平文（非 TLS）通信を許可しています。",
+      "android_rule_d_escalated": "アプリは平文（非 TLS）通信を許可しており、画像 / 認識 / アップロードの手がかりも同時に存在します。機密データが暗号化されていない経路を通る可能性があります。",
+      "android_rule_d_limitation": "設定で平文を許可していることは実際に平文を使っていることと同じではありません。個々のリクエストの確認にはパケットキャプチャが必要です。同じ設定内の証明書ピン留めとトラストアンカーは判定していません。",
       "android_rule_d_manual_review": "平文の要求が実際に存在するか確認し、不要ならスイッチを切ってください。",
       "android_rule_e": "バックグラウンドタスク、機微なデータへのアクセス、アップロード呼び出しの手がかりが同時に現れ、互いを裏付けています: 実行時のさらなる検証が必要です。バックグラウンドタスクやネットワーク権限だけが見つかっても、悪意の証拠にはなりません。",
       "android_rule_e_limitation": "動的解析を実行していないため、バックグラウンドタスクの実際の起動と実行は観測できません。",

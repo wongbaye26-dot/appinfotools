@@ -34,6 +34,9 @@ export 'src/security/dex_clue_scanner.dart';
 export 'src/security/dex_method_scanner.dart';
 export 'src/security/code_markers.dart';
 export 'src/security/native_symbol_scanner.dart';
+// 网络安全配置（`res/xml/network_security_config.xml`）：声明了它之后
+// `android:usesCleartextTraffic` 就被平台忽略，明文策略完全由它决定。
+export 'src/security/network_security_config.dart';
 export 'src/security/permission_catalog.dart';
 
 // ZIP 容器安全原语已下沉到 `archive_safety` —— 它们与「里面装的是 APK 还是

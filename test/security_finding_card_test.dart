@@ -138,4 +138,67 @@ void main() {
     expect(find.textContaining(t.security.data_flow_sink), findsNothing);
     expect(find.textContaining(t.security.data_flow_transform), findsNothing);
   });
+
+  // ---------------------------------------------------------------------
+  // 规则 D 的证据：**必须指向真正生效的那份配置**。
+  //
+  // 这条卡片测试单独拿出来，是因为「证据行渲染成什么」和「引擎算了什么」
+  // 是两件事：引擎侧（`network_security_config_test.dart`）已经钉住了
+  // 「有 NSC 时证据是 NSC 文件」，但那是数据；这里钉的是**它真的显示出来**。
+  //
+  // 期望的字符串就是引擎实际产出的那种：
+  //   location: 'network security config (res/xml/network_security_config.xml) / domain-config'
+  //   detail:   'cleartextTrafficPermitted="true" for: api.example.com, legacy.example.org'
+  group('明文流量规则 D 的证据', () {
+    const nscFinding = SecurityFinding(
+      ruleId: 'ANDROID-RULE-D',
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.configuration,
+      severity: SecuritySeverity.p2,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'The app permits cleartext (non-TLS) traffic.',
+      messageCode: 'android.rule_d',
+      evidence: [
+        SecurityEvidence(
+          // 引擎产出的就是这一种来源（不是 manifest）—— 有 NSC 时
+          // 清单属性被平台忽略，标签打「AndroidManifest.xml」会自相矛盾。
+          source: SecurityEvidenceSource.networkSecurityConfig,
+          location: 'network security config '
+              '(res/xml/network_security_config.xml) / domain-config',
+          detail: 'cleartextTrafficPermitted="true" for: '
+              'api.example.com, legacy.example.org',
+        ),
+      ],
+      limitation: 'l',
+      recommendation: 'r',
+      recommendationCode: 'android.rule_d.manual_review',
+    );
+
+    testWidgets('证据指向 NSC 文件与 domain-config，不是清单属性', (tester) async {
+      await _pumpExpanded(tester, nscFinding);
+      expect(find.textContaining('network security config'), findsWidgets);
+      expect(
+        find.textContaining('res/xml/network_security_config.xml'),
+        findsWidgets,
+      );
+      expect(find.textContaining('domain-config'), findsWidgets);
+      expect(
+        find.textContaining('AndroidManifest.xml'),
+        findsNothing,
+        reason: '有 NSC 时清单属性被平台忽略，证据不该指向它',
+      );
+    });
+
+    testWidgets('放行的域名在证据里点得出来', (tester) async {
+      await _pumpExpanded(tester, nscFinding);
+      expect(find.textContaining('api.example.com'), findsWidgets);
+      expect(find.textContaining('legacy.example.org'), findsWidgets);
+    });
+
+    testWidgets('中文界面下正文是中文，不是英文回退', (tester) async {
+      await _pumpExpanded(tester, nscFinding);
+      expect(find.textContaining('明文'), findsWidgets);
+      expect(find.textContaining('permits cleartext'), findsNothing);
+    });
+  });
 }

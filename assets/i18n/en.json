@@ -530,9 +530,9 @@
       "android_rule_a": "Broad storage / photo library access found: {names}, listed as a medium-risk candidate for manual review. This analysis found no obvious image-related feature clues in the package that would explain it (such as system photo picker calls or image list screens).",
       "android_rule_a_limitation": "“The business purpose is missing” is a static inference: the business code may live in unscanned native libraries, a hardened shell or a dynamically loaded module.",
       "android_rule_a_manual_review": "Manually check whether the app really needs whole-disk file access; if not, consider the system photo picker (Photo Picker) instead. This item is a candidate for review, not a malicious verdict.",
-      "android_rule_d": "The app allows cleartext traffic (usesCleartextTraffic=true).",
-      "android_rule_d_escalated": "The app allows cleartext traffic (usesCleartextTraffic=true), and image / recognition / upload clues are present at the same time: sensitive data may travel over an unencrypted channel.",
-      "android_rule_d_limitation": "Allowing cleartext in the configuration is not the same as actually using cleartext; the specific requests would need packet capture to confirm. The exception domains in networkSecurityConfig are not expanded.",
+      "android_rule_d": "The app permits cleartext (non-TLS) traffic.",
+      "android_rule_d_escalated": "The app permits cleartext (non-TLS) traffic, and image / recognition / upload clues are present at the same time: sensitive data may travel over an unencrypted channel.",
+      "android_rule_d_limitation": "Permitting cleartext in the configuration is not the same as actually using it; the specific requests would need packet capture to confirm. Certificate pinning and trust anchors in the same config are not evaluated.",
       "android_rule_d_manual_review": "Confirm whether cleartext requests actually exist; turn the switch off if it is not needed.",
       "android_rule_e": "Background task, sensitive data access and upload call clues all appear together and corroborate each other: further verification at runtime is needed. Finding only a background task or a network permission is not malicious evidence.",
       "android_rule_e_relationship": "Background entry point + sensitive data source + upload sink: the three kinds of evidence co-occur, but “whether the app actually processes and uploads media data in the background” is not proven.",
@@ -761,7 +761,7 @@
       "android_container_executable_in_assets": "{name} is executable code inside assets/, which a normal build never ships.",
       "android_container_resource_table_missing": "resources.arsc is missing while a DEX entry is at least 64 KiB. A normal build always has a resource table.",
       "android_container_resource_table_too_small": "resources.arsc is only {size} bytes, far below any plausible resource table.",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored by the platform; the config file itself was not expanded, so the cleartext policy is not judged"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig could not be expanded (the resource, its file path, or the XML itself was unreadable), so the cleartext policy is not judged"
     },
     "findings": "Findings"
   },

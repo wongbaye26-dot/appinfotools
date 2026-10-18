@@ -530,9 +530,9 @@
       "android_rule_a": "发现广泛存储/相册访问：{names}，列为待人工复核的中风险候选项。本次分析未从安装包中发现与之对应的明显图片业务功能线索（如系统照片选择器调用、图片列表界面等）。",
       "android_rule_a_limitation": "「缺少业务用途」是静态推断：业务代码可能位于未扫描的原生库、加固外壳或动态加载模块中。",
       "android_rule_a_manual_review": "人工复核该应用是否真的需要全盘文件访问；如不需要，建议改用系统照片选择器（Photo Picker）。本项为待复核候选项，不是恶意判定。",
-      "android_rule_d": "应用允许明文流量（usesCleartextTraffic=true）。",
-      "android_rule_d_escalated": "应用允许明文流量（usesCleartextTraffic=true），且同时存在图像/识别/上传相关线索：敏感数据可能经未加密链路传输。",
-      "android_rule_d_limitation": "配置允许明文不等同于实际使用了明文；具体请求需抓包确认。networkSecurityConfig 的例外域未被展开。",
+      "android_rule_d": "应用允许明文（非 TLS）流量。",
+      "android_rule_d_escalated": "应用允许明文（非 TLS）流量，同时存在图像 / 识别 / 上传线索：敏感数据可能走未加密通道。",
+      "android_rule_d_limitation": "配置里允许明文不等于真的用了明文，确认具体请求需要抓包。同一份配置里的证书固定（pinning）与信任锚未做判定。",
       "android_rule_d_manual_review": "确认是否存在明文传输的实际请求；如无必要应关闭该开关。",
       "android_rule_e": "后台任务、敏感数据访问与上传调用三类线索同时存在，且相互印证：需在运行时进一步验证。仅发现后台任务或网络权限不构成恶意证据。",
       "android_rule_e_relationship": "后台入口 + 敏感数据来源 + 上传去路：三类证据同现，「后台是否实际处理并上传媒体数据」未获证实。",
@@ -761,7 +761,7 @@
       "android_container_executable_in_assets": "{name} 是放在 assets/ 里的可执行代码 —— 正常构建不会这样发。",
       "android_container_resource_table_missing": "resources.arsc 缺失，而包里有至少 64 KiB 的 DEX。正常构建一定有资源表。",
       "android_container_resource_table_too_small": "resources.arsc 只有 {size} 字节，远低于任何合理的资源表。",
-      "android_cleartext_policy_unknown": "声明了 android:networkSecurityConfig 时 android:usesCleartextTraffic 会被平台忽略；该配置文件的内容未展开，因此未判定明文流量策略"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略"
     },
     "findings": "发现项"
   },
