@@ -276,6 +276,8 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
       ...clueEvidence([...f.ocrClues, ...f.uploadClues]),
     ],
     dataSource: '照片/媒体文件与其中的识别文本',
+    // 中间跳：同方法体时是那个方法；整包层面时留空（不编造）。
+    dataTransform: note.caller,
     dataSink: '上传请求（multipart / upload API）',
     relationship: note.fallback,
     relationshipCode: note.code,
@@ -472,7 +474,14 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
 ///
 /// 返回 `(code, fallback, args)` 三元组：引擎产不出本地化文案，只给稳定 id
 /// 与英文回退，由呈现层按语言取文案。
-({String code, String fallback, Map<String, Object> args}) coOccurrenceNote(
+({
+  String code,
+  String fallback,
+  Map<String, Object> args,
+  // 中间跳的**机器可读定位**：识别与上传的调用指令都落在哪个方法里。
+  // 整包层面（不在同一方法体）时为 `null` —— 不编造一个「大概是这里」。
+  String? caller,
+}) coOccurrenceNote(
   DexMethodScanResult scan,
   List<CodeReference> ocrReferences,
   List<CodeReference> uploadReferences,
@@ -492,6 +501,7 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
           'not proven — the unproven hop is the recognition result entering '
           'the upload request.',
       args: const {},
+      caller: null,
     );
   }
   return (
@@ -505,5 +515,6 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
         'for each of the three stages, but "the data flow along the same '
         'code path" is not proven.',
     args: {'caller': occurrence.callerDisplayName},
+    caller: occurrence.callerDisplayName,
   );
 }

@@ -272,10 +272,15 @@ class ApkOpenException implements Exception {
   final apk_parser.ArchiveOpenResult result;
   final String filePath;
 
-  ApkOpenException(this.result, this.filePath);
+  /// 命中解压预算时的**具体原因**（哪个条目、多少字节、上限多少）；
+  /// 其余失败原因为 `null`。
+  final String? detail;
+
+  ApkOpenException(this.result, this.filePath, {this.detail});
 
   @override
-  String toString() => 'ApkOpenException($filePath): ${result.description}';
+  String toString() => 'ApkOpenException($filePath): ${result.description}'
+      '${detail == null ? '' : ' — $detail'}';
 }
 
 /// 解析被用户取消。
@@ -345,7 +350,8 @@ Future<ApkInfo?> getApkInfo(
       if (!openResult.isOk) {
         log.warning(
             "getApkInfo: failed to open XAPK file: ${openResult.description}");
-        throw ApkOpenException(openResult, apk);
+        throw ApkOpenException(openResult, apk,
+            detail: zip.lastBudgetViolation);
       }
       zipOpenMs = zipOpenSw.elapsedMilliseconds;
 
@@ -782,10 +788,11 @@ Future<ApkInfo?> _getApkInfoBuiltin(
     switch (event) {
       case ParseStageReached(:final stage):
         onStage?.call(stage);
-      case ParseOpenFailed(:final result):
+      case ParseOpenFailed(:final result, :final detail):
         log.warning(
-            "_getApkInfoBuiltin: failed to open APK: ${result.description}");
-        throw ApkOpenException(result, apk);
+            "_getApkInfoBuiltin: failed to open APK: ${result.description}"
+            '${detail == null ? '' : ' — $detail'}');
+        throw ApkOpenException(result, apk, detail: detail);
       case ParseFailed(:final reason, :final security):
         log.warning("_getApkInfoBuiltin: parse failed: $reason");
         parseFailureReason = reason;

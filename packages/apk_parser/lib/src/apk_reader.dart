@@ -67,12 +67,22 @@ class ApkReader {
   /// 「没读到」，而这个字段说明**为什么**没读到。
   String? arscParseFailure;
 
+  /// 最近一次 [open] / [openBytes] 因解压预算被拒绝时的**具体原因**；
+  /// 其余情况为 `null`。
+  ///
+  /// 只返回 `resourceBudgetExceeded` 这个枚举值时，界面只能显示「超出安全
+  /// 解压上限」—— 用户既不知道是哪个条目，也不知道超了多少，更没法判断这
+  /// 是不是自己那个包本身有问题。这里补上「哪个条目 + 声明/实际多少字节 +
+  /// 上限多少」。
+  String? budgetFailure;
+
   /// 打开 APK 文件（ZIP 格式）。
   ///
   /// 返回具体的失败原因而非笼统的 `false`：调用方需要区分
   /// 「不是归档」「归档损坏」「命中解压预算」「IO 失败」。
   Future<ArchiveOpenResult> open(String filePath) async {
     InputFileStream? inputStream;
+    budgetFailure = null;
     try {
       if (!looksLikeZip(await readArchiveHeader(filePath))) {
         return ArchiveOpenResult.notArchive;
@@ -88,9 +98,10 @@ class ApkReader {
         _archive = null;
         return ArchiveOpenResult.corrupt;
       }
-      if (ZipBudget.isExceeded(archive)) {
-        _log.warning(
-            'open refused: $filePath exceeds the decompression budget');
+      final violation = ZipBudget.check(archive);
+      if (violation != null) {
+        budgetFailure = violation.describe();
+        _log.warning('open refused: $filePath — $budgetFailure');
         _archive = null;
         return ArchiveOpenResult.resourceBudgetExceeded;
       }
@@ -116,6 +127,7 @@ class ApkReader {
 
   /// 从内存数据打开（用于嵌套 ZIP 场景）
   ArchiveOpenResult openBytes(Uint8List data) {
+    budgetFailure = null;
     try {
       if (!looksLikeZip(data)) {
         return ArchiveOpenResult.notArchive;
@@ -127,7 +139,10 @@ class ApkReader {
       if (looksStructurallyBroken(archive, data.length)) {
         return ArchiveOpenResult.corrupt;
       }
-      if (ZipBudget.isExceeded(archive)) {
+      final violation = ZipBudget.check(archive);
+      if (violation != null) {
+        budgetFailure = violation.describe();
+        _log.warning('openBytes refused: $budgetFailure');
         _archive = null;
         return ArchiveOpenResult.resourceBudgetExceeded;
       }

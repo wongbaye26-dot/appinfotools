@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:archive_safety/archive_safety.dart';
 import 'package:path/path.dart' as path;
 
 import 'package:apk_info_tool/utils/logger.dart';
@@ -164,6 +165,9 @@ class IpaBundleExtractor {
       var written = 0;
       var writtenBytes = 0;
       var symlinks = 0;
+      // **一次解包一个账本**（V2.4.12）：逐条的真实产出都记在同一份预算上，
+      // 否则「每个条目各自不超」的归档能靠条目数把总量撑爆。
+      final ledger = BoundedReadLedger(maxTotalBytes: maxTotalBytes);
 
       for (final file in entries) {
         if (isCancelled != null && isCancelled()) {
@@ -175,10 +179,26 @@ class IpaBundleExtractor {
         final relative = name.substring(prefix.length);
         final target = ZipGuard.safeJoin(bundleTarget, relative);
 
-        final content = file.content;
-        // ZIP 头声明的尺寸与实际解出的长度不一致时拒绝 —— 继续写下去就是
-        // 在替攻击者把谎报的尺寸坐实。中心目录里的尺寸是权威值，对正常
-        // 归档而言两者必然相等，因此这里不会误伤。
+        // **有界读取**（V2.4.12）：`file.content` 无上限 —— 声明值撒谎时会
+        // 先把整条条目解压进内存再比长度。`readEntryBounded` 逐块中止，且
+        // 产出少于声明值时按「截断」拒绝（半截文件写下去比不写更危险）。
+        final read = readEntryBounded(
+          file,
+          maxEntryBytes: maxTotalBytes,
+          ledger: ledger,
+        );
+        if (!read.isOk) {
+          await _deleteQuietly(tempRoot);
+          return IpaExtractionResult.failure(
+            'size_mismatch',
+            '$name could not be read within the budget: '
+                '${read.failure!.describe()}',
+          );
+        }
+        final content = read.bytes!;
+        // 声明值与真实产出的差额仍要显式拒绝：中心目录里的尺寸是权威值，
+        // 对正常归档而言两者必然相等，因此这里不会误伤；而「产出多于声明」
+        // 说明头部在撒谎，继续写下去就是在替攻击者把谎报的尺寸坐实。
         if (content.length != file.size) {
           await _deleteQuietly(tempRoot);
           return IpaExtractionResult.failure(

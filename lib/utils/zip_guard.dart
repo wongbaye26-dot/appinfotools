@@ -60,17 +60,20 @@ class ZipGuard {
   ///
   /// 若归档中存在越界条目则抛出 [ArgumentError]，不做静默忽略，
   /// 以免调用方误以为拿到了完整内容。
+  /// [maxSessionBytes] 可覆盖本次解包的真实产出预算（**测试注入用**）。
+  /// 生产调用不传，走 `ZipBudgetLimits.maxSessionOutputBytes`。
   static Future<int> extractToDirectory(
     Archive archive,
     String destination, {
     String? stripPrefix,
+    int? maxSessionBytes,
   }) async {
     final root = path.normalize(path.absolute(destination));
     await Directory(root).create(recursive: true);
 
     // 一次解包流程共用一个预算 —— 逐条目各自计会漏掉「加起来很大」。
     final ledger = BoundedReadLedger(
-      maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+      maxTotalBytes: maxSessionBytes ?? ZipBudgetLimits.maxSessionOutputBytes,
     );
 
     var written = 0;

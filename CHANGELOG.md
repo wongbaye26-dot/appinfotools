@@ -1,6 +1,81 @@
 # Changelog
 
+## 2.4.13 — 2026-10-18
+
+> 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论
+> ——「有界解压」当时并不是真的有界；二是给四条此前零测试的路径补上了安全网。
+> 取证见 `docs/plans/V2.4.12_PHASE_A_PROGRESS.md` §10–§14。
+
+### 安全修复
+
+- **有界解压现在才是真的有界（推翻 2.4.12 的结论）。**
+  `ZipFile.decompress(OutputStream)` 底下是
+  `ChunkedConversionSink.withCallback`，它**先把解压结果全部攒起来**再交给
+  回调 —— 2.4.12 只挡住了「我们保留多少」，没挡住「解压器分配多少」。
+  实测（全零条目、CD 谎报 1024 字节）：256 MiB 条目 / 1 MiB 上限时
+  **ΔRSS 72 MiB、耗时 29 ms**，内存随条目大小涨。改为自己按 1 KiB 喂输入给
+  `ZLibCodec(raw: true)` + 自定义 `Sink`，同一场景 **ΔRSS 16 KiB、0 ms**。
+  新增 `bounded_read_memory_test.dart` 按 ΔRSS 断言（退回旧实现即红）。
+- **`readEntryPrefix` 曾返回 0 字节。** zlib 会把一大块输出一次交过来，
+  旧实现「超限就整块丢掉」，于是「只读 4 KiB」得到空内容。下游
+  `HardeningScanner._readHeader` 因此对**每一个 DEX** 都记「entry could not be
+  read」—— 真实样本上凭空多出 55 条加固线索，而文档里那个「29 ms」其实是
+  「什么都没读」换来的。现在「填满到 cap 再抛」：抖音 55 DEX 加固扫描 41 ms、
+  4 条线索、**0 误报**。
+- **`writeStream` 整条物化**：STORE 条目走 `writeBytes(stream.toUint8List())`，
+  一次性复制整条，上限完全没拦住。改 64 KiB 分块。
+- **新增完整性闸**：产出**少于**声明值 = 截断 → 按 `corrupt` 拒绝。把中央目录的
+  `compressedSize` 改小一半时 `archive` 不报错、只是提前结束 —— 「半截内容」
+  与「完整内容」在调用方看来一模一样。只判「少」不判「多」（加固包会故意报小）。
+- **IPA 侧还有 7 处无界读取**（2.4.12 的文档写「已经没有了」，是错的）：
+  Info.plist、`PrivacyInfo.xcprivacy`、图标、证书链、描述文件、`_readEntry`、
+  解包落盘，全部改 `readEntryBounded`；`IpaAnalysisReader.analyze` 现在持有一个
+  会话账本（此前 `CodeResources` 每次调用自建账本，等于每条目重新领一份配额）。
+- **超限被拒时说清原因**：`ApkReader.budgetFailure` / `ZipHelper.lastBudgetViolation`
+  → `DetailRenderer.openFailure(..., detail:)`，摘要之外多一行
+  「条目 / 阶段 / 观察字节数 / 上限」。文案改成「未解析任何内容，签名状态未知
+  —— 这既不是签名验证失败，也不代表已确认恶意」（6 个语言包）。
+- **ToolDownloader**：临时目录每次下载都泄漏（建了从不删）；下载把整个归档攒进
+  内存再落盘；`Content-Length` 不符不报错（留半截归档）；302 到别的主机静默跟随。
+  全部修掉，并补 15 条离线测试（校验和挡住解包 / 404 / 截断 / 协议白名单）。
+- **XapkInstaller**：manifest 重复列同一个分包 → 同一路径传给
+  `adb install-multiple` 两次 → adb 报错。改为按出现顺序去重，并补 8 条
+  调用路径测试（越界条目、取消、同名碰撞、符号链接条目）。
+- **JSON 报告曾把三态压成一个 `null`**：`absent` / `failed` / `wrongType` /
+  `notRequested` 在 JSON 里全是 `null`，下游无从区分。新增 `fieldStatus`
+  （逐字段 status / source / diagnostic），`reportSchemaVersion` 4 → 5。
+- **Markdown 报告里权限读失败时整段消失**：`wrongType` 时一个字都没有，
+  读者只会以为「这个应用没声明任何权限」。现在没读到就输出一行状态。
+
+### 新增检测
+
+- **`IOS-USAGE-WITHOUT-API`**（info / unknown）：Info.plist 声明了
+  `NSPhotoLibrary*` / `NSCamera*` 用途说明，但扫描范围内找不到对应 API 线索 ——
+  抓**过度声明**。三条边界：系统选择器（`PHPickerViewController` /
+  `PhotosPicker`）算「有实现」；没读到可执行文件不判；**扫描被 16 MiB 预算截断
+  不判**（实测 `sun_signed.ipa` 主可执行文件 45 MB，`AVCapture` 在 16 MB 之后，
+  不排除截断就会误报）。
+- **`SecurityFinding.dataTransform`**：数据流三段（来源 / 中间处理 / 去向）里的
+  中间跳，机器可读定位（方法完整签名）。`ANDROID-RULE-C` 在「同一方法体」分支
+  填那个方法，整包层面留 `null`（不编造）。报告与发现项卡片都显示三段，
+  标签走 i18n（此前是硬编码的 `Source:` / `Sink:`）。
+
+### 质量
+
+- 测试 **1,241 → 1,303**（阶段 A 收尾 +62）。四条此前零测试的路径补上安全网：
+  `tool_downloader`、`xapk_installer` 的调用路径、`security_finding_card`、
+  `bounded_read` 的内存维度。
+- 真实样本回归：抖音 343 MB（55/55 DEX，端到端 **13.5 s**）、
+  `49af6cnn-1018.apk`（零填充清单仍可解析）、`sun_signed.ipa`（静态解析
+  **222.6 ms**，27 个嵌套 bundle）。
+- **仍未验证**：界面目视（本机构建不了任何平台产物）、真实 XAPK 样本、
+  联网下载、Windows / Linux。
+
 ## 2.4.12 — 2026-10-18
+
+> **⚠️ 本条的「没有任何 `file.content` 调用点」与「峰值内存受预算约束」两句
+> 在 2.4.13 被推翻**：IPA 侧当时仍有 7 处无界读取，且解压器会把整条条目
+> 物化。详见 2.4.13。
 
 > 阶段 A：**实际解压量限制**。落实 V2.4.11 记为遗留的那一半 —— 峰值内存不再
 > 由攻击者决定。取证见 `docs/plans/V2.4.12_PHASE_A_PROGRESS.md`。

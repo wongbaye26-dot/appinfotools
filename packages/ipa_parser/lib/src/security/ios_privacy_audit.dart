@@ -555,6 +555,95 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- 反方向：声明了用途说明，却没有对应的 API 线索 ----
+    //
+    // 上面两条是「有实现、没声明」（会崩、会被拒）。这里是它的镜像：
+    // **声明了、但扫描范围内找不到实现**。常见原因是这段声明是从模板/示例
+    // 复制来的，实际并不使用 —— 过度声明本身就是隐私问题（用户会以为
+    // 这个应用在读相册）。
+    //
+    // **只在确实扫到可执行文件时才判。** 没读到二进制时「没有符号」只说明
+    // 我们没看到，不说明应用没用 —— 那是覆盖不足，不是矛盾。
+    // 这条规则的判据是**缺失**（没找到线索），所以对「我们没看到」特别敏感。
+    // 两个必须排除的情况：
+    //
+    // 1. **一个字节都没读到** —— 那是覆盖不足，不是矛盾。
+    // 2. **扫描被预算截断**（`_Budget.maxBytes`）—— 线索可能在截断之后。
+    //    实测：`sun_signed.ipa` 的主可执行文件 45 MB，只扫前 16 MB，而
+    //    `AVCapture` 出现在 16 MB 之后 —— 不排除截断就会误报「声明了相机
+    //    但没有实现」。
+    //
+    // 注意只数**真的拿到字节**的嵌套条目：生产路径会把读失败的也传进来
+    // （`bytes == null`），把它们算成「扫过」同样会误报。
+    final scannedNested =
+        nestedExecutables.where((e) => e.bytes != null).length;
+    final scannedAnyExecutable = executableBytes != null || scannedNested > 0;
+    if (scannedAnyExecutable && !truncated) {
+      final scope = _scannedScopeLabel(
+        hasMain: executableBytes != null,
+        nestedCount: scannedNested,
+      );
+      void usageWithoutApi(String usagePrefix, List<String> markerIds) {
+        final key = usageKeyFor(usagePrefix);
+        if (key == null) return;
+        // 有任何一个对应线索就**不判** —— 宁可漏报，不可把「用了别的方式」
+        // 说成「声明是假的」。
+        if (markerIds.any(clues.containsKey)) return;
+
+        findings.add(SecurityFinding(
+          ruleId: 'IOS-USAGE-WITHOUT-API',
+          platform: SecurityPlatform.ios,
+          category: _categoryForKey(key),
+          // info + unknown：这是「值得看一眼」，不是「有问题」。
+          severity: SecuritySeverity.info,
+          confidence: SecurityConfidence.unknown,
+          finding: 'Info.plist declares $key, but no matching API clue was '
+              'found in the scanned executables ($scope). The '
+              'declaration may come from a template, or the feature may be '
+              'implemented in a way that leaves no scannable symbol.',
+          messageCode: 'ios.usage_without_api',
+          messageArgs: {'key': key, 'scope': scope},
+          evidence: [
+            SecurityEvidence(
+              source: SecurityEvidenceSource.infoPlist,
+              location: '${infoPlist.bundle.path}/Info.plist / $key',
+              detail: usage.value?[key] ?? '(usage description present)',
+            ),
+            SecurityEvidence(
+              source: SecurityEvidenceSource.machoSymbol,
+              location: executablePath ?? '${infoPlist.bundle.path}/<main>',
+              detail: 'no clue matched: ${markerIds.join(', ')}',
+            ),
+          ],
+          relationship: 'The declaration and the absence of a symbol are '
+              'both facts; the conclusion "this permission is unused" is '
+              '**not** established.',
+          relationshipCode: 'ios.usage_without_api.relationship',
+          limitation: 'Out-of-process pickers (PHPickerViewController), '
+              'SwiftUI wrappers (PhotosPicker) and dynamically loaded code '
+              'do not necessarily leave a scannable symbol, so a missing '
+              'clue does not prove the feature is absent.',
+          limitationCode: 'ios.usage_without_api.limitation',
+          recommendation: 'Confirm whether this declaration is actually used. '
+              'If it is not, remove it: over-declaring a permission is itself '
+              'a privacy problem and it makes the App Store privacy label '
+              'inaccurate.',
+          recommendationCode: 'ios.usage_without_api.review',
+        ));
+      }
+
+      usageWithoutApi(
+        'NSPhotoLibrary',
+        const [
+          'photo-full-library',
+          'photo-asset',
+          'photo-picker',
+          'photos-ui',
+        ],
+      );
+      usageWithoutApi('NSCamera', const ['camera']);
+    }
+
     // ---- iOS 规则 A：完整照片库访问 + 未见更克制的输入路径 ----
     //
     // 与 Android 规则 A 同构（「广泛访问 + 未见明显业务用途」）。iOS 上的
@@ -1114,6 +1203,21 @@ class IosPrivacyAudit {
       ));
     }
     return evidence;
+  }
+
+  /// 扫描范围的**人话**描述 —— 让读者知道「没有符号」是在多大范围里得出的。
+  ///
+  /// 不写「全包」：预算截断、读取失败都可能让范围变小，那属于覆盖不足，
+  /// 由 `IOS-SCAN-COVERAGE` 单独说明。
+  static String _scannedScopeLabel({
+    required bool hasMain,
+    required int nestedCount,
+  }) {
+    if (hasMain && nestedCount > 0) {
+      return 'main executable + $nestedCount nested executable(s)';
+    }
+    if (hasMain) return 'main executable only';
+    return '$nestedCount nested executable(s)';
   }
 
   static SecurityCategory _categoryForKey(String key) {

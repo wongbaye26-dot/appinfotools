@@ -200,6 +200,11 @@ class AnalysisReport {
       for (final permission in permissions) {
         sb.writeln('- $permission');
       }
+    } else if (!android.permissions.hasValue) {
+      // **没读到就必须说出来。** 此前这里直接留白，读者只会得到
+      // 「这个应用没有声明任何权限」这一个印象 —— 而「读失败」与
+      // 「确实没声明」的结论正好相反。
+      _row(sb, t.apk_info.permissions, android.permissions);
     }
 
     final components = android.components.value;
@@ -350,6 +355,22 @@ class AnalysisReport {
       sb.writeln();
       sb.writeln('- **${t.security.findings}:** ${findingText(finding, t)}');
       sb.writeln('- **Confidence:** ${finding.confidence.name}');
+      // 数据流三段：只写有值的那几段。
+      //
+      // 界面（`SecurityFindingCard`）早就显示来源与去向，报告里却一直没有 ——
+      // 同一份发现，导出成文件就少了两条最关键的信息。中间处理这一段是
+      // B-5 新加的（`ANDROID-RULE-C` 的「同一方法体」分支会填）。
+      final flow = <String>[
+        if (finding.dataSource != null)
+          '${t.security.data_flow_source}: ${finding.dataSource}',
+        if (finding.dataTransform != null)
+          '${t.security.data_flow_transform}: ${finding.dataTransform}',
+        if (finding.dataSink != null)
+          '${t.security.data_flow_sink}: ${finding.dataSink}',
+      ];
+      if (flow.isNotEmpty) {
+        sb.writeln('- **${t.security.data_flow}:** ${flow.join(' → ')}');
+      }
       if (finding.evidence.isNotEmpty) {
         sb.writeln('- **Evidence:**');
         for (final ev in finding.evidence) {
@@ -644,6 +665,7 @@ class AnalysisReport {
       t,
     );
     final rule = name is String ? _permissionRuleText(name, t) : null;
+    final scope = finding.messageArgs['scope'];
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -671,6 +693,9 @@ class AnalysisReport {
                 bytes: bytes,
                 uncovered: uncovered,
               ),
+      'ios.usage_without_api' => (key == null || scope == null)
+          ? null
+          : f.ios_usage_without_api(key: key, scope: scope),
       'ios.photo_library' => f.ios_photo_library,
       'ios.photo_library_no_usage' => f.ios_photo_library_no_usage,
       'ios.camera' => f.ios_camera,
@@ -745,6 +770,7 @@ class AnalysisReport {
         f.ios_usage_description_cross_check,
       'ios.photo_picker.confirm_input_path' =>
         f.ios_photo_picker_confirm_input_path,
+      'ios.usage_without_api.review' => f.ios_usage_without_api_review,
       'ios.rule_a.manual_review' => f.ios_rule_a_manual_review,
       'ios.ocr_capability.confirm_input_and_sink' =>
         f.ios_ocr_capability_confirm_input_and_sink,
@@ -803,6 +829,8 @@ class AnalysisReport {
     // 关联说明，因此 relationshipArgs 是**有真实消费者才加**的。
     final caller = finding.relationshipArgs['caller'];
     final String? localized = switch (code) {
+      'ios.usage_without_api.relationship' =>
+        f.ios_usage_without_api_relationship,
       'ios.rule_a.relationship' => f.ios_rule_a_relationship,
       'ios.rule_b.relationship' => f.ios_rule_b_relationship,
       'ios.rule_c.relationship' => f.ios_rule_c_relationship,
@@ -842,6 +870,7 @@ class AnalysisReport {
     final String? localized = switch (code) {
       'ios.url_schemes.limitation' => f.ios_url_schemes_limitation,
       'ios.scan_coverage.limitation' => f.ios_scan_coverage_limitation,
+      'ios.usage_without_api.limitation' => f.ios_usage_without_api_limitation,
       'ios.photo_library.limitation' => f.ios_photo_library_limitation,
       'ios.rule_a.limitation' => f.ios_rule_a_limitation,
       'ios.rule_b.limitation' => f.ios_rule_b_limitation,
@@ -1601,7 +1630,23 @@ class AnalysisReport {
   ///     `relationshipCode` / `limitationCode`，给 `evidence[]` 补
   ///     `detailCode` / `locationCode`。**只增不改**：老消费者忽略新字段即可，
   ///     但「结构变了」这件事必须让脚本能判断出来。
-  static const int reportSchemaVersion = 4;
+  /// 报告结构版本。
+  ///
+  /// 5：新增 `fieldStatus` —— 逐字段的 status / source / diagnostic。
+  /// 之前 JSON 里只有裸值，`absent` 与 `failed` 都只是 `null`，下游分不开。
+  static const int reportSchemaVersion = 5;
+
+  /// 一个字段的状态投影（JSON 用）。
+  ///
+  /// `status` 取 Dart 枚举名（camelCase），与 findings 里的 severity /
+  /// confidence 一致 —— 消费者只需要一套命名。
+  static Map<String, dynamic> _fieldStatus(FieldValue<Object?> value) => {
+        'status': value.status.name,
+        'source': value.source.name,
+        if (FieldValueText.rawDiagnostic(value) case final d?) 'diagnostic': d,
+        if (value.diagnosticCode != null)
+          'diagnosticCode': value.diagnosticCode,
+      };
 
   static String renderJson(
     PackageAnalysisResult result, {
@@ -1633,6 +1678,7 @@ class AnalysisReport {
                 },
             ],
             'dataSource': f.dataSource,
+            'dataTransform': f.dataTransform,
             'dataSink': f.dataSink,
             'relationship': f.relationship,
             'limitation': f.limitation,
@@ -1665,6 +1711,27 @@ class AnalysisReport {
         'fileName': result.fileName.value,
         'sizeBytes': result.fileSize.value,
         'sha256': result.sha256.value,
+      },
+
+      // 逐字段的**状态**。Markdown 的表格里每行都有 status / source，
+      // 而 JSON 此前只有裸值 —— 于是「应用确实没声明」（absent）与
+      // 「我们没读到 / 读失败」（failed / wrongType / notRequested）
+      // 在 JSON 里都只是一个 `null`，下游无从区分。
+      //
+      // 只覆盖 JSON 里**以裸值出现**的那些字段：值在 `inputArtifact` /
+      // `application` 里，状态在这里，按同名 key 对齐。
+      'fieldStatus': {
+        'fileName': _fieldStatus(result.fileName),
+        'sizeBytes': _fieldStatus(result.fileSize),
+        'sha256': _fieldStatus(result.sha256),
+        if (!securityOnly) ...{
+          'appName': _fieldStatus(result.appName),
+          'packageId': _fieldStatus(result.packageId),
+          'version': _fieldStatus(result.version),
+          'buildNumber': _fieldStatus(result.buildNumber),
+          if (result.android?.permissions case final p?)
+            'permissions': _fieldStatus(p),
+        },
       },
 
       // 「仅安全检测」范围下，这些与安全无关的块整体不输出 ——

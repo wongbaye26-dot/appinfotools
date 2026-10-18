@@ -281,7 +281,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       log.warning('loadApkInfo: $e');
       if (mounted) {
         final message = e is ApkOpenException
-            ? DetailRenderer.openFailure(e.result, t)
+            ? DetailRenderer.openFailure(e.result, t, detail: e.detail)
             : e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
@@ -387,11 +387,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       switch (event) {
         case IpaStageReached(:final stage):
           iosStageState.update(stage);
-        case IpaOpenFailed(:final result):
+        case IpaOpenFailed(:final result, :final detail):
           // 容器打不开：显示**具体原因**，而不是笼统的「解析失败」。
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(DetailRenderer.openFailure(result, t))),
+              SnackBar(
+                content: Text(
+                  DetailRenderer.openFailure(result, t, detail: detail),
+                ),
+              ),
             );
           }
         case IpaParseFailed(:final reason):

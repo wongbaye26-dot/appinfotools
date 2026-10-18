@@ -27,7 +27,11 @@ class IpaStageReached extends IpaParseEvent {
 class IpaOpenFailed extends IpaParseEvent {
   final ArchiveOpenResult result;
 
-  const IpaOpenFailed(this.result);
+  /// 命中解压预算时的**具体原因**（哪个条目、多少字节、上限多少）；
+  /// 其余失败原因为 `null`。见 `ParseOpenFailed.detail` 的说明。
+  final String? detail;
+
+  const IpaOpenFailed(this.result, {this.detail});
 }
 
 /// 解析失败，[reason] 面向诊断（英文，直接进日志）。
@@ -150,7 +154,9 @@ void _ipaParseEntryPoint(_IpaParseRequest request) async {
     // 而不是在这里再写一遍。
     final openResult = await helper.open(request.filePath);
     if (!openResult.isOk) {
-      request.reply.send(IpaOpenFailed(openResult));
+      request.reply.send(
+        IpaOpenFailed(openResult, detail: helper.lastBudgetViolation),
+      );
       return;
     }
 

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
+import 'package:archive_safety/archive_safety.dart';
 
 import 'cgbi_png.dart';
 import 'ipa_info_plist.dart';
@@ -188,7 +189,13 @@ class IpaIconResolver {
     '@3x~iphone.png',
   ];
 
-  static IosIconResolution resolve(Archive archive, IpaInfoPlist info) {
+  /// [ledger] 见 `IpaInfoPlistReader.read`：真实解析路径传同一个账本。
+  static IosIconResolution resolve(
+    Archive archive,
+    IpaInfoPlist info, {
+    BoundedReadLedger? ledger,
+  }) {
+    final budget = ledger ?? BoundedReadLedger.session();
     final diagnostics = <AnalysisDiagnostic>[];
     final candidates = <IosIconCandidate>[];
     final unresolved = <IosUnresolvedIcon>[];
@@ -218,7 +225,7 @@ class IpaIconResolver {
         for (final path in matched) {
           if (!seenPaths.add(path)) continue;
           final candidate = _buildCandidate(
-              archive, source, info.bundle.path, path, diagnostics);
+              archive, source, info.bundle.path, path, diagnostics, budget);
           if (candidate != null) candidates.add(candidate);
         }
       }
@@ -302,11 +309,40 @@ class IpaIconResolver {
     String bundleRoot,
     String archivePath,
     List<AnalysisDiagnostic> diagnostics,
+    BoundedReadLedger ledger,
   ) {
     final entry = archive.findFile(archivePath);
     if (entry == null) return null;
 
-    final content = entry.content;
+    // **有界读取**（V2.4.12）：图标是「一定要看，但不必整条带走」的典型 ——
+    // 格式与像素尺寸都在头几十字节里。所以先按上限整读，超限就退回只读前缀，
+    // 绝不为了识别格式而把一条几百 MB 的条目解压进内存。
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxIconBytes,
+      ledger: ledger,
+    );
+
+    Uint8List content;
+    Uint8List? bytes;
+    if (read.isOk) {
+      content = read.bytes!;
+      bytes = content;
+    } else {
+      final prefix = readEntryPrefix(entry, maxBytes: 64, ledger: ledger);
+      content = prefix.bytes ?? Uint8List(0);
+      final failure = read.failure!;
+      diagnostics.add(AnalysisDiagnostic.warning(
+        failure.stage == BoundedReadStage.corrupt
+            ? 'ios.icons.unreadable'
+            : 'ios.icons.too_large',
+        '$archivePath could not be read within the $maxIconBytes byte limit '
+        '(${failure.describe()}); not carrying its bytes so it is never '
+        'decoded',
+        source: FieldSource.infoPlist,
+      ));
+    }
+
     final format = detectImageFormat(content);
 
     int? width;
@@ -315,18 +351,6 @@ class IpaIconResolver {
       final dimensions = readPngDimensions(content);
       width = dimensions?.$1;
       height = dimensions?.$2;
-    }
-
-    Uint8List? bytes;
-    if (entry.size <= maxIconBytes && content.length <= maxIconBytes) {
-      bytes = content;
-    } else {
-      diagnostics.add(AnalysisDiagnostic.warning(
-        'ios.icons.too_large',
-        '$archivePath is ${content.length} bytes, above the $maxIconBytes byte '
-            'limit; not carrying its bytes so it is never decoded',
-        source: FieldSource.infoPlist,
-      ));
     }
 
     return IosIconCandidate(

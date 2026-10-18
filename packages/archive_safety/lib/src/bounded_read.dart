@@ -18,6 +18,7 @@
 /// 已产出 1,001,562 字节就中止，从未物化 5 MiB。
 library;
 
+import 'dart:io' show ZLibCodec;
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -103,6 +104,13 @@ class BoundedReadLedger {
 
   BoundedReadLedger({required this.maxTotalBytes});
 
+  /// 「打开一个包」这一级流程的默认预算（[ZipBudgetLimits.maxSessionOutputBytes]）。
+  ///
+  /// 真实解析路径上应当**每次打开只建一个**，然后传给所有读取点 —— 每个读取点
+  /// 各建一个，等于每个条目都能重新领一份完整配额，累计上限形同虚设。
+  factory BoundedReadLedger.session() =>
+      BoundedReadLedger(maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes);
+
   /// 已累计的真实产出。
   int get producedBytes => _produced;
 
@@ -123,10 +131,13 @@ class _CapExceeded implements Exception {
   String toString() => 'CapExceeded(cap=$cap observed=$observed)';
 }
 
-/// 一个**带上限**的 `OutputStream`：超限的那一块不写入，直接抛。
+/// 一个**带上限**的 `OutputStream`：超限的那一块**只写入放得下的部分**，然后抛。
 ///
-/// 只实现 `decompress` 真正会用到的那几个方法；`clear` / `flush` 是空实现，
-/// 因为解压流程不会在中间清空输出。
+/// 为什么不是「整块丢掉再抛」：zlib 不保证按小块交付输出。实测一个 1 MiB 的
+/// 全零条目在 `writeBytes` 里是**一次**交过来的 —— 整块丢掉的话，
+/// [readEntryPrefix]（调用方只要开头几 KiB）会得到 0 字节，而调用方无从知道
+/// 这是「被上限截断」还是「条目本来是空的」。先填满到 cap 再抛，前缀读取
+/// 拿到正好 cap 字节，非前缀读取反正要丢弃，两边都对。
 class _CappedOutputStream extends OutputStream {
   _CappedOutputStream(this.cap) : super(byteOrder: ByteOrder.littleEndian);
 
@@ -135,12 +146,6 @@ class _CappedOutputStream extends OutputStream {
   int _written = 0;
 
   int get written => _written;
-
-  void _reserve(int n) {
-    final next = _written + n;
-    if (next > cap) throw _CapExceeded(cap, next);
-    _written = next;
-  }
 
   @override
   int get length => _written;
@@ -153,23 +158,50 @@ class _CappedOutputStream extends OutputStream {
 
   @override
   void writeByte(int value) {
-    _reserve(1);
+    final next = _written + 1;
+    if (next > cap) throw _CapExceeded(cap, next);
     _builder.addByte(value);
+    _written = next;
   }
 
   @override
   void writeBytes(List<int> bytes, {int? length}) {
     final n = length ?? bytes.length;
-    _reserve(n);
+    final next = _written + n;
+    if (next > cap) {
+      // 放得下的那部分留下（前缀读取要用），然后带上「本来想写多少」抛出。
+      final room = cap - _written;
+      if (room > 0) {
+        _builder.add(bytes.sublist(0, room));
+        _written = cap;
+      }
+      throw _CapExceeded(cap, next);
+    }
     if (n == bytes.length) {
       _builder.add(bytes);
     } else {
       _builder.add(bytes.sublist(0, n));
     }
+    _written = next;
   }
 
+  /// 分块搬运输入流。
+  ///
+  /// **不能写成 `writeBytes(stream.toUint8List())`**：`ZipFile.decompress` 对
+  /// STORE（未压缩）条目就是 `output.writeStream(全部内容)`，而
+  /// `toUint8List()` 会把**整条条目**物化成一个 `Uint8List` —— 上限一点没拦住，
+  /// 峰值内存等于条目大小。343 MB 的包上实测：加固扫描读 .so 头时整条复制，
+  /// 1177 ms（分块后回落到十几毫秒）。
   @override
-  void writeStream(InputStream stream) => writeBytes(stream.toUint8List());
+  void writeStream(InputStream stream) {
+    const chunkSize = 64 * 1024;
+    while (!stream.isEOS) {
+      final left = stream.length;
+      if (left <= 0) break;
+      final take = left < chunkSize ? left : chunkSize;
+      writeBytes(stream.readBytes(take).toUint8List());
+    }
+  }
 
   @override
   Uint8List subset(int start, [int? end]) {
@@ -178,6 +210,60 @@ class _CappedOutputStream extends OutputStream {
   }
 
   Uint8List takeBytes() => _builder.takeBytes();
+}
+
+/// 把 [out] 当作 `Sink` 交给 `dart:io` 的 zlib 解码器。
+///
+/// **不能直接用 `ChunkedConversionSink.withCallback`**：那个 sink 会把解压
+/// 结果**先全部攒起来**，到 `close()` 才一次性交给回调 —— 上限根本来不及
+/// 生效。实测（V2.4.12 收尾，256 MiB 全零条目、上限 1 MiB）：走
+/// `ZipFile.decompress()` 时 `ΔRSS` 72 MiB、耗时 29 ms，内存随**条目大小**
+/// 涨；换成这个 sink 后 `ΔRSS` 1.2 MiB、耗时 0 ms，随**上限**涨。
+class _CappedSink implements Sink<List<int>> {
+  _CappedSink(this._out);
+
+  final _CappedOutputStream _out;
+
+  @override
+  void add(List<int> data) => _out.writeBytes(data);
+
+  @override
+  void close() {}
+}
+
+/// 有界地解一条 **raw deflate** 流。
+///
+/// 输入按 1 KiB 一块喂（与 `archive` 自己的循环一致）：每一块解出的输出量
+/// 由压缩比决定，因此超限时**最多**多出一块的产物，随后在 [Sink.add] 里抛出，
+/// 循环立刻停下。
+void _inflateRawBounded(InputStream input, _CappedOutputStream out) {
+  final inSink = ZLibCodec(raw: true).decoder.startChunkedConversion(
+        _CappedSink(out),
+      );
+  const chunkSize = 1024;
+  while (!input.isEOS) {
+    final left = input.length;
+    final take = left < chunkSize ? left : chunkSize;
+    inSink.add(input.readBytes(take).toUint8List());
+  }
+  inSink.close();
+}
+
+/// 解压一条条目，**真实产出**受 [out] 的上限约束。
+///
+/// deflate 走自己喂输入的有界路径；其余形态（STORE / bzip2）沿用
+/// `ZipFile.decompress` —— STORE 是 `writeStream`，已经分块；bzip2 在本项目
+/// 处理的对象（APK / IPA）里不会出现，保留原路径而不是为它写一份实现。
+///
+/// 加密条目在上游就被拒绝了（见 [_read] 的 `flags & 0x1` 判断），这里不再
+/// 处理 AES —— 走到这里说明是加密 + deflate 的组合，解出来必然是
+/// `FormatException`，按 `corrupt` 报告即可。
+void _decompressBounded(ZipFile raw, _CappedOutputStream out) {
+  if (raw.compressionMethod == CompressionType.deflate) {
+    _inflateRawBounded(raw.getStream(decompress: false), out);
+    return;
+  }
+  raw.decompress(out);
 }
 
 /// 有界读取一个归档条目。
@@ -313,7 +399,7 @@ BoundedEntryRead _read(
   final rawStream = raw.getStream(decompress: false);
   final savedPosition = rawStream.position;
   try {
-    raw.decompress(out);
+    _decompressBounded(raw, out);
   } on _CapExceeded catch (e) {
     if (allowTruncation) {
       // 前缀读取：调用方只要开头，已产出的这部分就是答案。
@@ -336,6 +422,24 @@ BoundedEntryRead _read(
     ));
   } finally {
     rawStream.setPosition(savedPosition);
+  }
+
+  // ---- 完整性：产出少于声明值 = 数据被截断，不许当正常内容返回 ----
+  //
+  // 实测（V2.4.12）：把中央目录里的 `compressedSize` 改小一半，`archive` 的
+  // 流式解压**不报错**，只是提前结束 —— 于是「返回半截内容」和「返回完整
+  // 内容」在调用方看来一模一样。这对安全分析尤其危险：半截的 DEX / Mach-O
+  // 会被当成完整的来判定。
+  //
+  // 只判「少」，不判「多」：加固包会故意把 `uncompressedSize` 报小（见
+  // V2.4.10 的零填充清单），产出多于声明值是**已知的合法形态**。
+  if (!allowTruncation && out.written < declared) {
+    return BoundedEntryRead.refused(BoundedReadFailure(
+      entry: name,
+      stage: BoundedReadStage.corrupt,
+      observedBytes: out.written,
+      limitBytes: declared,
+    ));
   }
 
   ledger._add(out.written);

@@ -241,3 +241,28 @@ real-separate.dex
 ```
 
 两个都要留：只留同现的那个，「同现检测」直接 `return true` 也能通过。
+
+### 现在还被「中间跳」用到（B-5）
+
+`ANDROID-RULE-C` 在**同方法体**分支会把那个方法填进
+`SecurityFinding.dataTransform`（机器可读的中间跳定位），整包层面分支留空。
+所以这两个样本现在同时钉两件事：
+
+| 样本 | `relationship` | `dataTransform` |
+|---|---|---|
+| `real-cooccurrence.dex` | 含 `in the same method body` | `Lcom/example/fixture/Pipeline;.run(...)` |
+| `real-separate.dex` | 含 `not in the same method body` | **`null`**（不编造中间跳） |
+
+「反例的 `dataTransform` 是 null」这一条尤其要留：如果哪天有人把整包层面的
+分支也填上一个方法名，界面就会显示一个**没有证据**的中间跳。
+
+核对方式（本轮重新跑过，与上面 2026-10 的记录一致）：
+
+```sh
+BT=~/Library/Android/sdk/build-tools/36.1.0
+"$BT/dexdump" -d test/fixtures/dex/real-cooccurrence.dex | grep -E 'recognizeText|uploadImage'
+# 000254 recognizeText / 00025a uploadImage —— 相邻，同属 Pipeline.run
+"$BT/dexdump" -d test/fixtures/dex/real-separate.dex | grep -E 'name|recognizeText|uploadImage'
+# doOcr 里的 00023c、doUpload 里的 000254 —— 不同方法
+```
+

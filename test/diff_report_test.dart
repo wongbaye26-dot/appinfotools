@@ -302,9 +302,12 @@ void main() {
     });
 
     test('差异报告不碰单文件报告的 schema 版本号', () {
-      // §17.4-4 定的是**独立文档**，因此 `reportSchemaVersion` 不动（D4）。
-      // 这条把它钉住：将来若有人顺手把它一起 +1，会红。
-      expect(AnalysisReport.reportSchemaVersion, 4);
+      // §17.4-4 定的是**独立文档**：两份报告各有各的版本号，改一份不动另一份。
+      //
+      // 单文件报告本轮从 4 升到 5（JSON 新增 `fieldStatus`，见
+      // `report_format_consistency_test.dart`）；`DiffReport.schemaVersion`
+      // 仍是 1 —— 这条测试要守的正是「升了一个不会连带另一个」。
+      expect(AnalysisReport.reportSchemaVersion, 5);
       expect(DiffReport.schemaVersion, 1);
     });
   });

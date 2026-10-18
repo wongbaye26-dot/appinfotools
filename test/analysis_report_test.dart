@@ -573,7 +573,7 @@ void main() {
       // v4：B11 给 findings[] 与 evidence[] 补了稳定 code。
       // 版本号与字段**必须一起断言** —— 只改号不加字段（或反之）都会让
       // 消费脚本的判断落空。
-      expect(json, contains('"reportSchemaVersion": 4'));
+      expect(json, contains('"reportSchemaVersion": 5'));
       for (final field in [
         '"messageCode"',
         '"recommendationCode"',

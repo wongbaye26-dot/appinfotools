@@ -34,19 +34,26 @@ class XapkInstaller {
     final rawSplits =
         manifest['split_apks'] ?? manifest['apks'] ?? manifest['splits'];
     if (rawSplits is List) {
-      return rawSplits
-          .map((e) {
-            if (e is String) return e;
-            if (e is Map) {
-              final map = Map<String, dynamic>.from(e);
-              return (map['file'] ?? map['path'] ?? map['apk'] ?? map['name'])
-                  ?.toString();
-            }
-            return null;
-          })
-          .whereType<String>()
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final result = <String>[];
+      // **按出现顺序去重。** manifest 由打包器生成，重复列同一个分包并不罕见
+      // （合并脚本时尤甚）；不去重的话，同一个条目会被解两次、路径被传给
+      // `adb install-multiple` 两次，adb 直接报错退出。
+      final seen = <String>{};
+      for (final e in rawSplits) {
+        final value = e is String
+            ? e
+            : (e is Map
+                    ? (Map<String, dynamic>.from(e))['file'] ??
+                        (Map<String, dynamic>.from(e))['path'] ??
+                        (Map<String, dynamic>.from(e))['apk'] ??
+                        (Map<String, dynamic>.from(e))['name']
+                    : null)
+                ?.toString();
+        if (value == null || value.isEmpty) continue;
+        if (!seen.add(value)) continue;
+        result.add(value);
+      }
+      return result;
     }
     return [];
   }
@@ -182,10 +189,17 @@ class XapkInstaller {
     List<String> installOptions, {
     Map<String, bool>? selectedSplits,
     bool Function()? isCancelled,
+
+    /// 测试用：覆盖临时目录，便于断言「失败后没有残留」。
+    @visibleForTesting Directory? tempDirOverride,
+
+    /// 测试用：覆盖解包预算，用小预算验证「超限即中止」。
+    @visibleForTesting int? maxSessionBytes,
   }) async {
     _isCancelled = false;
-    final tempDir = await Directory.systemTemp.createTemp('xapk_installer');
-    final zip = ZipHelper();
+    final tempDir = tempDirOverride ??
+        await Directory.systemTemp.createTemp('xapk_installer');
+    final zip = ZipHelper(maxSessionBytes: maxSessionBytes);
     try {
       // 检查是否已取消
       if (isCancelled?.call() ?? false) {

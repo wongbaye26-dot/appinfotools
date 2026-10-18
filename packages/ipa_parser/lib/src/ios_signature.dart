@@ -366,7 +366,13 @@ class IpaSignatureMaterialReader {
 
   static const String _provisionName = 'embedded.mobileprovision';
 
-  static IosSignatureMaterials read(Archive archive, IosBundle bundle) {
+  /// [ledger] 见 `IpaInfoPlistReader.read`：真实解析路径传同一个账本。
+  static IosSignatureMaterials read(
+    Archive archive,
+    IosBundle bundle, {
+    BoundedReadLedger? ledger,
+  }) {
+    final budget = ledger ?? BoundedReadLedger.session();
     final prefix = '${bundle.path}/';
 
     final codeSignatureEntries = <String>[];
@@ -389,12 +395,13 @@ class IpaSignatureMaterialReader {
     final hasProvision = provisionEntry != null;
 
     final diagnostics = <AnalysisDiagnostic>[];
-    final codeResources = _readCodeResources(archive, prefix, diagnostics);
+    final codeResources =
+        _readCodeResources(archive, prefix, diagnostics, budget);
     final certificateChain = hasProvision
-        ? _readCertificates(archive, provisionPath, diagnostics)
+        ? _readCertificates(archive, provisionPath, diagnostics, budget)
         : null;
     final profile = hasProvision
-        ? _readProfile(archive, provisionPath, diagnostics)
+        ? _readProfile(archive, provisionPath, diagnostics, budget)
         : const FieldValue<IosProvisioningProfile>.absent(
             source: FieldSource.signatureMaterials,
           );
@@ -446,6 +453,7 @@ class IpaSignatureMaterialReader {
     Archive archive,
     String prefix,
     List<AnalysisDiagnostic> diagnostics,
+    BoundedReadLedger ledger,
   ) {
     const name = 'CodeResources';
     final entry = archive.findFile('$prefix$_codeSignatureDir$name');
@@ -456,9 +464,7 @@ class IpaSignatureMaterialReader {
     final read = readEntryBounded(
       entry,
       maxEntryBytes: maxCodeResourcesBytes,
-      ledger: BoundedReadLedger(
-        maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
-      ),
+      ledger: ledger,
     );
     if (!read.isOk) {
       diagnostics.add(
@@ -528,10 +534,29 @@ class IpaSignatureMaterialReader {
     Archive archive,
     String path,
     List<AnalysisDiagnostic> diagnostics,
+    BoundedReadLedger ledger,
   ) {
     final entry = archive.findFile(path);
     if (entry == null) return null;
-    final bytes = entry.content;
+
+    // **有界读取**（V2.4.12）：此前是 `entry.content`，无上限。
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxProvisionBytes,
+      ledger: ledger,
+    );
+    if (!read.isOk) {
+      diagnostics.add(
+        AnalysisDiagnostic.info(
+          'ios.provision.certificates_unreadable',
+          'the certificate chain could not be read: '
+              '${read.failure!.describe()}',
+          source: FieldSource.signatureMaterials,
+        ),
+      );
+      return null;
+    }
+    final bytes = read.bytes!;
 
     // 注意：这里喂进去的必须是**CMS 原文**，不是 `extract` 出来的载荷。
     // 载荷是描述文件 plist，里面当然没有证书 —— 早先写成
@@ -564,6 +589,7 @@ class IpaSignatureMaterialReader {
     Archive archive,
     String path,
     List<AnalysisDiagnostic> diagnostics,
+    BoundedReadLedger ledger,
   ) {
     final entry = archive.findFile(path);
     if (entry == null) {
@@ -599,17 +625,24 @@ class IpaSignatureMaterialReader {
       );
     }
 
-    final content = entry.content;
-    if (content.length > maxProvisionBytes) {
-      // 走到这里说明 ZIP 头声明的尺寸小于上限、实际解出更多 —— 头部在撒谎。
-      //
-      // 已知局限：此时内存**已经**分配了。归档层的预算只统计声明尺寸，
-      // 无法阻止这种情况；这里能做的是拒绝解析并如实报告。
-      final message = '$path declared ${entry.size} bytes but decompressed to '
-          '${content.length}; refusing to parse it';
+    // **有界读取**（V2.4.12）：此前是 `entry.content` —— 声明值撒谎时会先把
+    // 整条条目解压进内存，再发现「太大了」。现在逐块中止。
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxProvisionBytes,
+      ledger: ledger,
+    );
+    if (!read.isOk) {
+      final failure = read.failure!;
+      final lie = failure.stage == BoundedReadStage.inflate;
+      final message = lie
+          ? '$path declared ${entry.size} bytes but decompressed past the '
+              '$maxProvisionBytes byte limit; refusing to parse it '
+              '(${failure.describe()})'
+          : '$path could not be read: ${failure.describe()}';
       diagnostics.add(
         AnalysisDiagnostic.error(
-          'ios.provision.size_lie',
+          lie ? 'ios.provision.size_lie' : 'ios.provision.cms_unreadable',
           message,
           source: FieldSource.signatureMaterials,
         ),
@@ -619,6 +652,7 @@ class IpaSignatureMaterialReader {
         source: FieldSource.signatureMaterials,
       );
     }
+    final content = read.bytes!;
 
     // 第一步：从 CMS 外壳里取出 plist 字节。这一步不做任何密码学验证。
     final extracted = CmsContentExtractor.extract(content);

@@ -748,6 +748,53 @@ void main() {
             '${callSiteEvidence.map((e) => e.detail).toList()}',
       );
     });
+
+    // ---- B-5：中间跳要能被机器寻址，而不是只藏在一句说明里 ----
+
+    test('同一方法体：dataTransform 就是那个方法的完整签名', () {
+      final ruleC = _byId(ruleCFor('real-cooccurrence.dex'), 'ANDROID-RULE-C')!;
+
+      expect(
+        ruleC.dataTransform,
+        isNotNull,
+        reason: '识别与上传的调用指令都落在 Pipeline.run 里，中间跳应当是它',
+      );
+      // 完整签名（类 + 方法 + 原型），而不是光一个 "run" ——
+      // 光有方法名的话，同名方法一多就没法定位。
+      expect(ruleC.dataTransform, contains('Pipeline'));
+      expect(ruleC.dataTransform, contains('run'));
+      expect(ruleC.dataTransform, contains('('), reason: '要带原型描述符');
+      // 与给人读的说明保持一致：两处说的是同一个方法。
+      expect(
+        AnalysisReport.relationshipText(ruleC, t),
+        contains(ruleC.dataTransform!),
+        reason: '机器可读的定位与给人读的说明不能指向两个地方',
+      );
+    });
+
+    test('不在同一方法体：dataTransform 为 null，不编造中间跳', () {
+      final ruleC = _byId(ruleCFor('real-separate.dex'), 'ANDROID-RULE-C')!;
+
+      expect(
+        ruleC.dataTransform,
+        isNull,
+        reason: '两者分别在 doOcr 与 doUpload，中间跳没有证据 —— '
+            '填一个「大概是这里」就是把猜测写成事实',
+      );
+      // 但整条发现本身仍然成立（来源与去向都还在）。
+      expect(ruleC.dataSource, isNotNull);
+      expect(ruleC.dataSink, isNotNull);
+    });
+
+    test('中间跳不影响等级与置信度', () {
+      final ruleC = _byId(ruleCFor('real-cooccurrence.dex'), 'ANDROID-RULE-C')!;
+      expect(ruleC.severity, SecuritySeverity.p1);
+      expect(
+        ruleC.confidence,
+        SecurityConfidence.suspected,
+        reason: '「同一个方法里」仍然不等于「数据真的传过去了」',
+      );
+    });
   });
 
   // B11 第七批：Android 剩余 6 条里**不需要改数据表**的那批

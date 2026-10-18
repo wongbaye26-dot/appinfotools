@@ -1,5 +1,6 @@
 import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
+import 'package:archive_safety/archive_safety.dart';
 
 import 'ipa_container.dart';
 import 'plist/plist_fields.dart';
@@ -227,7 +228,15 @@ class IpaInfoPlistReader {
   /// `Info.plist`（或文件被构造过），拒绝读取而不是继续分配内存。
   static const int maxInfoPlistBytes = 8 * 1024 * 1024;
 
-  static IpaInfoPlist read(Archive archive, IosBundle bundle) {
+  /// [ledger] 是**一次解析流程共享**的读取预算。传 `null` 时本次调用独立计，
+  /// 只适合单文件场景（测试 / 工具）；真实解析一律由 `IpaAnalysisReader` 传入
+  /// 同一个账本，否则每个条目都能重新取得一份完整配额。
+  static IpaInfoPlist read(
+    Archive archive,
+    IosBundle bundle, {
+    BoundedReadLedger? ledger,
+  }) {
+    final budget = ledger ?? BoundedReadLedger.session();
     final path = bundle.infoPlistPath;
     if (path == null) {
       return _allAbsent(
@@ -269,26 +278,44 @@ class IpaInfoPlistReader {
       );
     }
 
-    final content = entry.content;
-    if (content.length > maxInfoPlistBytes) {
-      // 走到这里说明 ZIP 头部的声明尺寸小于上限、实际解出更多 —— 头部在撒谎。
-      //
-      // 已知局限：此时内存**已经**分配了。归档层的预算只统计声明尺寸，无法
-      // 阻止这种情况；这里能做的是拒绝解析并如实报告，而不是把它当正常文件读。
+    // **有界读取**（V2.4.12）：此前这里是 `entry.content`，而它没有上限 ——
+    // 声明值撒谎时会把整条条目解压进内存，然后才发现「哦，太大了」。现在
+    // 逐块中止，峰值内存是「上限 + 一块」。
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxInfoPlistBytes,
+      ledger: budget,
+    );
+    if (!read.isOk) {
+      final failure = read.failure!;
+      // 真实产出超限 = 头部在撒谎；其余（损坏 / 截断）= 读不出来。两者都
+      // 不能当正常文件继续解析，但原因必须分开，否则用户无从判断。
+      if (failure.stage == BoundedReadStage.inflate) {
+        return _allAbsent(
+          bundle,
+          AnalysisDiagnostic.error(
+            'ios.info_plist.size_lie',
+            '$path declared ${entry.size} bytes but decompressed past the '
+                '$maxInfoPlistBytes byte limit; refusing to parse it '
+                '(${failure.describe()})',
+            messageArgs: {
+              'path': path,
+              'size': entry.size,
+              'decompressed': failure.observedBytes,
+            },
+          ),
+        );
+      }
       return _allAbsent(
         bundle,
         AnalysisDiagnostic.error(
-          'ios.info_plist.size_lie',
-          '$path declared ${entry.size} bytes but decompressed to '
-              '${content.length}; refusing to parse it',
-          messageArgs: {
-            'path': path,
-            'size': entry.size,
-            'decompressed': content.length,
-          },
+          'ios.info_plist.unparsable',
+          '$path could not be read: ${failure.describe()}',
+          messageArgs: {'path': path, 'message': failure.describe()},
         ),
       );
     }
+    final content = read.bytes!;
 
     final PlistValue parsed;
     try {
@@ -315,11 +342,16 @@ class IpaInfoPlistReader {
       );
     }
 
-    return _extract(archive, bundle, parsed, path);
+    return _extract(archive, bundle, parsed, path, budget);
   }
 
   static IpaInfoPlist _extract(
-      Archive archive, IosBundle bundle, PlistDict root, String path) {
+    Archive archive,
+    IosBundle bundle,
+    PlistDict root,
+    String path,
+    BoundedReadLedger ledger,
+  ) {
     final diagnostics = <AnalysisDiagnostic>[
       AnalysisDiagnostic.info(
         'ios.info_plist.parsed',
@@ -364,7 +396,7 @@ class IpaInfoPlistReader {
       privacyUsageDescriptions: _usageDescriptions(root, source),
       allowsArbitraryLoads: _atsArbitraryLoads(root, source),
       atsExceptionDomains: _atsExceptionDomains(root, source),
-      privacyInfo: _readPrivacyInfo(archive, bundle, diagnostics),
+      privacyInfo: _readPrivacyInfo(archive, bundle, diagnostics, ledger),
       diagnostics: diagnostics,
     );
   }
@@ -485,6 +517,7 @@ class IpaInfoPlistReader {
     Archive archive,
     IosBundle bundle,
     List<AnalysisDiagnostic> diagnostics,
+    BoundedReadLedger ledger,
   ) {
     const source = FieldSource.privacyInfo;
     final path = '${bundle.path}/PrivacyInfo.xcprivacy';
@@ -492,11 +525,19 @@ class IpaInfoPlistReader {
     if (entry == null) {
       return const FieldValue<IosPrivacyInfo>.absent(source: source);
     }
-    final content = entry.content;
-    if (content.length > maxInfoPlistBytes) {
+    // **有界读取**（V2.4.12）：此前是 `entry.content`，声明值撒谎时会先整条
+    // 解压进内存。现在超限即中止，且把「停在哪个阶段、观察到多少」写进诊断。
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxInfoPlistBytes,
+      ledger: ledger,
+    );
+    if (!read.isOk) {
+      final failure = read.failure!;
       diagnostics.add(AnalysisDiagnostic.warning(
         'ios.privacy_info.too_large',
-        '$path declares ${content.length} bytes, above the limit',
+        '$path could not be read within the $maxInfoPlistBytes byte limit: '
+            '${failure.describe()}',
       ));
       return const FieldValue<IosPrivacyInfo>.failed(
         source: source,
@@ -504,6 +545,7 @@ class IpaInfoPlistReader {
         diagnosticCode: 'privacy_manifest.too_large',
       );
     }
+    final content = read.bytes!;
     final PlistValue parsed;
     try {
       parsed = PlistParser.parse(content);

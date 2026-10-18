@@ -25,7 +25,14 @@ class ParseStageReached extends ParseEvent {
 class ParseOpenFailed extends ParseEvent {
   final ArchiveOpenResult result;
 
-  const ParseOpenFailed(this.result);
+  /// 命中解压预算时的**具体原因**（哪个条目、多少字节、上限多少）。
+  ///
+  /// 只在 [ArchiveOpenResult.resourceBudgetExceeded] 时非空。界面把它作为
+  /// 第二行显示 —— 只说「超出安全解压上限」，用户既不知道是哪一条超的，
+  /// 也无法判断这是不是自己那个包本身有问题。
+  final String? detail;
+
+  const ParseOpenFailed(this.result, {this.detail});
 }
 
 /// 解析失败，[reason] 面向诊断（英文，直接进日志）。
@@ -202,7 +209,9 @@ void _parseEntryPoint(_ParseRequest request) async {
 
     final openResult = await reader.open(request.filePath);
     if (!openResult.isOk) {
-      request.reply.send(ParseOpenFailed(openResult));
+      request.reply.send(
+        ParseOpenFailed(openResult, detail: reader.budgetFailure),
+      );
       return;
     }
 

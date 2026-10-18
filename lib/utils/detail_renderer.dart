@@ -40,14 +40,25 @@ class DetailRenderer {
   /// 四种原因对用户的含义完全不同，不能统一退化成「解析失败」；
   /// 其中 [ArchiveOpenResult.resourceBudgetExceeded] 是**安全拒绝**，
   /// 必须让用户看到真实原因。
-  static String openFailure(ArchiveOpenResult result, Translations t) {
-    return switch (result) {
+  ///
+  /// [detail] 是命中的**具体条目与字节数**（英文，来自
+  /// `ZipBudgetViolation.describe()`）。有它就追加一行「详情」——
+  /// 「归档超出安全解压上限」本身回答不了「是哪个条目、超了多少」，
+  /// 而那正是用户唯一能用来判断「这是不是我这个包的问题」的信息。
+  static String openFailure(
+    ArchiveOpenResult result,
+    Translations t, {
+    String? detail,
+  }) {
+    final summary = switch (result) {
       ArchiveOpenResult.notArchive => t.parse.open_failure_not_archive,
       ArchiveOpenResult.corrupt => t.parse.open_failure_corrupt,
       ArchiveOpenResult.resourceBudgetExceeded => t.parse.open_failure_budget,
       ArchiveOpenResult.ioError => t.parse.open_failure_io,
       ArchiveOpenResult.ok => t.parse.parse_apk_info_fail,
     };
+    if (detail == null || detail.isEmpty) return summary;
+    return '$summary\n${t.parse.open_failure_detail(detail: detail)}';
   }
 
   /// 解析阶段的本地化文案。

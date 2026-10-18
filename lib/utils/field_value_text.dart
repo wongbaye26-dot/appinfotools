@@ -53,6 +53,16 @@ class FieldValueText {
     return value.diagnostic;
   }
 
+  /// **JSON 用**：原始诊断（英文回退），不做本地化。
+  ///
+  /// 报告正文（Markdown / 界面）一律走 [diagnostic] —— 那条路径会先按
+  /// `diagnosticCode` 取本地化文案。这里是给**机器**读的：JSON 里要的是
+  /// 语言中立的原文，所以单独开一个口子。
+  ///
+  /// 单开而不是让渲染层直接摸 `value.diagnostic`：那条约定由
+  /// `test/field_value_text_test.dart` 的守卫盯着（渲染层不许直接读英文）。
+  static String? rawDiagnostic(FieldValue<Object?> value) => value.diagnostic;
+
   /// code → 本地化文案。认不出的 code 返回 `null`，由调用方退回英文原文。
   ///
   /// 实参里的 `{source}` / `{field}` / `{key}` / `{actual}` 都是**机器标识**

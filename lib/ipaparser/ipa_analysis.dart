@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
+import 'package:archive_safety/archive_safety.dart';
 import 'package:archive/archive.dart';
 import 'package:ipa_parser/ipa_parser.dart';
 
@@ -203,6 +204,10 @@ class IpaAnalysisReader {
   }) {
     final diagnostics = <AnalysisDiagnostic>[];
 
+    // **一次解析一个账本**（V2.4.12）：所有条目读取共用同一份真实产出预算。
+    // 每个读取点各建一个，等于每个条目都能重新领一份完整配额。
+    final ledger = BoundedReadLedger.session();
+
     onStage?.call(IpaParseStage.container);
     final container = IpaContainerReader.read(archive);
 
@@ -248,10 +253,10 @@ class IpaAnalysisReader {
     }
 
     onStage?.call(IpaParseStage.infoPlist);
-    final infoPlist = IpaInfoPlistReader.read(archive, mainApp);
+    final infoPlist = IpaInfoPlistReader.read(archive, mainApp, ledger: ledger);
 
     onStage?.call(IpaParseStage.icon);
-    final icon = IpaIconResolver.resolve(archive, infoPlist);
+    final icon = IpaIconResolver.resolve(archive, infoPlist, ledger: ledger);
 
     onStage?.call(IpaParseStage.macho);
     final executablePath = _executablePath(mainApp, infoPlist);
@@ -266,7 +271,7 @@ class IpaAnalysisReader {
         ),
       );
     } else {
-      final bytes = _readEntry(archive, executablePath, maxMachOBytes);
+      final bytes = _readEntry(archive, executablePath, maxMachOBytes, ledger);
       executableBytes = bytes;
       if (bytes == null) {
         diagnostics.add(
@@ -295,10 +300,12 @@ class IpaAnalysisReader {
       container,
       mainApp,
       diagnostics,
+      ledger,
     );
 
     onStage?.call(IpaParseStage.signature);
-    final signature = IpaSignatureMaterialReader.read(archive, mainApp);
+    final signature =
+        IpaSignatureMaterialReader.read(archive, mainApp, ledger: ledger);
 
     // 只在**能可靠解析**时给出比对结论：缺任一侧就返回 incomparable，
     // 而不是猜一个「大概匹配」。
@@ -343,6 +350,7 @@ class IpaAnalysisReader {
     IpaContainer container,
     IosBundle mainApp,
     List<AnalysisDiagnostic> diagnostics,
+    BoundedReadLedger ledger,
   ) {
     // 只列真正「装着代码」的 bundle 类型；`Payload/` 直属的其他 .app 已经
     // 在主应用之外被容器层标记为 nestedApp，这里一并纳入。
@@ -376,7 +384,7 @@ class IpaAnalysisReader {
         break;
       }
 
-      final info = IpaInfoPlistReader.read(archive, bundle);
+      final info = IpaInfoPlistReader.read(archive, bundle, ledger: ledger);
       final path = _executablePath(bundle, info);
       if (path == null) {
         result.add(IosNestedBinary(
@@ -388,7 +396,7 @@ class IpaAnalysisReader {
         continue;
       }
 
-      final bytes = _readEntry(archive, path, maxMachOBytes);
+      final bytes = _readEntry(archive, path, maxMachOBytes, ledger);
       if (bytes == null) {
         result.add(IosNestedBinary(
           bundlePath: bundle.path,
@@ -442,13 +450,23 @@ class IpaAnalysisReader {
     return result;
   }
 
-  /// 读一个条目，超过 [maxBytes] 时返回 `null`（不读、不分配）。
-  static Uint8List? _readEntry(Archive archive, String path, int maxBytes) {
+  /// 读一个条目，超过 [maxBytes] 时返回 `null`（**逐块中止，不整条分配**）。
+  ///
+  /// 此前是「先 `entry.content` 全解压、再比长度」—— 声明值撒谎时，那一步
+  /// 已经把整条条目读进内存了，比长度只是事后发现。V2.4.12 改为有界读取。
+  static Uint8List? _readEntry(
+    Archive archive,
+    String path,
+    int maxBytes,
+    BoundedReadLedger ledger,
+  ) {
     final entry = archive.findFile(path);
     if (entry == null) return null;
-    if (entry.size > maxBytes) return null;
-    final content = entry.content;
-    if (content.length > maxBytes) return null;
-    return content;
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxBytes,
+      ledger: ledger,
+    );
+    return read.isOk ? read.bytes : null;
   }
 }

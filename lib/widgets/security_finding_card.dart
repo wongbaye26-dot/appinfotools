@@ -202,7 +202,9 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
             const SizedBox(height: 16),
           ],
           // 数据源/汇
-          if (finding.dataSource != null || finding.dataSink != null)
+          if (finding.dataSource != null ||
+              finding.dataTransform != null ||
+              finding.dataSink != null)
             _buildDataFlowRow(context),
           // 关联说明：这条结论的「依据链」走到哪一步、哪一段没证实。
           //
@@ -228,6 +230,15 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
     );
   }
 
+  /// 数据流三段：来源 → 中间处理 → 去向。
+  ///
+  /// 三个标签都走 i18n。此前这里是硬编码的 `'Source: …'` / `'Sink: …'` ——
+  /// 中文界面里混着英文标签，而 `test/i18n_coverage_test.dart` 抓不到这种
+  /// 「写在 Dart 里的文案」。中间处理这一段是 B-5 新加的：`ANDROID-RULE-C`
+  /// 在「同一方法体」分支会把那个方法填进来。
+  ///
+  /// **只渲染有值的那几段**：没有中间跳就不显示空位，也不填「未知」——
+  /// 填占位会把「没确定到」说成「确定没有」。
   Widget _buildDataFlowRow(BuildContext context) {
     final finding = widget.finding;
 
@@ -238,12 +249,18 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
         if (finding.dataSource != null)
           _FlowChip(
             icon: Icons.arrow_upward,
-            label: 'Source: ${finding.dataSource}',
+            label: '${t.security.data_flow_source}: ${finding.dataSource}',
+          ),
+        if (finding.dataTransform != null)
+          _FlowChip(
+            icon: Icons.transform,
+            label: '${t.security.data_flow_transform}: '
+                '${finding.dataTransform}',
           ),
         if (finding.dataSink != null)
           _FlowChip(
             icon: Icons.arrow_downward,
-            label: 'Sink: ${finding.dataSink}',
+            label: '${t.security.data_flow_sink}: ${finding.dataSink}',
           ),
       ],
     );

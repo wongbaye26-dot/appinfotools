@@ -16,12 +16,32 @@ import 'package:archive/archive.dart';
 import 'package:path/path.dart' as path;
 
 class ZipHelper {
+  /// 本次流程的读取预算上限；`null` 表示用默认值。
+  ///
+  /// **可注入是为了集成测试**：真实上限是 1 GiB，而测试必须用小预算才能
+  /// 在不制造大内存分配的前提下验证「超限即中止」。
+  final int? maxSessionBytes;
+
+  ZipHelper({this.maxSessionBytes});
+
   Archive? _archive;
 
+  /// 最近一次 [open] 因解压预算被拒绝时的**具体原因**。
+  ///
+  /// 「归档超出安全解压上限」这句话对用户和排查都没有信息量 —— 真正要回答的
+  /// 是**哪个条目**、声明了多少字节、上限是多少。这里是那份结构化说明，
+  /// 由调用方原样呈现（英文，面向排查），不在这里拼中文。
+  String? _lastBudgetViolation;
+
+  /// 见 [_lastBudgetViolation]。`null` 表示没有命中预算。
+  String? get lastBudgetViolation => _lastBudgetViolation;
+
   /// 本次打开期间的**共享**读取预算（V2.4.12）。每次 `open` 重置。
-  BoundedReadLedger _ledger = BoundedReadLedger(
-    maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
-  );
+  late BoundedReadLedger _ledger = _newLedger();
+
+  BoundedReadLedger _newLedger() => BoundedReadLedger(
+        maxTotalBytes: maxSessionBytes ?? ZipBudgetLimits.maxSessionOutputBytes,
+      );
 
   /// 已打开的归档；未打开或打开失败时为 `null`。
   ///
@@ -36,14 +56,13 @@ class ZipHelper {
   /// 「命中解压预算」「IO 失败」—— 这四种情况对用户的含义完全不同。
   Future<ArchiveOpenResult> open(String filePath) async {
     InputFileStream? inputStream;
+    _lastBudgetViolation = null;
     try {
       if (!looksLikeZip(await readArchiveHeader(filePath))) {
         return ArchiveOpenResult.notArchive;
       }
       final length = await File(filePath).length();
-      _ledger = BoundedReadLedger(
-        maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
-      );
+      _ledger = _newLedger();
       inputStream = InputFileStream(filePath);
       final archive = ZipDecoder().decodeStream(inputStream);
       if (looksStructurallyBroken(archive, length)) {
@@ -51,9 +70,12 @@ class ZipHelper {
         _archive = null;
         return ArchiveOpenResult.corrupt;
       }
-      if (ZipBudget.isExceeded(archive)) {
+      final violation = ZipBudget.check(archive);
+      if (violation != null) {
         _archive = null;
-        log.severe('Refusing to open $filePath: decompression bomb detected');
+        // 记下**是哪一条**超的，而不是只说「超了」。
+        _lastBudgetViolation = violation.describe();
+        log.severe('Refusing to open $filePath: $_lastBudgetViolation');
         return ArchiveOpenResult.resourceBudgetExceeded;
       }
       _archive = archive;

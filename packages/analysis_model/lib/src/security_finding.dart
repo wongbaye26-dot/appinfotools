@@ -278,6 +278,20 @@ class SecurityFinding {
   /// 可能的数据去向（上传请求、第三方域名……）；没有则为 `null`。
   final String? dataSink;
 
+  /// 来源与去向之间的**中间跳**（处理环节）；没有则为 `null`。
+  ///
+  /// 目前唯一的产出方是 `ANDROID-RULE-C` 的「同一方法体」分支：此时中间跳
+  /// 就是**那个方法**（识别与上传的调用指令都在它里面），值形如
+  /// `Lcom/example/Pipeline;.run(Landroid/graphics/Bitmap;)V`。
+  ///
+  /// **刻意是自由文本而不是结构化 hop 列表**：静态分析能确定到「哪个方法」
+  /// 这一级，确定不到「哪个寄存器、哪次赋值」。把 hop 做成结构化数组会让人
+  /// 以为逐跳都验证过了 —— 那是另一回事（数据流分析，本版本不做）。
+  ///
+  /// 与 [relationship] 的分工：这里是**机器可读的定位**（可以拿去搜代码），
+  /// relationship 是**给人读的说明**（包含「哪一段没证实」）。
+  final String? dataTransform;
+
   /// 来源 → 处理 → 去向之间的关联情况说明。
   ///
   /// 未证实时要**明确展示未能证实的环节**，不得补全不存在的证据。
@@ -330,6 +344,7 @@ class SecurityFinding {
     required this.evidence,
     this.dataSource,
     this.dataSink,
+    this.dataTransform,
     this.relationship,
     this.limitation,
     required this.recommendation,
@@ -368,6 +383,7 @@ class SecurityFinding {
       evidence: unique,
       dataSource: dataSource,
       dataSink: dataSink,
+      dataTransform: dataTransform,
       relationship: relationship,
       limitation: limitation,
       recommendation: recommendation,
