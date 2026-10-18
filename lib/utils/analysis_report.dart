@@ -666,6 +666,7 @@ class AnalysisReport {
     );
     final rule = name is String ? _permissionRuleText(name, t) : null;
     final scope = finding.messageArgs['scope'];
+    final api = finding.messageArgs['api'];
 
     final String? localized = switch (code) {
       'ios.usage_description' =>
@@ -693,6 +694,9 @@ class AnalysisReport {
                 bytes: bytes,
                 uncovered: uncovered,
               ),
+      'ios.capability_no_usage' => (key == null || api == null)
+          ? null
+          : f.ios_capability_no_usage(key: key, api: api),
       'ios.usage_without_api' => (key == null || scope == null)
           ? null
           : f.ios_usage_without_api(key: key, scope: scope),
@@ -741,6 +745,8 @@ class AnalysisReport {
         sources == null ? null : f.android_rule_g(sources: sources),
       'android.special_access' =>
         sources == null ? null : f.android_special_access(sources: sources),
+      'android.screen_capture' =>
+        parts == null ? null : f.android_screen_capture(parts: parts),
       'android.permission_expired' => (name == null || note == null)
           ? null
           : f.android_permission_expired(name: name, note: note),
@@ -774,6 +780,8 @@ class AnalysisReport {
         f.ios_usage_description_cross_check,
       'ios.photo_picker.confirm_input_path' =>
         f.ios_photo_picker_confirm_input_path,
+      'ios.capability_no_usage.add_usage' =>
+        f.ios_capability_no_usage_add_usage,
       'ios.usage_without_api.review' => f.ios_usage_without_api_review,
       'ios.rule_a.manual_review' => f.ios_rule_a_manual_review,
       'ios.ocr_capability.confirm_input_and_sink' =>
@@ -798,6 +806,7 @@ class AnalysisReport {
         f.android_permission_sdk23_conditional_verify,
       'android.rule_g.manual_review' => f.android_rule_g_manual_review,
       'android.special_access.review' => f.android_special_access_review,
+      'android.screen_capture.review' => f.android_screen_capture_review,
       'android.rule_a.manual_review' => f.android_rule_a_manual_review,
       'android.rule_d.manual_review' => f.android_rule_d_manual_review,
       'android.rule_e.manual_review' => f.android_rule_e_manual_review,
@@ -877,6 +886,8 @@ class AnalysisReport {
     final String? localized = switch (code) {
       'ios.url_schemes.limitation' => f.ios_url_schemes_limitation,
       'ios.scan_coverage.limitation' => f.ios_scan_coverage_limitation,
+      'ios.capability_no_usage.limitation' =>
+        f.ios_capability_no_usage_limitation,
       'ios.usage_without_api.limitation' => f.ios_usage_without_api_limitation,
       'ios.photo_library.limitation' => f.ios_photo_library_limitation,
       'ios.rule_a.limitation' => f.ios_rule_a_limitation,

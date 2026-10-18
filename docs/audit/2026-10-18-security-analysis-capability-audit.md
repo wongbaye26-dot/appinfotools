@@ -562,3 +562,53 @@ android.permission.BIND_NOTIFICATION_LISTENER_SERVICE  → notification_listener
 
 **74 → 76/100**：检测广度 12 → 14（多了 4 类数据来源 + 3 类特殊访问能力）。
 覆盖诚实度、深度、证据可追溯不变。
+
+---
+
+## 11. 第三轮：iOS 三类能力的双向对照 + Android 相机与录屏
+
+新增 23 条测试，`flutter test` 1,354 → **1,377**。
+
+### 11.1 iOS：通讯录 / 定位 / 麦克风的「声明 vs 实现」
+
+相册与相机早就有两个方向的检查，这三类此前只有一个方向（甚至没有）。现在补齐：
+
+| 方向 | 规则 | 等级 | 含义 |
+|---|---|---|---|
+| 有 API、没声明 | `IOS-USAGE-MISSING-FOR-API` | **P2** | 运行时系统拒绝请求、上架被拒 |
+| 有声明、没 API | `IOS-USAGE-WITHOUT-API` | info / unknown | 过度声明（隐私标签不准） |
+
+新标记（只取「读取/录制专用」的类名）：
+
+| 能力 | 标记 | 用途说明键 |
+|---|---|---|
+| 通讯录 | `CNContactStore` / `ABAddressBook` | `NSContactsUsageDescription` |
+| 定位 | `CLLocationManager` | `NSLocation*`（三个键都算） |
+| 麦克风 | `AVAudioRecorder` / `AVAudioEngine` | `NSMicrophoneUsageDescription` |
+
+**刻意不收 `AVAudioSession`**：播放音频也要用它，收了等于每个音视频应用都被报。
+
+### 11.2 真实样本抓到的第三个误报
+
+`sun_signed.ipa` 报了「声明了麦克风但没实现」。查证据：它有 `AVCapture` ——
+**`AVCaptureSession` 配上音频输入同样能录音**，而它留的符号就是 `AVCapture`。
+
+修法：麦克风的**反向**检查把 `camera` 也算作实现证据。修后该误报消失。
+（正向检查不变：`AVAudioRecorder` 出现但没声明才报 —— 那才是硬缺陷。）
+
+### 11.3 Android：Camera2 / Camera1 与 MediaProjection
+
+- **相机 API 此前一个标记都没有**：「能不能拍照」只能从 CAMERA 权限推。
+  新增 `android.hardware.camera2`（覆盖 CameraManager / CameraDevice /
+  CameraCaptureSession）与 `android.hardware.Camera`，都归 `photoAccess` ——
+  于是相机现在会参与「图像输入 + OCR」的组合判定。
+- **MediaProjection 从 OCR 里摘出来**：它原来挂在 `ocrImage` 下，于是「录屏」
+  会被算成「文字识别能力」。两件事完全不同：录屏抓整块屏幕画面（可能含验证码、
+  聊天记录），OCR 是识别图片里的字。现在单列 `ANDROID-SCREEN-CAPTURE`
+  （P3 / independentCapability），并不再污染 OCR 线索。
+
+真实样本：抖音与飞牛TV 都命中录屏（P3）—— 投屏/共享功能很常见，P3 合适。
+
+### 11.4 评分影响
+
+**76 → 78/100**：检测广度 14 → 16（iOS 三类能力双向、Android 相机与录屏）。

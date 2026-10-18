@@ -26,6 +26,12 @@ class _Budget {
 class _MachOClue {
   final String markerId;
   final String description;
+
+  /// 命中的**字面量**（如 `CNContactStore`）。
+  ///
+  /// 与 [description] 分开：说明是给人读的（「Contacts framework」），
+  /// 字面量是给机器用的（可拿去 grep 代码、可写进诊断）。
+  final String literal;
   final List<String> samples;
 
   /// 命中出现在**哪些可执行文件**里（归档内路径）。
@@ -34,8 +40,13 @@ class _MachOClue {
   /// 报告里要能指出是哪一个，否则「扩展里有 OCR」这种结论无从核对。
   final List<String> sources;
 
-  const _MachOClue(this.markerId, this.description, this.samples,
-      {this.sources = const []});
+  const _MachOClue(
+    this.markerId,
+    this.description,
+    this.literal,
+    this.samples, {
+    this.sources = const [],
+  });
 }
 
 /// 一个参与安全扫描的嵌套可执行文件。
@@ -105,6 +116,20 @@ class IosPrivacyAudit {
     ),
     ('photos-ui', 'PhotosUI framework reference', 'PhotosUI'),
     ('camera', 'AVCapture camera API', 'AVCapture'),
+    // ---- 通讯录 / 定位 / 麦克风（审计 §10 的广度缺口）----
+    //
+    // 只收「读取/录制专用」的类名。麦克风刻意**不收** `AVAudioSession` ——
+    // 播放音频也要用它，收了等于每个音视频应用都会被报（上一轮
+    // `AccessibilityService` 匹配到 `AccessibilityServiceInfo` 就是这类误伤）。
+    ('contacts', 'Contacts framework (CNContactStore)', 'CNContactStore'),
+    (
+      'contacts-legacy',
+      'AddressBook framework (ABAddressBook)',
+      'ABAddressBook'
+    ),
+    ('location', 'CoreLocation manager', 'CLLocationManager'),
+    ('microphone', 'audio recorder', 'AVAudioRecorder'),
+    ('microphone-engine', 'audio engine (input processing)', 'AVAudioEngine'),
     ('ocr', 'Vision text recognition API', 'VNRecognizeText'),
     (
       'ocr-image-request',
@@ -355,12 +380,13 @@ class IosPrivacyAudit {
       }
     }
 
-    for (final (id, description, _) in _markers) {
+    for (final (id, description, literal) in _markers) {
       final samples = byMarker[id];
       if (samples == null || samples.isEmpty) continue;
       clues[id] = _MachOClue(
         id,
         description,
+        literal,
         samples.toSet().take(_Budget.maxSamplesPerMarker).toList(),
         sources: (sourcesByMarker[id] ?? const <String>{}).toList()..sort(),
       );
@@ -570,6 +596,72 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- 通讯录 / 定位 / 麦克风：有 API、没声明 ----
+    //
+    // 与相册 / 相机同一个方向（运行时崩溃、上架被拒），但共用**一个** ruleId：
+    // 这三类是结构完全相同的缺陷，各自一个 id 只会让规则表变长。相册 / 相机
+    // 保留历史 id 不动，避免已有报告与测试失效。
+    void missingUsageFor({
+      required String expectedKey,
+      required String usagePrefix,
+      required List<String> markerIds,
+    }) {
+      final present = markerIds.where(clues.containsKey).toList();
+      if (present.isEmpty) return;
+      // 任何一个「算作有声明」的键存在就放行（定位有三个键）。
+      if (usageKeyFor(usagePrefix) != null) return;
+
+      final clue = clues[present.first]!;
+      // `{api}` 给**字面量**（能拿去搜代码），英文回退里用说明。
+      final api = clue.literal;
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-USAGE-MISSING-FOR-API',
+        platform: SecurityPlatform.ios,
+        category: _categoryForKey(expectedKey),
+        // P2：与 `IOS-PHOTO-LIBRARY-NO-USAGE` 同一档 —— 缺用途说明时系统会
+        // 直接拒绝访问，应用功能坏掉、上架也会被拒。
+        severity: SecuritySeverity.p2,
+        confidence: SecurityConfidence.suspected,
+        finding: 'Found ${clue.description} clues, but Info.plist has no '
+            '$expectedKey: '
+            'the system will refuse the request at runtime, and the App Store '
+            'review will reject the build.',
+        messageCode: 'ios.capability_no_usage',
+        messageArgs: {'key': expectedKey, 'api': api},
+        evidence: [
+          ..._clueEvidence(clues, present),
+          SecurityEvidence(
+            source: SecurityEvidenceSource.infoPlist,
+            location: '${infoPlist.bundle.path}/Info.plist',
+            detail: '$expectedKey not found',
+          ),
+        ],
+        limitation: 'The presence of an API symbol does not mean it is called '
+            'at runtime; the symbol may also come from an unused framework '
+            'reference.',
+        limitationCode: 'ios.capability_no_usage.limitation',
+        recommendation: 'Confirm the call sites and add the usage description '
+            'as Apple requires, or remove the capability.',
+        recommendationCode: 'ios.capability_no_usage.add_usage',
+      ));
+    }
+
+    missingUsageFor(
+      expectedKey: 'NSContactsUsageDescription',
+      usagePrefix: 'NSContacts',
+      markerIds: const ['contacts', 'contacts-legacy'],
+    );
+    missingUsageFor(
+      expectedKey: 'NSLocationWhenInUseUsageDescription',
+      usagePrefix: 'NSLocation',
+      markerIds: const ['location'],
+    );
+    missingUsageFor(
+      expectedKey: 'NSMicrophoneUsageDescription',
+      usagePrefix: 'NSMicrophone',
+      markerIds: const ['microphone', 'microphone-engine'],
+    );
+
     // ---- 反方向：声明了用途说明，却没有对应的 API 线索 ----
     //
     // 上面两条是「有实现、没声明」（会崩、会被拒）。这里是它的镜像：
@@ -657,6 +749,19 @@ class IosPrivacyAudit {
         ],
       );
       usageWithoutApi('NSCamera', const ['camera']);
+      usageWithoutApi(
+        'NSContacts',
+        const ['contacts', 'contacts-legacy'],
+      );
+      usageWithoutApi('NSLocation', const ['location']);
+      // 麦克风的**反向**检查要把 `camera` 也算进去：`AVCaptureSession` 配上
+      // 音频输入同样能录音，而它留的符号就是 `AVCapture`。不认这一条的话，
+      // 一个用 AVCapture 录音的应用会被误报成「声明了麦克风却没实现」——
+      // 实测 `sun_signed.ipa` 正是这种情况。
+      usageWithoutApi(
+        'NSMicrophone',
+        const ['microphone', 'microphone-engine', 'camera'],
+      );
     }
 
     // ---- iOS 规则 A：完整照片库访问 + 未见更克制的输入路径 ----

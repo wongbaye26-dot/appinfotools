@@ -334,6 +334,11 @@ class AndroidSecurityAudit {
     final ocrCodeRefs = methodScan.references
         .where((r) => r.category == SecurityCategory.ocrImage)
         .toList();
+    // 录屏能力：单列，不并进 OCR（录屏抓画面，不是识别文字）。
+    final screenCaptureClues =
+        scan.clues.where((c) => c.markerId == 'media-projection').toList();
+    final screenCaptureCodeRefs = codeRefsOf(const {'media-projection'});
+
     final networkClues = scan.clues
         .where((c) => c.category == SecurityCategory.network)
         .toList();
@@ -730,6 +735,44 @@ class AndroidSecurityAudit {
     // 证据分两种来源，**必须分开标注**：`dexString` 是字符串字面量命中，
     // `dexMethodReference` 是 method_ids 命中。后者强得多（字符串常量可以
     // 随便写），但两者都**不等于**「调用发生了」。
+    if (screenCaptureClues.isNotEmpty || screenCaptureCodeRefs.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-SCREEN-CAPTURE',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.p3,
+        confidence: SecurityConfidence.independentCapability,
+        finding: 'Screen capture capability found '
+            '(${_sourceParts(screenCaptureCodeRefs, screenCaptureClues)}). '
+            'MediaProjection captures the whole screen content, which may '
+            'include verification codes, chat messages and other sensitive '
+            'information. This reports the capability only; it is not a '
+            'malicious verdict.',
+        messageCode: 'android.screen_capture',
+        messageArgs: {
+          'parts': {
+            'codeRefs':
+                screenCaptureCodeRefs.map((r) => r.description).toList(),
+            'stringClues':
+                screenCaptureClues.map((c) => c.description).toList(),
+          },
+        },
+        evidence: [
+          ...referenceEvidence(screenCaptureCodeRefs),
+          ...clueEvidence(screenCaptureClues),
+        ],
+        limitation: 'MediaProjection requires an explicit per-session user '
+            'consent dialog, so the presence of the API does not mean the app '
+            'records the screen; it may only be prepared for a screen-sharing '
+            'feature.',
+        limitationCode: 'android.screen_capture.limitation',
+        recommendation: 'Check what is captured and whether the user is told '
+            'about it. Screen sharing / recording are legitimate features in '
+            'many apps.',
+        recommendationCode: 'android.screen_capture.review',
+      ));
+    }
+
     if (ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty) {
       findings.add(SecurityFinding(
         ruleId: 'ANDROID-OCR-CAPABILITY',

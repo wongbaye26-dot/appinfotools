@@ -38,6 +38,15 @@
   规则在九成应用上出现，读者会学会忽略它）。
   三条防误报约束都写了测试：只有来源不报、只有上传不报、只有字符串线索时
   `dataTransform` 留 null。
+- **iOS 通讯录 / 定位 / 麦克风的「声明 vs 实现」双向对照**：
+  有 API 没声明 → `IOS-USAGE-MISSING-FOR-API`（P2，运行时会崩、上架被拒）；
+  有声明没 API → `IOS-USAGE-WITHOUT-API`（info，过度声明）。
+  麦克风刻意不收 `AVAudioSession`（播放也要用），反向检查则把 `AVCapture`
+  也算作实现证据（`AVCaptureSession` 配音频输入同样能录音）。
+- **Android 相机 API 与录屏**：新增 `android.hardware.camera2` /
+  `android.hardware.Camera` 标记（此前「能不能拍照」只能从权限推）；
+  `MediaProjection` 从 OCR 线索里摘出来，单列 `ANDROID-SCREEN-CAPTURE`（P3）——
+  录屏抓的是画面，不是识别文字。
 - **`ANDROID-SPECIAL-ACCESS`**（P3/confirmed）：无障碍服务 / 设备管理器 /
   通知监听。判据是**清单里组件的 `android:permission="...BIND_*"`**，
   不是 DEX 字面量 —— 后者在真实样本上立刻误报：飞牛TV 的「无障碍」来自
@@ -52,11 +61,13 @@
 
 ### 质量
 
-- 测试 **1,303 → 1,354**（+51）。新增 `audit_coverage_honesty_test.dart`（9）、
+- 测试 **1,303 → 1,377**（+74）。新增 `audit_coverage_honesty_test.dart`（9）、
   `android_sensitive_source_rule_test.dart`（10）、
   `audit_permission_and_rulef_test.dart`（6）、
   `ios_native_symbols_nested_test.dart`（7）、
-  `android_sensitive_source_extended_test.dart`（19）。
+  `android_sensitive_source_extended_test.dart`（19）、
+  `ios_usage_capability_matrix_test.dart`（15）、
+  `android_camera_and_screen_capture_test.dart`（8）。
 - 真实样本回归：抖音 55/55 DEX、端到端 **14.13 s**；
   `sun_signed.ipa` 静态解析 **239.9 ms**（+7.8%，预算从 16 提到 64 MiB 的代价）。
 - **仍未验证**：界面目视（本机构建不了任何平台产物）、真实 XAPK 样本、

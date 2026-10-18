@@ -43,13 +43,24 @@ const List<CodeMarker> codeMarkers = [
   // ---- 截图 / 屏幕内容 ----
   CodeMarker('screenshot', SecurityCategory.ocrImage, 'screenshot capture',
       'creenshot'),
-  CodeMarker('screencapture', SecurityCategory.ocrImage, 'screen capture',
-      'MediaProjection'),
+  // 录屏**不是** OCR：它抓整块屏幕画面（可能含验证码、聊天记录），
+  // 而 OCR 是识别图片里的文字。此前它挂在 ocrImage 下，导致「录屏」被算成
+  // 「文字识别能力」。现在单列一条能力发现（`ANDROID-SCREEN-CAPTURE`）。
+  CodeMarker('media-projection', SecurityCategory.other,
+      'screen capture (MediaProjection)', 'MediaProjection'),
   // ---- 图片读取 ----
   CodeMarker('mediastore', SecurityCategory.photoAccess,
       'media database access', 'MediaStore'),
   CodeMarker('externalcontenturi', SecurityCategory.photoAccess,
       'external storage content URI', 'EXTERNAL_CONTENT_URI'),
+  // 相机 API：此前 Android 侧**没有任何相机标记**，「能不能拍照」只能从
+  // CAMERA 权限推。补上代码层线索后，相机才会参与「图像输入 + OCR」的判定。
+  // 用包名而不是类名：`android.hardware.camera2` 覆盖 CameraManager /
+  // CameraDevice / CameraCaptureSession，且不会误伤 `camera2` 之外的写法。
+  CodeMarker('camera2', SecurityCategory.photoAccess, 'Camera2 API',
+      'android.hardware.camera2'),
+  CodeMarker('camera1', SecurityCategory.photoAccess, 'Camera1 API',
+      'android.hardware.Camera'),
   // ---- 上传 / 网络 ----
   CodeMarker('multipart', SecurityCategory.dataExfiltration,
       'multipart form upload', 'multipart/form-data'),
