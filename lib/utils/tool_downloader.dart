@@ -346,15 +346,21 @@ class ToolDownloader {
 
       // **边收边写**，不先把整个归档攒进内存：platform-tools 有几十 MB，
       // build-tools 上百 MB，先 `BytesBuilder` 再落盘等于把峰值内存翻倍。
+      //
+      // 进度分母只在**未编码**时可信（见下面完整性检查的注释）：内容编码过
+      // 时 `contentLength` 是编码后长度，拿它当分母会算出 >100% 的进度。
       final declared = response.contentLength;
+      final decoded = response.compressionState !=
+          HttpClientResponseCompressionState.notCompressed;
+      final total = (!decoded && declared > 0) ? declared : 0;
       var received = 0;
       final sink = file.openWrite();
       try {
         await for (final chunk in response) {
           sink.add(chunk);
           received += chunk.length;
-          if (onProgress != null && declared > 0) {
-            onProgress(received, declared);
+          if (onProgress != null && total > 0) {
+            onProgress(received, total);
           }
         }
       } finally {
@@ -363,7 +369,17 @@ class ToolDownloader {
 
       // `Content-Length` 声明了却没收到那么多 = 传输中断。此时磁盘上是一个
       // **半截归档**：不删掉的话，后面的解包会读到它，或者被误当成缓存复用。
-      if (declared > 0 && received != declared) {
+      //
+      // **但只在响应没有被内容编码时才能这么比。** `HttpClient` 默认
+      // `autoUncompress: true`，此时 `contentLength` 是**编码后**的字节数，
+      // 而流里给的是解码后的 —— 两者本来就不相等。实测（2026-10-18）：
+      // dl.google.com 的 build-tools 归档走 gzip，解码后比声明值多 265,753
+      // 字节，于是每一次真实下载都被判成「传输中断」，整条下载链 100% 失败，
+      // 而单元测试因为用本地 `file://` 从不触发这条分支，一直是绿的。
+      //
+      // 字节数相等只是个**廉价的**一致性检查；真正的完整性由
+      // `verifyArchiveChecksum`（sha1）保证，那才是不可绕过的。
+      if (!decoded && declared > 0 && received != declared) {
         throw ToolDownloadException(
           ToolDownloadError.archiveDownload,
           detail: 'incomplete download: got $received of $declared bytes '
@@ -384,7 +400,13 @@ class ToolDownloader {
     void Function(int received, int total)? onProgress,
   ) async {
     final builder = BytesBuilder(copy: false);
-    final total = response.contentLength > 0 ? response.contentLength : 0;
+    // 同 `_downloadToTemp`：内容编码过的响应里 `contentLength` 是编码后长度，
+    // 拿它当分母会算出 946% 这种数字（实测 repository2-3.xml：44,547 vs
+    // 421,568）。编码过就报「总量未知」（0），界面按不定长进度显示。
+    final decoded = response.compressionState !=
+        HttpClientResponseCompressionState.notCompressed;
+    final total =
+        (!decoded && response.contentLength > 0) ? response.contentLength : 0;
     var received = 0;
     await for (final chunk in response) {
       builder.add(chunk);
