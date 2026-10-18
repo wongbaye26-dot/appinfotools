@@ -192,11 +192,16 @@ void FileAssociationChannel::Register(
   // 进程内只注册一次。用 static 持有是为了让方法通道的处理函数在
   // 引擎存活期间一直有效 —— 裸 `new` 之后没人释放，而 Flutter 侧
   // 可能在任意时刻回调进来，悬垂指针会直接崩。
+  //
+  // **不能用 `std::make_unique`**：它在 `<memory>` 内部实例化，
+  // 不在本类作用域里，因此访问不到 private 构造函数 —— MSVC 会报
+  // `error C2248: cannot access private member`（CI run #95 就是）。
+  // `new` 表达式则写在 `Register` 这个成员函数体内，可以访问。
   static std::unique_ptr<FileAssociationChannel> instance;
   if (instance != nullptr) {
     return;  // 重复注册会让旧实例被销毁，而通道的回调仍指向它。
   }
-  instance = std::make_unique<FileAssociationChannel>(engine, startup_arguments);
+  instance.reset(new FileAssociationChannel(engine, startup_arguments));
 }
 
 FileAssociationChannel::FileAssociationChannel(
