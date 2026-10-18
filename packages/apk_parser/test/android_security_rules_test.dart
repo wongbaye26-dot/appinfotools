@@ -84,6 +84,9 @@ void main() {
           'ANDROID-EXPORTED-COMPONENT',
           'ANDROID-ALLOW-BACKUP',
           'ANDROID-SHARED-USER-ID',
+          'ANDROID-V1-ONLY-SIGNING',
+          'ANDROID-WEBVIEW-BRIDGE',
+          'ANDROID-PERMISSION-WITHOUT-API',
           'ANDROID-RULE-A',
           'ANDROID-RULE-B',
           'ANDROID-RULE-C',
@@ -171,6 +174,24 @@ void main() {
           ),
       'ANDROID-SHARED-USER-ID': () => _audit(
             meta: _meta(targetSdk: 34)..sharedUserId = 'com.example.shared',
+          ),
+      // 只有 v1 签名：签名块解析成功但里面没有 v2/v3。
+      'ANDROID-V1-ONLY-SIGNING': () => _audit(
+            meta: _meta(targetSdk: 34)
+              ..signingSchemes = const ApkSigningSchemes(),
+          ),
+      // JS 桥暴露给网页内容。
+      'ANDROID-WEBVIEW-BRIDGE': () => _audit(
+            meta: _meta(targetSdk: 34),
+            strings: ['addJavascriptInterface'],
+          ),
+      // 声明了通讯录权限但代码里没有 ContactsContract。
+      'ANDROID-PERMISSION-WITHOUT-API': () => _audit(
+            meta: _meta(
+              targetSdk: 34,
+              permissions: [_perm('android.permission.READ_CONTACTS')],
+            ),
+            strings: ['unrelated'],
           ),
       // 特殊访问能力：**清单层的组件权限**才是判据（不需要上传）。
       // 用 DEX 字面量判会误伤 Material 的 `AccessibilityServiceInfo` 查询。

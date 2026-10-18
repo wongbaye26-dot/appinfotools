@@ -22,6 +22,8 @@ export 'src/native/elf.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
 export 'src/apk_reader.dart';
+// APK Signing Block：回答「有没有 v2/v3 签名块」，**不做**密码学验证。
+export 'src/apk_signing_block.dart';
 
 // 安全检测引擎（V1.1）：权限规则目录、DEX 字符串线索、Android 侧审计编排。
 // 产出的是 `analysis_model` 里的平台中立发现项模型，与平台自身的解析结果

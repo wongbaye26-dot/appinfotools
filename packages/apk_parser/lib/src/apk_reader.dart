@@ -9,6 +9,7 @@ import 'icp_filing.dart';
 import 'hardening.dart';
 import 'manifest_parser.dart';
 import 'arsc_parser.dart';
+import 'apk_signing_block.dart';
 import 'models.dart';
 import 'security/network_security_config.dart';
 
@@ -38,6 +39,12 @@ enum ApkParseStage {
 /// APK 文件读取和解析的统一入口
 class ApkReader {
   Archive? _archive;
+
+  /// [open] 传进来的路径；[openBytes] 时为 `null`。
+  ///
+  /// 解析 APK Signing Block 需要随机读文件尾部 —— 归档对象本身不保留原始
+  /// 字节（`decodeStream`），所以只能记路径、事后再读两次小范围。
+  String? _filePath;
 
   /// 最近一次 [parse] 的结果。
   ///
@@ -84,6 +91,7 @@ class ApkReader {
   Future<ArchiveOpenResult> open(String filePath) async {
     InputFileStream? inputStream;
     budgetFailure = null;
+    _filePath = filePath;
     try {
       if (!looksLikeZip(await readArchiveHeader(filePath))) {
         return ArchiveOpenResult.notArchive;
@@ -237,6 +245,15 @@ class ApkReader {
     // 记下来供 scanHardeningSignals 使用 —— manifest 层的加固线索只能在
     // 解析之后才有，而那个方法是在 parse 之后被调用的。
     _meta = meta;
+
+    // 1.5 APK Signing Block（v2 / v3 签名方案）。
+    //
+    // **失败不阻断解析**：这一段回答的是「有没有 v2+ 签名块」，
+    // 读不出来时记下原因即可 —— 基本信息与安全分析都不该因此拿不到。
+    meta.signingSchemes = _readSigningSchemes();
+    if (meta.signingSchemes != null && !meta.signingSchemes!.parsed) {
+      _log.warning('signing block: ${meta.signingSchemes!.failure}');
+    }
 
     // 2. 读取并解析 resources.arsc
     onStage?.call(ApkParseStage.resources);
@@ -412,6 +429,37 @@ class ApkReader {
     final paths = parser.getAllFilePaths(resId);
     for (final entry in paths) {
       meta.iconPaths[entry.key] = entry.value;
+    }
+  }
+
+  /// 读 APK Signing Block。返回 `null` 表示**没法读**（不是「没有签名」）。
+  ///
+  /// 走两次有界读：先读 EOCD（尾部 ≤64 KiB），再按需读签名块本身。
+  /// 不把整份文件读进内存 —— 真实 APK 有几百 MB。
+  ApkSigningSchemes? _readSigningSchemes() {
+    final path = _filePath;
+    if (path == null) return null;
+    RandomAccessFile? raf;
+    try {
+      raf = File(path).openSync();
+      final length = raf.lengthSync();
+      return parseApkSigningBlock(
+        fileLength: length,
+        read: (offset, count) {
+          // 边界钳制：任何越界都返回空，由解析器报「读不到」，
+          // 而不是让 RangeError 冒到这里。
+          if (offset < 0 || count <= 0 || offset + count > length) {
+            return Uint8List(0);
+          }
+          raf!.setPositionSync(offset);
+          return raf.readSync(count);
+        },
+      );
+    } catch (e) {
+      _log.warning('read signing block failed: $e');
+      return ApkSigningSchemes.unreadable('I/O error: $e');
+    } finally {
+      raf?.closeSync();
     }
   }
 

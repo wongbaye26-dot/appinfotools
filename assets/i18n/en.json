@@ -615,7 +615,20 @@
       "ios_get_task_allow_review": "Ship App Store / ad-hoc builds signed without get-task-allow, and treat any build that has it as a debug-capable artifact.",
       "ios_push_sandbox": "The provisioning profile declares aps-environment=\"development\": push notifications are bound to the sandbox APNs environment, which indicates a development-signed build.",
       "ios_push_sandbox_limitation": "The APNs environment is a property of the signing profile, not of the app logic; a distribution build uses \"production\" instead.",
-      "ios_push_sandbox_review": "Confirm this build is meant for testing; production releases should be signed with aps-environment=\"production\"."
+      "ios_push_sandbox_review": "Confirm this build is meant for testing; production releases should be signed with aps-environment=\"production\".",
+      "android_v1_only_signing": "The APK carries no v2 or later signature block: only the v1 (JAR) signature, if any, is present. v1 protects the digest of each entry but not the archive structure, so entries can be added without breaking it.",
+      "android_v1_only_signing_limitation": "This only reports which signature schemes are present in the archive structure; it does not verify any signature and does not imply the package was tampered with. A v1-only APK can be perfectly validly signed. Whether the signature is valid must come from apksigner.",
+      "android_v1_only_signing_review": "Sign with v2 (and v3 where key rotation is needed) — any modern build tool does this by default. If the package is v1-only, check where it came from.",
+      "android_webview_bridge": "A JavaScript bridge is exposed to WebView content (addJavascriptInterface): scripts running in that WebView can call the injected object. CAPTCHA, analytics and social-sharing SDKs use this routinely, so its presence does not mean the app itself defined a bridge.",
+      "android_webview_bridge_limitation": "This reports that the API is used, not that it is reachable from untrusted content: the URL loaded into the WebView and any navigation allow-list are not evaluated. Most hits in real apps come from third-party SDKs (CAPTCHA, analytics, social sharing) — check the call sites in the evidence before treating it as the app's own design.",
+      "android_webview_bridge_review": "Remove the JavaScript bridge unless it is required; otherwise restrict navigation to an allow-list of trusted origins and never load http:// or deep-link parameters into that WebView.",
+      "android_permission_without_api": "These permissions are declared but no matching API call was found in the scanned code: {names}. The declaration may be left over from older code, or the code may live somewhere this scan did not reach.",
+      "android_permission_without_api_limitation": "Only the code that was actually scanned counts: native libraries, dynamically loaded DEX and third-party SDKs with unknown class names are not covered. A missing marker is therefore not proof that the permission is unused.",
+      "android_permission_without_api_review": "Check whether the permission is still needed; removing an unused dangerous permission reduces both the permission list and the review burden.",
+      "ios_rule_g": "Sensitive data sources and network upload capability appear together: {sources} on one side, network requests (NSURLSession / upload) on the other. Both stages have evidence, but it is not shown that the data actually reaches the request.",
+      "ios_rule_g_common": "Location access and network upload capability appear together: {sources} plus network requests (NSURLSession / upload). Both are extremely common in ordinary apps, so this is reported at low severity.",
+      "ios_rule_g_limitation": "This is a co-occurrence observation, not a data flow: it is not shown that what was read is sent. The specific request body would need runtime inspection.",
+      "ios_rule_g_manual_review": "Check whether the app really needs these sensitive reads, and whether the data they return is part of an upload payload."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",

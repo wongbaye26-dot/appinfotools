@@ -615,7 +615,20 @@
       "ios_get_task_allow_review": "對外發佈請用不帶 get-task-allow 的簽名；帶這一項的包一律按「可除錯產物」對待。",
       "ios_push_sandbox": "描述檔聲明了 aps-environment=\"development\"：推送綁定的是沙箱 APNs 環境，說明這是開發簽名的包。",
       "ios_push_sandbox_limitation": "APNs 環境是簽名描述檔的屬性，不是應用邏輯；分發版用的是 \"production\"。",
-      "ios_push_sandbox_review": "確認這個包是用於測試的；正式發佈應使用 aps-environment=\"production\" 的簽名。"
+      "ios_push_sandbox_review": "確認這個包是用於測試的；正式發佈應使用 aps-environment=\"production\" 的簽名。",
+      "android_v1_only_signing": "這個 APK 沒有 v2 及更高版本的簽名塊：只可能有 v1（JAR）簽名。v1 只保護每個條目的摘要，不保護歸檔結構，因此往包裡塞入額外條目不會讓簽名失效。",
+      "android_v1_only_signing_limitation": "這裡只報告歸檔結構裡存在哪幾套簽名方案，不驗證任何簽名，也不代表這個包被人改動過。只有 v1 的包完全可以是合法有效的簽名 —— 簽名是否有效只能由 apksigner 判定。",
+      "android_v1_only_signing_review": "使用 v2（需要輪換密鑰時再加 v3）重新簽名 —— 現代構建工具預設就會這樣做。如果這個包只有 v1 簽名，核實一下它的來源。",
+      "android_webview_bridge": "有 JavaScript 橋暴露給了 WebView 內容（addJavascriptInterface）：那個 WebView 裡運行的腳本可以呼叫被注入的物件。驗證碼、統計、社交分享這類 SDK 普遍這樣做，所以出現它不代表應用自己定義了橋。",
+      "android_webview_bridge_limitation": "這裡報告的是「用了這個 API」，不是「這條路徑能從不可信內容到達」：WebView 載入的 URL 與導航白名單都未做判定。真實應用裡絕大多數命中來自第三方 SDK（驗證碼、統計、社交分享）——把它當成應用自己的設計之前，先看證據裡的呼叫點。",
+      "android_webview_bridge_review": "除非確實需要，否則移除 JavaScript 橋；否則應把導航限制在可信來源白名單內，並且不要把 http:// 或深鏈參數直接載入那個 WebView。",
+      "android_permission_without_api": "這些權限被聲明了，但在掃描到的程式碼裡找不到對應的 API 呼叫：{names}。可能是舊程式碼遺留的聲明，也可能相關程式碼在本次掃描沒覆蓋到的地方。",
+      "android_permission_without_api_limitation": "只有真正被掃描到的程式碼才算數：原生庫、動態載入的 DEX、以及類名未知的第三方 SDK 都不在覆蓋範圍內。因此「找不到標記」不等於「這條權限沒被使用」。",
+      "android_permission_without_api_review": "確認這條權限是否還需要；移除未使用的危險權限既能縮短權限清單，也減輕審核負擔。",
+      "ios_rule_g": "敏感資料來源與網絡上傳能力同時出現：一側是 {sources}，另一側是網絡請求（NSURLSession / 上傳）。兩段都有證據，但沒有證明資料真的進了請求體。",
+      "ios_rule_g_common": "定位存取與網絡上傳能力同時出現：{sources} 加上網絡請求（NSURLSession / 上傳）。這兩件事在普通應用裡極其常見，因此只按低等級報告。",
+      "ios_rule_g_limitation": "這是「同現」觀察，不是資料流：沒有證明讀到的內容被發了出去。具體請求體需要執行時檢查。",
+      "ios_rule_g_manual_review": "確認應用是否真的需要這些敏感讀取，以及它們返回的資料是否進入了上傳內容。"
     },
     "sources": {
       "photo_library": "完整相片庫（PhotoKit）",

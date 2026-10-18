@@ -17,6 +17,27 @@ import 'permission_catalog.dart';
 /// 定级口径见 [PermissionCatalog] 与各规则的注释。总原则：**权限数量不决定
 /// 等级**；未证实的数据流一律标 [SecurityConfidence.suspected] 并在
 /// relationship 里写清哪个环节没被证实。
+/// 「这条权限必须有对应的 API 调用」的编目。
+///
+/// 只收**判据明确**的权限：读通讯录必然碰 `ContactsContract`、读短信必然碰
+/// `SmsManager`、定位必然碰 `LocationManager`。反过来，`WRITE_EXTERNAL_STORAGE`
+/// 这类可能只走 `java.io.File` 的权限**不编目** —— 硬判会误报。
+///
+/// 值是「任一命中即算用过」的标记集合：`RECORD_AUDIO` 两个入口
+/// （`MediaRecorder` 与 `AudioRecord`）都要算，否则用后者的应用会被误判。
+const Map<String, Set<String>> _permissionApiMarkers = {
+  'android.permission.READ_CONTACTS': {'contacts'},
+  'android.permission.WRITE_CONTACTS': {'contacts'},
+  'android.permission.READ_SMS': {'sms'},
+  'android.permission.SEND_SMS': {'sms'},
+  'android.permission.RECEIVE_SMS': {'sms'},
+  'android.permission.ACCESS_FINE_LOCATION': {'location'},
+  'android.permission.ACCESS_COARSE_LOCATION': {'location'},
+  'android.permission.RECORD_AUDIO': {'recording', 'recording-audiorecord'},
+  'android.permission.CAMERA': {'camera1', 'camera2'},
+  'android.permission.READ_PHONE_STATE': {'device-id'},
+};
+
 class AndroidSecurityAudit {
   AndroidSecurityAudit._();
 
@@ -356,6 +377,7 @@ class AndroidSecurityAudit {
       'sms',
       'location',
       'recording',
+      'recording-audiorecord',
       'clipboard',
     };
     final sensitiveSourceClues = scan.clues
@@ -381,6 +403,39 @@ class AndroidSecurityAudit {
         scan.clues.any((c) => dynamicLoadingMarkers.contains(c.markerId)) ||
             methodScan.references
                 .any((r) => dynamicLoadingMarkers.contains(r.markerId));
+
+    // WebView / JS 桥：`addJavascriptInterface` 是 Android 最经典的 RCE 面。
+    const webViewMarkers = {
+      'webview-js-bridge',
+      'webview-js-enabled',
+      'webview-file-access',
+    };
+    final webViewClues =
+        scan.clues.where((c) => webViewMarkers.contains(c.markerId)).toList();
+    final webViewCodeRefs = codeRefsOf(webViewMarkers);
+
+    // 「声明了权限但代码里没有对应 API」。
+    //
+    // 只对**有明确代码证据**的权限做这个判断：读通讯录必然要碰
+    // `ContactsContract`，读短信必然要碰 `SmsManager`。反过来，
+    // 有些权限的用法太杂（如 `WRITE_EXTERNAL_STORAGE` 可能只走
+    // `File` API），硬判会误报，所以**不编目的一律不判**。
+    final unusedPermissionNames = <String>[];
+    if (dexEntries.isNotEmpty) {
+      final usedMarkerIds = <String>{
+        for (final c in scan.clues) c.markerId,
+        for (final r in methodScan.references) r.markerId,
+      };
+      for (final request in permissionRequests) {
+        // sdk-23 声明是否生效无法静态判定，不参与这个判断。
+        if (request.sdk23Only) continue;
+        final markers = _permissionApiMarkers[request.name];
+        if (markers == null) continue;
+        if (markers.any(usedMarkerIds.contains)) continue;
+        if (unusedPermissionNames.contains(request.shortName)) continue;
+        unusedPermissionNames.add(request.shortName);
+      }
+    }
 
     final hasOcrCapability = ocrClues.isNotEmpty || ocrCodeRefs.isNotEmpty;
     final hasUploadCapability =
@@ -985,6 +1040,9 @@ class AndroidSecurityAudit {
       hasSensitiveSource: hasSensitiveSource,
       hasDynamicLoading: hasDynamicLoading,
       specialAccessKinds: specialAccessKinds,
+      webViewClues: webViewClues,
+      webViewCodeRefs: webViewCodeRefs,
+      unusedPermissionNames: unusedPermissionNames,
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));

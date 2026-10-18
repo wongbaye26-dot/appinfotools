@@ -768,6 +768,13 @@ class AnalysisReport {
             ? null
             : f.android_exported_component_weak_many(
                 count: count, names: names, more: more),
+      'android.v1_only_signing' => f.android_v1_only_signing,
+      'android.webview_bridge' => f.android_webview_bridge,
+      'android.permission_without_api' =>
+        names == null ? null : f.android_permission_without_api(names: names),
+      'ios.rule_g' => sources == null ? null : f.ios_rule_g(sources: sources),
+      'ios.rule_g_common' =>
+        sources == null ? null : f.ios_rule_g_common(sources: sources),
       'ios.get_task_allow' => f.ios_get_task_allow,
       'ios.push_sandbox' => f.ios_push_sandbox,
       'android.rule_g' =>
@@ -837,6 +844,11 @@ class AnalysisReport {
       'android.exported_component.review' =>
         f.android_exported_component_review,
       'android.shared_user_id.review' => f.android_shared_user_id_review,
+      'android.v1_only_signing.review' => f.android_v1_only_signing_review,
+      'android.webview_bridge.review' => f.android_webview_bridge_review,
+      'android.permission_without_api.review' =>
+        f.android_permission_without_api_review,
+      'ios.rule_g.manual_review' => f.ios_rule_g_manual_review,
       'ios.get_task_allow.review' => f.ios_get_task_allow_review,
       'ios.push_sandbox.review' => f.ios_push_sandbox_review,
       'android.allow_backup.review' => f.android_allow_backup_review,
@@ -938,6 +950,13 @@ class AnalysisReport {
       'android.debuggable.limitation' => f.android_debuggable_limitation,
       'android.shared_user_id.limitation' =>
         f.android_shared_user_id_limitation,
+      'android.v1_only_signing.limitation' =>
+        f.android_v1_only_signing_limitation,
+      'android.webview_bridge.limitation' =>
+        f.android_webview_bridge_limitation,
+      'android.permission_without_api.limitation' =>
+        f.android_permission_without_api_limitation,
+      'ios.rule_g.limitation' => f.ios_rule_g_limitation,
       'ios.get_task_allow.limitation' => f.ios_get_task_allow_limitation,
       'ios.push_sandbox.limitation' => f.ios_push_sandbox_limitation,
       'android.exported_component.limitation' =>

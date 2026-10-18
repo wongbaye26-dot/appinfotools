@@ -1,5 +1,6 @@
 import 'package:analysis_model/analysis_model.dart';
 
+import 'apk_signing_block.dart';
 import 'security/network_security_config.dart';
 
 /// manifest 中声明的一条权限请求。
@@ -119,6 +120,15 @@ class ApkMeta {
   /// 三态而非 bool：未声明时系统有默认值（targetSdk ≥ 28 默认 false），
   /// 但那与「应用显式声明了 false」是两回事，规则引擎需要区分。
   bool? applicationUsesCleartextTraffic;
+
+  /// 归档里的 APK Signing Block（v2 / v3 签名方案）。
+  ///
+  /// `null` 表示**没有解析**（例如从字节打开的归档没有可寻址的文件）。
+  /// 解析失败时是一个 `parsed == false` 的对象 —— 「读不出」不能折成
+  /// 「没有 v2」，那是把「我们没看到」说成「这个包只有 v1 签名」。
+  ///
+  /// **有 v2 块不等于签名有效**：那仍然要 `apksigner` 说了算。
+  ApkSigningSchemes? signingSchemes;
 
   /// `<manifest android:sharedUserId>` —— 与其它应用共享 UID。
   ///

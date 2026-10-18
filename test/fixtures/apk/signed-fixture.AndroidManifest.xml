@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.extrafixture"
+    android:versionCode="3"
+    android:versionName="3.0"
+    android:sharedUserId="com.example.shared">
+
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="29" />
+
+    <!-- 本包自己声明的两条权限：一条等于没保护，一条真的保护 -->
+    <permission
+        android:name="com.example.permission.WEAK"
+        android:protectionLevel="normal" />
+    <permission
+        android:name="com.example.permission.STRONG"
+        android:protectionLevel="signature" />
+
+    <application
+        android:label="ExtraFixture"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- normal 级自定义权限：任何应用都能申请 → 等于没保护 -->
+        <provider
+            android:name=".WeakProvider"
+            android:exported="true"
+            android:authorities="com.example.extrafixture.weak"
+            android:permission="com.example.permission.WEAK" />
+
+        <!-- signature 级自定义权限：真的受保护 -->
+        <service
+            android:name=".StrongService"
+            android:exported="true"
+            android:permission="com.example.permission.STRONG" />
+
+        <!-- 框架权限：我们看不到级别，保守当成受保护 -->
+        <receiver
+            android:name=".JobReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+</manifest>

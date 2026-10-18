@@ -937,6 +937,75 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- iOS 规则 G：非图片类敏感来源 + 上传 ----
+    //
+    // Android 侧早就有 `ANDROID-RULE-G`（通讯录 / 短信 / 录音 → 上传），
+    // iOS 侧此前只有 A/B/C/E/F —— 缺的正是这一类。
+    //
+    // 三个方向的规则各自成立，不要合并：
+    //   C：图片 → OCR → 上传（同一条链）
+    //   E：后台 + 敏感读取 + 上传（三个条件齐备）
+    //   G：通讯录 / 定位 / 麦克风 → 上传（**不需要** OCR，也不需要后台）
+    //
+    // 分级按来源稀有度：通讯录 / 麦克风 → P2（正常应用里「读这些 + 上传」
+    // 并不常见）；定位 → P3（几乎每个应用都有，一律 P2 会让这条规则在
+    // 九成应用上出现，读者会学会忽略它）。
+    final hasContacts =
+        clues.containsKey('contacts') || clues.containsKey('contacts-legacy');
+    final hasMicrophone = clues.containsKey('microphone') ||
+        clues.containsKey('microphone-engine');
+    final hasLocation = clues.containsKey('location');
+    if (hasUpload && (hasContacts || hasMicrophone || hasLocation)) {
+      final rareSources = [
+        if (hasContacts) 'contacts',
+        if (hasMicrophone) 'microphone',
+      ];
+      final commonSources = [if (hasLocation) 'location'];
+      final escalated = rareSources.isNotEmpty;
+      findings.add(SecurityFinding(
+        ruleId: escalated ? 'IOS-RULE-G' : 'IOS-RULE-G-COMMON',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.dataExfiltration,
+        severity: escalated ? SecuritySeverity.p2 : SecuritySeverity.p3,
+        confidence: SecurityConfidence.suspected,
+        finding: 'Sensitive data sources and network upload capability '
+            'appear together: ${_sourceLabels([
+              ...rareSources,
+              ...commonSources
+            ])} '
+            'on one side, network requests (NSURLSession / upload) on the '
+            'other. Both stages have evidence, but it is not shown that the '
+            'data actually reaches the request.',
+        messageCode: escalated ? 'ios.rule_g' : 'ios.rule_g_common',
+        messageArgs: {
+          'sources': [...rareSources, ...commonSources],
+        },
+        evidence: [
+          ..._clueEvidence(clues, const [
+            'contacts',
+            'contacts-legacy',
+            'microphone',
+            'microphone-engine',
+            'location',
+          ]),
+          ..._clueEvidence(clues, const [
+            'network-session',
+            'network-upload',
+            'network-alamofire',
+            'network-afnetworking',
+          ]),
+        ],
+        limitation: 'This is a co-occurrence observation, not a data flow: '
+            'it is not shown that what was read is sent. The specific '
+            'request body would need runtime inspection.',
+        limitationCode: 'ios.rule_g.limitation',
+        recommendation: 'Check whether the app really needs these '
+            'sensitive reads, and whether the data they return is part of '
+            'an upload payload.',
+        recommendationCode: 'ios.rule_g.manual_review',
+      ));
+    }
+
     // ---- iOS 规则 E：后台执行 + 敏感读取 + 回传 ----
     //
     // 与 Android 规则 E 同构（后台 + 敏感读取 + 上传）。iOS 的「后台」

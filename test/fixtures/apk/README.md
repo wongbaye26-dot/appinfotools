@@ -319,3 +319,70 @@ $AAPT2 dump xmltree manifest-extra-fixture.apk --file AndroidManifest.xml
 > **`protectionLevel` 是整数标志位，不是字符串。** 按字符串找 `"signature"`
 > 永远找不到，规则会静默不生效 —— 这是本项目第三次踩到「值读到了但形态
 > 不对」（前两次是属性 ID 错位、布尔值被读成有符号 -1）。
+
+## signed-v1-only.apk / signed-v2-v3.apk / signed-unsigned.apk
+
+三个由 **`apksigner` 真实签名**的样本，用来钉住「归档里存在哪几套签名方案」。
+
+### 为什么需要
+
+签名结论此前完全交给 `apksigner`，于是：没装工具就一律「未验证」；
+也看不出「**只有 v1 签名**」。后者不是学术问题 —— v1（JAR 签名）只保护
+ZIP **条目内容**的摘要，**不保护 ZIP 结构**，所以往归档里塞入额外条目
+（额外的 dex / 资源 / so）不会让 v1 失效。那是重打包最省事的形态。
+
+v2+ 把整份归档的摘要放进签名块，塞条目就会失效。
+
+### 生成命令
+
+```sh
+AAPT2=~/Library/Android/sdk/build-tools/34.0.0/aapt2
+APKSIGNER=~/Library/Android/sdk/build-tools/34.0.0/apksigner
+JAR=~/Library/Android/sdk/platforms/android-34/android.jar
+
+# 源清单：targetSdkVersion=29（targetSdk>=30 时平台强制要求 v2，
+# v1-only 的包会 verify 失败，不适合做夹具）
+$AAPT2 compile --dir res -o compiled.zip
+$AAPT2 link -o unsigned.apk -I "$JAR" --manifest AndroidManifest.xml compiled.zip
+
+keytool -genkeypair -keystore test.jks -storepass android -keypass android \
+  -alias k -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fixture"
+
+# 只有 v1
+$APKSIGNER sign --ks test.jks --ks-pass pass:android --min-sdk-version 21 \
+  --v1-signing-enabled true --v2-signing-enabled false \
+  --v3-signing-enabled false --v4-signing-enabled false \
+  --out v1only-signed.apk unsigned.apk
+
+# v1 + v2 + v3
+$APKSIGNER sign --ks test.jks --ks-pass pass:android --min-sdk-version 21 \
+  --v1-signing-enabled true --v2-signing-enabled true \
+  --v3-signing-enabled true --v4-signing-enabled false \
+  --out v2v3-signed.apk unsigned.apk
+```
+
+### 期望值（用 apksigner 独立核对，不是从本项目的解析器取的）
+
+```sh
+$ $APKSIGNER verify -v signed-v1-only.apk | grep "Verified using"
+Verifies
+Verified using v1 scheme (JAR signing): true
+Verified using v2 scheme (APK Signature Scheme v2): false
+Verified using v3 scheme (APK Signature Scheme v3): false
+
+$ $APKSIGNER verify -v signed-v2-v3.apk | grep "Verified using"
+Verifies
+Verified using v1 scheme (JAR signing): true
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+```
+
+| 夹具 | 本项目的结论 |
+|---|---|
+| `signed-v1-only.apk` | `v1Only == true`（没有签名块） |
+| `signed-v2-v3.apk` | `hasV2 && hasV3` |
+| `signed-unsigned.apk` | `v1Only == true` —— **结构上与 v1-only 不可区分**，所以这条不能当「签名有效」用 |
+
+`unsigned.apk` 必须留着：它证明「没有签名块」这一个结构事实**无法**区分
+「v1 签名」与「完全没签名」。要区分只有 `apksigner` 能做 —— 这条边界
+写进了规则的 limitation 里。

@@ -110,6 +110,33 @@ const List<CodeMarker> codeMarkers = [
   // 动态加载：被加载的代码不在 DEX 里，静态分析看不到 —— 消费方是
   // 「覆盖不足」说明（`android.dex.dynamic_loading`），不是风险结论。
   // 两个入口都要：`DexClassLoader` 与 `PathClassLoader` 是同一类东西。
+  // ---- WebView / JS 桥 ----
+  //
+  // `addJavascriptInterface` 是 Android 最经典的远程代码执行面：它把 Java
+  // 对象注入网页的 JS 上下文，页面里任何脚本都能调到那些方法。只要 WebView
+  // 加载过攻击者可控的内容（深链、第三方页面、被劫持的 http 资源），
+  // 就等于把本应用的能力交给了对方。
+  //
+  // 收的是**方法名**而不是类名：`WebView` 这个字面量太泛（`WebViewClient`、
+  // `WebViewActivity` 全都会命中），而 `addJavascriptInterface` 只可能是
+  // 那一个 API。
+  CodeMarker('webview-js-bridge', SecurityCategory.other,
+      'JavaScript bridge exposed to WebView content', 'addJavascriptInterface'),
+  CodeMarker('webview-js-enabled', SecurityCategory.other,
+      'WebView JavaScript enabled', 'setJavaScriptEnabled'),
+  // `setAllowUniversalAccessFromFileURLs(true)` 让 file:// 页面能跨域请求
+  // 任意网络资源 —— 常与 JS 桥一起构成「本地文件 → 外传」的通道。
+  CodeMarker(
+      'webview-file-access',
+      SecurityCategory.other,
+      'file:// pages may access any origin',
+      'setAllowUniversalAccessFromFileURLs'),
+  // ---- 音频录制（`MediaRecorder` 之外的第二个入口）----
+  //
+  // `RECORD_AUDIO` 的代码证据此前只认 `MediaRecorder`。用 `AudioRecord`
+  // 直接读 PCM 的应用会被判成「声明了权限但没用」—— 那是假阳性。
+  CodeMarker('recording-audiorecord', SecurityCategory.deviceData,
+      'raw audio capture (AudioRecord)', 'AudioRecord'),
   CodeMarker('dynamic-loading', SecurityCategory.backgroundTask,
       'runtime DEX loading (DexClassLoader)', 'DexClassLoader'),
   CodeMarker('dynamic-loading-path', SecurityCategory.backgroundTask,

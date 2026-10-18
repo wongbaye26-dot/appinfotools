@@ -277,6 +277,80 @@ CI 有 `build-windows`（windows-latest）与 `build-linux`（ubuntu-latest）�
 现在 `protectionLevelValue` 按位解析，`protectionLevelText` 输出
 `signature|privileged` 这种可读形态供证据行使用。
 
+### 第二档：签名方案、WebView 桥、权限交叉核对、iOS 组合规则
+
+测试 1,456 → **1,491**。
+
+#### 新增：APK Signing Block 解析（回答「有没有 v2+ 签名」）
+
+签名结论此前**完全**交给 `apksigner`，于是没装工具就一律「未验证」，
+也看不出「**只有 v1 签名**」。后者不是学术问题：v1（JAR）只保护 ZIP
+**条目内容**的摘要，**不保护 ZIP 结构** —— 往归档里塞入额外条目
+（额外的 dex / 资源 / so）不会让 v1 失效，那是重打包最省事的形态。
+
+现在读 EOCD → 中央目录偏移 → 往前 24 字节找 `APK Sig Block 42` →
+按 pair 解析 v2 (`0x7109871a`) / v3 (`0xf05368c0`) / v3.1 (`0x1b93ad61`)。
+
+**分工不变**：只回答「块在不在、里面有哪些 id」，不验证任何签名。
+`readSigningSchemes` 的失败路径与「没有签名块」严格分开 ——
+`parsed == false` 绝不折成 `v1Only`，那是把「我们没看到」说成
+「这个包只有 v1 签名」。
+
+真实样本与 apksigner 逐条一致：
+
+| 样本 | 本项目 | apksigner |
+|---|---|---|
+| `49af6cnn-1018` | `[v2, v3]` | v1/v2/v3 = true/true/true |
+| `app.apk` | `[v2]` | v1/v2/v3 = false/true/false |
+| `抖音-v40.7.0` | `[v2, v3]` | — |
+| `飞牛-v1.37.1` | `[v2]` | false/true/false |
+| `飞牛TV-v1.4.1` | `[v2]` | — |
+
+新增规则 **`ANDROID-V1-ONLY-SIGNING`（P3 / independentCapability）**：
+只报签名方案事实，**不**推断「被篡改」—— v1-only 的包完全可以是合法有效签名。
+
+#### 新增：`ANDROID-WEBVIEW-BRIDGE` —— 从 P2 降为 P3，理由是真实样本
+
+`addJavascriptInterface` 是 Android 最经典的 RCE 面，一开始给了 P2。
+真实样本上 **5 个包有 4 个命中**，而证据显示调用点**全部来自第三方 SDK**：
+
+| 样本 | 调用点来自 |
+|---|---|
+| `49af6cnn` | Adjust、极验 Geetest、hCaptcha、神策 |
+| `app.apk` | 极光推送、Facebook AppEvents、网易易盾 |
+| `抖音` | 字节 webx / 小程序容器 |
+| `飞牛` | flutter_inappwebview 插件 |
+| `飞牛TV` | 无 |
+
+验证码 / 统计 / 社交分享这类 SDK 必须用 JS 桥才能工作，它几乎是每个
+现代应用的标配。按 P2 报等于在 80% 的应用上出现 —— 与 RULE-D 同一类错误。
+改成 **P3 + 正文与 limitation 都说明「多数来自第三方 SDK，先看调用点」**。
+
+#### 新增：`ANDROID-PERMISSION-WITHOUT-API`（P3）
+
+iOS 早就有 `IOS-USAGE-WITHOUT-API`（声明了没用），Android 侧没有对应物。
+现在只对**判据明确**的权限做交叉核对（读通讯录必然碰 `ContactsContract`、
+读短信必然碰 `SmsManager`）—— `WRITE_EXTERNAL_STORAGE` 这类可能只走
+`java.io.File` 的**不编目**，硬判会误报。
+
+两道闸：**没扫过 DEX 就不判**（「没看到」不是「没有」）；`sdk23Only`
+的声明不参与（生效条件无法静态判定）。
+
+真实样本抓到 1 例：抖音声明了 `READ_CONTACTS`，40 个 DEX 里没有
+`ContactsContract`。
+
+顺带修了一个既有误判：`RECORD_AUDIO` 的代码证据此前只认 `MediaRecorder`，
+用 `AudioRecord` 直读 PCM 的应用会被判成「声明了没用」。已补
+`recording-audiorecord` 标记。
+
+#### 新增：`IOS-RULE-G` —— iOS 缺的那条组合规则
+
+Android 有 `ANDROID-RULE-G`（通讯录 / 短信 / 录音 → 上传），iOS 只有
+A/B/C/E/F。现在补上，分级按来源稀有度：通讯录 / 麦克风 → **P2**，
+只有定位 → **P3**（`IOS-RULE-G-COMMON`）—— 定位几乎每个应用都有。
+
+三条规则各自成立不合并：C 是图片链、E 要后台、G 只要两段。
+
 ## 2.4.13 — 2026-10-18
 
 > 阶段 A **收尾** + 阶段 B（六项）。两件事最重要：一是推翻了自己上一轮的结论

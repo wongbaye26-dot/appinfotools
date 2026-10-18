@@ -1,5 +1,6 @@
 import 'package:analysis_model/analysis_model.dart';
 
+import '../apk_signing_block.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
@@ -34,6 +35,9 @@ class AndroidRuleFacts {
     required this.hasSensitiveSource,
     required this.hasDynamicLoading,
     required this.specialAccessKinds,
+    required this.webViewClues,
+    required this.webViewCodeRefs,
+    required this.unusedPermissionNames,
   });
 
   final ApkMeta meta;
@@ -70,6 +74,22 @@ class AndroidRuleFacts {
 
   /// 是否存在「非图片」的敏感数据来源（设备标识 / 通讯录）。
   final bool hasSensitiveSource;
+
+  /// WebView / JS 桥的字符串线索（`addJavascriptInterface` 等）。
+  final List<CodeClue> webViewClues;
+
+  /// 同一批标记在代码引用层面的命中。
+  final List<CodeReference> webViewCodeRefs;
+
+  /// 是否把 JS 桥暴露给了网页内容。
+  bool get hasWebViewBridge =>
+      webViewClues.any((c) => c.markerId == 'webview-js-bridge') ||
+      webViewCodeRefs.any((r) => r.markerId == 'webview-js-bridge');
+
+  /// 声明了「有代码证据才对得上」的权限，但在代码里**找不到**对应 API。
+  ///
+  /// 只在真的扫过 DEX 时才有意义（没扫过就无从判断）。
+  final List<String> unusedPermissionNames;
 
   /// 是否存在运行时 DEX 加载线索（被加载的代码静态分析看不到）。
   final bool hasDynamicLoading;
@@ -208,6 +228,24 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     summary: '声明了 android:sharedUserId —— 与同签名的其它应用共享 UID 与沙箱。',
     matches: _matchesSharedUserId,
     build: _buildSharedUserId,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-V1-ONLY-SIGNING',
+    summary: '只有 v1（JAR）签名，没有 v2+ 签名块 —— 归档结构不受保护。',
+    matches: _matchesV1OnlySigning,
+    build: _buildV1OnlySigning,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-WEBVIEW-BRIDGE',
+    summary: '向 WebView 暴露了 JavaScript 桥（addJavascriptInterface）。',
+    matches: _matchesWebViewBridge,
+    build: _buildWebViewBridge,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-PERMISSION-WITHOUT-API',
+    summary: '声明了敏感权限，但代码里找不到对应的 API 调用。',
+    matches: _matchesUnusedPermission,
+    build: _buildUnusedPermission,
   ),
   AndroidSecurityRule(
     id: 'ANDROID-RULE-A',
@@ -487,6 +525,20 @@ SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
 bool _matchesAllowBackup(AndroidRuleFacts f) =>
     f.meta.applicationAllowBackup == true && !f.backupDisabledByRules;
 
+/// 只有 v1 签名。
+///
+/// **只在真的读到了签名块结构时才判**：`signingSchemes == null` 表示
+/// 「没解析」（从字节打开），`parsed == false` 表示「读不出」——
+/// 两种都不能推成「只有 v1」。
+bool _matchesV1OnlySigning(AndroidRuleFacts f) =>
+    f.meta.signingSchemes?.v1Only ?? false;
+
+bool _matchesWebViewBridge(AndroidRuleFacts f) => f.hasWebViewBridge;
+
+/// 只有**真的扫过 DEX** 才判 —— 没扫过的时候「找不到调用」只是我们没看。
+bool _matchesUnusedPermission(AndroidRuleFacts f) =>
+    f.hasDexContent && f.unusedPermissionNames.isNotEmpty;
+
 bool _matchesSharedUserId(AndroidRuleFacts f) {
   final id = f.meta.sharedUserId;
   return id != null && id.trim().isNotEmpty;
@@ -541,6 +593,165 @@ SecurityFinding _buildAllowBackup(AndroidRuleFacts f) => SecurityFinding(
           'android:allowBackup="false" or provide explicit backup rules.',
       recommendationCode: 'android.allow_backup.review',
     );
+
+/// 只有 v1（JAR）签名。
+///
+/// v1 只对 ZIP **条目内容**做摘要，**不保护 ZIP 结构** —— 往归档里塞入
+/// 额外条目（额外的 dex、额外的资源、额外的 so）不会让 v1 签名失效。
+/// 这正是重打包最常见的形态：改完内容再重签 v1 当然也会失效，但「塞入
+/// 一个不被任何清单引用的条目」这类改动在 v1-only 包上尤其容易蒙混过关。
+///
+/// 等级 P3 + `independentCapability`：确认的是**签名方案事实**，
+/// **不是**「已被篡改」。v1-only 的包完全可以是合法有效的签名 ——
+/// 真正的有效性判断只属于 `apksigner`。
+SecurityFinding _buildV1OnlySigning(AndroidRuleFacts f) {
+  final schemes = f.meta.signingSchemes!;
+  return SecurityFinding(
+    ruleId: 'ANDROID-V1-ONLY-SIGNING',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.configuration,
+    severity: SecuritySeverity.p3,
+    confidence: SecurityConfidence.independentCapability,
+    finding: 'The APK carries no v2 or later signature block: only the v1 '
+        '(JAR) signature, if any, is present. v1 protects the digest of '
+        'each entry but not the archive structure, so entries can be added '
+        'without breaking it.',
+    messageCode: 'android.v1_only_signing',
+    evidence: [
+      SecurityEvidence(
+        source: SecurityEvidenceSource.zipEntry,
+        location: 'ZIP / APK Signing Block (before the central directory)',
+        detail: schemes.parsed
+            ? 'no APK Signing Block was found; pairs seen: '
+                '${schemes.pairIds.map(ApkSignatureBlockId.describe).toList()}'
+            : 'signing block could not be read: ${schemes.failure}',
+      ),
+    ],
+    limitation: 'This only reports which signature schemes are present in '
+        'the archive structure; it does not verify any signature and does '
+        'not imply the package was tampered with. A v1-only APK can be '
+        'perfectly validly signed. Whether the signature is valid must come '
+        'from apksigner.',
+    limitationCode: 'android.v1_only_signing.limitation',
+    recommendation: 'Sign with v2 (and v3 where key rotation is needed) — '
+        'any modern build tool does this by default. If the package is '
+        'v1-only, check where it came from.',
+    recommendationCode: 'android.v1_only_signing.review',
+  );
+}
+
+/// `addJavascriptInterface` —— 把 Java 对象注入网页的 JS 上下文。
+///
+/// 后果：网页里**任何脚本**都能调用被注入对象的公开方法。只要这个 WebView
+/// 加载过攻击者可控的内容（深链参数、第三方页面、被劫持的 http 资源），
+/// 就等于把本应用的能力交给了对方。
+///
+/// ## 为什么是 P3 而不是 P2
+///
+/// 真实样本上 5 个包有 **4 个**命中，而证据显示调用点**全部来自第三方 SDK**：
+///
+/// | 样本 | 调用点来自 |
+/// |---|---|
+/// | `49af6cnn` | Adjust、极验 Geetest、hCaptcha、神策 |
+/// | `app.apk` | 极光推送、Facebook AppEvents、网易易盾 |
+/// | `抖音` | 字节 webx / 小程序容器 |
+/// | `飞牛` | flutter_inappwebview 插件 |
+///
+/// 验证码、统计、社交分享这类 SDK 必须用 JS 桥才能工作 —— 它几乎是
+/// 每个现代应用的标配。按 P2 报等于在 80% 的应用上出现，读者会学会
+/// 忽略整块面板。**这是「能力事实」，不是「应用自己的选择」**，
+/// 所以 P3 + `independentCapability`，并在限制里说清这一点。
+SecurityFinding _buildWebViewBridge(AndroidRuleFacts f) {
+  final bridgeRefs = f.webViewCodeRefs
+      .where((r) => r.markerId == 'webview-js-bridge')
+      .toList();
+  final bridgeClues =
+      f.webViewClues.where((c) => c.markerId == 'webview-js-bridge').toList();
+  // 附带说明：同一个 WebView 还开了哪些开关（影响后果的严重程度）。
+  final extras = <String>[
+    if (f.webViewClues.any((c) => c.markerId == 'webview-js-enabled') ||
+        f.webViewCodeRefs.any((r) => r.markerId == 'webview-js-enabled'))
+      'JavaScript enabled',
+    if (f.webViewClues.any((c) => c.markerId == 'webview-file-access') ||
+        f.webViewCodeRefs.any((r) => r.markerId == 'webview-file-access'))
+      'file:// pages may access any origin',
+  ];
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-WEBVIEW-BRIDGE',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.other,
+    // P3：见上面的样本表 —— 这个 API 绝大多数来自第三方 SDK（验证码 / 统计 /
+    // 分享），报成 P2 会让它在多数应用上出现，读者会学会忽略。
+    severity: SecuritySeverity.p3,
+    confidence: SecurityConfidence.independentCapability,
+    finding: 'A JavaScript bridge is exposed to WebView content '
+        '(addJavascriptInterface): scripts running in that WebView can call '
+        'the injected object. CAPTCHA, analytics and social-sharing SDKs use '
+        'this routinely, so its presence does not mean the app itself '
+        'defined a bridge.'
+        '${extras.isEmpty ? '' : ' Also observed: ${extras.join('; ')}.'}',
+    messageCode: 'android.webview_bridge',
+    messageArgs: {if (extras.isNotEmpty) 'extras': extras},
+    evidence: [
+      ...referenceEvidence(bridgeRefs),
+      ...clueEvidence(bridgeClues),
+    ],
+    limitation: 'This reports that the API is used, not that it is '
+        'reachable from untrusted content: the URL loaded into the WebView '
+        'and any navigation allow-list are not evaluated. Most hits in real '
+        'apps come from third-party SDKs (CAPTCHA, analytics, social '
+        'sharing) — check the call sites in the evidence before treating it '
+        'as the app\'s own design.',
+    limitationCode: 'android.webview_bridge.limitation',
+    recommendation: 'Remove the JavaScript bridge unless it is required; '
+        'otherwise restrict navigation to an allow-list of trusted origins '
+        'and never load http:// or deep-link parameters into that WebView.',
+    recommendationCode: 'android.webview_bridge.review',
+  );
+}
+
+/// 声明了敏感权限，但代码里找不到对应 API。
+///
+/// 这是 iOS 侧 `IOS-USAGE-WITHOUT-API`（声明了用途但没实现）的 Android 对应物：
+/// 过度声明会让权限清单失真，也让「这个应用为什么要通讯录」这类问题没法回答。
+///
+/// 等级 P3 + `suspected`：代码可能在**没扫到的**地方 —— 原生库、动态加载的
+/// DEX、或者用了我们没编目的第三方 SDK 类名。所以这是「值得核对」，
+/// 不是「一定没用」。
+SecurityFinding _buildUnusedPermission(AndroidRuleFacts f) {
+  final names = [...f.unusedPermissionNames]..sort();
+  return SecurityFinding(
+    ruleId: 'ANDROID-PERMISSION-WITHOUT-API',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.configuration,
+    severity: SecuritySeverity.p3,
+    confidence: SecurityConfidence.suspected,
+    finding: 'These permissions are declared but no matching API call was '
+        'found in the scanned code: ${names.join(', ')}. The declaration may '
+        'be left over from older code, or the code may live somewhere this '
+        'scan did not reach.',
+    messageCode: 'android.permission_without_api',
+    messageArgs: {'names': names},
+    evidence: [
+      for (final name in names)
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'AndroidManifest.xml / uses-permission[@name="$name"]',
+          detail: 'declared; no matching API marker found in the scanned DEX',
+        ),
+    ],
+    limitation: 'Only the code that was actually scanned counts: native '
+        'libraries, dynamically loaded DEX and third-party SDKs with unknown '
+        'class names are not covered. A missing marker is therefore not '
+        'proof that the permission is unused.',
+    limitationCode: 'android.permission_without_api.limitation',
+    recommendation: 'Check whether the permission is still needed; removing '
+        'an unused dangerous permission reduces both the permission list and '
+        'the review burden.',
+    recommendationCode: 'android.permission_without_api.review',
+  );
+}
 
 /// 备份规则属性是否指向一份 XML 规则文件（本解析器的引用表示法是 `@res/`）。
 bool _isRuleFileRef(String? value) =>

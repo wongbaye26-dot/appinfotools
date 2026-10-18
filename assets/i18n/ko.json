@@ -617,7 +617,20 @@
       "ios_get_task_allow_review": "외부 배포에는 get-task-allow 가 없는 서명을 사용하고, 이 항목이 있는 빌드는 디버그 가능한 산출물로 취급하세요.",
       "ios_push_sandbox": "프로비저닝 프로파일이 aps-environment=\"development\" 를 선언했습니다. 푸시가 샌드박스 APNs 환경에 연결되어 있어 개발 서명 빌드임을 나타냅니다.",
       "ios_push_sandbox_limitation": "APNs 환경은 서명 프로파일의 속성이며 앱 로직이 아닙니다. 배포 빌드에서는 \"production\" 을 사용합니다.",
-      "ios_push_sandbox_review": "이 빌드가 테스트용인지 확인하세요. 정식 배포에는 aps-environment=\"production\" 서명을 사용해야 합니다."
+      "ios_push_sandbox_review": "이 빌드가 테스트용인지 확인하세요. 정식 배포에는 aps-environment=\"production\" 서명을 사용해야 합니다.",
+      "android_v1_only_signing": "이 APK 에는 v2 이상 서명 블록이 없습니다(v1 / JAR 서명만 있을 수 있음). v1 은 각 항목의 다이제스트만 보호하고 아카이브 구조는 보호하지 않으므로, 항목을 추가해도 서명이 깨지지 않습니다.",
+      "android_v1_only_signing_limitation": "여기서는 아카이브 구조에 어떤 서명 방식이 있는지만 보고합니다. 서명을 검증하지 않으며 변조되었다는 뜻도 아닙니다. v1 만 있는 APK 도 정당하게 서명되었을 수 있습니다. 유효성은 apksigner 만 판단할 수 있습니다.",
+      "android_v1_only_signing_review": "v2(키 교체가 필요하면 v3 도)로 다시 서명하세요. 최신 빌드 도구는 기본적으로 그렇게 합니다. v1 만 있다면 출처를 확인하세요.",
+      "android_webview_bridge": "JavaScript 브리지가 WebView 콘텐츠에 노출되어 있습니다(addJavascriptInterface). 해당 WebView 에서 실행되는 스크립트가 주입된 객체를 호출할 수 있습니다. 캡차, 분석, 소셜 공유 SDK 는 이를 일상적으로 사용하므로, 존재한다고 해서 앱이 직접 브리지를 정의했다는 뜻은 아닙니다.",
+      "android_webview_bridge_limitation": "여기서 보고하는 것은 API 사용 사실이며, 신뢰할 수 없는 콘텐츠에서 도달 가능하다는 뜻이 아닙니다. WebView 가 로드하는 URL 과 탐색 허용 목록은 판정하지 않았습니다. 실제 앱에서는 대부분 서드파티 SDK(캡차, 분석, 소셜 공유)에 의한 것입니다. 앱 자체 설계로 판단하기 전에 근거의 호출 지점을 확인하세요.",
+      "android_webview_bridge_review": "정말 필요하지 않다면 JavaScript 브리지를 제거하세요. 필요한 경우 탐색을 신뢰할 수 있는 출처 허용 목록으로 제한하고, http:// 나 딥링크 파라미터를 해당 WebView 에 로드하지 마세요.",
+      "android_permission_without_api": "이 권한이 선언되어 있지만 스캔한 코드에서 대응하는 API 호출을 찾지 못했습니다: {names}. 오래된 코드의 잔재이거나, 이번 스캔이 닿지 못한 곳에 있을 수 있습니다.",
+      "android_permission_without_api_limitation": "실제로 스캔한 코드만 대상입니다: 네이티브 라이브러리, 동적 로드되는 DEX, 클래스 이름을 모르는 서드파티 SDK 는 포함되지 않습니다. 따라서 「마커를 찾지 못했다」는 「사용되지 않는다」는 증거가 아닙니다.",
+      "android_permission_without_api_review": "이 권한이 아직 필요한지 확인하세요. 사용하지 않는 위험 권한을 제거하면 권한 목록이 짧아지고 검토 부담도 줄어듭니다.",
+      "ios_rule_g": "민감 데이터 출처와 네트워크 업로드 기능이 동시에 나타납니다: 한쪽은 {sources}, 다른 쪽은 네트워크 요청(NSURLSession / 업로드)입니다. 두 단계 모두 근거가 있지만 데이터가 실제로 요청 본문에 들어가는지는 입증되지 않았습니다.",
+      "ios_rule_g_common": "위치 접근과 네트워크 업로드 기능이 동시에 나타납니다: {sources} 와 네트워크 요청(NSURLSession / 업로드). 둘 다 일반 앱에서 매우 흔하므로 낮은 심각도로 보고합니다.",
+      "ios_rule_g_limitation": "이것은 동시 출현 관찰이며 데이터 흐름이 아닙니다. 읽은 내용이 전송된다는 것은 입증되지 않았습니다. 구체적인 요청 본문은 런타임 검사가 필요합니다.",
+      "ios_rule_g_manual_review": "이러한 민감 읽기가 정말 필요한지, 반환된 데이터가 업로드 내용에 포함되는지 확인하세요."
     }
   },
   "report": {
