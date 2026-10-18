@@ -147,7 +147,12 @@
     "parser_engine_builtin": "內置 (Dart, 速度快)",
     "enable_security_audit": "啟用安全檢測",
     "title_width_sample": "這是一段範例內容，用於預覽標題寬度，可能會很長……",
-    "subtitle": "配置解析工具、外觀與診斷選項"
+    "subtitle": "配置解析工具、外觀與診斷選項",
+    "file_association_hint_panel": "在系統「預設應用程式」裡指定開啟方式",
+    "file_association_hint_manual": "macOS 沒有這個設定頁，需要在 Finder 裡手動指定",
+    "how_to_set": "如何設定",
+    "file_association_steps": "macOS 沒有「預設應用程式」設定頁，檔案關聯要在 Finder 裡改：\n\n1. 在 Finder 裡找到任意一個 .apk 或 .ipa 檔案\n2. 按右鍵，選擇「顯示簡介」\n3. 展開「打開方式」，選中 AppInfoTool\n4. 按下面的「全部更改…」，確認套用到所有同類檔案",
+    "got_it": "知道了"
   },
   "signature": {
     "status_verified": "簽名驗證通過",
@@ -821,7 +826,8 @@
     "permissions": "權限",
     "structure": "結構",
     "signature": "簽章",
-    "security": "安全"
+    "security": "安全",
+    "no_data": "暫無資料"
   },
   "coverage": {
     "title": "分析覆蓋",

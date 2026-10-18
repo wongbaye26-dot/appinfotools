@@ -1,5 +1,69 @@
 # Changelog
 
+## 2.4.15 — 未发布
+
+### 修复
+
+- **「文件关联 → 打开设置」点了没反应。** 原来 macOS 上跳的是
+  `x-apple.systempreferences:com.apple.preferences.extensions` —— 两处都不对：
+  那是 **macOS 12 及更早**的「扩展」面板锚点，13 重写系统设置后失效（实测
+  macOS 27 上 `open` 仍返回 0，但系统设置停在默认页，**没有任何跳转**）；
+  而且「扩展」面板管的是 Finder 扩展 / Quick Look 插件，
+  **根本不是文件关联**。
+
+  事实是：**macOS 没有「默认应用」设置面板**，也没有任何 URL scheme 能跳到
+  不存在的东西上。文件关联在 Finder 的「显示简介 → 打开方式」里。
+
+  所以 macOS 分支不再「假装能跳转」，改为弹出**四步操作指引**；Windows 的
+  `ms-settings:defaultapps` 是真实面板，跳转保留。同时这一行现在带副标题
+  说明两种情况的差别 —— 原来只有「文件关联 + 打开设置」，用户点之前不知道
+  会发生什么。
+
+  新增 5 个 i18n 键（zh-CN / zh-TW / zh-HK / en）：
+  `file_association_hint_panel` / `file_association_hint_manual` /
+  `how_to_set` / `file_association_steps` / `got_it`。
+
+### 界面
+
+- **详情页 6 个 Tab 改成「文档流 + 左侧竖排导航」。**
+  此前每个字段一张 `Card`（`info_page` 里有 35 处
+  `Card(child: TitleValueLayout(...))`），每个卡片自带 4px 外边距、圆角边框
+  与表面色，屏幕上是一列**互不相连的小盒子** —— 扫读时视线要不断跨越边框，
+  读起来像清单而不像报告。
+
+  三处改动：
+
+  1. **卡片压平**：用 `detailDocumentTheme` 把内容区的 `Card` 改成透明、
+     无阴影、无边框、`margin: 0`。用主题覆盖而不是改 43 处调用点 ——
+     那些 `Card` 也服务于「这张卡要突出」的场合（Hero 卡、安全发现卡），
+     逐个改会把两类语义压平。
+  2. **行间细分割线**：`DetailRowDivider` 只在**两个字段之间**画；
+     紧跟章节标题的那一项前面不画（标题自带渐变线，会叠成双线）。
+  3. **左侧竖排导航**：宽窗口（≥ 720px）用 220px 竖排导航 + 右侧文档流，
+     窄窗口退回顶部 TabBar。选竖排不是为了好看：6 个 Tab 横排在顶部时中文
+     标签要挤在一行里滚动，右侧永远切掉一截；而详情页的阅读方式是
+     「按住一个 Tab 往下读」，竖排导航把「当前在读哪一节」固定在视线内。
+
+  `_SectionHeader` 提升为公开的 `DetailSectionHeader`
+  （`lib/widgets/detail_section.dart`）：`DetailTabView` 需要靠类型判断
+  「这一项是标题」才能决定要不要画分隔线。顺带让 iOS 侧也能复用同一份标题排版。
+
+  标题的上下留白改成**不对称**（上 22 / 下 6）：上方与上一节内容拉开、
+  下方贴近本节第一行 —— 这个不对称正是「章节感」的来源，两边一样宽时
+  标题会退化成一条普通字段行。
+
+### 质量
+
+- 测试 1,531 → **1,540**。新增 `test/detail_tab_view_test.dart`（9 条）。
+- 该文件存在的原因值得单独说：`DetailTabView` 在测试环境里会**自动回退**成
+  连续列表（否则跨分组的 widget 断言不到，`real_samples_ui_test` 依赖这个行为），
+  代价是**侧栏与顶部 TabBar 两条真实分支在测试里永远跑不到**。
+  所以版式抽成可注入的 `DetailLayout`，测试显式指定版式，三条分支都走一遍。
+- 界面目视走 web 构建 + 无头 Chrome 截图，再用**像素级分析**代替看图确认：
+  卡片背景与页面同色（压平生效）、侧栏右边框落在 x=219（220px 宽度）、
+  首个导航项高亮 38px、分隔线 4 条且位置符合「标题后不画」的规则、
+  窄窗口下 TabBar 下边线横跨 700px。
+
 ## 2.4.14 — 2026-10-18
 
 > 安全分析能力审计（`docs/audit/2026-10-18-security-analysis-capability-audit.md`）

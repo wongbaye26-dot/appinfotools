@@ -140,7 +140,12 @@
     "parser_engine_builtin": "Built-in (Dart, Faster)",
     "enable_security_audit": "Enable Security Audit",
     "title_width_sample": "This is a sample content text that can be very long…",
-    "subtitle": "Configure parsing tools, appearance, and diagnostics"
+    "subtitle": "Configure parsing tools, appearance, and diagnostics",
+    "file_association_hint_panel": "Choose the handler under \"Default apps\" in System Settings",
+    "file_association_hint_manual": "macOS has no such settings pane; set it in Finder instead",
+    "how_to_set": "How to set",
+    "file_association_steps": "macOS has no \"Default apps\" pane — file associations live in Finder:\n\n1. In Finder, locate any .apk or .ipa file\n2. Right-click it and choose \"Get Info\"\n3. Under \"Open with\", pick AppInfoTool\n4. Click \"Change All…\" to apply it to every file of that type",
+    "got_it": "Got it"
   },
   "signature": {
     "status_verified": "Signature verified",
@@ -821,7 +826,8 @@
     "permissions": "Permissions",
     "structure": "Structure",
     "signature": "Signature",
-    "security": "Security"
+    "security": "Security",
+    "no_data": "No data"
   },
   "coverage": {
     "title": "Analysis coverage",

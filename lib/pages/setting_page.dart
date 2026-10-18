@@ -457,6 +457,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ref.watch(settingStateProvider.select((value) => value.enableHash));
     final parserEngine =
         ref.watch(settingStateProvider.select((value) => value.parserEngine));
+    final theme = Theme.of(context);
     return _buildSettingCard(
       title: t.settings.features,
       icon: Icons.featured_play_list,
@@ -510,24 +511,60 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         if (FileAssociationManager.isSupported)
           ListTile(
             title: Text(t.settings.file_association),
+            subtitle: Text(
+              FileAssociationManager.hasSettingsPanel
+                  ? t.settings.file_association_hint_panel
+                  : t.settings.file_association_hint_manual,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.hintColor,
+              ),
+            ),
             trailing: TextButton(
-              onPressed: () async {
-                try {
-                  await FileAssociationManager.openDefaultAppsSettings();
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(t.settings.cannot_open_settings),
-                    ),
-                  );
-                }
-              },
-              child: Text(t.settings.open_settings),
+              onPressed: () => _openFileAssociationSettings(context),
+              child: Text(FileAssociationManager.hasSettingsPanel
+                  ? t.settings.open_settings
+                  : t.settings.how_to_set),
             ),
           ),
       ],
     );
+  }
+
+  /// 打开「文件关联」设置，并按**实际结果**给出反馈。
+  ///
+  /// 三种结果分开处理，不混成一句「打不开」：
+  ///
+  /// - Windows：系统有「默认应用」面板，真跳过去，只在失败时给指引；
+  /// - macOS：**系统里没有这个面板**（详见 [FileAssociationManager] 的类注释），
+  ///   直接给四步手动操作 —— 原先这里会跳一个失效的旧锚点，
+  ///   系统设置停默认页，用户看到的就是「点了没反应」；
+  /// - 其它平台：如实说不支持。
+  Future<void> _openFileAssociationSettings(BuildContext context) async {
+    final outcome = await FileAssociationManager.openDefaultAppsSettings();
+    if (!context.mounted) return;
+
+    switch (outcome) {
+      case FileAssociationOutcome.openedSettings:
+        return; // 已经跳到系统面板，不需要额外提示。
+      case FileAssociationOutcome.needsManualGuidance:
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(t.settings.file_association),
+            content: Text(t.settings.file_association_steps),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(t.settings.got_it),
+              ),
+            ],
+          ),
+        );
+      case FileAssociationOutcome.unsupported:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t.settings.cannot_open_settings)),
+        );
+    }
   }
 
   Widget _buildAppearanceSection() {
