@@ -6,5 +6,6 @@
 // 意味着两边的阈值会各自漂移）。
 
 export 'src/archive_open.dart';
+export 'src/bounded_read.dart';
 export 'src/zip_budget.dart';
 export 'src/zip_structure.dart';

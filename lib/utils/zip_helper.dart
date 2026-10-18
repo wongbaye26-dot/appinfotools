@@ -6,7 +6,9 @@ import 'package:apk_info_tool/utils/zip_guard.dart';
 import 'package:archive_safety/archive_safety.dart'
     show
         ArchiveOpenResult,
+        BoundedReadLedger,
         ZipBudget,
+        ZipBudgetLimits,
         looksLikeZip,
         looksStructurallyBroken,
         readArchiveHeader;
@@ -15,6 +17,11 @@ import 'package:path/path.dart' as path;
 
 class ZipHelper {
   Archive? _archive;
+
+  /// 本次打开期间的**共享**读取预算（V2.4.12）。每次 `open` 重置。
+  BoundedReadLedger _ledger = BoundedReadLedger(
+    maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+  );
 
   /// 已打开的归档；未打开或打开失败时为 `null`。
   ///
@@ -34,6 +41,9 @@ class ZipHelper {
         return ArchiveOpenResult.notArchive;
       }
       final length = await File(filePath).length();
+      _ledger = BoundedReadLedger(
+        maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+      );
       inputStream = InputFileStream(filePath);
       final archive = ZipDecoder().decodeStream(inputStream);
       if (looksStructurallyBroken(archive, length)) {
@@ -63,9 +73,9 @@ class ZipHelper {
     try {
       final file = _archive?.findFile(fileName);
       if (file == null) return null;
-      final read = ZipBudget.readEntry(file);
+      final read = ZipBudget.readEntry(file, ledger: _ledger);
       if (!read.isOk) {
-        log.severe('Refusing to read $fileName: ${read.violation}');
+        log.severe('Refusing to read $fileName: ${read.failure?.describe()}');
         return null;
       }
       return read.bytes;
@@ -107,9 +117,10 @@ class ZipHelper {
       final out = ZipGuard.safeJoin(root, path.basename(outputPath));
       // **落盘前也要过闸**：中央目录撒谎时，`file.content` 会产出远超声明值的
       // 字节 —— 直接写盘等于让一个几 MB 的包写满磁盘。
-      final read = ZipBudget.readEntry(file);
+      final read = ZipBudget.readEntry(file, ledger: _ledger);
       if (!read.isOk) {
-        log.severe('Refusing to extract $entryName: ${read.violation}');
+        log.severe(
+            'Refusing to extract $entryName: ${read.failure?.describe()}');
         return false;
       }
       await Directory(path.dirname(out)).create(recursive: true);

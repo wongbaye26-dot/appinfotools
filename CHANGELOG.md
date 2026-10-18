@@ -1,5 +1,44 @@
 # Changelog
 
+## 2.4.12 — 2026-10-18
+
+> 阶段 A：**实际解压量限制**。落实 V2.4.11 记为遗留的那一半 —— 峰值内存不再
+> 由攻击者决定。取证见 `docs/plans/V2.4.12_PHASE_A_PROGRESS.md`。
+
+### 安全修复
+
+- **解压改成真正的逐块有界。** V2.4.11 只做到「解压完再比长度」，峰值内存
+  仍不受限；当时记录的「现有归档库不支持有界流式输出」**是错的** —— 我读的是
+  pub.dev 的 `archive 3.6.1`，而本项目实际用的是 git 依赖（`ref cb3a07c`），
+  后者有 `ZipFile.decompress(OutputStream)`，是流式的。
+  现在给它喂一个**带上限的 `OutputStream`**，超限时在写那一块时抛异常，
+  zlib 就地停下。实测（5 MiB 条目、上限 1 MiB）：在 `observed = 1,067,098`
+  处抛出，**已产出 1,001,562 字节就中止**，从未物化 5 MiB。
+- **三道闸**：声明解压大小 → 声明压缩大小 → **真实产出**。
+  单条目 256 MiB / 压缩 512 MiB；一次流程真实产出 1 GiB / 压缩 2 GiB。
+- **共享预算**：`BoundedReadLedger` 由一次 `open` 持有一个，嵌套归档共用 ——
+  子归档拿不到完整独立配额。
+- **消灭了四处无上限的 `file.content`**：`ApkReader.readFile` 之外的
+  manifest / arsc、`HardeningScanner._readHeader`（为了看 8 字节把整条 DEX
+  解压一遍，343 MB 包实测 30ms → 896ms）、iOS 的 `CodeResources`、
+  以及 `ZipGuard.extractToDirectory`（工具下载解包落盘）。
+  现在 `lib/` 与两个解析器里**没有任何 `file.content` 调用点**。
+- **诊断可追溯**：`BoundedReadFailure{entry, stage, observedBytes, limitBytes}`，
+  日志形如 `classes.dex: stopped at inflate after 1067098 bytes (limit 1048576)`。
+
+### 性能
+
+343 MB 样本：读取全部 DEX 916 → 1239 ms（逐块流式的代价）；加固线索扫描
+30 → **29 ms**（`_readHeader` 改前缀读取后从 896 ms 回落）；
+端到端 13.49 → **13.71 s（+1.6%）**。
+
+### 兼容性
+
+- `49af6cnn-1018.apk`（72.3 MiB 零填充清单）仍能完整读出并解析 ——
+  V2.4.10 的「不再仅因高压缩比拒绝」保住了。
+- 抖音 55/55 DEX（437.2 MiB）、`sun_signed.ipa` 220/220 条目（81.3 MiB）
+  全部正常，无一条被误拒。
+
 ## 2.4.11 — 2026-10-18
 
 > 落实 2026-10-18 审计报告里的 **P1-1**（解压预算可被绕过）与 **P1-2**（加固

@@ -1,3 +1,4 @@
+import 'package:archive_safety/archive_safety.dart';
 import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
 
@@ -450,7 +451,26 @@ class IpaSignatureMaterialReader {
     final entry = archive.findFile('$prefix$_codeSignatureDir$name');
     if (entry == null) return null;
 
-    final bytes = entry.content;
+    // **有界读取**（V2.4.12）：`entry.content` 无上限，而这里本来就只要
+    // 8 MiB 以内的内容。超限直接按「太大不解析」处理，不再先解压再看长度。
+    final read = readEntryBounded(
+      entry,
+      maxEntryBytes: maxCodeResourcesBytes,
+      ledger: BoundedReadLedger(
+        maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+      ),
+    );
+    if (!read.isOk) {
+      diagnostics.add(
+        AnalysisDiagnostic.warning(
+          'ios.coderesources.too_large',
+          'CodeResources is above the size limit and was not parsed: '
+              '${read.failure?.describe()}',
+        ),
+      );
+      return null;
+    }
+    final bytes = read.bytes!;
     if (bytes.length > maxCodeResourcesBytes) {
       const message =
           'CodeResources is above the size limit and was not parsed';

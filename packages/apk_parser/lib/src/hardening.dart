@@ -1,3 +1,4 @@
+import 'package:archive_safety/archive_safety.dart';
 import 'package:analysis_model/analysis_model.dart';
 
 import 'package:archive/archive.dart';
@@ -122,8 +123,13 @@ class HardeningScanner {
   static final _dexNamePattern = RegExp(r'^classes(\d*)\.dex$');
   static final _nativeLibPattern = RegExp(r'^lib/([^/]+)/([^/]+)$');
 
-  static List<HardeningObservation> scan(Archive archive) {
+  static List<HardeningObservation> scan(
+    Archive archive, {
+    BoundedReadLedger? ledger,
+  }) {
     final observations = <HardeningObservation>[];
+    final readLedger = ledger ??
+        BoundedReadLedger(maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes);
 
     final fileEntries = archive.files.where((f) => f.isFile).toList();
 
@@ -160,7 +166,7 @@ class HardeningScanner {
       }
 
       for (final entry in dexEntries) {
-        final header = _readHeader(entry, 8);
+        final header = _readHeader(entry, 8, readLedger);
         if (header == null) {
           observations.add(HardeningObservation(
             HardeningSignal.dexHeaderNotStandard,
@@ -295,16 +301,29 @@ class HardeningScanner {
 
   /// 读取条目前 [length] 个字节。
   ///
-  /// 内容在 `Archive` 解码阶段已被物化，这里不触发额外解压。
-  static List<int>? _readHeader(ArchiveFile entry, int length) {
-    try {
-      final content = entry.content;
-      if (content.length < length) return null;
-      return content.sublist(0, length);
-    } catch (_) {
-      return null;
-    }
+  /// **走有界前缀读取**（V2.4.12）：此前这里用 `entry.content` —— 为了看 8 个
+  /// 字节把整条 DEX 解压一遍（343 MB 的包实测 30ms → 896ms），而且是一条
+  /// **无上限**的解压路径。现在只解到 64 KiB 就停。
+  static List<int>? _readHeader(
+    ArchiveFile entry,
+    int length,
+    BoundedReadLedger ledger,
+  ) {
+    final read = readEntryPrefix(
+      entry,
+      maxBytes: _headerProbeBytes,
+      ledger: ledger,
+    );
+    final content = read.bytes;
+    if (content == null || content.length < length) return null;
+    return content.sublist(0, length);
   }
+
+  /// 嗅探文件头时最多解压多少字节。
+  ///
+  /// 8 字节就够判断 DEX 魔数，给到 64 KiB 是为了让「一次 `decompress` 就能
+  /// 拿到第一块」—— 再小也只是同一块，不会更快。
+  static const int _headerProbeBytes = 64 * 1024;
 
   /// 标准 DEX 魔数为 `dex\n` + 版本号（ASCII 数字），例如 `dex\n035\0`。
   static bool _hasDexMagic(List<int> header) {

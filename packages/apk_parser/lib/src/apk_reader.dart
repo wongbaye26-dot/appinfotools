@@ -79,6 +79,9 @@ class ApkReader {
       }
       final length = await File(filePath).length();
       inputStream = InputFileStream(filePath);
+      _ledger = BoundedReadLedger(
+        maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+      );
       final archive = ZipDecoder().decodeStream(inputStream);
       if (looksStructurallyBroken(archive, length)) {
         _log.warning('open failed: $filePath looks structurally broken');
@@ -117,6 +120,9 @@ class ApkReader {
       if (!looksLikeZip(data)) {
         return ArchiveOpenResult.notArchive;
       }
+      _ledger = BoundedReadLedger(
+        maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+      );
       final archive = ZipDecoder().decodeBytes(data);
       if (looksStructurallyBroken(archive, data.length)) {
         return ArchiveOpenResult.corrupt;
@@ -191,7 +197,16 @@ class ApkReader {
       manifestFailure = 'AndroidManifest.xml not found in the archive';
       return null;
     }
-    final rawManifestBytes = manifestFile.content;
+    // **有界读取**（V2.4.12）：manifest 也可能被零填充到几十 MB，
+    // 而 `file.content` 是无上限的。
+    final manifestRead = ZipBudget.readEntry(manifestFile, ledger: _ledger);
+    if (!manifestRead.isOk) {
+      manifestFailure = 'AndroidManifest.xml was refused: '
+          '${manifestRead.failure?.describe()}';
+      _log.warning('parse: $manifestFailure');
+      return null;
+    }
+    final rawManifestBytes = manifestRead.bytes!;
     final manifestBytes =
         rawManifestBytes.buffer.lengthInBytes == rawManifestBytes.length
             ? rawManifestBytes
@@ -213,7 +228,13 @@ class ApkReader {
     if (arscFile != null) {
       // 确保 arscBytes 是独立的 Uint8List（而非底层 ZIP 缓冲区的 view），
       // 避免 ByteDataReader 操作时因 buffer offset 不一致导致 RangeError。
-      final rawArscBytes = arscFile.content;
+      final arscRead = ZipBudget.readEntry(arscFile, ledger: _ledger);
+      if (!arscRead.isOk) {
+        arscParseFailure = 'resources.arsc was refused: '
+            '${arscRead.failure?.describe()}';
+        _log.warning('parse: $arscParseFailure');
+      }
+      final rawArscBytes = arscRead.bytes ?? Uint8List(0);
       final arscBytes = rawArscBytes.buffer.lengthInBytes == rawArscBytes.length
           ? rawArscBytes
           : Uint8List.fromList(rawArscBytes);
@@ -289,15 +310,23 @@ class ApkReader {
     ];
   }
 
+  /// 本次打开期间的**共享**读取预算（V2.4.12）。
+  ///
+  /// 同一个归档里的所有条目共用一个 ledger —— 否则「几千个条目各自在限额内、
+  /// 加起来几十 GiB」就没人管。每次 `open` / `openBytes` 重置。
+  BoundedReadLedger _ledger = BoundedReadLedger(
+    maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+  );
+
   Uint8List? readFile(String fileName) {
     final file = _archive?.findFile(fileName);
     if (file == null) return null;
     // **两道闸**：声明值 + 实际产出。中央目录可以撒谎 —— 实测把 100 MiB 条目的
     // CD `uncompressedSize` 改成 1024，`ZipBudget.check` 会放行。见
     // `ZipBudget.readEntry` 的注释（含「峰值内存仍不受限」这条已知局限）。
-    final read = ZipBudget.readEntry(file);
+    final read = ZipBudget.readEntry(file, ledger: _ledger);
     if (!read.isOk) {
-      _log.warning('readFile refused: ${read.violation}');
+      _log.warning('readFile refused: ${read.failure?.describe()}');
       return null;
     }
     return read.bytes;

@@ -202,8 +202,9 @@ void main() {
         ..addFile(ArchiveFile('big.bin', 300 * 1024 * 1024, const []));
       final read = ZipBudget.readEntry(archive.files.first);
       expect(read.isOk, isFalse);
-      expect(read.violation, contains('declares 314572800 bytes'));
-      expect(read.violation, contains('big.bin'));
+      expect(read.failure!.stage, BoundedReadStage.declaredSize);
+      expect(read.failure!.observedBytes, 300 * 1024 * 1024);
+      expect(read.failure!.describe(), contains('big.bin'));
     });
 
     test('中央目录撒谎的条目会被拒绝（第二道闸看真实产出）', () async {
@@ -221,12 +222,14 @@ void main() {
       expect(ZipBudget.check(decoded), isNull,
           reason: '第一道闸只看声明值，撒谎的条目能过 —— 这正是要补的洞');
 
-      // 第二道闸：用一个小上限把「实际产出超限」这条路径逼出来。
+      // 逐块解压：用一个小上限把「实际产出超限」这条路径逼出来。
       final read = ZipBudget.readEntry(entry, maxBytes: 64 * 1024);
       expect(read.isOk, isFalse);
-      expect(read.violation, contains('declared 1024 bytes but produced'));
-      expect(read.violation, contains('liar.bin'));
-      expect(read.bytes, isNull);
+      expect(read.failure!.stage, BoundedReadStage.inflate);
+      expect(read.failure!.entry, 'liar.bin');
+      // 声明值 1024 完全不可信 —— 真实产出远超它。
+      expect(read.failure!.observedBytes, greaterThan(1024));
+      expect(read.bytes, isNull, reason: '被拒绝时不得返回任何内容');
 
       // 上限足够时不误伤：同样撒谎，但产出在预算内。
       final ok = ZipBudget.readEntry(entry, maxBytes: real + 1024);

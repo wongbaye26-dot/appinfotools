@@ -1,6 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:archive/archive.dart';
+
+import 'bounded_read.dart';
 
 /// 归档解压的资源预算。
 ///
@@ -51,6 +51,7 @@ class ZipBudget {
   /// 300 MiB，超过单条目上限 256 MiB」能直接定位。
   static ZipBudgetViolation? check(Archive archive) {
     var totalUncompressed = 0;
+    var totalCompressed = 0;
     var count = 0;
     for (final file in archive.files) {
       count++;
@@ -84,6 +85,31 @@ class ZipBudget {
               '$maxTotalUncompressed bytes',
         );
       }
+
+      // 压缩后大小也要有边界：`archive` 在解码阶段就会把每个条目的**压缩**
+      // 字节读进内存（`ZipFile` 构造时 readBytes(compressedSize)），而那一步
+      // 早于本函数。这里把它限制在合理量级，避免「几千个条目各自不大、
+      // 加起来把整个文件读进内存」。
+      final raw = file.rawContent;
+      if (raw is ZipFile) {
+        final compressed = raw.compressedSize;
+        if (compressed > ZipBudgetLimits.maxSingleEntryCompressed) {
+          return ZipBudgetViolation(
+            entry: file.name,
+            reason: 'declares $compressed compressed bytes, over the '
+                'per-entry limit of '
+                '${ZipBudgetLimits.maxSingleEntryCompressed}',
+          );
+        }
+        totalCompressed += compressed;
+        if (totalCompressed > ZipBudgetLimits.maxTotalCompressed) {
+          return ZipBudgetViolation(
+            entry: file.name,
+            reason: 'cumulative compressed size exceeds '
+                '${ZipBudgetLimits.maxTotalCompressed} bytes',
+          );
+        }
+      }
     }
     return null;
   }
@@ -91,59 +117,25 @@ class ZipBudget {
   /// 判定归档是否超出预算。
   static bool isExceeded(Archive archive) => check(archive) != null;
 
-  /// 读一个条目，**实际产出**超过 [maxBytes] 就拒绝。
+  /// 读一个条目，**逐块**限制真实产出（V2.4.12）。
   ///
-  /// ## 为什么需要第二道闸
+  /// 实现见 `bounded_read.dart`：它给 `ZipFile.decompress()` 喂一个带上限的
+  /// `OutputStream`，超限时在写那一块时抛异常，zlib 就地停下 ——
+  /// 峰值内存是「预算 + 一块」，不是整条条目。
   ///
-  /// [check] 只看中央目录的**声明值**，而声明值来自不可信输入。实测（V2.4.10
-  /// 审计 P1-1）：把 100 MiB 条目的 CD `uncompressedSize` 改成 1024，
-  /// `check` 通过、解压却产出 104,857,600 字节。
-  ///
-  /// 因此这里在解压之后再验一次真实长度。两道闸的分工：
-  /// - 声明值超限 → **不解压就拒绝**（诚实的大条目不必浪费内存）；
-  /// - 实际产出超限 → 丢弃并拒绝（中央目录撒谎）。
-  ///
-  /// ## 已知局限（必须如实记录）
-  ///
-  /// **这一版挡不住峰值内存。** `archive` 包的公开 API 不暴露条目的压缩字节，
-  /// 无法在解压过程中按字节中止；`ZipFile.content` 是一次性调用。因此一个
-  /// 声明 1 KiB、实际 8 GiB 的条目仍会先分配 8 GiB，然后才被这里拒绝。
-  ///
-  /// 真正的解法有两条，都超出「改一行」的范围：
-  /// 1. 换用支持「带上限流式解压」的 ZIP 库；
-  /// 2. 自己解析 local file header 拿到压缩数据偏移，用 `ZLibDecoder` 接一个
-  ///    超限即抛的 `Sink`（需要绕过 `archive` 的 `ZipFile`）。
-  ///
-  /// 在此之前，本函数至少保证**超限数据不会被保留、不会被写盘**，
-  /// 并在日志里留下「声明 X 实际 Y」的证据。
-  static BoundedEntryRead readEntry(ArchiveFile file, {int? maxBytes}) {
-    final cap = maxBytes ?? maxSingleEntryUncompressed;
-
-    // 第一道：声明值。
-    if (file.size > cap) {
-      return BoundedEntryRead.refused(
-        '${file.name}: declares ${file.size} bytes, over the limit of $cap',
+  /// [ledger] 用于跨条目 / 跨嵌套归档共享预算。不传时每次读取独立计。
+  static BoundedEntryRead readEntry(
+    ArchiveFile file, {
+    int? maxBytes,
+    BoundedReadLedger? ledger,
+  }) =>
+      readEntryBounded(
+        file,
+        maxEntryBytes: maxBytes ?? maxSingleEntryUncompressed,
+        ledger: ledger ??
+            BoundedReadLedger(
+                maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes),
       );
-    }
-
-    final List<int> content;
-    try {
-      content = file.content as List<int>;
-    } catch (e) {
-      return BoundedEntryRead.refused('${file.name}: decompression failed: $e');
-    }
-
-    // 第二道：真实产出。中央目录可以撒谎，这里才是最终判据。
-    if (content.length > cap) {
-      return BoundedEntryRead.refused(
-        '${file.name}: declared ${file.size} bytes but produced '
-        '${content.length}, over the limit of $cap',
-      );
-    }
-    return BoundedEntryRead.ok(
-      content is Uint8List ? content : Uint8List.fromList(content),
-    );
-  }
 
   /// 超出预算则抛出 [ZipBombException]。
   ///
@@ -157,30 +149,6 @@ class ZipBudget {
       );
     }
   }
-}
-
-/// 一次有界读取的结果。
-class BoundedEntryRead {
-  /// 成功时的内容；被拒绝时为 `null`。
-  final Uint8List? bytes;
-
-  /// 被拒绝的原因（英文，进日志）。成功时为 `null`。
-  final String? violation;
-
-  const BoundedEntryRead._(this.bytes, this.violation);
-
-  factory BoundedEntryRead.ok(Uint8List bytes) =>
-      BoundedEntryRead._(bytes, null);
-
-  factory BoundedEntryRead.refused(String violation) =>
-      BoundedEntryRead._(null, violation);
-
-  bool get isOk => bytes != null;
-
-  @override
-  String toString() => isOk
-      ? 'BoundedEntryRead(${bytes!.length} bytes)'
-      : 'BoundedEntryRead(refused: $violation)';
 }
 
 /// 一条「超出解压预算」的具体原因。

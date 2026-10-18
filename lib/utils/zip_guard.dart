@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:archive_safety/archive_safety.dart' show ZipBudget;
+import 'package:archive_safety/archive_safety.dart'
+    show BoundedReadLedger, ZipBombException, ZipBudget, ZipBudgetLimits;
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as path;
 
@@ -67,6 +68,11 @@ class ZipGuard {
     final root = path.normalize(path.absolute(destination));
     await Directory(root).create(recursive: true);
 
+    // 一次解包流程共用一个预算 —— 逐条目各自计会漏掉「加起来很大」。
+    final ledger = BoundedReadLedger(
+      maxTotalBytes: ZipBudgetLimits.maxSessionOutputBytes,
+    );
+
     var written = 0;
     for (final file in archive.files) {
       var name = file.name;
@@ -83,9 +89,18 @@ class ZipGuard {
       final target = safeJoin(root, name);
 
       if (file.isFile) {
+        // **有界读取**（V2.4.12）：`file.content` 无上限，而这里会把内容写到
+        // 磁盘 —— 一个几 MB 的包足以写满磁盘。整个解包流程共用一个 ledger。
+        final read = ZipBudget.readEntry(file, ledger: ledger);
+        if (!read.isOk) {
+          throw ZipBombException(
+            'Refusing to extract: ${read.failure!.describe()}',
+            source: destination,
+          );
+        }
         final outFile = File(target);
         await outFile.parent.create(recursive: true);
-        await outFile.writeAsBytes(file.content as List<int>, flush: true);
+        await outFile.writeAsBytes(read.bytes!, flush: true);
         written++;
       } else {
         await Directory(target).create(recursive: true);
