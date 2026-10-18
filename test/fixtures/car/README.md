@@ -54,9 +54,90 @@ $ assetutil --info installer-progress.car
 | `Encoding: "Gray"` | `pixelFormat == 'GA8 '` | 同上，`GA8 ` 反序读出来是 ` 8AG` |
 | `SizeOnDisk` | `sizeOnDisk` | 块长度，逐字节相等 |
 | `RenditionName` | `renditionName` | `ISTC` 头 `0x28` 起的 NUL 结尾字符串 |
+| `Name` | `assetName` | 来自 `RENDITIONS` 键索引，见 `appicon-ios.car` |
+| `NameIdentifier` | `assetIdentifier` | 键里 17 号字段的值 |
 
-`assetutil` 的 `Name`（资产名）来自 `RENDITIONS` 索引，本项目**不解析**它 ——
-所以给不出「这四张图属于哪个资产」。理由见 `docs/notes/assets-car.md`。
+## appicon-ios.car
+
+**用 Apple 自己的工具产出的**极小 iOS 资产目录（28,072 字节），不是系统样本、
+更不是手拼：
+
+```sh
+# 1) 造一个有 AppIcon + 两个普通图像集的 xcassets
+#    AppIcon: icon60.png(60x60, 3x) + icon1024.png(1024x1024, ios-marketing)
+#    BrandMark.imageset: brand40.png(1x) + brand80.png(2x)
+#    ToolbarGlyph.imageset: glyph24.png(1x)
+# 2) 编译
+actool --compile out --platform iphoneos --minimum-deployment-target 13.0 \
+       --app-icon AppIcon --output-partial-info-plist partial.plist \
+       --output-format human-readable-text Assets.xcassets
+```
+
+`Platform: ios / 13.0`，与系统里那几份 macOS 目录的 `Key Format` 不同
+（9 项 vs 8 项）—— 正好用来证明属性编号不是写死的，而是从 `KEYFORMAT` 读的。
+
+### 期望值（`assetutil --info` 的原始输出，只列与本实现相关的字段）
+
+```json
+[
+  { "StorageVersion": 17, "CoreUIVersion": 1010, "Platform": "ios",
+    "Key Format": ["kCRThemeAppearanceName", "kCRThemeLocalizationName",
+                   "kCRThemeScaleName", "kCRThemeIdiomName", "kCRThemeSubtypeName",
+                   "kCRThemeDimension2Name", "kCRThemeIdentifierName",
+                   "kCRThemeElementName", "kCRThemePartName"] },
+
+  { "AssetType": "Icon Image",       "Name": "AppIcon",   "NameIdentifier": 6849,
+    "RenditionName": "icon1024.png", "PixelWidth": 1024, "PixelHeight": 1024,
+    "Scale": 1, "SizeOnDisk": 6548, "Encoding": "ARGB", "Compression": "lzfse" },
+  { "AssetType": "Icon Image",       "Name": "AppIcon",   "NameIdentifier": 6849,
+    "RenditionName": "icon60.png",   "PixelWidth": 60,   "PixelHeight": 60,
+    "Scale": 3, "SizeOnDisk": 668,  "Encoding": "ARGB", "Compression": "lzfse" },
+
+  { "AssetType": "Image", "Name": "BrandMark", "NameIdentifier": 9463,
+    "RenditionName": "brand40.png", "PixelWidth": 40, "PixelHeight": 40,
+    "Scale": 1, "SizeOnDisk": 330 },
+  { "AssetType": "Image", "Name": "BrandMark", "NameIdentifier": 9463,
+    "RenditionName": "brand80.png", "PixelWidth": 80, "PixelHeight": 80,
+    "Scale": 2, "SizeOnDisk": 583 },
+  { "AssetType": "Image", "Name": "ToolbarGlyph", "NameIdentifier": 7517,
+    "RenditionName": "glyph24.png", "PixelWidth": 24, "PixelHeight": 24,
+    "Scale": 1, "SizeOnDisk": 330 },
+
+  { "AssetType": "MultiSized Image", "Name": "AppIcon", "NameIdentifier": 6849,
+    "RenditionName": null, "PixelWidth": null, "SizeOnDisk": 236 },
+  { "AssetType": "MultiSized Image", "Name": "AppIcon", "NameIdentifier": 6849,
+    "RenditionName": null, "PixelWidth": null, "SizeOnDisk": 236 },
+
+  { "AssetType": "PackedImage", "Name": "ZZZZPackedAsset-1.1.0-gamut0",
+    "NameIdentifier": null, "PixelWidth": 70, "PixelHeight": 44,
+    "SizeOnDisk": 614 }
+]
+```
+
+### 这份夹具一次覆盖五件事
+
+1. **资产名**：3 个名字（`AppIcon` / `BrandMark` / `ToolbarGlyph`），
+   `NameIdentifier` 与键里 17 号字段逐条相等。
+2. **同一个资产多张 rendition**：`AppIcon` 有 4 条 —— 两张真图 + 两张
+   `MultiSized Image` 空壳（236 字节，没有 rendition 名）。
+3. **图集成员**：`actool` 把两个小图集打包成 `ZZZZPackedAsset-1.1.0-gamut0`，
+   它的键里标识符是 **0**，所以没有资产名。本实现单列为「图集成员」，
+   不硬凑一个名字。
+4. **`BrandMark` / `ToolbarGlyph` 的 1x rendition 只有 330 字节**（2x 是 583）——
+   像素被并进图集，单条 rendition 里没有。所以 `BrandMark` 只有 80×80 那张
+   值得尝试解码，而它解出来的字节数与 `80×80×4` 对不上（见下）。
+5. **多流 LZFSE**：`icon1024.png` 的块长只有 6,548 字节，里面有 **4 个
+   `bvx2 … bvx$` 流**（3 × 1,396,736 + 4,096 = **4,194,304** = 1024×1024×4）。
+   只解第一个流会得到「差 2/3」，那正是上一轮所有 `pixel_size_mismatch` 的来源。
+
+### 解不出来的两种，都要如实报
+
+| rendition | 现象 | 本实现的处理 |
+|---|---|---|
+| `brand80.png` | 解出 44,880 字节，而 80×80×4 = 25,600 | `pixel_size_mismatch`，写出三个数 |
+| `brand40` / `glyph24` | 块里没有自己的像素（并进图集了） | 判为没有像素，不尝试 |
+
+**不截断、不拉伸、不猜 bpp** —— 一张错的图标比「取不到」糟糕得多。
 
 ## 三个实测踩过的坑
 

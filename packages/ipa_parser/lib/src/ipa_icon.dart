@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:archive_safety/archive_safety.dart';
 
 import 'assets_car.dart';
+import 'assets_car_extract.dart';
 import 'cgbi_png.dart';
 import 'ipa_info_plist.dart';
 
@@ -75,6 +76,12 @@ class IosIconCandidate {
   /// 图片字节。超过大小上限时为 `null`（此时会有一条诊断说明）。
   final Uint8List? bytes;
 
+  /// 来自 `Assets.car` 时，这张图属于哪个**资产**（`AppIcon` …）。
+  ///
+  /// 其它来源为 `null`。有了它，「这个图标是哪个资产」与「它在哪个文件里」
+  /// 才能分开说 —— `Assets.car` 里一个资产下有十几张 rendition。
+  final String? assetName;
+
   const IosIconCandidate({
     required this.source,
     required this.relativePath,
@@ -84,6 +91,7 @@ class IosIconCandidate {
     this.pixelWidth,
     this.pixelHeight,
     this.bytes,
+    this.assetName,
   });
 
   /// 像素面积，用于排序；未知尺寸时为 -1。
@@ -95,8 +103,9 @@ class IosIconCandidate {
   bool get isPng => format == IosImageFormat.png;
 
   @override
-  String toString() => 'IosIconCandidate($archivePath, ${format.displayName}, '
-      '${pixelWidth ?? '?'}x${pixelHeight ?? '?'}, $size B)';
+  String toString() => 'IosIconCandidate(${assetName ?? archivePath}, '
+      '${format.displayName}, ${pixelWidth ?? '?'}x${pixelHeight ?? '?'}, '
+      '$size B)';
 }
 
 /// 配置里声明了、但当前**无法直接取出**的图标资源。
@@ -178,6 +187,13 @@ class IpaIconResolver {
   /// 检查。超过上限的候选仍会被列出（让用户知道它存在），但不带字节。
   static const int maxIconBytes = 4 * 1024 * 1024;
 
+  /// 从 `Assets.car` 解码时的像素数上限（4096 × 1024）。
+  ///
+  /// 这是**解码后**的规模，不是文件大小 —— 一张 1024×1024 的 ARGB 解出来
+  /// 正好 4 MiB。上限在调 `lzfseDecode` 之前检查，因为解码本身就要按
+  /// 声明尺寸分配内存。
+  static const int maxDecodedPixels = 4 * 1024 * 1024;
+
   /// `CFBundleIconFiles` 里给的是**不含扩展名**的基础名，实际文件按平台的
   /// 命名约定加上倍率与设备修饰符。这里按该约定逐个尝试，不做目录扫描。
   ///
@@ -253,6 +269,7 @@ class IpaIconResolver {
             IosIconSource.assetCatalogName,
             archive,
             budget,
+            candidates,
             unresolved,
             diagnostics);
       }
@@ -272,6 +289,7 @@ class IpaIconResolver {
             IosIconSource.assetCatalogName,
             archive,
             budget,
+            candidates,
             unresolved,
             diagnostics);
       }
@@ -404,11 +422,12 @@ class IpaIconResolver {
     return archivePath;
   }
 
-  /// 记录一个「图标在 Assets.car 里」的声明，并**真的读一遍那个容器**。
+  /// 记录一个「图标在 Assets.car 里」的声明，**真的读一遍那个容器**，
+  /// 并且尽可能**真的把图取出来**。
   ///
-  /// 仍然不挑替代品：`Assets.car` 里的像素是 LZFSE 压缩的，取不出来就是
-  /// 取不出来。但「容器里到底有什么」是可以回答的 —— 图数、尺寸、像素格式、
-  /// 压缩方式。这比「需要一个解析器」有用得多。
+  /// 取图的判据是**精确的**：`CFBundleIconName` 就是这个资产的名字，
+  /// 只取该名下的 rendition。这不是「在包里找一张最大的图当图标」——
+  /// 那类替代行为规范 5.3 明确禁止。
   ///
   /// 返回解析出的索引（读不出 / 解析失败时为 `null`）。
   static AssetsCarCatalog? _noteAssetCatalog(
@@ -417,6 +436,7 @@ class IpaIconResolver {
     IosIconSource source,
     Archive archive,
     BoundedReadLedger budget,
+    List<IosIconCandidate> candidates,
     List<IosUnresolvedIcon> unresolved,
     List<AnalysisDiagnostic> diagnostics,
   ) {
@@ -439,36 +459,115 @@ class IpaIconResolver {
     final read = ZipBudget.readEntry(carFile, ledger: budget);
     final catalog = read.isOk ? parseAssetsCar(read.bytes!) : null;
 
-    unresolved.add(IosUnresolvedIcon(
-      source: source,
-      declared: 'CFBundleIconName=$iconName',
-      reason: _describeAssetCatalog(
-          catalog,
-          iconName,
-          read.isOk
-              ? null
-              : 'the entry could not be read: ${read.failure?.describe()}'),
-      archivePath: carPath,
-    ));
+    final extracted = read.isOk
+        ? _extractAssetIcon(
+            catalog: catalog,
+            carBytes: read.bytes!,
+            bundleRoot: info.bundle.path,
+            carPath: carPath,
+            iconName: iconName,
+            diagnostics: diagnostics,
+          )
+        : null;
+    if (extracted != null) candidates.add(extracted);
+
+    if (extracted == null) {
+      unresolved.add(IosUnresolvedIcon(
+        source: source,
+        declared: 'CFBundleIconName=$iconName',
+        reason: _describeAssetCatalog(
+            catalog,
+            iconName,
+            read.isOk
+                ? null
+                : 'the entry could not be read: ${read.failure?.describe()}'),
+        archivePath: carPath,
+      ));
+    }
 
     diagnostics.add(AnalysisDiagnostic.info(
       'ios.icons.asset_catalog',
-      catalog?.parsed == true
-          ? 'CFBundleIconName=$iconName resolves into Assets.car '
-              '(${catalog!.images.length} rendition(s), '
-              '${catalog.rasterImages.length} with pixels; the pixel data is '
-              'LZFSE-compressed and is not decoded)'
-          : 'CFBundleIconName=$iconName resolves into Assets.car but its '
-              'index could not be read (${catalog?.failure ?? 'read failed'})',
+      _describeDiagnostic(catalog, iconName, extracted),
       source: FieldSource.infoPlist,
     ));
     return catalog;
   }
 
-  /// 把 `Assets.car` 的索引说成一句话。
+  /// 从 `Assets.car` 里把 [iconName] 这张图取出来，编成 PNG。
   ///
-  /// 三种情况必须分开说，否则读者分不清「没有图」与「我们没读到」：
-  /// 解析成功、解析失败、容器读不出来。
+  /// 依次尝试该资产名下**能解码**的 rendition（从大到小）：大图解不出来时
+  /// 退回小图，而不是整条链失败 —— 一个 1024 的图标失败不代表 180 的也失败。
+  static IosIconCandidate? _extractAssetIcon({
+    required AssetsCarCatalog? catalog,
+    required Uint8List carBytes,
+    required String bundleRoot,
+    required String carPath,
+    required String iconName,
+    required List<AnalysisDiagnostic> diagnostics,
+  }) {
+    if (catalog == null || !catalog.parsed) return null;
+    final images = decodableImagesForAsset(catalog, iconName);
+    if (images.isEmpty) return null;
+
+    final stopwatch = Stopwatch()..start();
+    final failures = <String>[];
+    for (final image in images) {
+      final width = image.width;
+      final height = image.height;
+      if (width == null || height == null) continue;
+      // 解码后的像素预算必须在**解码之前**检查（规范 5.3）。
+      if (width * height > maxDecodedPixels) {
+        failures.add('${width}x$height is beyond the $maxDecodedPixels pixel '
+            'budget');
+        continue;
+      }
+      final result = extractCarImagePng(carBytes, image);
+      if (!result.ok) {
+        failures.add('${width}x$height: ${result.failureCode} '
+            '(${result.failure})');
+        continue;
+      }
+      final png = result.png!;
+      if (png.length > maxIconBytes) {
+        failures.add('${width}x$height encoded to ${png.length} bytes, beyond '
+            'the $maxIconBytes byte limit');
+        continue;
+      }
+      stopwatch.stop();
+      diagnostics.add(AnalysisDiagnostic.info(
+        'ios.icons.asset_catalog',
+        'decoded $iconName ${width}x$height from Assets.car into a '
+            '${png.length}-byte PNG in ${stopwatch.elapsedMilliseconds} ms',
+        source: FieldSource.infoPlist,
+      ));
+      return IosIconCandidate(
+        source: IosIconSource.assetCatalogName,
+        // 容器是真实的文件，资产名是容器里的东西 —— 两个字段分开表。
+        relativePath: 'Assets.car',
+        archivePath: carPath,
+        size: png.length,
+        format: IosImageFormat.png,
+        pixelWidth: width,
+        pixelHeight: height,
+        bytes: png,
+        assetName: iconName,
+      );
+    }
+
+    if (failures.isNotEmpty) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.icons.asset_catalog',
+        'no rendition of $iconName could be decoded: ${failures.join('; ')}',
+        source: FieldSource.infoPlist,
+      ));
+    }
+    return null;
+  }
+
+  /// 把 `Assets.car` 的索引说成一句话（给「取不到」清单用）。
+  ///
+  /// 四种情况必须分开说，否则读者分不清「没有图」「名字对不上」「我们没读到」：
+  /// 容器读不出来、索引解析失败、名字索引不可用、名字索引可用但没这个资产。
   static String _describeAssetCatalog(
     AssetsCarCatalog? catalog,
     String iconName,
@@ -482,28 +581,62 @@ class IpaIconResolver {
       return 'the icon lives inside Assets.car, whose index could not be '
           'parsed (${catalog?.failure ?? 'unknown reason'})';
     }
-    final icons = catalog.appIconCandidates;
-    final withPixels = catalog.rasterImages;
-    if (icons.isNotEmpty) {
-      final largest = icons.first;
-      return 'the icon lives inside Assets.car: ${icons.length} rendition(s) '
-          'named like AppIcon, largest ${largest.width}x${largest.height} '
-          '(${largest.pixelFormat ?? '?'}, ${largest.sizeOnDisk} bytes). The '
-          'pixel data is LZFSE-compressed, so it cannot be previewed without '
-          'a decoder';
+
+    final declared = catalog.imagesNamed(iconName);
+    if (declared.isNotEmpty) {
+      final withPixels = [
+        for (final image in declared)
+          if (image.embedsPixels) image
+      ];
+      if (withPixels.isEmpty) {
+        return 'Assets.car has ${declared.length} rendition(s) for '
+            '$iconName, but all of them are placeholders without pixel data';
+      }
+      return 'Assets.car has ${declared.length} rendition(s) for $iconName, '
+          '${withPixels.length} with pixel data, but none could be decoded '
+          '(see the diagnostics for the reason)';
     }
-    // 无论能不能点出哪一张，像素都是 LZFSE 压缩的 —— 「为什么预览不了」的
-    // 答案始终包含这一句，不能因为分支不同就说漏。
-    if (withPixels.isNotEmpty) {
-      return 'the icon lives inside Assets.car: ${withPixels.length} image(s) '
-          'with pixel data, but none is named like AppIcon, so the asset for '
-          'CFBundleIconName=$iconName cannot be identified without parsing '
-          'the RENDITIONS index. The pixel data is LZFSE-compressed in any '
-          'case, so it could not be previewed without a decoder either';
+
+    switch (catalog.nameIndex) {
+      case AssetNameIndex.parsed:
+        final names = catalog.assetNames;
+        final preview = names.take(6).join(', ');
+        return 'Assets.car holds ${names.length} named asset(s) '
+            '($preview${names.length > 6 ? ', …' : ''}) and '
+            '${catalog.atlasMemberCount} atlas member(s), but none is named '
+            'exactly "$iconName"';
+      case AssetNameIndex.absent:
+        return 'the icon lives inside Assets.car, but this container has no '
+            'key format, so its ${catalog.images.length} rendition(s) cannot '
+            'be matched to an asset name';
+      case AssetNameIndex.inconsistent:
+        return 'the icon lives inside Assets.car with a key format, but its '
+            'key blocks do not line up with its ${catalog.images.length} '
+            'rendition(s) — the layout is not one this parser understands';
     }
-    return 'the icon lives inside Assets.car: ${catalog.images.length} '
-        'rendition(s) found but none carries pixel data '
-        '(CFBundleIconName=$iconName)';
+  }
+
+  /// 索引层的一句话总结（给诊断用）。
+  static String _describeDiagnostic(
+    AssetsCarCatalog? catalog,
+    String iconName,
+    IosIconCandidate? extracted,
+  ) {
+    if (catalog == null || !catalog.parsed) {
+      return 'CFBundleIconName=$iconName resolves into Assets.car but its '
+          'index could not be read (${catalog?.failure ?? 'parse failed'})';
+    }
+    final named = catalog.namedRenditionCount;
+    final head = 'CFBundleIconName=$iconName: ${catalog.images.length} '
+        'rendition(s), $named with an asset name '
+        '(${catalog.assetNames.length} assets, '
+        '${catalog.atlasMemberCount} atlas members)';
+    if (extracted != null) {
+      return '$head; resolved to ${extracted.pixelWidth}x'
+          '${extracted.pixelHeight} '
+          '${extracted.size}-byte PNG';
+    }
+    return '$head; no previewable rendition for "$iconName"';
   }
 
   /// 由魔数判定图片格式。

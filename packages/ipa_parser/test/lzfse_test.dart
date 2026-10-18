@@ -12,9 +12,13 @@
 // ## 已被证明到什么程度
 //
 // 除了这 6 个夹具，还用同一套代码解过 `Chess.app` 的 1024×1024 图标
-// （3 个 LZFSE 块、2,086,192 字节），并与用 Apple 参考实现
+// （其中**一个**流：3 个 LZFSE 块、2,086,192 字节），并与用 Apple 参考实现
 // （`lzfse` 开源库，编译成 CLI）的输出**逐字节比对：IDENTICAL**。
 // 那个样本太大（2 MB）不适合入库，所以这里放的是小夹具。
+//
+// > 注意「一个流」这个限定：Chess 那张图的完整 payload 是**多个串接的流**，
+// > 2,086,192 只是第一段。当时把它当成整张图，于是以为「还有一层封装」——
+// > 真因是多流，见「串接的多流」那一组。
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -244,8 +248,23 @@ void main() {
     });
 
     test('空壳 rendition → no_payload，而不是「解出 0 字节」', () {
-      final placeholder = catalog.placeholderOnly.single;
-      final result = extractCarImagePng(car, placeholder);
+      // 注意：`installer-progress.car` 里 739 字节的 `LowBatteryFlashing.png`
+      // **不再是**这个用例的样本 —— 块里有一份 `dmp2` 描述符
+      // （`dmp2 04 01 0a 04 1e 00 48 00`，30×72 与声明一致），它是
+      // deepmap2 压过的真图，不是空壳。真正的空壳（Music.app 里 5,694 个
+      // 334 字节条目）没有入仓库的夹具，所以这里用构造值钉分支行为。
+      const placeholder = AssetsCarImage(
+        renditionName: 'empty.png',
+        width: 84,
+        height: 84,
+        pixelFormat: 'ARGB',
+        sizeOnDisk: 334,
+        blockOffset: 0,
+      );
+      expect(placeholder.embedsPixels, isFalse);
+      expect(placeholder.compression, CarCompression.none);
+
+      final result = extractCarImagePng(Uint8List(64), placeholder);
       expect(result.ok, isFalse);
       expect(result.failureCode, 'no_payload');
       expect(result.failure, contains('placeholder'));
@@ -280,6 +299,112 @@ void main() {
       expect(result.ok, isFalse);
       expect(result.failureCode, 'unsupported_format');
       expect(result.failure, contains('RGBW'));
+    });
+  });
+
+  group('串接的多流 —— 一个块里不止一个流', () {
+    // 这一组钉住的是 V2.4.14 最贵的一个格式错误：**一个 ISTC 块里的像素
+    // 可能是若干个 `bvx2 … bvx$` 串起来的**，只解第一个会少一大截。
+    //
+    // 夹具 `appicon-ios.car` 由 `actool` 真实编译，其中 icon1024.png 的块
+    // 长 6,548 字节、含 4 个流。期望值不是猜的：`assetutil --info` 说它是
+    // 1024×1024 ARGB，而 1024×1024×4 = 4,194,304。
+
+    const carPath = '../../test/fixtures/car/appicon-ios.car';
+
+    Uint8List payloadOf(String name, int width) {
+      final car = File(carPath).readAsBytesSync();
+      final image = parseAssetsCar(car)
+          .imagesNamed(name)
+          .firstWhere((i) => i.width == width);
+      return Uint8List.sublistView(
+          car, image.payloadOffset!, image.blockOffset + image.sizeOnDisk);
+    }
+
+    test('icon1024.png 是 4 个流，拼起来正好 1024×1024×4', () {
+      final result = lzfseDecodeConcatenated(payloadOf('AppIcon', 1024));
+
+      expect(result.streamCount, 4);
+      expect(result.bytes.length, 1024 * 1024 * 4);
+      // 生成夹具时第一列写的是 RGBA (10, 19, 40, 255)，按 ARGB 的字节布局
+      // 落盘是 B,G,R,A。
+      expect(result.bytes.sublist(0, 4), [0x28, 0x13, 0x0a, 0xff]);
+    });
+
+    test('只解第一个流会少 2/3 —— 这就是当初那个 bug 的形状', () {
+      // `lzfseDecode` 遇到 `bvx$` 就返回，这正是修复前的行为。
+      final first = lzfseDecode(payloadOf('AppIcon', 1024));
+
+      expect(first.length, 1396736, reason: '341 行；整图有 1024 行');
+      expect(first.length, lessThan(1024 * 1024 * 4));
+      // 而拼接后是完整的。
+      expect(
+        lzfseDecodeConcatenated(payloadOf('AppIcon', 1024)).bytes.length,
+        1024 * 1024 * 4,
+      );
+    });
+
+    test('解出来直接编成 PNG：尺寸与首行像素都对', () {
+      final car = File(carPath).readAsBytesSync();
+      final image = parseAssetsCar(car)
+          .imagesNamed('AppIcon')
+          .firstWhere((i) => i.width == 1024);
+
+      final result = extractCarImagePng(car, image);
+      expect(result.ok, isTrue, reason: result.failure);
+
+      final ihdr = _chunkData(result.png!, 'IHDR');
+      final header = ByteData.sublistView(ihdr);
+      expect(header.getUint32(0), 1024);
+      expect(header.getUint32(4), 1024);
+
+      // 解 IDAT，检查第一行的两个像素：通道顺序错了红蓝会互换，
+      // 而肉眼在渐变图上未必看得出来。
+      final row = ZLibDecoder().decodeBytes(_chunkData(result.png!, 'IDAT'));
+      expect(row[0], 0, reason: 'filter 字节是 None');
+      expect(row.sublist(1, 5), [10, 19, 40, 255]);
+      const x = 512;
+      final t = x * 255 ~/ 1023;
+      final at = 1 + x * 4;
+      expect(row.sublist(at, at + 4), [t + 10, 255 - t + 20, 40, 255]);
+    });
+
+    test('已经是单流的图不受影响（installer-progress 的灰度图）', () {
+      final car = File('../../test/fixtures/car/installer-progress.car')
+          .readAsBytesSync();
+      final image = parseAssetsCar(car)
+          .images
+          .firstWhere((i) => i.renditionName == 'LowBatteryEmpty@2x.png');
+
+      final payload = Uint8List.sublistView(
+          car, image.payloadOffset!, image.blockOffset + image.sizeOnDisk);
+      final result = lzfseDecodeConcatenated(payload);
+      expect(result.streamCount, 1);
+      expect(result.bytes.length, 346 * 144 * 2, reason: 'GA8 = 2 字节/像素');
+    });
+  });
+
+  group('deepmap2 的边界', () {
+    test('有像素但不解这个码 —— 报「不解」而不是「没有像素」', () {
+      // 检测本身靠真实块（见 assets_car.dart 的 _detectCompression），
+      // 这里钉的是**分支行为**：拿到一个 deepmap2 的 rendition 时，
+      // 不能拿 LZFSE 解码器去试一个不是它的流。
+      const image = AssetsCarImage(
+        renditionName: 'x.png',
+        width: 40,
+        height: 40,
+        pixelFormat: 'ARGB',
+        compression: CarCompression.deepmap2,
+        sizeOnDisk: 330,
+        blockOffset: 0,
+        payloadOffset: 0,
+      );
+      expect(image.embedsPixels, isTrue, reason: 'deepmap2 是有像素的压缩');
+
+      final result = extractCarImagePng(Uint8List(64), image);
+      expect(result.ok, isFalse);
+      expect(result.failureCode, 'unsupported_deepmap2');
+      expect(result.failure, contains('deepmap2'));
     });
   });
 }

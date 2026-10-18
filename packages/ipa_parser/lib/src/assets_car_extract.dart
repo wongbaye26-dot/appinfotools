@@ -101,6 +101,15 @@ CarImageExtraction extractCarImagePng(
     return const CarImageExtraction.failed(
         'not_compressed', 'the payload is not a recognised LZFSE stream');
   }
+  // deepmap2 有像素，但不是 LZFSE —— 直接说「不解这个码」，不要拿
+  // LZFSE 解码器去试一个不是它的流（那只会得到 bad_magic，读者还不知道
+  // 真正原因）。
+  if (image.compression == CarCompression.deepmap2) {
+    return const CarImageExtraction.failed(
+        'unsupported_deepmap2',
+        'the pixel data uses Apple deepmap2, which this decoder does not '
+            'implement (only LZFSE is decoded)');
+  }
   final format = image.pixelFormat;
   final plan = format == null ? null : _channelPlan[format];
   if (plan == null) {
@@ -121,17 +130,28 @@ CarImageExtraction extractCarImagePng(
   }
 
   final Uint8List pixels;
+  var streams = 0;
+  var trailing = 0;
   try {
-    pixels = lzfseDecode(Uint8List.sublistView(carBytes, offset, blockEnd));
+    final decoded = lzfseDecodeConcatenated(
+      Uint8List.sublistView(carBytes, offset, blockEnd),
+      maxOutputBytes: 4 * width * height * plan.bytesPerPixel,
+    );
+    pixels = decoded.bytes;
+    streams = decoded.streamCount;
+    trailing = decoded.trailingBytes;
   } on LzfseException catch (e) {
     return CarImageExtraction.failed('lzfse_${e.code}', e.message);
   }
 
   final expected = width * height * plan.bytesPerPixel;
   if (pixels.length != expected) {
+    // 把「几个流、拼出多少」写清楚：一个块里有 4 个流是常态，
+    // 只解一个会看起来像「少了两成像素」，那是误导。
     return CarImageExtraction.failed(
         'pixel_size_mismatch',
-        'decoded ${pixels.length} bytes but ${width}x$height x '
+        'decoded ${pixels.length} bytes from $streams LZFSE stream(s) '
+            '($trailing trailing byte(s)) but ${width}x$height x '
             '${plan.bytesPerPixel} channels needs $expected');
   }
 
@@ -166,6 +186,10 @@ CarImageExtraction extractCarImagePng(
 ///
 /// 名字里带 `AppIcon` 的优先 —— 那是 iOS 的惯例命名，但**不是必需**：
 /// macOS 应用的图标叫 `image.png` / `AppIcon256x256_...` 都出现过。
+///
+/// 有资产名时应当用 [decodableImagesForAsset]：那个是**精确**的
+/// （`CFBundleIconName` 点的是哪个资产就取哪个），本函数只是没有资产名时
+/// 的兜底。
 AssetsCarImage? pickLargestImage(AssetsCarCatalog catalog) {
   final images = catalog.rasterImages;
   if (images.isEmpty) return null;
@@ -175,4 +199,32 @@ AssetsCarImage? pickLargestImage(AssetsCarCatalog catalog) {
       return areaB.compareTo(areaA);
     });
   return sorted.first;
+}
+
+/// [assetName] 名下**值得尝试解码**的 rendition，按像素面积从大到小。
+///
+/// 过滤掉三类没法出图的：
+/// - 空壳（`embedsPixels == false`，只有宽高没有数据）；
+/// - 没有压缩流（`payloadOffset == null`）；
+/// - deepmap2（有像素，但本实现不解这个码 —— 挑它只会白跑一趟）。
+///
+/// 「从大到小」而不是「第一个能解的就返回」：调用方应当**依次尝试**，
+/// 大图解不出来时退回小图，而不是整条链失败。
+List<AssetsCarImage> decodableImagesForAsset(
+  AssetsCarCatalog catalog,
+  String assetName,
+) {
+  final images = [
+    for (final image in catalog.imagesNamed(assetName))
+      if (image.embedsPixels &&
+          image.payloadOffset != null &&
+          image.compression != CarCompression.deepmap2)
+        image
+  ];
+  images.sort((a, b) {
+    final areaA = (a.width ?? 0) * (a.height ?? 0);
+    final areaB = (b.width ?? 0) * (b.height ?? 0);
+    return areaB.compareTo(areaA);
+  });
+  return images;
 }

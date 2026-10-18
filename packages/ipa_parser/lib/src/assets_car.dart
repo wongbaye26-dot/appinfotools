@@ -1,29 +1,54 @@
-// `Assets.car` 的**索引**解析（不解码图像）。
+// `Assets.car` 的**索引**解析：包里有哪些图，每张图属于哪个资产。
 //
-// ## 边界：这份实现只回答「包里有哪些图」
+// ## 两层，各自独立可验证
 //
-// Apple 的 `Assets.car` 把图像存成 `ISTC` 块，像素数据是 **BGRA 等原始格式
-// 再经 LZFSE 压缩**的。实测 Chess.app 1024×1024 的图标：未压缩 4,194,304
-// 字节，`SizeOnDisk` 只有 311,137（13.5:1），块内魔数是 `bvx2`。
+// 1. `ISTC` 块 —— 每张 rendition 自己的元数据：宽高、像素格式、压缩方式、
+//    块字节数。这一层能用 `assetutil --info` 的 `RenditionName` /
+//    `PixelWidth` / `Encoding` / `SizeOnDisk` 逐条核对。
+// 2. `RENDITIONS` 键索引 —— 把 rendition 归到**资产名**（`AppIcon`、
+//    `BrandMark`）下。这一层没有任何文档，布局全是实测反解的，见下。
 //
-// Dart 侧没有 LZFSE 实现，**所以这里不提取像素**，只给出元数据：
-// 名字、宽高、像素格式、压缩方式、块字节数。要真正取出图还需要一个
-// LZFSE 解码器（约 500–700 行）与 PNG 编码器 —— 那是独立的一件事。
+// 像素不在这里取：见 `assets_car_extract.dart`（LZFSE 解码 + PNG 编码）。
 //
-// ## 为什么不用 RENDITIONS 块
+// ## 键索引（无文档，三条结构都靠自洽性反解）
 //
-// 直觉上应该读 `RENDITIONS`（资产名 → rendition 的映射）。但它是一个
-// **CPI key 数组**，`csi_key` 的字段布局随 `StorageVersion` 变化，而且没有
-// 任何公开文档 —— 靠猜字段偏移做出来的是「看起来对」的东西。
+// ```
+// KEYFORMAT 块（魔数 "tmfk"，其余字段**小端**）
+//   0x00 "tmfk"
+//   0x04 u32 0
+//   0x08 u32 属性个数 N
+//   0x0C N × u32 属性编号（有序）
 //
-// `ISTC` 块**自己就带全部需要的元数据**（宽高、像素格式、rendition 名），
-// 且每一项都能用 `assetutil --info` 的外部输出逐条核对。所以走这条路。
+// 键签名 = 2 × N 字节：N 个 u16 **小端**字段，顺序与 KEYFORMAT 一致。
+//   每个 ISTC 块在**块表里**的前一块就是它自己的键，长度恰为 2N。
+//   字段 17（`kCRThemeIdentifierName`）= 资产名哈希。
 //
-// 代价：**拿不到「资产名」**（`AppIcon` / `AppIcon_Assets/...`）。但
-// iOS 的 rendition 名本身就是 `AppIcon60x60@2x.png` 这种形态，对「找图标」
-// 这个用途够用。
+// 名字表：一块字符串 + 紧随其后的「稀疏键」块
+//   稀疏键 = u32 0 + u16 个数 M + M × (u16 属性编号, u16 值)，
+//   总长恰为 6 + 4M，属性编号严格递增且都出现在 KEYFORMAT 里。
+//   它也带 17 号字段时，那一对就是「资产名 → 哈希」。
+// ```
 //
-// ## 格式（实测确认，见 `docs/notes/assets-car.md`）
+// 反解过程留三句话：
+//
+// - 稀疏键的 `03 00` 按大端读成 768（不可能），按**小端**读成 3（= 字段数）。
+// - `2N` 不是猜的：83 个容器里**每一个** ISTC 的前一块长度都恰好是 `2N`。
+// - 「前一块就是它的键」是块表顺序，不是文件偏移顺序。
+//
+// ## 验证到什么程度
+//
+// 属性编号 17 = `kCRThemeIdentifierName`：`assetutil --info` 的 `Key Format`
+// 名字数组与本实现解析出的编号数组**逐位对应**（8/11/12… 项全等），且每张
+// rendition 的 `NameIdentifier` 与键里 17 号字段**逐条相等**。
+//
+// 83 个真实容器（80 个 macOS 系统目录 + 3 个 iOS 应用目录，共 25,986 个
+// ISTC）：除 `PackedImage`（图集成员，本来就没有资产名）外**零差异**。
+// 7,500 个名字，16 位哈希**零碰撞** —— 但仍按「可能碰撞」处理（见
+// [AssetsCarCatalog.ambiguousNameCount]）。
+//
+// 夹具由 `actool` 真实编译：`test/fixtures/car/appicon-ios.car`。
+//
+// ## 容器格式（实测确认，见 `docs/notes/assets-car.md`）
 //
 // ```
 // BOMStore 头（大端）
@@ -55,7 +80,49 @@
 //
 // 端序混用是实测结果，不是笔误：BOM 头与块表是大端，ISTC 头是小端。
 
+import 'dart:convert';
 import 'dart:typed_data';
+
+/// `kCRThemeIdentifierName` 在 `KEYFORMAT` 里的属性编号。
+///
+/// 由 `assetutil --info` 的 `Key Format` 数组与本实现解析出的编号数组
+/// **逐位对应**确认（见文件头）。它不是一个凭空的魔数：编号数组随容器变化
+/// （8 / 11 / 12 / 14 / 17 项都见过），17 始终落在
+/// `kCRThemeIdentifierName` 那一格。
+const int kAssetIdentifierAttribute = 17;
+
+/// `KEYFORMAT` 块的魔数。
+const String _keyFormatMagic = 'tmfk';
+
+/// 键属性个数的上限。
+const int maxKeyAttributes = 64;
+
+/// 资产名的字节上限。
+///
+/// 实测最长的是 `AppIcon_Assets/chs0000_comp_v028_Knight_2kSq-P3.1001`
+/// （52 字节）。给到 512 是为了拦住伪造长度，不是预期值。
+const int maxAssetNameBytes = 512;
+
+/// 资产名索引的状态。
+///
+/// 三种状态必须分开，否则读者分不清「这个容器本来就没有资产名」与
+/// 「我们没读出来」—— 这正是 V2.4.14 反复修的那类问题。
+enum AssetNameIndex {
+  /// 容器里没有 `KEYFORMAT`（旧版存储格式）—— 本来就没有资产名可读。
+  absent('absent', 'no key format in this container'),
+
+  /// 解出来了。
+  parsed('parsed', 'asset names resolved'),
+
+  /// 有 `KEYFORMAT`，但键块与 `ISTC` 对不上 —— 结构不是我们理解的那样，
+  /// 不猜（宁可不给名字，也不给错名字）。
+  inconsistent('inconsistent', 'key blocks do not line up with the images');
+
+  const AssetNameIndex(this.id, this.label);
+
+  final String id;
+  final String label;
+}
 
 /// 图像数据的压缩方式。
 ///
@@ -76,6 +143,18 @@ enum CarCompression {
 
   /// `bvx-`：LZFSE 的「未压缩块」封装。
   lzfseUncompressed('lzfse-raw', 'LZFSE container, block uncompressed'),
+
+  /// `dmp2`：Apple 的 deepmap2。**有像素，但本实现不解这个码**。
+  ///
+  /// 单独列出来是为了不再把「我们解不了」说成「没有像素」——
+  /// 实测 `actool` 产出的 40×40 图标就是纯 `deepmap2`（330 字节），
+  /// `assetutil` 明确说它有 `Encoding: ARGB`。此前它被归到 [none]，
+  /// 于是 `embedsPixels` 判成「空壳」。
+  ///
+  /// 注意 `dmp2` 这个标记在**多数**块里与 `bvx` 同时出现（实测 2,595 个
+  /// 光栅块两者都有，只有 284 个是纯 `dmp2`）—— 那时像素仍是 LZFSE，
+  /// 所以判定的第一优先永远是 `bvx`。
+  deepmap2('deepmap2', 'deepmap2 (not decoded)'),
 
   /// 找到了 `bvx` 开头但后缀不认识的块。
   unknown('unknown', 'unknown compression');
@@ -115,6 +194,20 @@ class AssetsCarImage {
   /// 所以直接从这儿读到最后即可。
   final int? payloadOffset;
 
+  /// **资产名**（`AppIcon` / `AppIcon_Assets/Color-1` / `BrandMark`）。
+  ///
+  /// 来自 `RENDITIONS` 键索引，不是从 rendition 名里猜的 —— 两者不是一回事：
+  /// rendition 名是 `icon1024.png` 这种文件名，资产名才是 `Info.plist` 的
+  /// `CFBundleIconName` 会指向的东西。
+  ///
+  /// `null` 的三种情形要分开看：容器没有键索引（[AssetsCarCatalog.nameIndex]
+  /// 为 `absent`）、这个键对不上任何名字、或者这个 rendition 是图集成员
+  /// （[isAtlasMember]）。
+  final String? assetName;
+
+  /// 键里的 `kCRThemeIdentifierName` 值；没有键块时为 `null`。
+  final int? assetIdentifier;
+
   const AssetsCarImage({
     required this.renditionName,
     this.width,
@@ -124,7 +217,15 @@ class AssetsCarImage {
     required this.sizeOnDisk,
     required this.blockOffset,
     this.payloadOffset,
+    this.assetName,
+    this.assetIdentifier,
   });
+
+  /// 这个 rendition 属于一个**图集**（`ZZZZPackedAsset-*`）。
+  ///
+  /// 判据是键里标识符为 0：图集成员没有自己的资产名，`assetutil` 给它的是
+  /// 合成名。实测 FindMy 有 19 个、Music 有 645 个。
+  bool get isAtlasMember => assetIdentifier == 0 && assetName == null;
 
   /// 是不是一张真的**像素**图。
   ///
@@ -148,15 +249,22 @@ class AssetsCarImage {
 
   /// 这个块里**是否真的内嵌了像素数据**。
   ///
-  /// 实测有一类「空壳」rendition：宽高齐全、`compression == none`，但块只有
-  /// 334 字节且内容全是 0（`SizeOnDisk: 334` 在 `assetutil --info` 里出现过
-  /// 成千上万次）。它们是引用/占位，**没有像素**。
+  /// 判据按「能证明的强度」分两档：
   ///
-  /// 判据：压缩过 → 有；未压缩 → 块至少要装得下 1 字节/像素。
+  /// - **压缩过 → 有。** `bvx*` / `dmp2` 都是像素数据的编码方式，块里有它们
+  ///   就说明像素在（未必是我们能解的码）。实测 `installer-progress.car` 里
+  ///   739 字节的 `LowBatteryFlashing.png` 就是 deepmap2 —— 它一度被本文档
+  ///   判成「空壳」，其实块里有 `dmp2 04 01 0a 04 1e 00 48 00` 这样的
+  ///   描述符（30×72 与 `ISTC` 声明一致）。
+  /// - **没有任何编码标记 → 只有块装得下 1 字节/像素才算。**
+  ///   这类里确实存在真空壳：`SizeOnDisk: 334` 在 `assetutil --info` 里
+  ///   出现过成千上万次（Music.app 有 5,694 个），宽高齐全但块体没有内容。
+  ///
+  /// 这一档是**启发式**，不是判据 —— 所以 `AssetsCarImage` 上没有任何字段
+  /// 声称「这里有像素」，只有 `embedsPixels` 这个「能不能试一下」。
   bool get embedsPixels {
     if (!isRasterImage) return false;
-    if (compression.isCompressed) return true;
-    if (compression == CarCompression.lzfseUncompressed) return true;
+    if (compression != CarCompression.none) return true;
     final w = width ?? 0;
     final h = height ?? 0;
     return sizeOnDisk >= w * h;
@@ -164,10 +272,16 @@ class AssetsCarImage {
 
   /// 名字看起来像应用图标。
   ///
-  /// 只做**字符串判断**，不推断「这就是 AppIcon」—— 真正的资产名在
-  /// `RENDITIONS` 里，本实现没有解析它。
+  /// **优先用资产名**：`assetName == 'AppIcon'` 是事实，
+  /// `renditionName == 'icon1024.png'` 只能算线索。两者都没有时才退回
+  /// rendition 名的字符串判断。
   bool get looksLikeAppIcon {
-    final lower = renditionName.toLowerCase();
+    final asset = assetName;
+    return _iconLike(asset ?? renditionName);
+  }
+
+  static bool _iconLike(String value) {
+    final lower = value.toLowerCase();
     if (!lower.contains('appicon')) return false;
     // `AppIcon` / `AppIcon60x60@2x` / `AppIcon76x76~ipad` 都算；
     // 但 `AppIcon_Assets/Color-1` 这种是**图标内部图层**，不是图标本身。
@@ -175,7 +289,7 @@ class AssetsCarImage {
   }
 
   @override
-  String toString() => 'AssetsCarImage($renditionName, '
+  String toString() => 'AssetsCarImage(${assetName ?? renditionName}, '
       '${width}x$height, $pixelFormat, ${compression.id}, $sizeOnDisk bytes)';
 }
 
@@ -193,8 +307,21 @@ class AssetsCarCatalog {
   /// 解析出来的图（含非图像块之外的 ISTC 块）。
   final List<AssetsCarImage> images;
 
+  /// 资产名索引的状态。
+  final AssetNameIndex nameIndex;
+
   /// 读不出原因；`null` 表示读成功。
   final String? failure;
+
+  /// 同一个标识符对应多个名字的次数（16 位哈希碰撞）。
+  ///
+  /// 实测 83 个容器、7,500 个名字**一次都没出现**，所以这个值正常为 0。
+  /// 留着是因为哈希空间只有 16 位 —— 真撞上时必须报「不确定」，
+  /// 不能随手挑一个名字。
+  final int ambiguousNameCount;
+
+  /// 图集成员的个数（标识符为 0，本来就没有资产名）。
+  final int atlasMemberCount;
 
   const AssetsCarCatalog({
     this.storageVersion,
@@ -202,6 +329,9 @@ class AssetsCarCatalog {
     this.blockCount = 0,
     this.images = const [],
     this.failure,
+    this.nameIndex = AssetNameIndex.absent,
+    this.ambiguousNameCount = 0,
+    this.atlasMemberCount = 0,
   });
 
   const AssetsCarCatalog.unreadable(String reason)
@@ -209,9 +339,35 @@ class AssetsCarCatalog {
         coreUiVersion = null,
         blockCount = 0,
         images = const [],
-        failure = reason;
+        failure = reason,
+        nameIndex = AssetNameIndex.absent,
+        ambiguousNameCount = 0,
+        atlasMemberCount = 0;
 
   bool get parsed => failure == null;
+
+  /// 解出资产名的 rendition（按名字分组去重后）。
+  List<String> get assetNames {
+    final names = <String>{
+      for (final image in images)
+        if (image.assetName != null) image.assetName!
+    };
+    final sorted = names.toList()..sort();
+    return sorted;
+  }
+
+  /// 有资产名的 rendition 数。
+  int get namedRenditionCount =>
+      images.where((image) => image.assetName != null).length;
+
+  /// 某个资产名下的全部 rendition（含空壳）；没有时为空。
+  ///
+  /// 精确匹配：调用方给的通常是 `CFBundleIconName`，**不能**做模糊匹配 ——
+  /// `AppIcon` 与 `AppIcon_Assets/Color-1` 是两个不同的资产。
+  List<AssetsCarImage> imagesNamed(String name) => [
+        for (final image in images)
+          if (image.assetName == name) image
+      ];
 
   /// 有像素的**位图**。
   ///
@@ -234,7 +390,7 @@ class AssetsCarCatalog {
           if (image.isRasterImage && !image.embedsPixels) image
       ];
 
-  /// 名字像应用图标的那些。
+  /// 名字像应用图标的那些（优先用资产名，见 [AssetsCarImage.looksLikeAppIcon]）。
   List<AssetsCarImage> get appIconCandidates => [
         for (final image in rasterImages)
           if (image.looksLikeAppIcon) image
@@ -252,7 +408,8 @@ class AssetsCarCatalog {
   @override
   String toString() => 'AssetsCarCatalog(storage: $storageVersion, '
       'blocks: $blockCount, images: ${images.length}, '
-      'raster: ${rasterImages.length}, failure: $failure)';
+      'raster: ${rasterImages.length}, names: ${nameIndex.id}, '
+      'failure: $failure)';
 }
 
 /// 块表条目数上限。
@@ -277,7 +434,9 @@ const int _istcNameOffset = 0x28;
 
 /// 解析 `Assets.car` 的索引。
 ///
-/// [bytes] 是该文件的完整字节。读不出来时返回 `failure` 非空的结果。
+/// [bytes] 是该文件的完整字节。读不出来时返回 `failure` 非空的结果；
+/// 容器读出来了但**资产名**读不出时，[AssetsCarCatalog.failure] 仍为 `null`，
+/// 由 [AssetsCarCatalog.nameIndex] 说明是哪一种情形。
 AssetsCarCatalog parseAssetsCar(Uint8List bytes) {
   if (bytes.length < 0x20) {
     return AssetsCarCatalog.unreadable(
@@ -308,19 +467,34 @@ AssetsCarCatalog parseAssetsCar(Uint8List bytes) {
         '$blockCount entries ending at $tableEnd, file ${bytes.length})');
   }
 
-  // CARHEADER 的版本信息：块表里第二个块（实测索引 1）是 `RATC`。
-  // 不依赖索引号，直接按 magic 找第一个 `RATC` 块更稳。
-  int? storageVersion;
-  int? coreUiVersion;
-
-  final images = <AssetsCarImage>[];
+  // 先把块表摊平：键索引要看「前一块 / 后一块」，逐次读块表会让代码难懂，
+  // 而且同一条目会被读三遍。
+  final addresses = Uint32List(blockCount);
+  final lengths = Uint32List(blockCount);
   for (var i = 0; i < blockCount; i++) {
     final entryBase = tableStart + i * 8;
-    final address = header.getUint32(entryBase, Endian.big);
-    final length = header.getUint32(entryBase + 4, Endian.big);
-    if (length == 0 || length > maxBlockBytes) continue;
-    if (address < 0x20 || address + length > bytes.length) continue;
+    addresses[i] = header.getUint32(entryBase, Endian.big);
+    lengths[i] = header.getUint32(entryBase + 4, Endian.big);
+  }
 
+  /// 这一条能否安全地当块用。
+  bool usable(int i) {
+    final length = lengths[i];
+    if (length == 0 || length > maxBlockBytes) return false;
+    final address = addresses[i];
+    return address >= 0x20 && address + length <= bytes.length;
+  }
+
+  // 第一遍：CARHEADER 的版本信息 + `KEYFORMAT`。
+  //
+  // 不依赖块索引号，直接按 magic 找 —— 实测 `RATC` 在索引 1，
+  // 但那是「通常」而不是约定。
+  int? storageVersion;
+  int? coreUiVersion;
+  _KeyFormat? keyFormat;
+  for (var i = 0; i < blockCount; i++) {
+    if (!usable(i)) continue;
+    final address = addresses[i];
     if (_startsWith(bytes, address, 'RATC')) {
       // **RATC 头是小端**（与 BOM 头相反）：+4 = CoreUIVersion、
       // +8 = StorageVersion。按大端读会得到 4077060096 / 285212672 这种
@@ -331,9 +505,64 @@ AssetsCarCatalog parseAssetsCar(Uint8List bytes) {
       }
       continue;
     }
+    if (keyFormat == null && _startsWith(bytes, address, _keyFormatMagic)) {
+      keyFormat = _parseKeyFormat(bytes, header, address, lengths[i]);
+    }
+  }
+
+  // 第二遍前的准备：名字表。
+  final nameById = <int, Set<String>>{};
+  if (keyFormat != null) {
+    _scanNameTable(bytes, addresses, lengths, blockCount, keyFormat, nameById);
+  }
+
+  // 第二遍：每个 `ISTC` 连同它自己的键。
+  final images = <AssetsCarImage>[];
+  var unkeyed = 0;
+  var ambiguous = 0;
+  var atlasMembers = 0;
+  for (var i = 0; i < blockCount; i++) {
+    if (!usable(i)) continue;
+    final address = addresses[i];
     if (!_startsWith(bytes, address, 'ISTC')) continue;
-    final image = _parseIstc(bytes, header, address, length);
+
+    int? identifier;
+    if (keyFormat == null) {
+      unkeyed++;
+    } else {
+      identifier = _readKeyIdentifier(
+          bytes, header, addresses, lengths, i, keyFormat, usable);
+      if (identifier == null) unkeyed++;
+    }
+
+    String? assetName;
+    if (identifier != null && identifier != 0) {
+      final names = nameById[identifier];
+      if (names != null && names.isNotEmpty) {
+        if (names.length == 1) {
+          assetName = names.first;
+        } else {
+          // 16 位哈希撞了。给哪一个都是编 —— 记成「不确定」。
+          ambiguous++;
+        }
+      }
+    } else if (identifier == 0) {
+      atlasMembers++;
+    }
+
+    final image = _parseIstc(bytes, header, address, lengths[i],
+        assetName: assetName, assetIdentifier: identifier);
     if (image != null) images.add(image);
+  }
+
+  // 状态判定：`KEYFORMAT` 在，但一个键都没对上 → 结构不是我们理解的那样。
+  var nameIndex = AssetNameIndex.absent;
+  if (keyFormat != null) {
+    nameIndex = unkeyed > 0 &&
+            images.isNotEmpty &&
+            images.every((image) => image.assetIdentifier == null)
+        ? AssetNameIndex.inconsistent
+        : AssetNameIndex.parsed;
   }
 
   return AssetsCarCatalog(
@@ -341,7 +570,182 @@ AssetsCarCatalog parseAssetsCar(Uint8List bytes) {
     coreUiVersion: coreUiVersion,
     blockCount: blockCount,
     images: images,
+    nameIndex: nameIndex,
+    ambiguousNameCount: ambiguous,
+    atlasMemberCount: atlasMembers,
   );
+}
+
+/// `KEYFORMAT` 块解出来的键布局。
+class _KeyFormat {
+  /// 属性编号，有序。
+  final List<int> attributes;
+
+  /// 键签名字节数（= 2 × [attributes] 的长度）。
+  final int signatureBytes;
+
+  /// 属性编号 → 字段下标。
+  final Map<int, int> positionOf;
+
+  const _KeyFormat(this.attributes, this.signatureBytes, this.positionOf);
+}
+
+/// 解析 `KEYFORMAT` 块。字段不合理时返回 `null`。
+///
+/// ```
+/// 0x00 "tmfk"
+/// 0x04 u32 0
+/// 0x08 u32 属性个数 N          ← 小端
+/// 0x0C N × u32 属性编号        ← 小端
+/// ```
+_KeyFormat? _parseKeyFormat(
+    Uint8List bytes, ByteData header, int address, int length) {
+  const headerBytes = 12;
+  if (length < headerBytes || address + headerBytes > bytes.length) return null;
+
+  final count = header.getUint32(address + 8, Endian.little);
+  if (count == 0 || count > maxKeyAttributes) return null;
+  if (length < headerBytes + count * 4) return null;
+  if (address + headerBytes + count * 4 > bytes.length) return null;
+
+  final attributes = <int>[];
+  final positionOf = <int, int>{};
+  for (var i = 0; i < count; i++) {
+    final id = header.getUint32(address + headerBytes + i * 4, Endian.little);
+    attributes.add(id);
+    positionOf.putIfAbsent(id, () => i);
+  }
+  return _KeyFormat(attributes, count * 2, positionOf);
+}
+
+/// 扫一遍块表，填「资产名哈希 → 名字」。
+///
+/// 布局：一块字符串，紧跟一块稀疏键。两者缺一不可 —— 只有字符串没有键
+/// 就不知道它是哪个资产的，只有键没有字符串就不知道它叫什么。
+void _scanNameTable(
+  Uint8List bytes,
+  Uint32List addresses,
+  Uint32List lengths,
+  int blockCount,
+  _KeyFormat keyFormat,
+  Map<int, Set<String>> out,
+) {
+  for (var i = 0; i + 1 < blockCount; i++) {
+    final length = lengths[i];
+    if (length < 1 || length > maxAssetNameBytes) continue;
+    final address = addresses[i];
+    if (address < 0x20 || address + length > bytes.length) continue;
+
+    final name = _readNameString(bytes, address, length);
+    if (name == null) continue;
+
+    final next = i + 1;
+    final nextLength = lengths[next];
+    final nextAddress = addresses[next];
+    if (nextAddress < 0x20 || nextLength > maxBlockBytes) continue;
+    if (nextAddress + nextLength > bytes.length) continue;
+
+    final fields = _parseSparseKey(bytes, nextAddress, nextLength, keyFormat);
+    if (fields == null) continue;
+
+    final id = fields[kAssetIdentifierAttribute];
+    if (id == null || id == 0) continue;
+    out.putIfAbsent(id, () => <String>{}).add(name);
+  }
+}
+
+/// 解析「稀疏键」：只列出**非默认**字段的键。
+///
+/// ```
+/// 0x00 u32 0
+/// 0x04 u16 字段个数 M           ← 小端
+/// 0x06 M × (u16 属性编号, u16 值) ← 小端，编号严格递增
+/// ```
+///
+/// 总长必须**恰好**是 `6 + 4M`：这一条同时是防误判的闸门 —— 随便一段
+/// 二进制很少能正好满足「长度自洽 + 编号递增 + 编号都在 KEYFORMAT 里」。
+Map<int, int>? _parseSparseKey(
+  Uint8List bytes,
+  int address,
+  int length,
+  _KeyFormat keyFormat,
+) {
+  if (length < 6) return null;
+  // 前 4 字节必须是 0。
+  for (var i = 0; i < 4; i++) {
+    if (bytes[address + i] != 0) return null;
+  }
+  final count = bytes[address + 4] | (bytes[address + 5] << 8);
+  if (count < 1 || count > keyFormat.attributes.length) return null;
+  if (length != 6 + count * 4) return null;
+
+  final fields = <int, int>{};
+  var previous = -1;
+  for (var i = 0; i < count; i++) {
+    final base = address + 6 + i * 4;
+    final id = bytes[base] | (bytes[base + 1] << 8);
+    final value = bytes[base + 2] | (bytes[base + 3] << 8);
+    if (id <= previous) return null; // 必须严格递增
+    if (!keyFormat.positionOf.containsKey(id)) return null;
+    previous = id;
+    fields[id] = value;
+  }
+  return fields;
+}
+
+/// 读一块资产名。
+///
+/// 名字块**不带长度前缀、也不带 NUL**（长度就是块长度），所以这里要求
+/// 整块都是合法文本：能按 UTF-8 解、且没有控制字符。实测 83 个容器里
+/// 没有一个非 ASCII 名字，但按 UTF-8 处理不需要额外代价，也不会把
+/// 未来可能出现的本地化名字漏掉。
+String? _readNameString(Uint8List bytes, int address, int length) {
+  for (var i = 0; i < length; i++) {
+    final b = bytes[address + i];
+    if (b < 0x20 || b == 0x7F) return null; // 控制字符 → 不是名字块
+  }
+  try {
+    final text = const Utf8Decoder(allowMalformed: false)
+        .convert(Uint8List.sublistView(bytes, address, address + length));
+    return text.isEmpty ? null : text;
+  } on FormatException {
+    return null;
+  }
+}
+
+/// 读一个 `ISTC` 的键里的标识符。
+///
+/// 键就是块表里**前一块**，长度必须是 `2N`；对不上就返回 `null`（不猜）。
+int? _readKeyIdentifier(
+  Uint8List bytes,
+  ByteData header,
+  Uint32List addresses,
+  Uint32List lengths,
+  int index,
+  _KeyFormat keyFormat,
+  bool Function(int) usable,
+) {
+  if (index == 0) return null;
+  final previous = index - 1;
+  if (!usable(previous)) return null;
+  if (lengths[previous] != keyFormat.signatureBytes) return null;
+
+  final base = addresses[previous];
+  // 长度恰好等于签名的块也可能是一段恰好这么长的其它块 —— 排除已知魔数。
+  if (_startsWith(bytes, base, 'ISTC') ||
+      _startsWith(bytes, base, 'tree') ||
+      _startsWith(bytes, base, 'RATC') ||
+      _startsWith(bytes, base, 'META') ||
+      _startsWith(bytes, base, 'BOMS') ||
+      _startsWith(bytes, base, _keyFormatMagic)) {
+    return null;
+  }
+
+  final position = keyFormat.positionOf[kAssetIdentifierAttribute];
+  if (position == null) return null;
+  final offset = base + position * 2;
+  if (offset + 2 > bytes.length) return null;
+  return header.getUint16(offset, Endian.little);
 }
 
 /// 解析一个 `ISTC` 块。字段不足或明显不合理时返回 `null`。
@@ -349,8 +753,10 @@ AssetsCarImage? _parseIstc(
   Uint8List bytes,
   ByteData header,
   int address,
-  int length,
-) {
+  int length, {
+  String? assetName,
+  int? assetIdentifier,
+}) {
   if (address + _istcNameOffset > bytes.length) return null;
   // 小端：0x04 version、0x08 flags、0x0C width、0x10 height、0x18 pixelFormat。
   final width = header.getUint32(address + 0x0C, Endian.little);
@@ -374,6 +780,8 @@ AssetsCarImage? _parseIstc(
     sizeOnDisk: length,
     blockOffset: address,
     payloadOffset: detected.offset,
+    assetName: assetName,
+    assetIdentifier: assetIdentifier,
   );
 }
 
@@ -391,16 +799,29 @@ String? _format4cc(List<int> raw) {
   return String.fromCharCodes(reversed);
 }
 
-/// 在块内找 LZFSE 块魔数。
+/// 在块内找压缩魔数。
 ///
 /// 只在前 4 KiB 内找：`bvx2` 紧跟在 ISTC 头的可选字段之后，实测偏移
 /// 在 300–400 之间。搜整个块没意义（像素数据里偶然命中会误判）。
+///
+/// **`bvx` 优先于 `dmp2`**：实测 2,595 个光栅块同时含两个标记，那时像素
+/// 仍是 LZFSE 流（`dmp2` 只是块里的附加元数据）。只有纯 `dmp2` 的块
+/// （实测 284 个）才按 deepmap2 报。
 ({CarCompression compression, int? offset}) _detectCompression(
     Uint8List bytes, int address, int length) {
   final scanEnd = address + (length < 4096 ? length : 4096);
   final limit = scanEnd > bytes.length ? bytes.length : scanEnd;
+  int? deepmapOffset;
   for (var i = address; i + 4 <= limit; i++) {
     if (bytes[i] != 0x62 || bytes[i + 1] != 0x76 || bytes[i + 2] != 0x78) {
+      // 'dmp2'：deepmap2。
+      if (deepmapOffset == null &&
+          bytes[i] == 0x64 &&
+          bytes[i + 1] == 0x6D &&
+          bytes[i + 2] == 0x70 &&
+          bytes[i + 3] == 0x32) {
+        deepmapOffset = i;
+      }
       continue; // 'bvx'
     }
     final kind = bytes[i + 3];
@@ -413,6 +834,10 @@ String? _format4cc(List<int> raw) {
       _ => CarCompression.unknown,
     };
     return (compression: compression, offset: i);
+  }
+  if (deepmapOffset != null) {
+    // 有 deepmap2 标记但没有 LZFSE 流：像素在，我们不解。
+    return (compression: CarCompression.deepmap2, offset: deepmapOffset);
   }
   return (compression: CarCompression.none, offset: null);
 }

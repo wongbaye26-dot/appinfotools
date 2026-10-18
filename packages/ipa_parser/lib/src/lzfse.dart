@@ -115,6 +115,119 @@ const int lzfseMaxOutputBytes = 256 * 1024 * 1024;
 /// 失败时抛 [LzfseException]。
 Uint8List lzfseDecode(Uint8List src) => _Decoder(src).run();
 
+/// 一次「多流」解码的结果。
+class LzfseStreams {
+  /// 全部流按顺序拼接后的输出。
+  final Uint8List bytes;
+
+  /// 解出了几个流。
+  final int streamCount;
+
+  /// 最后一个流之后还剩多少字节没参与解码（对齐填充）。
+  final int trailingBytes;
+
+  /// 流与流之间一共跳过了多少字节（块间记录，见 [lzfseDecodeConcatenated]）。
+  final int skippedBytes;
+
+  const LzfseStreams(
+      this.bytes, this.streamCount, this.trailingBytes, this.skippedBytes);
+
+  @override
+  String toString() => 'LzfseStreams($streamCount stream(s), '
+      '${bytes.length} bytes, $trailingBytes trailing, '
+      '$skippedBytes skipped)';
+}
+
+/// 流与流之间允许跳跃的最大距离。
+///
+/// 实测块间记录是 4 / 20 / 52 字节（20 的是 `KCBC` 头），更大的值基本是
+/// 把压缩数据里的巧合当成了记录。给到 4 KiB 足够，再大只会增加误判面。
+const int _maxChunkGap = 4096;
+
+/// 解码**串接**的多个 LZFSE 流（`bvx2 … bvx$` 重复出现）。
+///
+/// ## 为什么需要这个
+///
+/// 一个 `ISTC` 块里的像素**不是**一个流。实测 `actool` 编出的 1024×1024
+/// 图标有 **4 个流**：三个各解出 1,396,736 字节、最后一个 4,096，
+/// 拼起来正好 1,024×1,024×4 = 4,194,304。
+///
+/// 只解第一个流会得到「差 2/3」的假象 —— V2.4.14 里所有
+/// `pixel_size_mismatch`（Chess 的 1024 图标「解出 2,086,192、期望
+/// 4,194,304」）都是这个原因，与「还有一层没搞清的封装」无关。
+///
+/// ## 块间记录
+///
+/// 流与流之间夹着一小段记录，两种形态都见过：
+///
+/// ```
+/// 4b 43 42 43  "KCBC" + 8 字节 0 + u32 行数 + u32 紧随其后的流字节数
+/// ```
+///
+/// 以及没有 `KCBC` 的 4 字节记录（Chess.app）。这里不去解释它们 ——
+/// 解完一段后在**有界窗口**内找下一个流头就够，最终由调用方按
+/// 「总字节数必须精确等于 w×h×bpp」把关。**这个精确长度检查才是闸门**，
+/// 跳过的字节数会如实报给调用方（[LzfseStreams.skippedBytes]）。
+LzfseStreams lzfseDecodeConcatenated(Uint8List src, {int? maxOutputBytes}) {
+  final limit = maxOutputBytes ?? lzfseMaxOutputBytes;
+  final builder = BytesBuilder(copy: false);
+  var pos = 0;
+  var streams = 0;
+  var skipped = 0;
+  while (pos + 4 <= src.length) {
+    if (!_isStreamMagic(_readU32(src, pos))) {
+      // 块间记录：在窗口内找下一个流头。
+      final next = _findStreamStart(src, pos);
+      if (next < 0) break;
+      skipped += next - pos;
+      pos = next;
+    }
+    final decoder = _Decoder(Uint8List.sublistView(src, pos));
+    final part = decoder.run();
+    pos += decoder.pos;
+    builder.add(part);
+    streams++;
+    if (builder.length > limit) {
+      throw LzfseException('output.too_large',
+          'the decoded output exceeded $limit bytes across $streams stream(s)');
+    }
+  }
+  return LzfseStreams(
+    builder.takeBytes(),
+    streams,
+    src.length - pos,
+    skipped,
+  );
+}
+
+/// 从 [from] 起，在 [_maxChunkGap] 内找下一个流开头的偏移；找不到返回 -1。
+int _findStreamStart(Uint8List src, int from) {
+  final end = from + _maxChunkGap;
+  final limit = end > src.length - 3 ? src.length - 3 : end;
+  for (var i = from; i < limit; i++) {
+    if (src[i] != 0x62 || src[i + 1] != 0x76 || src[i + 2] != 0x78) continue;
+    if (_isStreamMagic(_readU32(src, i))) return i;
+  }
+  return -1;
+}
+
+/// 从 [offset] 读一个小端 u32。
+int _readU32(Uint8List src, int offset) =>
+    src[offset] |
+    (src[offset + 1] << 8) |
+    (src[offset + 2] << 16) |
+    (src[offset + 3] << 24);
+
+/// 这个魔数能不能作为一个流的**开头**。
+///
+/// `bvx1` / `bvxn` 也算：它们是合法的流开头，只是本实现不解 —— 让
+/// [_Decoder] 去抛它自己的明确错误，比在这里静默停止好。
+bool _isStreamMagic(int magic) =>
+    magic == _Magic.compressedV2 ||
+    magic == _Magic.uncompressed ||
+    magic == _Magic.compressedV1 ||
+    magic == _Magic.lzvn;
+
 /// `x` 的低 [n] 位（`n >= 64` 时原样返回）。
 ///
 /// Dart 的 `int` 是 64 位有符号，`1 << 64` 会溢出成 0，必须单独处理。
@@ -379,8 +492,10 @@ class _Decoder {
           throw const LzfseException(
               'block.unsupported_lzvn',
               'this stream uses a `bvxn` block (LZVN, a different algorithm). '
-                  'In real Assets.car files only vector payloads used it; none of '
-                  'the raster images in the samples did');
+                  'It never appeared as the *first* stream of a raster image in '
+                  'the samples (951 checked), but it does show up in later '
+                  'chunks of some multi-stream payloads (109 of 3,244), so it '
+                  'is reported rather than guessed at');
         default:
           throw LzfseException('block.bad_magic',
               'unknown block magic 0x${magic.toRadixString(16)} at $pos');

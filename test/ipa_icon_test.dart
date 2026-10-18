@@ -262,7 +262,7 @@ void main() {
 
       final resolution = _resolve(archive);
 
-      // 仍然没有可预览的候选 —— 像素是 LZFSE 压缩的。
+      // 仍然没有可预览的候选 —— 这份容器里没有名叫 AppIcon 的资产。
       expect(resolution.candidates, isEmpty);
       expect(resolution.assetCatalogOnly, isTrue);
       // 但容器里有什么，现在说得出来了。
@@ -271,13 +271,22 @@ void main() {
       expect(catalog!.parsed, isTrue, reason: catalog.failure);
       expect(catalog.storageVersion, 17);
       expect(catalog.images, hasLength(4));
-      expect(catalog.rasterImages, hasLength(3),
-          reason: 'LowBatteryFlashing.png 是空壳（739 字节装不下 30×72 像素）');
+      // 四张都有像素。其中 `LowBatteryFlashing.png`（739 字节 / 30×72）
+      // 一度被判成「空壳」—— 块里其实有 deepmap2 描述符（30×72 与声明
+      // 一致），只是我们不解那个码。`CarCompression.deepmap2` 就是为这个
+      // 结论加的。
+      expect(catalog.rasterImages, hasLength(4));
       expect(
         catalog.rasterImages
             .where((i) => i.compression == CarCompression.lzfseV2),
         hasLength(3),
       );
+      expect(
+        catalog.rasterImages
+            .where((i) => i.compression == CarCompression.deepmap2),
+        hasLength(1),
+      );
+      expect(catalog.assetNames, ['LowBatteryEmpty', 'LowBatteryFlashing']);
     });
 
     test('CFBundleIconName 声明了但 Assets.car 不存在 → 提示缺文件', () {
@@ -293,6 +302,106 @@ void main() {
       expect(
           resolution.unresolved.single.reason, contains('no Assets.car entry'));
       expect(resolution.unresolved.single.archivePath, isNull);
+    });
+  });
+
+  group('IpaIconResolver — CFBundleIconName 真的能出图', () {
+    // 夹具是 `actool` 真实编译出来的 iOS 资产目录（见
+    // test/fixtures/car/README.md），含 3 个资产、1 个图集。
+    //
+    // 这一组的重点不是「能解析索引」，而是**真的把像素取出来编成 PNG** ——
+    // 那需要三件事同时正确：资产名映射、多流 LZFSE 解码、通道顺序。
+    String iconConfig(String name) => '<key>CFBundleIcons</key><dict>'
+        '<key>CFBundlePrimaryIcon</key><dict>'
+        '<key>CFBundleIconName</key><string>$name</string>'
+        '</dict></dict>';
+
+    Uint8List realCar() =>
+        File('test/fixtures/car/appicon-ios.car').readAsBytesSync();
+
+    test('AppIcon：1024×1024 的图画出来了，且是合法 PNG', () {
+      final archive = _ipa(
+        iconConfig: iconConfig('AppIcon'),
+        extraEntries: {'Assets.car': realCar()},
+      );
+
+      final resolution = _resolve(archive);
+
+      expect(resolution.unresolved, isEmpty, reason: '取到了就不该再报「取不到」');
+      expect(resolution.candidates, hasLength(1));
+      final icon = resolution.best!;
+      expect(icon.source, IosIconSource.assetCatalogName);
+      expect(icon.assetName, 'AppIcon');
+      expect(icon.format, IosImageFormat.png);
+      expect(icon.pixelWidth, 1024);
+      expect(icon.pixelHeight, 1024);
+      expect(icon.archivePath, 'Payload/MyApp.app/Assets.car');
+      expect(icon.relativePath, 'Assets.car');
+
+      final bytes = icon.bytes!;
+      expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47], reason: 'PNG 签名');
+      expect(ByteData.sublistView(bytes, 16, 20).getUint32(0), 1024,
+          reason: 'IHDR 宽度');
+      expect(icon.size, bytes.length);
+
+      // 诊断要写清「解出来多少毫秒」—— 性能回退时才看得见。
+      expect(
+        resolution.diagnostics.any((d) =>
+            d.code == 'ios.icons.asset_catalog' &&
+            d.message.contains('into a') &&
+            d.message.contains(' ms')),
+        isTrue,
+        reason: '诊断里应记录解码耗时',
+      );
+    });
+
+    test('声明的资产存在但解不开 → 如实报，不拿别的资产顶上', () {
+      // BrandMark 只有 80×80 那张有像素，而它解出来的字节数与 80×80×4
+      // 对不上（44,880 vs 25,600，见 README）。此时**不能**改用 AppIcon。
+      final archive = _ipa(
+        iconConfig: iconConfig('BrandMark'),
+        extraEntries: {'Assets.car': realCar()},
+      );
+
+      final resolution = _resolve(archive);
+
+      expect(resolution.candidates, isEmpty, reason: '取不到就是取不到，不许换一张当图标');
+      final reason = resolution.unresolved.single.reason;
+      expect(reason, contains('BrandMark'));
+      expect(reason, contains('none could be decoded'));
+      expect(
+        resolution.diagnostics
+            .any((d) => d.message.contains('pixel_size_mismatch')),
+        isTrue,
+        reason: '要留下具体原因，否则没法排查',
+      );
+    });
+
+    test('声明的资产只有空壳 → 说「没有像素」，不说「解不开」', () {
+      final archive = _ipa(
+        iconConfig: iconConfig('ToolbarGlyph'),
+        extraEntries: {'Assets.car': realCar()},
+      );
+
+      final resolution = _resolve(archive);
+
+      expect(resolution.candidates, isEmpty);
+      expect(resolution.unresolved.single.reason,
+          contains('placeholders without pixel data'));
+    });
+
+    test('网格成员（资产名为空）不会被当成图标候选', () {
+      // 图集成员 `ZZZZPackedAsset-*` 的解码是能成功的（614 字节、70×44），
+      // 但它没有资产名，所以声明 AppIcon 时根本不会看它。
+      final archive = _ipa(
+        iconConfig: iconConfig('AppIcon'),
+        extraEntries: {'Assets.car': realCar()},
+      );
+
+      final catalog = _resolve(archive).assetCatalog!;
+      final atlas = catalog.images.firstWhere((i) => i.isAtlasMember);
+      expect(catalog.imagesNamed('ZZZZPackedAsset-1.1.0-gamut0'), isEmpty);
+      expect(atlas.assetName, isNull);
     });
   });
 

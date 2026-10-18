@@ -129,22 +129,38 @@ void main() {
     });
   });
 
-  group('空壳：有宽高但没有像素', () {
-    test('LowBatteryFlashing.png 是空壳（739 字节装不下 30×72 的像素）', () {
-      // assetutil 也说它 SizeOnDisk = 739，与 30×72×1 = 2160 差得远。
-      // 实测这类条目在系统样本里成千上万（Music.app 有 5694 个）。
+  group('deepmap2：有像素，但我们不解这个码', () {
+    test('低电量闪烁图（739 字节 / 30×72）是 deepmap2，不是空壳', () {
+      // **这条用例改过一次结论。** 之前判据是「块装不下 w×h 就是空壳」，
+      // 于是这张图被记成「没有像素」。实际块里有 deepmap2 描述符：
+      //
+      //   64 6d 70 32 | 04 01 0a 04 | 1e 00 | 48 00
+      //   "dmp2"        参数           30      72
+      //
+      // 30×72 与 ISTC 声明一致 —— 它是一个压过的 30×72 图，只是用的不是
+      // LZFSE。把「我们解不了」说成「没有像素」是错的。
       final image = _byName(_parse(), 'LowBatteryFlashing.png');
-      expect(image.compression, CarCompression.none, reason: '块内没有 bvx 魔数');
-      expect(image.embedsPixels, isFalse);
-      expect(image.isRasterImage, isTrue, reason: '它有宽高，只是没像素');
+      expect(image.compression, CarCompression.deepmap2,
+          reason: '块内没有 bvx 魔数，但有 dmp2');
+      expect(image.embedsPixels, isTrue);
+      expect(image.isRasterImage, isTrue);
     });
 
-    test('空壳不进 rasterImages，但在 placeholderOnly 里', () {
+    test('四张图都有像素：三张 LZFSE、一张 deepmap2', () {
       final catalog = _parse();
-      expect(catalog.rasterImages, hasLength(3));
-      expect(catalog.placeholderOnly.map((i) => i.renditionName),
-          ['LowBatteryFlashing.png']);
+      expect(catalog.rasterImages, hasLength(4));
+      expect(catalog.placeholderOnly, isEmpty);
       expect(catalog.sizedImages, hasLength(4));
+      expect(
+        catalog.rasterImages
+            .where((i) => i.compression == CarCompression.lzfseV2),
+        hasLength(3),
+      );
+      expect(
+        catalog.rasterImages
+            .where((i) => i.compression == CarCompression.deepmap2),
+        hasLength(1),
+      );
     });
   });
 
@@ -274,7 +290,7 @@ void main() {
 
 void _endToEndTests() {
   group('端到端：CFBundleIconName → Assets.car', () {
-    test('解析结果带上 Assets.car 索引，并说明「像素未解码」', () {
+    test('解析结果带上索引，并按资产名说清「这个容器里没有 AppIcon」', () {
       final (bundle, archive) = _makeBundle(withCar: true);
       final info = IpaInfoPlistReader.read(archive, bundle);
       final resolution = IpaIconResolver.resolve(archive, info);
@@ -283,21 +299,22 @@ void _endToEndTests() {
           reason: '声明了 CFBundleIconName 且容器在，就该把索引读出来');
       expect(resolution.assetCatalog!.parsed, isTrue);
       expect(resolution.assetCatalog!.images, hasLength(4));
+      expect(resolution.assetCatalog!.assetNames,
+          ['LowBatteryEmpty', 'LowBatteryFlashing'],
+          reason: '资产名索引已经解出来了');
 
-      // 仍然没有可预览的候选 —— 像素是 LZFSE 压缩的，取不出来。
+      // 这个夹具是菜单栏小图标，没有 AppIcon —— 所以仍然没有候选，
+      // 但原因从「需要一个 RENDITIONS 解析器」变成了「这个容器里没有
+      // 名叫 AppIcon 的资产」。后者是可核对的事实。
       expect(resolution.candidates, isEmpty);
       expect(resolution.assetCatalogOnly, isTrue);
 
       final unresolved = resolution.unresolved.single;
       expect(unresolved.source, IosIconSource.assetCatalogName);
       expect(unresolved.archivePath, 'Payload/Example.app/Assets.car');
-      expect(unresolved.reason, contains('Assets.car'));
-      // 夹具里的图名不含 AppIcon（它是菜单栏小图标），所以走「认不出是哪张」
-      // 的分支 —— 但「为什么预览不了」的答案仍必须包含 LZFSE。
-      expect(unresolved.reason, contains('RENDITIONS'),
-          reason: '要说清「认不出是哪一张」的原因在 RENDITIONS 索引');
-      expect(unresolved.reason, contains('LZFSE'),
-          reason: '必须说清「为什么预览不了」是像素被压缩了，而不是「没实现」');
+      expect(unresolved.reason, contains('none is named exactly'));
+      expect(unresolved.reason, contains('LowBatteryEmpty'),
+          reason: '要把它**实际有哪些**资产列出来，否则读者无法判断');
     });
 
     test('没有 Assets.car 时说「缺文件」，不说「解析失败」', () {

@@ -73,7 +73,8 @@ void main() {
   });
 
   test('不支持的块类型报错带稳定 code，便于上层分类', () {
-    // `bvxn` = LZVN，只出现在矢量载荷上。
+    // `bvxn` = LZVN。它从不作为光栅图的**首个**流出现，但在多流 payload 的
+    // 后续 chunk 里会碰到（实测 3,244 张里 109 张），所以必须报而不是猜。
     final src = File('$_dir/empty.lzfse').readAsBytesSync();
     final patched = [...src];
     if (patched.length >= 4) {
