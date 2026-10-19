@@ -7,6 +7,26 @@
 # 因此本文件必须被 `add_subdirectory` 在**顶层设置完 CMAKE_INSTALL_PREFIX
 # 之后**调用 —— 见 windows/CMakeLists.txt 里的说明。
 
+# 静态链接 CRT（/MT），让 DLL 与自检都不依赖 VC++ 运行库。
+#
+# ## 为什么这对缩略图处理器是**必须**的
+#
+# 这个 DLL 由 explorer.exe 加载。如果它是 /MD（CMake 在 Windows 上的默认），
+# 就需要目标机器装 VC++ 2015-2022 Redistributable —— 很多普通用户的机器上
+# **没有**。缺运行库时 LoadLibrary 直接失败，Explorer 只是静默回退到文件图标，
+# 用户和我们都不会看到任何错误。
+#
+# 自检程序同理：/MD 的 exe 在缺运行库的机器上「双击就消失」。
+#
+# /MT 让两者自带 CRT，拷到任何 Windows 上都能跑。
+# 跨边界只传 COM 接口指针（不传 C++ 对象），因此不存在堆不匹配问题。
+#
+# CMP0091 必须设为 NEW，`MSVC_RUNTIME_LIBRARY` 属性才会生效；
+# 否则 CMake 继续按 `CMAKE_CXX_FLAGS` 里的 /MD 走，设了也没用。
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif()
+
 add_library(appinfotool_thumbnail SHARED
   "thumbnail_provider.cpp"
   "thumbnail_provider.h"
@@ -26,6 +46,9 @@ add_library(appinfotool_thumbnail SHARED
 # 重复定义同一个值虽然通常无害，但会让「到底谁在定义」变模糊。
 target_compile_features(appinfotool_thumbnail PUBLIC cxx_std_17)
 target_compile_options(appinfotool_thumbnail PRIVATE /W4 /WX /EHsc)
+set_target_properties(appinfotool_thumbnail PROPERTIES
+  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+)
 # `NOMINMAX`：不让 windows.h 定义 min/max 宏，否则 `<algorithm>` /
 # `<limits>` 里的同名模板会被宏替换，报一堆看不懂的语法错误。
 target_compile_definitions(appinfotool_thumbnail PRIVATE NOMINMAX)
@@ -78,6 +101,11 @@ add_executable(appinfotool_thumbnail_selftest
 )
 target_compile_features(appinfotool_thumbnail_selftest PUBLIC cxx_std_17)
 target_compile_options(appinfotool_thumbnail_selftest PRIVATE /W4 /WX /EHsc)
+# 静态 CRT：诊断工具不该要求目标机器先装 VC++ 运行库。
+# 「双击就消失」最常见的原因就是这个 —— 进程根本没起来。
+set_target_properties(appinfotool_thumbnail_selftest PROPERTIES
+  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+)
 target_compile_definitions(appinfotool_thumbnail_selftest PRIVATE
   UNICODE
   _UNICODE

@@ -54,6 +54,9 @@
 #include <cstdio>
 // `_wtoi`（--cx 的参数解析）。
 #include <cstdlib>
+// `_isatty` / `_fileno`：判断 stdout 是不是真正的终端。
+#include <io.h>
+
 #include <string>
 // `std::pair`（--expect-distinct 收集的 (文件名, 哈希)）。
 #include <utility>
@@ -146,11 +149,108 @@ bool HashBitmap(HBITMAP bitmap, unsigned int* out_hash, int* out_width,
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// 崩溃可观测性
+//
+// 这个工具的核心用途是「在别人的机器上定位问题」。所以它必须做到：
+// 崩了也要留下线索。三件事：
+//
+// 1. **无缓冲输出**：默认 stdout 在全缓冲模式下（重定向到文件时）会把内容
+//    留在缓冲区里，进程一崩就全丢了 —— 那就等于什么都没打印。
+// 2. **每步一行**：DLL 是 in-proc 加载的，它崩了会带走整个进程。
+//    从最后一行输出就能判断崩在哪一步。
+// 3. **未处理异常过滤器**：打印异常码与出错的模块名，再交给系统默认处理。
+// ---------------------------------------------------------------------------
+
+/// 记录「已经走到第几步」，供异常过滤器打印。
+///
+/// **存 std::wstring 而不是 const wchar_t\***：调用方可能传临时串
+/// （例如 `Step(("正在处理 " + path).c_str())`），存指针会在下一行就悬空，
+/// 崩溃时打印出来的是乱码 —— 那比不打印更误导。
+std::wstring g_step = L"(not started)";
+
+/// 打印一行并立即落到控制台/文件。
+void Step(const wchar_t* text) {
+  g_step.assign(text == nullptr ? L"(null)" : text);
+  // 用 g_step 而不是 text：text 可能是 nullptr，而 `%s` 遇到空指针会崩 ——
+  // 在一个专门用来「留下崩溃线索」的函数里自己崩掉，是最讽刺的失败。
+  std::wprintf(L"[step] %s\n", g_step.c_str());
+  // **必须 flush**：崩溃时缓冲区内容会丢，那这行就白打了。
+  std::fflush(stdout);
+}
+
+LONG WINAPI CrashHandler(EXCEPTION_POINTERS* info) {
+  std::fwprintf(stderr, L"\n=== CRASH ===\n");
+  if (info != nullptr && info->ExceptionRecord != nullptr) {
+    const EXCEPTION_RECORD* record = info->ExceptionRecord;
+    std::fwprintf(stderr, L"code    : 0x%08X\n",
+                  static_cast<unsigned>(record->ExceptionCode));
+    std::fwprintf(stderr, L"address : %p\n", record->ExceptionAddress);
+    // 出错模块：能区分「崩在我们自己的 DLL 里」与「崩在系统 DLL 里」。
+    HMODULE module = nullptr;
+    if (::GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(record->ExceptionAddress), &module)) {
+      wchar_t name[MAX_PATH] = {0};
+      ::GetModuleFileNameW(module, name, MAX_PATH);
+      std::fwprintf(stderr, L"module  : %s\n", name);
+    }
+  }
+  std::fwprintf(stderr, L"last step: %s\n", g_step.c_str());
+  std::fwprintf(stderr, L"=============\n");
+  std::fflush(stderr);
+  // 交给系统默认处理：不吞掉崩溃，否则退出码会是 0，
+  // 调用方（CI / 用户）会以为成功。
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+/// 本进程是不是**独占一个新控制台**（即双击启动，而不是从已有 cmd 里跑）。
+///
+/// `GetConsoleProcessList` 返回附着到当前控制台的进程数。等于 1 说明只有
+/// 自己 —— 那是双击时 Windows 新建的控制台。这种情况下程序结束窗口立刻消失，
+/// 用户看到的就是「闪退」，而程序其实正常跑完了。
+bool OwnsConsole() {
+  DWORD list[2] = {0, 0};
+  const DWORD count = ::GetConsoleProcessList(list, 2);
+  return count == 1;
+}
+
+/// stdout 是否被重定向到文件/管道（而不是真正的控制台）。
+bool IsRedirected() {
+  return ::_isatty(::_fileno(stdout)) == 0;
+}
+
+/// 如果窗口即将消失，停住等用户按回车。
+///
+/// ## 这里的判断顺序是为了「既不闪退、也不挂死 CI」
+///
+/// 只靠 `OwnsConsole()` 是不够的：GitHub Actions 的 `shell: cmd` 步骤里，
+/// 那个控制台可能只附着 cmd 自己 —— `GetConsoleProcessList` 返回 1，
+/// 于是程序会**傻等回车**，把整条流水线挂到超时。这个后果比闪退严重得多。
+///
+/// 所以加一道 `IsRedirected()`：CI 会捕获 stdout，它不是终端，
+/// 因此绝不会停。三个条件任一成立才停：
+///   1. 显式 `--pause`；
+///   2. 没有任何参数（双击的最典型形态：程序本来就该给人看用法）；
+///   3. 独占控制台 **且** stdout 是终端（用户在资源管理器里双击了带参数的场景）。
+void PauseIfNeeded(bool force, bool no_arguments) {
+  if (!force && !no_arguments) {
+    if (!OwnsConsole() || IsRedirected()) {
+      return;
+    }
+  }
+  std::fwprintf(stderr, L"\n按回车键关闭...\n");
+  std::fflush(stderr);
+  std::getchar();
+}
+
 /// 对单个文件跑一次完整调用。
 ///
 /// 返回 `true` 表示拿到了非空位图。
 bool RunOne(IClassFactory* factory, const std::wstring& path, UINT cx,
             std::wstring* detail) {
+  Step(L"  CreateInstance(IThumbnailProvider)");
   IThumbnailProvider* provider = nullptr;
   HRESULT hr = factory->CreateInstance(nullptr, IID_IThumbnailProvider,
                                        reinterpret_cast<void**>(&provider));
@@ -161,10 +261,12 @@ bool RunOne(IClassFactory* factory, const std::wstring& path, UINT cx,
 
   // 用 IInitializeWithItem（生产路径的首选）。SHCreateItemFromParsingName
   // 走的是与 Explorer 相同的代码，因此这条路径有代表性。
+  Step(L"  QueryInterface(IInitializeWithItem)");
   IInitializeWithItem* init_item = nullptr;
   hr = provider->QueryInterface(IID_IInitializeWithItem,
                                 reinterpret_cast<void**>(&init_item));
   if (SUCCEEDED(hr) && init_item != nullptr) {
+    Step(L"  SHCreateItemFromParsingName");
     IShellItem* item = nullptr;
     hr = ::SHCreateItemFromParsingName(path.c_str(), nullptr, IID_IShellItem,
                                       reinterpret_cast<void**>(&item));
@@ -223,12 +325,39 @@ bool RunOne(IClassFactory* factory, const std::wstring& path, UINT cx,
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
+  // **先关掉缓冲**，再干任何事。
+  //
+  // 崩溃时缓冲区里的内容会全部丢失 —— 而「崩溃前最后打印了什么」正是
+  // 定位问题最需要的信息。宁可多几次系统调用，也不能让它丢。
+  std::setvbuf(stdout, nullptr, _IONBF, 0);
+  std::setvbuf(stderr, nullptr, _IONBF, 0);
+
+  // 装崩溃处理器。放在最前面：后面任何一步崩了都能留下异常码与模块名。
+  ::SetUnhandledExceptionFilter(CrashHandler);
+
+  Step(L"started");
+  std::wprintf(L"exe  : %s\n", argv[0]);
+  std::wprintf(L"argc : %d\n", argc);
+
+  bool force_pause = false;
+  // 双击启动时窗口会立刻消失，看起来像闪退 —— 这里主动停住。
+  // 从 cmd 里跑（或 CI 重定向）则不停。
+  const bool attached_console = OwnsConsole();
+  std::wprintf(L"console: %s\n",
+               attached_console ? L"own (double-clicked?)" : L"inherited");
+  std::fflush(stdout);
+
   // COM 必须在任何 Shell API 之前初始化。STA：与 Explorer 调用缩略图
   // 处理器的线程模型一致（注册表里写的就是 Apartment）。
+  Step(L"CoInitializeEx");
   const HRESULT co = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   if (FAILED(co)) {
     std::fwprintf(stderr, L"CoInitializeEx failed: 0x%08X\n",
                   static_cast<unsigned>(co));
+    // 这里 `files` 还没解析出来，不能传 `files.empty()`。
+    // 传 false：只有「独占控制台且 stdout 是终端」才停 —— 双击能看到错误，
+    // CI（stdout 被捕获）不会挂住。
+    PauseIfNeeded(false, false);
     return 2;
   }
 
@@ -245,29 +374,60 @@ int wmain(int argc, wchar_t** argv) {
       expect_distinct = true;
       continue;
     }
+    if (arg == L"--pause") {
+      force_pause = true;
+      continue;
+    }
     if (arg == L"--help" || arg == L"-h") {
       std::wprintf(
-          L"usage: appinfotool_thumbnail_selftest [--cx N] file...\n");
+          L"usage: appinfotool_thumbnail_selftest [--cx N] "
+          L"[--expect-distinct] [--pause] file...\n");
       ::CoUninitialize();
       return 0;
     }
     files.push_back(arg);
   }
   if (files.empty()) {
-    std::fwprintf(stderr, L"no input files\n");
+    std::wprintf(
+        L"没有输入文件。\n\n"
+        L"用法：appinfotool_thumbnail_selftest [选项] 文件1.apk [文件2.ipa ...]\n\n"
+        L"  选项：\n"
+        L"    --cx N              请求的缩略图边长，默认 256\n"
+        L"    --expect-distinct   断言所有成功的输入产出的图标两两不同\n"
+        L"    --pause             结束时等待回车（双击运行时自动生效）\n\n"
+        L"  示例：\n"
+        L"    appinfotool_thumbnail_selftest icon-png.apk\n\n"
+        L"注意：本目录下还需要 appinfotool_thumbnail.dll 与 "
+        L"app_icon_extractor.exe。\n");
     ::CoUninitialize();
+    PauseIfNeeded(force_pause, files.empty());
     return 2;
   }
 
+  Step(L"locate DLL");
   const std::wstring dll_path = ModuleDirectory() + L"appinfotool_thumbnail.dll";
+  std::wprintf(L"dll  : %s\n", dll_path.c_str());
+  std::fflush(stdout);
+
+  Step(L"LoadLibrary");
   HMODULE dll = ::LoadLibraryW(dll_path.c_str());
   if (dll == nullptr) {
+    const DWORD error = ::GetLastError();
     std::fwprintf(stderr, L"cannot load %s (error %lu)\n", dll_path.c_str(),
-                  ::GetLastError());
+                  error);
+    if (error == 126 /* ERROR_MOD_NOT_FOUND */) {
+      // 126 几乎总是「DLL 的依赖不在」—— 常见是缺 VC++ 运行库。
+      // 直接把这个判断说出来，不然用户只会看到一句看不懂的英文。
+      std::fwprintf(stderr,
+                    L"hint: ERROR_MOD_NOT_FOUND usually means a dependency of "
+                    L"the DLL is missing (e.g. the Visual C++ runtime).\n");
+    }
     ::CoUninitialize();
+    PauseIfNeeded(force_pause, files.empty());
     return 2;
   }
 
+  Step(L"GetProcAddress(DllGetClassObject)");
   auto get_class_object = reinterpret_cast<DllGetClassObjectFn>(
       ::GetProcAddress(dll, "DllGetClassObject"));
   if (get_class_object == nullptr) {
@@ -275,9 +435,11 @@ int wmain(int argc, wchar_t** argv) {
                           L"DllGetClassObject\n");
     ::FreeLibrary(dll);
     ::CoUninitialize();
+    PauseIfNeeded(force_pause, files.empty());
     return 2;
   }
 
+  Step(L"DllGetClassObject");
   IClassFactory* factory = nullptr;
   HRESULT hr = get_class_object(kExpectedClsid, IID_IClassFactory,
                                 reinterpret_cast<void**>(&factory));
@@ -288,6 +450,7 @@ int wmain(int argc, wchar_t** argv) {
                   static_cast<unsigned>(hr));
     ::FreeLibrary(dll);
     ::CoUninitialize();
+    PauseIfNeeded(force_pause, files.empty());
     return 2;
   }
 
@@ -310,6 +473,11 @@ int wmain(int argc, wchar_t** argv) {
     // `full` 返回所需长度（含结尾 0）；超过容量说明被截断，退回原值。
     const std::wstring resolved =
         (full > 0 && full < kAbsoluteCapacity) ? std::wstring(absolute) : file;
+
+    // 每一步都打印 + flush：DLL 是 in-proc 的，它崩了会带走整个进程。
+    // 「最后一行是哪一步」就是唯一的崩溃位置线索。
+    std::wstring step_text = L"GetThumbnail(" + resolved + L")";
+    Step(step_text.c_str());
 
     std::wstring detail;
     const bool ok = RunOne(factory, resolved, cx, &detail);
@@ -357,5 +525,7 @@ int wmain(int argc, wchar_t** argv) {
 
   std::wprintf(L"\n%d of %zu succeeded\n", static_cast<int>(files.size()) -
                                               failures, files.size());
+  std::fflush(stdout);
+  PauseIfNeeded(force_pause, files.empty());
   return failures == 0 ? 0 : 1;
 }
