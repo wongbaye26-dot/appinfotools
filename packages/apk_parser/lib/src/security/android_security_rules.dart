@@ -281,6 +281,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     build: _buildV1OnlySigning,
   ),
   AndroidSecurityRule(
+    id: 'ANDROID-UNSIGNED',
+    summary: '归档里没有任何签名材料（v1 与 v2+ 都没有）—— 这个包无法直接安装。',
+    matches: _matchesUnsigned,
+    build: _buildUnsigned,
+  ),
+  AndroidSecurityRule(
     id: 'ANDROID-WEBVIEW-BRIDGE',
     summary: '向 WebView 暴露了 JavaScript 桥（addJavascriptInterface）。',
     matches: _matchesWebViewBridge,
@@ -585,11 +591,23 @@ bool _matchesExecStack(AndroidRuleFacts f) =>
 
 /// 只有 v1 签名。
 ///
-/// **只在真的读到了签名块结构时才判**：`signingSchemes == null` 表示
-/// 「没解析」（从字节打开），`parsed == false` 表示「读不出」——
-/// 两种都不能推成「只有 v1」。
+/// **三个条件缺一不可**：
+/// - `signingSchemes != null` 且 `parsed` —— 真的读到了结构，而不是「读不出」；
+/// - `v1Only` —— 没有任何 v2+ 签名块；
+/// - `hasV1Signature == true` —— **归档里确实有 `META-INF/*.SF` + 同名签名块**。
+///
+/// 少了第三条，「未签名」会被报成「只有 v1 签名」。实测项目自带的
+/// `signed-v1-only.apk` 与 `signed-unsigned.apk` 在旧判据下产出**完全相同**
+/// 的发现项 —— 而前者是「用了最弱的方案签过名」，后者是「根本没签」。
+/// 未签名由 [ANDROID-UNSIGNED] 单独陈述，两条规则互斥。
 bool _matchesV1OnlySigning(AndroidRuleFacts f) =>
-    f.meta.signingSchemes?.v1Only ?? false;
+    (f.meta.signingSchemes?.v1Only ?? false) && f.meta.hasV1Signature == true;
+
+/// 归档里**完全没有签名材料**（既无 v1，也无 v2+）。
+///
+/// `hasV1Signature == false` 才算 —— `null`（未判定）不下结论。
+bool _matchesUnsigned(AndroidRuleFacts f) =>
+    (f.meta.signingSchemes?.v1Only ?? false) && f.meta.hasV1Signature == false;
 
 bool _matchesWebViewBridge(AndroidRuleFacts f) => f.hasWebViewBridge;
 
@@ -733,9 +751,9 @@ SecurityFinding _buildV1OnlySigning(AndroidRuleFacts f) {
     severity: SecuritySeverity.p3,
     confidence: SecurityConfidence.independentCapability,
     finding: 'The APK carries no v2 or later signature block: only the v1 '
-        '(JAR) signature, if any, is present. v1 protects the digest of '
-        'each entry but not the archive structure, so entries can be added '
-        'without breaking it.',
+        '(JAR) signature is present (META-INF holds a matching .SF and '
+        'signature block). v1 protects the digest of each entry but not the '
+        'archive structure, so entries can be added without breaking it.',
     messageCode: 'android.v1_only_signing',
     evidence: [
       SecurityEvidence(
@@ -757,6 +775,59 @@ SecurityFinding _buildV1OnlySigning(AndroidRuleFacts f) {
         'any modern build tool does this by default. If the package is '
         'v1-only, check where it came from.',
     recommendationCode: 'android.v1_only_signing.review',
+  );
+}
+
+/// 归档里完全没有签名材料 —— 既没有 v1（`META-INF` 两件套），也没有 v2+ 块。
+///
+/// ## 为什么这是一条**独立**规则而不是「v1-only 的一个变体」
+///
+/// 两者对用户的意义相反：v1-only 是「按最弱的方案签过名，仍然可安装」，
+/// 未签名是「这个包根本装不上，更像构建产物或被剥过签名的中间件」。
+/// 旧判据只看「有没有 v2+ 块」，于是两者产出完全相同的发现项 ——
+/// 一个从未签名的包会被描述成「用了 v1 签名」。
+///
+/// 等级 INFO：这是**结构事实**（可以完全判定），不是风险判断。它本身不说明
+/// 恶意 —— 调试包、`aapt2 link` 的中间产物、以及从某些分发渠道解出来的
+/// 裸包都是这个样子。
+SecurityFinding _buildUnsigned(AndroidRuleFacts f) {
+  final schemes = f.meta.signingSchemes!;
+  return SecurityFinding(
+    ruleId: 'ANDROID-UNSIGNED',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.configuration,
+    severity: SecuritySeverity.info,
+    confidence: SecurityConfidence.confirmed,
+    finding: 'The archive carries no signature material at all: there is no '
+        'APK Signing Block, and META-INF holds no matching .SF plus signature '
+        'block. A package in this state cannot be installed as-is; it is '
+        'typically a build artifact or a package whose signature was '
+        'stripped.',
+    messageCode: 'android.unsigned',
+    evidence: [
+      SecurityEvidence(
+        source: SecurityEvidenceSource.zipEntry,
+        location: 'ZIP / APK Signing Block (before the central directory)',
+        detail: 'no APK Signing Block was found; pairs seen: '
+            '${schemes.pairIds.map(ApkSignatureBlockId.describe).toList()}',
+      ),
+      const SecurityEvidence(
+        source: SecurityEvidenceSource.zipEntry,
+        location: 'META-INF/',
+        detail: 'no matching .SF + .RSA/.DSA/.EC pair at the top level of '
+            'META-INF',
+      ),
+    ],
+    limitation: 'This only reports the absence of signature material in the '
+        'archive structure. It does not judge the package malicious, and it '
+        'does not replace apksigner, which is the only authority on whether a '
+        'signature is valid.',
+    limitationCode: 'android.unsigned.limitation',
+    recommendation: 'Confirm where this file came from. If it is meant for '
+        'distribution, sign it with v2/v3 before installing; if it was '
+        'extracted from a signed package, the original signature was lost in '
+        'the process.',
+    recommendationCode: 'android.unsigned.review',
   );
 }
 

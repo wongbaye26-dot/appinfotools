@@ -130,6 +130,20 @@ class ApkMeta {
   /// **有 v2 块不等于签名有效**：那仍然要 `apksigner` 说了算。
   ApkSigningSchemes? signingSchemes;
 
+  /// 归档里是否存在 **v1（JAR）签名材料**。
+  ///
+  /// 判据是 `META-INF/` 顶层同时存在 `*.SF` 与**同名**的 `*.RSA` / `*.DSA` /
+  /// `*.EC`（v1 签名由「清单 + 签名块」两件套构成，只有其中一件不成立）。
+  ///
+  /// 为什么必须与 [signingSchemes] 分开：`signingSchemes.v1Only` 只回答
+  /// 「没有 v2+ 签名块」，它**对未签名的包同样为真**。只看那一项会把
+  /// `aapt2 link` 产出的未签名包报成「只有 v1 签名」—— 一个根本没签过名的
+  /// 包被描述成「用了最弱的签名方案」，两者对用户的意义完全相反。
+  ///
+  /// `null` 表示**未判定**（例如从 aapt2 文本输出构造的 meta）。规则引擎在
+  /// `null` 时不下结论，而不是猜 `false`。
+  bool? hasV1Signature;
+
   /// `<manifest android:sharedUserId>` —— 与其它应用共享 UID。
   ///
   /// 未声明为 `null`。非空意味着**同一 UID 下的应用共享沙箱**

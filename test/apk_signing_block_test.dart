@@ -216,6 +216,40 @@ void main() {
       expect(meta.packageName, 'com.example.extrafixture');
     });
 
+    // `v1Only` 只回答「没有 v2+ 块」，它对**未签名**的包同样为真。
+    // 下面三条把三者钉开：否则 `signed-unsigned.apk` 会被报成「只有 v1 签名」，
+    // 而这两件事对用户的意义正好相反（一个装得上、一个装不上）。
+    test('v1-only 夹具：归档里确实有 META-INF 两件套', () async {
+      final reader = ApkReader();
+      addTearDown(reader.close);
+      await reader.open(_v1Only);
+      final meta = await reader.parse();
+      expect(meta!.hasV1Signature, isTrue);
+    });
+
+    test('未签名夹具：没有任何签名材料', () async {
+      final reader = ApkReader();
+      addTearDown(reader.close);
+      await reader.open(_unsigned);
+      final meta = await reader.parse();
+      expect(meta!.signingSchemes!.v1Only, isTrue,
+          reason: '没有 v2+ 块 —— 旧判据到此为止');
+      expect(
+        meta.hasV1Signature,
+        isFalse,
+        reason: '这正是「v1Only 为真」却「没有 v1 签名」的那一态',
+      );
+    });
+
+    test('v2/v3 夹具：v1 材料也在（apksigner 默认同时产出）', () async {
+      final reader = ApkReader();
+      addTearDown(reader.close);
+      await reader.open(_v2v3);
+      final meta = await reader.parse();
+      expect(meta!.hasV1Signature, isTrue);
+      expect(meta.signingSchemes!.v1Only, isFalse);
+    });
+
     test('从字节打开时没有可寻址文件 → null（不是「没有签名」）', () async {
       final bytes = File(_v2v3).readAsBytesSync();
       final reader = ApkReader();

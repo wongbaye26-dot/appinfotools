@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "file_association_channel.h"
+#include "thumbnail_channel.h"
 #include "flutter/generated_plugin_registrant.h"
 #include "utils.h"
 
@@ -38,6 +39,10 @@ bool FlutterWindow::OnCreate() {
   // 传进来 —— 后者已经 `std::move` 给了 DartProject。
   FileAssociationChannel::Register(flutter_controller_->engine(),
                                    GetCommandLineArguments());
+
+  // 「系统文件图标」通道：与文件关联**分开**（登记的是不同的东西）。
+  // 它只被设置页调用，没有启动时序要求，但放在同一处便于对照。
+  ThumbnailChannel::Register(flutter_controller_->engine());
 
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 

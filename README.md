@@ -72,7 +72,7 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 原生库符号 | 读取 ELF `.dynsym` 与 Mach-O `LC_SYMTAB`，按**精确符号名**匹配导入的系统能力（`system` / `dlopen` / `ptrace` / `socket` …）|
 | 原生库加固 | 逐个 `.so` 检查 `PT_GNU_STACK`（可执行栈）、`PT_GNU_RELRO`、`DT_FLAGS` / `DT_FLAGS_1`（BIND_NOW），并按 ABI 去重 |
 | 伪装检测 | `lib/<abi>/*.so` 的内容若实际是 DEX —— 运行时会 `DexClassLoader` 加载，静态分析的结论对那部分不成立 |
-| 签名方案 | 解析 APK Signing Block，区分 v1-only / v2 / v3 / v3.1。「有签名」与「只有 v1」是两件不同的事 |
+| 签名方案 | 解析 APK Signing Block **与 `META-INF` 的 v1 两件套**，区分「未签名 / 只有 v1 / v2 / v3 / v3.1」—— 「有签名」「只有 v1」与「根本没签」是三件不同的事 |
 | 清单配置 | `debuggable`、`allowBackup`、导出组件、`networkSecurityConfig`（**真的展开那份 XML**，不因属性被忽略就跳过）|
 | 第三方 SDK | 25 个服务类包名前缀（推送 / 统计 / 归因 / 支付 / 地图 / 验证码 / 风控 / 崩溃上报 …），按 DEX `string_ids` 精确索引而非字节扫描 |
 | 数据回传分析 | 识别网络库、上传接口与域名 / IP，标注「已确认 / 疑似 / 仅具备能力」 |
@@ -80,7 +80,7 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 分析覆盖 | 逐维度给出「已覆盖 / 部分覆盖 / 未覆盖 / 本次不适用」，界面、Markdown 与 JSON 读同一份数据 |
 | 风险分级 | P0–P3 / INFO / **UNKNOWN** —— 「无法确认」与「低风险」严格分开，覆盖不足不会被显示成绿色 |
 
-Android 侧共 18 条安全规则（其中 8 条是跨字段的组合规则）、iOS 侧 25 条；分级按**来源稀有度**而非一律高危 ——
+Android 侧共 19 条安全规则（其中 8 条是跨字段的组合规则）、iOS 侧 25 条；分级按**来源稀有度**而非一律高危 ——
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 
 ### 界面
@@ -174,6 +174,8 @@ packages/
   archive_safety/   不可信 ZIP 的安全原语（预算、结构校验）
   apk_parser/       Android 解析
   ipa_parser/       iOS 解析
+  app_icon_extractor/ 无界面图标提取（零 Flutter 依赖，可 AOT 成独立 exe）
+windows/thumbnail/  Shell 缩略图处理器（in-proc COM DLL）
 tool/               构建、图标生成、夹具生成与性能探针
 test/fixtures/      夹具（全部由公开工具或真实产物生成，不入手拼字节）
 docs/               审计报告与格式调研笔记
@@ -183,7 +185,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
 
 ### 质量与验证
 
-- **1,537 个测试**（根 + 四个包），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
+- **1,549 个根测试 + 357 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
 - **期望值一律来自独立实现**，不取自本项目解析器：
   `aapt2` 核对清单与资源、`apksigner` / `codesign` 核对签名、`assetutil` 核对 iOS 资产目录、
   `libcompression`（Apple 系统库）核对 LZFSE、`actool`（Xcode 自带）生成资产目录夹具

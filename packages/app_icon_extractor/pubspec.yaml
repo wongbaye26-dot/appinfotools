@@ -1,0 +1,31 @@
+name: app_icon_extractor
+description: >-
+  Headless application-icon extraction for APK and IPA. Zero Flutter dependency,
+  so it can be compiled with `dart compile exe` and used by native shell
+  extensions (Windows thumbnail provider / macOS Quick Look).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  analysis_model:
+    path: ../analysis_model
+  apk_parser:
+    path: ../apk_parser
+  ipa_parser:
+    path: ../ipa_parser
+  archive_safety:
+    path: ../archive_safety
+  # 与其它三个包**同一个 git ref**：归档解码器的行为（尤其是边界处理）
+  # 必须全仓一致。用 hosted 版本会让两边的 `archive` 出现两份不同实现。
+  archive:
+    git:
+      url: https://github.com/huanfeng/archive.git
+      ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
+  path: ^1.9.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.24.0

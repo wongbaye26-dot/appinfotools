@@ -158,6 +158,16 @@ class IosPrivacyAudit {
     /// 应用的一部分，而且扩展常常**正是**处理照片与 OCR 的地方。
     List<IosNestedExecutableInput> nestedExecutables = const [],
 
+    /// 容器里**含代码**的嵌套 bundle 总数（不含主应用）。
+    ///
+    /// 与 `nestedExecutables.length` 不同：后者是**传进来参与扫描**的个数，
+    /// 调用方可能因为数量上限只传了一部分。用后者当覆盖率分母会把
+    /// 「27 个嵌套 bundle 只解析了 24 个」显示成「25/25 已覆盖」。
+    ///
+    /// 不传时退回旧口径（`nestedExecutables.length`），不编造总数 ——
+    /// 但生产调用方必须传。
+    int? nestedBundleTotal,
+
     /// 描述文件里的授权项（`Entitlements`）。
     ///
     /// **为什么需要它**：`get-task-allow` 是 iOS 的 `debuggable` —— 为 true
@@ -345,6 +355,23 @@ class IosPrivacyAudit {
         ),
     ];
 
+    // 覆盖率**分母**：主可执行文件 + 容器里含代码的嵌套 bundle 总数。
+    //
+    // 不能直接用 `targets.length`：那只是「传进来准备扫的」，调用方受数量
+    // 上限截断时会比真实总数少。实测 `sun_signed.ipa` 有 27 个含代码的嵌套
+    // bundle，只解析了 24 个，旧口径却显示 `25/25 已覆盖` —— 与上一轮修掉的
+    // Android 原生库「266 个只扫 24 个却写 24/24」是同一个 bug。
+    //
+    // 取 `max` 而不是直接用参数：手工构造或旧调用方传 0 / 不传时，
+    // 分母至少不能小于实际传进来的个数。
+    final nestedDenominator = (nestedBundleTotal == null ||
+            nestedBundleTotal < nestedExecutables.length)
+        ? nestedExecutables.length
+        : nestedBundleTotal;
+    final executablesLimit = 1 + nestedDenominator;
+    // 有 bundle 被数量上限挡在门外：它们**连打开都没打开**。
+    final unparsedNested = nestedDenominator - nestedExecutables.length;
+
     final clues = <String, _MachOClue>{};
     final byMarker = <String, List<String>>{};
     final sourcesByMarker = <String, Set<String>>{};
@@ -424,26 +451,29 @@ class IosPrivacyAudit {
             'analysis.',
       ));
     } else {
+      // 分母是**包里一共有的**可执行文件数，不是「传进来准备扫的」。
+      // 截断掉的那些 bundle 连打开都没打开，不能因为没进这个列表就消失。
+      final uncoveredTotal = unscanned.length + unparsedNested;
       findings.add(SecurityFinding(
         ruleId: 'IOS-SCAN-COVERAGE',
         platform: SecurityPlatform.ios,
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: unscanned.isEmpty
+        finding: uncoveredTotal == 0
             ? 'API usage clue scanning covered ${scannedPaths.length} of '
-                '${targets.length} executables, $scanned bytes in total. '
+                '$executablesLimit executables, $scanned bytes in total. '
                 'Every executable was covered.'
             : 'API usage clue scanning covered ${scannedPaths.length} of '
-                '${targets.length} executables, $scanned bytes in total. '
-                'Executables not covered: ${unscanned.length}.',
+                '$executablesLimit executables, $scanned bytes in total. '
+                'Executables not covered: $uncoveredTotal.',
         messageCode:
-            unscanned.isEmpty ? 'ios.scan_coverage' : 'ios.scan_coverage_gap',
+            uncoveredTotal == 0 ? 'ios.scan_coverage' : 'ios.scan_coverage_gap',
         messageArgs: {
-          'total': targets.length,
+          'total': executablesLimit,
           'scanned': scannedPaths.length,
           'bytes': scanned,
-          if (unscanned.isNotEmpty) 'uncovered': unscanned.length,
+          if (uncoveredTotal > 0) 'uncovered': uncoveredTotal,
         },
         evidence: [
           for (final path in scannedPaths)
@@ -491,6 +521,22 @@ class IosPrivacyAudit {
             'printable ASCII strings: symbols in the dyld shared cache are '
             'outside the coverage, and non-ASCII literals are missed too.',
         {'bytes': scanned},
+      ));
+    }
+
+    // 被数量上限挡在门外的嵌套 bundle：**它们连解析都没做**。
+    //
+    // 这一条必须独立成文：`ios.executable.unscanned` 说的是「传进来了但没字节」，
+    // 而这里是「根本没传进来」。上一轮修掉 Android 原生库的同类问题时用过同一
+    // 句判词 —— 「没进列表」不等于「不存在」。
+    if (unparsedNested > 0) {
+      limitations.add(AnalysisNote(
+        'ios.executables.truncated',
+        '$unparsedNested nested bundle(s) were not parsed at all (of '
+            '$nestedDenominator bundles that contain code), so their '
+            'executables were neither scanned for API clues nor counted in the '
+            'coverage figures above.',
+        {'count': unparsedNested, 'total': nestedDenominator},
       ));
     }
 
@@ -1309,22 +1355,29 @@ class IosPrivacyAudit {
       ),
       CoverageEntry.noted(
         id: 'ios.executables',
-        status: targets.isEmpty
-            ? CoverageStatus.notCovered
-            : (scannedPaths.length == targets.length
-                ? CoverageStatus.covered
-                : (scannedPaths.isEmpty
-                    ? CoverageStatus.notCovered
-                    : CoverageStatus.partial)),
+        // 分母是 `executablesLimit`（包里一共有的），不是 `targets.length`
+        //（传进来准备扫的）。两者在触发嵌套数量上限时不同。
+        status: scannedPaths.length == executablesLimit
+            ? CoverageStatus.covered
+            : (scannedPaths.isEmpty
+                ? CoverageStatus.notCovered
+                : CoverageStatus.partial),
         covered: scannedPaths.length,
-        limit: targets.length,
-        note: unscanned.isEmpty
-            ? null
-            : (
-                'ios.executables.unscanned',
-                '${unscanned.length} executable(s) were not scanned',
-                {'count': unscanned.length},
-              ),
+        limit: executablesLimit,
+        note: unparsedNested > 0
+            ? (
+                'ios.executables.truncated',
+                '$unparsedNested nested bundle(s) were never parsed '
+                    '(of $nestedDenominator with code)',
+                {'count': unparsedNested, 'total': nestedDenominator},
+              )
+            : (unscanned.isEmpty
+                ? null
+                : (
+                    'ios.executables.unscanned',
+                    '${unscanned.length} executable(s) were not scanned',
+                    {'count': unscanned.length},
+                  )),
       ),
       CoverageEntry.noted(
         id: 'ios.macho.strings',

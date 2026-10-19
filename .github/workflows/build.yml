@@ -215,6 +215,26 @@ jobs:
               done
           exit 1
 
+      - name: Build the icon extractor (AOT, for the shell thumbnail provider)
+        # 缩略图处理器是 in-proc COM DLL，不能自带 Dart 运行时；
+        # 它把解析工作交给这个**独立可执行文件**（详见
+        # `docs/plans/V2.5.0-system-icon-feasibility.md`）。
+        #
+        # 必须在 `flutter build windows` **之后**跑：产物要放进
+        # runner/Release 目录，inno_bundle 才会把它一起打进安装包。
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart pub get --directory packages/app_icon_extractor
+          dart compile exe \
+            packages/app_icon_extractor/bin/app_icon_extractor.dart \
+            -o build/windows/x64/runner/Release/app_icon_extractor.exe
+          # 产物必须真的在，否则后面打出来的安装包里缺 helper，
+          # 而「缺 helper」在运行时的表现是「缩略图永远不出来」。
+          test -f build/windows/x64/runner/Release/app_icon_extractor.exe
+          ls -l build/windows/x64/runner/Release/app_icon_extractor.exe \
+                build/windows/x64/runner/Release/appinfotool_thumbnail.dll
+
       - name: Create Installer
         run: dart run inno_bundle:build --release
 

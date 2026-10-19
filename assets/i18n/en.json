@@ -150,7 +150,36 @@
     "file_association_hint_registered": "Registered as a candidate handler; choosing the default still happens in system settings",
     "file_association_hint_register_failed": "Registration failed — use the full installer, or set it manually via \"Open settings\"",
     "file_association_register_ok": "Registered — the app now appears under \"Open with\"",
-    "file_association_register_failed_hint": "Registration failed. Make sure you are running the installed build, or pick the app manually under \"Open with\""
+    "file_association_register_failed_hint": "Registration failed. Make sure you are running the installed build, or pick the app manually under \"Open with\"",
+    "system_icon": {
+      "title": "System file icons",
+      "hint_off": "Show each APK / IPA with its own app icon in File Explorer",
+      "hint_on": "File Explorer shows the real app icon for each APK / IPA",
+      "state_usable": "Enabled",
+      "state_not_registered": "Not enabled yet",
+      "state_dll_missing": "The thumbnail handler is missing from this installation",
+      "state_helper_missing": "The icon extractor is missing from this installation",
+      "state_path_mismatch": "Registered against a different installation path",
+      "state_unknown": "Status unavailable",
+      "state_path_mismatch_detail": "The registry points to {registered}, but this build lives at {current}. Re-register to fix it; the icon will stay blank until you do.",
+      "enable": "Enable",
+      "disable": "Disable",
+      "refresh": "Refresh",
+      "refresh_done": "Asked Explorer to re-read the file associations",
+      "enabled_ok": "Enabled — open a folder with APK or IPA files to check",
+      "disabled_ok": "Disabled — Explorer falls back to the generic file icon",
+      "failed": "Operation failed: {reason}",
+      "extensions_title": "Per extension",
+      "ext_registered": "registered",
+      "ext_missing": "not registered",
+      "limitations": "Known limits",
+      "limits": "Only apps whose launcher icon is a bitmap (PNG / WebP) are covered. An APK that ships only an adaptive-icon XML falls back to the generic file icon. Small-icon, list and details views still use the shared file icon — this version only does thumbnails.",
+      "diagnostics": "Diagnostics",
+      "diag_dll": "Handler DLL: {path}",
+      "diag_helper": "Extractor: {present}",
+      "diag_yes": "present",
+      "diag_no": "missing"
+    }
   },
   "signature": {
     "status_verified": "Signature verified",
@@ -626,9 +655,12 @@
       "ios_push_sandbox": "The provisioning profile declares aps-environment=\"development\": push notifications are bound to the sandbox APNs environment, which indicates a development-signed build.",
       "ios_push_sandbox_limitation": "The APNs environment is a property of the signing profile, not of the app logic; a distribution build uses \"production\" instead.",
       "ios_push_sandbox_review": "Confirm this build is meant for testing; production releases should be signed with aps-environment=\"production\".",
-      "android_v1_only_signing": "The APK carries no v2 or later signature block: only the v1 (JAR) signature, if any, is present. v1 protects the digest of each entry but not the archive structure, so entries can be added without breaking it.",
+      "android_v1_only_signing": "The APK carries no v2 or later signature block: only the v1 (JAR) signature is present (META-INF holds a matching .SF and signature block). v1 protects the digest of each entry but not the archive structure, so entries can be added without breaking it.",
       "android_v1_only_signing_limitation": "This only reports which signature schemes are present in the archive structure; it does not verify any signature and does not imply the package was tampered with. A v1-only APK can be perfectly validly signed. Whether the signature is valid must come from apksigner.",
       "android_v1_only_signing_review": "Sign with v2 (and v3 where key rotation is needed) — any modern build tool does this by default. If the package is v1-only, check where it came from.",
+      "android_unsigned": "The archive carries no signature material at all: there is no APK Signing Block, and META-INF holds no matching .SF plus signature block. A package in this state cannot be installed as-is; it is typically a build artifact or a package whose signature was stripped.",
+      "android_unsigned_limitation": "This only reports the absence of signature material in the archive structure. It does not judge the package malicious, and it does not replace apksigner, which is the only authority on whether a signature is valid.",
+      "android_unsigned_review": "Confirm where this file came from. If it is meant for distribution, sign it with v2/v3 before installing; if it was extracted from a signed package, the original signature was lost in the process.",
       "android_webview_bridge": "A JavaScript bridge is exposed to WebView content (addJavascriptInterface): scripts running in that WebView can call the injected object. CAPTCHA, analytics and social-sharing SDKs use this routinely, so its presence does not mean the app itself defined a bridge.",
       "android_webview_bridge_limitation": "This reports that the API is used, not that it is reachable from untrusted content: the URL loaded into the WebView and any navigation allow-list are not evaluated. Most hits in real apps come from third-party SDKs (CAPTCHA, analytics, social sharing) — check the call sites in the evidence before treating it as the app's own design.",
       "android_webview_bridge_review": "Remove the JavaScript bridge unless it is required; otherwise restrict navigation to an allow-list of trusted origins and never load http:// or deep-link parameters into that WebView.",
@@ -809,7 +841,8 @@
       "android_native_hardening_some_without_relro": "{count} of {total} native library(ies) lack RELRO; this is not reported as a finding because it is a legitimate build choice (for example Flutter's libapp.so) and would otherwise flag every Flutter app",
       "android_container_dex_in_native_library": "{name}: the content is DEX bytecode, not a shared library",
       "android_sdk_inventory_no_dex": "No DEX content was provided, so the third-party SDK inventory was not built",
-      "android_sdk_inventory_incomplete": "{truncated} DEX file(s) were truncated and {failed} could not be read; SDKs that only appear in those regions are not listed"
+      "android_sdk_inventory_incomplete": "{truncated} DEX file(s) were truncated and {failed} could not be read; SDKs that only appear in those regions are not listed",
+      "ios_executables_truncated": "{count} nested bundle(s) were not parsed at all (of {total} bundles that contain code), so their executables were neither scanned for API clues nor counted in the coverage figures above."
     },
     "findings": "Findings",
     "sdk_categories": {
@@ -892,7 +925,9 @@
       "ios_native_symbols_no_symtab": "No Mach-O image with a readable symbol table",
       "ios_native_symbols_unreadable": "{count} image(s) had an out-of-range symbol table",
       "ios_native_symbols_stripped": "Some images have no LC_SYMTAB (symbol table stripped)",
-      "ios_signature_separate_step": "Signature verification is performed separately by codesign; see the signature card"
+      "ios_signature_separate_step": "Signature verification is performed separately by codesign; see the signature card",
+      "ios_executables_truncated": "A further {count} nested bundle(s) were never parsed (of {total} with code): their executables are not covered by this scan",
+      "android_arsc_empty": "The resource table was parsed but contains no entries"
     }
   },
   "diff": {

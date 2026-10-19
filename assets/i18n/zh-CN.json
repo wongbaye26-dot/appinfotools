@@ -157,7 +157,36 @@
     "file_association_hint_registered": "已登记为候选打开方式；设为默认需要在系统「默认应用」里选择",
     "file_association_hint_register_failed": "登记失败，请用完整安装包，或改用「打开设置」手动指定",
     "file_association_register_ok": "已登记，现在可以在「打开方式」里选到本程序",
-    "file_association_register_failed_hint": "登记失败。请确认使用的是安装版，或手动在「打开方式」里指定程序"
+    "file_association_register_failed_hint": "登记失败。请确认使用的是安装版，或手动在「打开方式」里指定程序",
+    "system_icon": {
+      "title": "系统文件图标",
+      "hint_off": "在文件资源管理器里为每个 APK / IPA 显示它自己的应用图标",
+      "hint_on": "文件资源管理器已按安装包内容显示真实应用图标",
+      "state_usable": "已启用",
+      "state_not_registered": "尚未启用",
+      "state_dll_missing": "本次安装缺少缩略图处理器",
+      "state_helper_missing": "本次安装缺少图标提取器",
+      "state_path_mismatch": "注册指向的是另一个安装位置",
+      "state_unknown": "状态不可用",
+      "state_path_mismatch_detail": "注册表里写的是 {registered}，而当前这个程序在 {current}。点「重新注册」可以修正；在那之前图标不会出来。",
+      "enable": "启用",
+      "disable": "停用",
+      "refresh": "刷新",
+      "refresh_done": "已通知资源管理器重新读取文件关联",
+      "enabled_ok": "已启用 —— 打开一个放有 APK 或 IPA 的文件夹看看",
+      "disabled_ok": "已停用 —— 资源管理器会回退到通用文件图标",
+      "failed": "操作失败：{reason}",
+      "extensions_title": "按扩展名",
+      "ext_registered": "已注册",
+      "ext_missing": "未注册",
+      "limitations": "已知限制",
+      "limits": "只覆盖启动图标是位图（PNG / WebP）的应用。若某个 APK 只提供 adaptive-icon XML，会回退到通用文件图标。小图标、列表与详细信息视图仍是统一的文件图标 —— 本版只做缩略图。",
+      "diagnostics": "诊断信息",
+      "diag_dll": "处理器 DLL：{path}",
+      "diag_helper": "图标提取器：{present}",
+      "diag_yes": "存在",
+      "diag_no": "缺失"
+    }
   },
   "signature": {
     "status_verified": "签名验证通过",
@@ -626,9 +655,12 @@
       "ios_push_sandbox": "描述文件声明了 aps-environment=\"development\"：推送绑定的是沙箱 APNs 环境，说明这是开发签名的包。",
       "ios_push_sandbox_limitation": "APNs 环境是签名描述文件的属性，不是应用逻辑；分发版用的是 \"production\"。",
       "ios_push_sandbox_review": "确认这个包是用于测试的；正式发布应使用 aps-environment=\"production\" 的签名。",
-      "android_v1_only_signing": "这个 APK 没有 v2 及更高版本的签名块：只可能有 v1（JAR）签名。v1 只保护每个条目的摘要，不保护归档结构，因此往包里塞入额外条目不会让签名失效。",
+      "android_v1_only_signing": "这个 APK 没有 v2 及更高版本的签名块：只有 v1（JAR）签名（META-INF 里存在配对的 .SF 与签名块）。v1 只保护每个条目的摘要，不保护归档结构，因此往包里塞入额外条目不会让签名失效。",
       "android_v1_only_signing_limitation": "这里只报告归档结构里存在哪几套签名方案，不验证任何签名，也不代表这个包被人改动过。只有 v1 的包完全可以是合法有效的签名 —— 签名是否有效只能由 apksigner 判定。",
       "android_v1_only_signing_review": "使用 v2（需要轮换密钥时再加 v3）重新签名 —— 现代构建工具默认就会这么做。如果这个包只有 v1 签名，核实一下它的来源。",
+      "android_unsigned": "这个归档里没有任何签名材料：既没有 v2+ 签名块，META-INF 里也没有配对的 .SF 与签名块。这种状态的包无法直接安装，通常是构建产物，或者是被剥掉签名的中间件。",
+      "android_unsigned_limitation": "这里只报告归档结构里缺少签名材料，不判断这个包是否恶意，也不能替代 apksigner —— 签名是否有效只能由它判定。",
+      "android_unsigned_review": "核实这个文件的来源。如果要分发，安装前请用 v2/v3 重新签名；如果它是从已签名的包里解出来的，原签名在解包过程中已经丢失。",
       "android_webview_bridge": "有 JavaScript 桥暴露给了 WebView 内容（addJavascriptInterface）：那个 WebView 里运行的脚本可以调用被注入的对象。验证码、统计、社交分享这类 SDK 普遍这么做，所以出现它不代表应用自己定义了桥。",
       "android_webview_bridge_limitation": "这里报告的是「用了这个 API」，不是「这条路径能从不可信内容到达」：WebView 加载的 URL 与导航白名单都未做判定。真实应用里绝大多数命中来自第三方 SDK（验证码、统计、社交分享）——把它当成应用自己的设计之前，先看证据里的调用点。",
       "android_webview_bridge_review": "除非确实需要，否则移除 JavaScript 桥；否则应把导航限制在可信来源白名单内，并且不要把 http:// 或深链参数直接加载进那个 WebView。",
@@ -809,7 +841,8 @@
       "android_native_hardening_some_without_relro": "{total} 个原生库中有 {count} 个缺少 RELRO；这没有作为发现项报出，因为它是合法的构建选择（例如 Flutter 的 libapp.so），否则所有 Flutter 应用都会被报一条",
       "android_container_dex_in_native_library": "{name}：内容是 DEX 字节码，不是原生库",
       "android_sdk_inventory_no_dex": "没有提供 DEX 内容，因此未建立第三方 SDK 清单",
-      "android_sdk_inventory_incomplete": "{truncated} 个 DEX 被截断、{failed} 个读不出来；只出现在那些区域的 SDK 不会被列出"
+      "android_sdk_inventory_incomplete": "{truncated} 个 DEX 被截断、{failed} 个读不出来；只出现在那些区域的 SDK 不会被列出",
+      "ios_executables_truncated": "有 {count} 个嵌套 bundle 完全没有解析（共 {total} 个含代码的 bundle），因此它们的可执行文件既没有做 API 线索扫描，也没有算进上面的覆盖率。"
     },
     "findings": "发现项",
     "sdk_categories": {
@@ -892,7 +925,9 @@
       "ios_native_symbols_no_symtab": "没有可读符号表的 Mach-O 镜像",
       "ios_native_symbols_unreadable": "{count} 个镜像的符号表越界",
       "ios_native_symbols_stripped": "部分镜像没有 LC_SYMTAB（符号表被剥离）",
-      "ios_signature_separate_step": "签名验证由 codesign 单独执行，见签名信息卡片"
+      "ios_signature_separate_step": "签名验证由 codesign 单独执行，见签名信息卡片",
+      "ios_executables_truncated": "另有 {count} 个嵌套 bundle 完全未解析（共 {total} 个含代码的 bundle）：它们的可执行文件不在本次扫描范围内",
+      "android_arsc_empty": "资源表解析成功，但里面没有任何条目"
     }
   },
   "diff": {

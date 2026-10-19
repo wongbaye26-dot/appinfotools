@@ -69,6 +69,16 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
 
+# Shell 缩略图处理器（独立 DLL，由 explorer.exe in-proc 加载）。
+#
+# **必须放在 CMAKE_INSTALL_PREFIX 设置之后**：它的 `install(TARGETS ...)`
+# 用 `${CMAKE_INSTALL_PREFIX}` 决定落点，而这个变量在上面几行才被改成
+# runner.exe 所在目录。放在前面会把 DLL 装到 CMake 的默认前缀
+# （Windows 上是 `C:/Program Files/<project>`），于是 `flutter build windows`
+# 之后 runner/Release 里根本没有这个 DLL —— 表现是「安装包装完，
+# 缩略图永远不出来」，而构建日志一片绿色。
+add_subdirectory("thumbnail")
+
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 

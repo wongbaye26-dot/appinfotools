@@ -74,7 +74,7 @@ Those cases are reported as "this decoder does not implement that mode", never a
 | Native library symbols | Reads ELF `.dynsym` and Mach-O `LC_SYMTAB`, matching imported system capabilities by **exact symbol name** (`system` / `dlopen` / `ptrace` / `socket` …) |
 | Native hardening | Per-`.so` checks of `PT_GNU_STACK` (executable stack), `PT_GNU_RELRO`, and `DT_FLAGS` / `DT_FLAGS_1` (BIND_NOW), de-duplicated by ABI |
 | Disguise detection | A `lib/<abi>/*.so` whose contents are actually DEX — loaded at runtime via `DexClassLoader`, so static conclusions do not cover it |
-| Signing schemes | Parses the APK Signing Block and distinguishes v1-only / v2 / v3 / v3.1. "Signed" and "v1 only" are different facts |
+| Signing schemes | Parses the APK Signing Block **and the v1 pair under `META-INF`**, distinguishing unsigned / v1-only / v2 / v3 / v3.1 — "signed", "v1 only" and "not signed at all" are three different facts |
 | Manifest configuration | `debuggable`, `allowBackup`, exported components, and `networkSecurityConfig` (**the XML is actually expanded**, rather than skipped because the attribute is overridden) |
 | Third-party SDKs | 25 service-oriented package prefixes (push / analytics / attribution / payments / maps / captcha / fraud / crash reporting …), indexed via DEX `string_ids` instead of byte scanning |
 | Data transmission analysis | Detects network libraries, upload endpoints and domains/IPs, labelled **confirmed / suspected / capability only** |
@@ -82,7 +82,7 @@ Those cases are reported as "this decoder does not implement that mode", never a
 | Analysis coverage | Per-dimension status: covered / partially covered / not covered / not applicable. The UI, Markdown and JSON all read the same data |
 | Risk grading | P0–P3 / INFO / **UNKNOWN** — "cannot determine" is kept strictly separate from "low risk", so limited coverage is never shown as green |
 
-There are 18 security rules on Android (8 of them cross-field combinations) and 25 on iOS. Severity is scaled by **how rare the source is**
+There are 19 security rules on Android (8 of them cross-field combinations) and 25 on iOS. Severity is scaled by **how rare the source is**
 rather than defaulting to high: device identifiers, location and clipboard are P3 because nearly every
 app has them, while contacts / SMS / microphone combined with upload are P2.
 
@@ -177,6 +177,8 @@ packages/
   archive_safety/   Safety primitives for untrusted ZIPs (budget, structure checks)
   apk_parser/       Android parsing
   ipa_parser/       iOS parsing
+  app_icon_extractor/ Headless icon extraction (zero Flutter dependency, AOT-compilable)
+windows/thumbnail/  Shell thumbnail provider (in-proc COM DLL)
 tool/               Build, icon generation, fixture generation and performance probes
 test/fixtures/      Fixtures (all produced by public tools or real artifacts; never hand-assembled)
 docs/               Audit reports and format research notes
@@ -186,7 +188,7 @@ The Android and iOS parsers do not depend on each other; they share only `analys
 
 ### Quality and verification
 
-- **1,537 tests** (root plus four packages), `flutter analyze --fatal-infos --fatal-warnings` clean and `dart format` clean; CI runs the same gate on all three platforms
+- **1,549 root tests + 357 package tests** (`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`), `flutter analyze --fatal-infos --fatal-warnings` clean and `dart format` clean; CI runs the same gate on all three platforms
 - **Expected values always come from an independent implementation**, never from this project's own parser:
   `aapt2` for the manifest and resources, `apksigner` / `codesign` for signatures, `assetutil` for iOS asset catalogs,
   `libcompression` (Apple's system library) for LZFSE, and `actool` (bundled with Xcode) to generate asset-catalog fixtures

@@ -135,7 +135,36 @@
     "parser_engine_aapt2": "aapt2 (外部ツール, 互換性良好)",
     "parser_engine_builtin": "内蔵 (Dart, 高速)",
     "enable_security_audit": "セキュリティ監査を有効にする",
-    "title_width_sample": "これはタイトル幅のプレビュー用サンプルです。長くなる場合があります……"
+    "title_width_sample": "これはタイトル幅のプレビュー用サンプルです。長くなる場合があります……",
+    "system_icon": {
+      "title": "システムのファイル アイコン",
+      "hint_off": "エクスプローラーで各 APK / IPA に固有のアプリアイコンを表示します",
+      "hint_on": "エクスプローラーはインストール パッケージの内容に応じた実際のアプリアイコンを表示しています",
+      "state_usable": "有効",
+      "state_not_registered": "まだ有効になっていません",
+      "state_dll_missing": "このインストールにはサムネイル ハンドラーが含まれていません",
+      "state_helper_missing": "このインストールにはアイコン抽出ツールが含まれていません",
+      "state_path_mismatch": "別のインストール場所を指して登録されています",
+      "state_unknown": "状態を取得できません",
+      "state_path_mismatch_detail": "レジストリには {registered} が記録されていますが、現在のこのプログラムは {current} にあります。「再登録」で修正できます。それまではアイコンは表示されません。",
+      "enable": "有効にする",
+      "disable": "無効にする",
+      "refresh": "更新",
+      "refresh_done": "エクスプローラーにファイルの関連付けを読み直すよう通知しました",
+      "enabled_ok": "有効にしました — APK または IPA が入ったフォルダーを開いて確認してください",
+      "disabled_ok": "無効にしました — エクスプローラーは汎用のファイル アイコンに戻ります",
+      "failed": "操作に失敗しました：{reason}",
+      "extensions_title": "拡張子ごと",
+      "ext_registered": "登録済み",
+      "ext_missing": "未登録",
+      "limitations": "既知の制限",
+      "limits": "起動アイコンがビットマップ（PNG / WebP）のアプリのみが対象です。adaptive-icon の XML しか持たない APK は汎用のファイル アイコンに戻ります。小さいアイコン、一覧、詳細表示は共通のファイル アイコンのままで、このバージョンはサムネイルのみに対応しています。",
+      "diagnostics": "診断情報",
+      "diag_dll": "ハンドラー DLL：{path}",
+      "diag_helper": "アイコン抽出ツール：{present}",
+      "diag_yes": "あり",
+      "diag_no": "なし"
+    }
   },
   "signature": {
     "status_verified": "署名を検証しました",
@@ -468,7 +497,8 @@
       "android_native_hardening_some_without_relro": "{total} 個中 {count} 個のネイティブライブラリに RELRO がありません。正当なビルド選択（例：Flutter の libapp.so）であり、そうでなければ全 Flutter アプリが該当するため、指摘としては報告していません",
       "android_container_dex_in_native_library": "{name}：内容は DEX バイトコードであり、ネイティブライブラリではありません",
       "android_sdk_inventory_no_dex": "DEX の内容が提供されなかったため、サードパーティ SDK の一覧を作成していません",
-      "android_sdk_inventory_incomplete": "{truncated} 個の DEX が切り詰められ、{failed} 個が読み取れませんでした。それらの領域にのみ存在する SDK は一覧に含まれません"
+      "android_sdk_inventory_incomplete": "{truncated} 個の DEX が切り詰められ、{failed} 個が読み取れませんでした。それらの領域にのみ存在する SDK は一覧に含まれません",
+      "ios_executables_truncated": "{count} 個のネストしたバンドルはまったく解析していません（コードを含む全 {total} 個中）。そのためこれらの実行ファイルは API 手がかりのスキャンも、上記のカバレッジ計算も行われていません。"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -642,7 +672,10 @@
       "android_native_exec_stack_review": "-z execstack を外して再ビルドしてください（NDK の既定は非実行スタックです）。サードパーティ製なら修正版の提供を依頼してください。",
       "android_third_party_sdk": "コード内に {count} 個のサードパーティ製サービス SDK が見つかりました：{names}。これらのライブラリは各自のサーバーへデータを送信します。この一覧は情報であり、リスク判定ではありません。",
       "android_third_party_sdk_limitation": "クラス名の接頭辞のみを照合し、対象は本カタログに収録されたサービス SDK のみです。基本ライブラリ（HTTP クライアント、JSON、UI、アニメーション）はほぼすべてのアプリに存在するため意図的に除外しています。参照数はその接頭辞を持つクラス名の件数であり、呼び出し回数ではありません。難読化・再パッケージされた SDK は認識できません。実際に読めた DEX のみが対象です（件数はカバレッジを参照）。",
-      "android_third_party_sdk_review": "各 SDK がアプリのプライバシーポリシーと一致するか確認してください。どのデータを収集し、どこへ送るのか。実際に不要なものは削除してください。"
+      "android_third_party_sdk_review": "各 SDK がアプリのプライバシーポリシーと一致するか確認してください。どのデータを収集し、どこへ送るのか。実際に不要なものは削除してください。",
+      "android_unsigned": "このアーカイブには署名素材が一切ありません。v2 以降の署名ブロックも、META-INF 内の対になる .SF と署名ブロックも存在しません。この状態のパッケージはそのままではインストールできず、通常はビルド成果物か、署名を剥がされた中間物です。",
+      "android_unsigned_limitation": "ここではアーカイブ構造に署名素材が欠けていることだけを報告します。悪意の有無は判定せず、apksigner の代わりにもなりません。署名が有効かどうかは apksigner だけが判定できます。",
+      "android_unsigned_review": "このファイルの出所を確認してください。配布用であればインストール前に v2/v3 で再署名してください。署名済みパッケージから取り出したものであれば、元の署名はその過程で失われています。"
     },
     "sdk_categories": {
       "analytics": "分析 / アトリビューション",
@@ -731,7 +764,9 @@
       "ios_native_symbols_unreadable": "{count} 個のイメージでシンボルテーブルが範囲外でした",
       "ios_privacy_manifest_absent": "このバンドルに PrivacyInfo.xcprivacy がありません（iOS 17 より前では必須ではありません）",
       "ios_signature_separate_step": "署名の検証は codesign で別途行います。署名カードを参照してください",
-      "ios_usage_descriptions_not_read": "Info.plist を解析していないため、用途の説明を読み取っていません"
+      "ios_usage_descriptions_not_read": "Info.plist を解析していないため、用途の説明を読み取っていません",
+      "android_arsc_empty": "リソーステーブルは解析できましたが、項目が 1 つもありません",
+      "ios_executables_truncated": "さらに {count} 個のネストしたバンドルは未解析です（コードを含む全 {total} 個中）：これらの実行ファイルは本スキャンの対象外です"
     },
     "partial": "一部カバー",
     "summary": "{applicable} 件中 {covered} 件の項目を完全にカバーしています",

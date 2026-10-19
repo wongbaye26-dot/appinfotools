@@ -118,6 +118,17 @@ class AndroidSecurityAudit {
     /// 必须进 `limitations`：`selectLibraries` 挑剩下的那些，此前在报告里
     /// **完全不可见**（`grep -rn "\.skipped" lib/` 零命中）。
     List<String> nativeSkipped = const [],
+
+    /// `resources.arsc` **实际读到的资源条目数**；读不到时为 `null`。
+    ///
+    /// 为什么不能靠 `meta.locales` / `meta.densities` 反推（旧实现的判据）：
+    /// 那两项只有在资源表带多语言 / 多密度变体时才非空。一个单语言、单密度的
+    /// 正常应用，资源表被完整解析了却会被报成「资源表缺失或无法解析」——
+    /// 实测 7 个夹具全部命中，包括有 4 个资源的 `night-mode-resources.apk`。
+    ///
+    /// `null` 表示**调用方没能提供**（`resources.arsc` 不存在、被预算拒绝或
+    /// 解析失败）。此时标 `notCovered` 是对的：那确实是「我们没读到」。
+    int? arscEntryCount,
   }) {
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
@@ -634,11 +645,13 @@ class AndroidSecurityAudit {
       (name) => dexByName[name],
     );
 
-    // 资源表是否读到：`locales` / `densities` 任一非空即说明 arsc 解析成功
-    // （两者都由 arsc 提供）。两个都空既可能是「资源表确实没有多语言/密度
-    // 变体」，也可能是「资源表没读到」—— 因此只用它判「读到过没有」，
-    // 判不出来时如实标 notCovered 并说明。
-    final arscEntryCount = meta.locales.length + meta.densities.length;
+    // 资源表覆盖量由调用方给**实际读到的条目数**（`arscEntryCount`）。
+    //
+    // 旧实现用 `meta.locales.length + meta.densities.length` 反推，理由写在
+    // 这里的历史注释里：「两个都空既可能是没有多语言/密度变体，也可能是没读到」。
+    // 但那个歧义的方向搞反了 —— 单语言单密度的正常应用**必然**两项都空，
+    // 于是「已解析」被稳定地报成「缺失」。判「读没读到」要用读取方的结果，
+    // 不能用内容的形状去猜。
     for (final skipped in nativeScan.skippedForBudget) {
       limitations.add(AnalysisNote(
         'android.native_symbols.budget',
@@ -1364,17 +1377,26 @@ class AndroidSecurityAudit {
       ),
       CoverageEntry.noted(
         id: 'android.arsc',
-        status: arscEntryCount == 0
+        // `null` = 没读到（文件不存在 / 被预算拒绝 / 解析失败）；
+        // `0` 也是一个已读到的空表 —— 与「缺失」不同，但结论一样是「没有
+        // 资源可用」，因此两者都标 notCovered，只是 note 不同。
+        status: (arscEntryCount ?? 0) == 0
             ? CoverageStatus.notCovered
             : CoverageStatus.covered,
         covered: arscEntryCount,
-        note: arscEntryCount == 0
-            ? (
-                'android.arsc.missing',
-                'Resource table missing or unparsable',
-                const <String, Object>{},
-              )
-            : null,
+        note: (arscEntryCount ?? 0) > 0
+            ? null
+            : (arscEntryCount == null
+                ? (
+                    'android.arsc.missing',
+                    'Resource table missing or unparsable',
+                    const <String, Object>{},
+                  )
+                : (
+                    'android.arsc.empty',
+                    'The resource table was parsed but contains no entries',
+                    const <String, Object>{},
+                  )),
       ),
     ]);
 

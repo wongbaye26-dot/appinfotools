@@ -293,6 +293,10 @@ void _parseEntryPoint(_ParseRequest request) async {
       nativeLibraryTotal:
           NativeSymbolScanner.uniqueLibraryCount(nativeCandidates),
       nativeSkipped: nativeSelection.skipped,
+      // 资源表覆盖量用**实际读到的条目数**。`arscParser == null` 表示没读到
+      // （文件不存在 / 被预算拒绝 / 解析失败），此时传 `null` 让它标「缺失」；
+      // 解析成功但表是空的，传 0，措辞是「空表」而不是「缺失」。
+      arscEntryCount: reader.arscParser == null ? null : arscResources.length,
     );
 
     request.reply.send(ParseSucceeded(ParsedApkData(

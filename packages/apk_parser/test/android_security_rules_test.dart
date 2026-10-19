@@ -113,6 +113,7 @@ void main() {
           'ANDROID-SHARED-USER-ID',
           'ANDROID-NATIVE-EXEC-STACK',
           'ANDROID-V1-ONLY-SIGNING',
+          'ANDROID-UNSIGNED',
           'ANDROID-WEBVIEW-BRIDGE',
           'ANDROID-PERMISSION-WITHOUT-API',
           'ANDROID-RULE-A',
@@ -208,10 +209,19 @@ void main() {
       // 栈可执行的库：手搓一个 ElfHardening 记录即可 —— 这一条不依赖
       // 真文件，解析由 elf_hardening_test.dart 单独钉住。
       'ANDROID-NATIVE-EXEC-STACK': () => _auditWithNativeBytes(_execStackBytes),
-      // 只有 v1 签名：签名块解析成功但里面没有 v2/v3。
+      // 只有 v1 签名：签名块解析成功但里面没有 v2/v3，**且归档里确实有
+      // `META-INF/*.SF` 与同名签名块**。少了后半句，「完全没签名」会被
+      // 报成「只有 v1 签名」—— 见下一条用例。
       'ANDROID-V1-ONLY-SIGNING': () => _audit(
             meta: _meta(targetSdk: 34)
-              ..signingSchemes = const ApkSigningSchemes(),
+              ..signingSchemes = const ApkSigningSchemes()
+              ..hasV1Signature = true,
+          ),
+      // 完全没有签名材料：没有 v2+ 块，META-INF 里也没有 v1 两件套。
+      'ANDROID-UNSIGNED': () => _audit(
+            meta: _meta(targetSdk: 34)
+              ..signingSchemes = const ApkSigningSchemes()
+              ..hasV1Signature = false,
           ),
       // JS 桥暴露给网页内容。
       'ANDROID-WEBVIEW-BRIDGE': () => _audit(
@@ -295,6 +305,48 @@ void main() {
             .severity,
         SecuritySeverity.p1,
       );
+    });
+  });
+
+  group('签名方案判据：v1-only 与未签名必须分开', () {
+    SecurityAnalysisResult auditSigning({required bool? hasV1}) => _audit(
+          meta: _meta(targetSdk: 34)
+            ..signingSchemes = const ApkSigningSchemes()
+            ..hasV1Signature = hasV1,
+        );
+
+    test('有 v1 材料 → V1-ONLY，不报 UNSIGNED', () {
+      final ids = _ids(auditSigning(hasV1: true));
+      expect(ids, contains('ANDROID-V1-ONLY-SIGNING'));
+      expect(ids, isNot(contains('ANDROID-UNSIGNED')));
+    });
+
+    test('没有任何签名材料 → UNSIGNED，不报 V1-ONLY', () {
+      final ids = _ids(auditSigning(hasV1: false));
+      expect(ids, contains('ANDROID-UNSIGNED'));
+      expect(
+        ids,
+        isNot(contains('ANDROID-V1-ONLY-SIGNING')),
+        reason: '旧判据只看「没有 v2+ 块」，会把未签名包说成「只有 v1 签名」',
+      );
+    });
+
+    test('v1 是否存在未判定（null）→ 两条都不报', () {
+      // 从 aapt2 文本输出构造的 meta 就是这一态：不猜「没有」，也不猜「有」。
+      final ids = _ids(auditSigning(hasV1: null));
+      expect(ids, isNot(contains('ANDROID-V1-ONLY-SIGNING')));
+      expect(ids, isNot(contains('ANDROID-UNSIGNED')));
+    });
+
+    test('签名块读不出来 → 两条都不报（「读不出」不能折成结论）', () {
+      final ids = _ids(_audit(
+        meta: _meta(targetSdk: 34)
+          ..signingSchemes =
+              const ApkSigningSchemes.unreadable('truncated block')
+          ..hasV1Signature = false,
+      ));
+      expect(ids, isNot(contains('ANDROID-UNSIGNED')));
+      expect(ids, isNot(contains('ANDROID-V1-ONLY-SIGNING')));
     });
   });
 

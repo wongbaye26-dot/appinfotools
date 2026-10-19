@@ -437,6 +437,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           entitlements:
               parsed.signature?.profile.value?.entitlements ?? const [],
           provisioningProfilePresent: parsed.signature?.profile.value != null,
+          // 覆盖率分母：容器里**一共**有多少个含代码的嵌套 bundle。
+          // 不传的话审计只能用「传进来几个」当分母，于是 28 个 bundle 只解析
+          // 24 个也会显示成「25/25 已覆盖」。
+          nestedBundleTotal: parsed.nestedBundleTotal,
           // 阶段 5b：嵌套 bundle 的可执行文件也参与扫描。
           // 只传**真的拿到了字节**的那些；没拿到的一并传过去（`bytes` 为
           // null），让审计把它们算进「未覆盖」—— 静默省略会让覆盖率虚高。

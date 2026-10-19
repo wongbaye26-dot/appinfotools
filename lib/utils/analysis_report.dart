@@ -782,6 +782,7 @@ class AnalysisReport {
             : f.android_native_exec_stack_many(
                 count: count, names: names, more: more),
       'android.v1_only_signing' => f.android_v1_only_signing,
+      'android.unsigned' => f.android_unsigned,
       'android.webview_bridge' => f.android_webview_bridge,
       'android.permission_without_api' =>
         names == null ? null : f.android_permission_without_api(names: names),
@@ -860,6 +861,7 @@ class AnalysisReport {
       'android.third_party_sdk.review' => f.android_third_party_sdk_review,
       'android.native_exec_stack.review' => f.android_native_exec_stack_review,
       'android.v1_only_signing.review' => f.android_v1_only_signing_review,
+      'android.unsigned.review' => f.android_unsigned_review,
       'android.webview_bridge.review' => f.android_webview_bridge_review,
       'android.permission_without_api.review' =>
         f.android_permission_without_api_review,
@@ -971,6 +973,7 @@ class AnalysisReport {
         f.android_native_exec_stack_limitation,
       'android.v1_only_signing.limitation' =>
         f.android_v1_only_signing_limitation,
+      'android.unsigned.limitation' => f.android_unsigned_limitation,
       'android.webview_bridge.limitation' =>
         f.android_webview_bridge_limitation,
       'android.permission_without_api.limitation' =>
@@ -1379,6 +1382,9 @@ class AnalysisReport {
       'ios.executable.unscanned' => (count == null || names == null)
           ? null
           : n.ios_executable_unscanned(count: count, names: names),
+      'ios.executables.truncated' => (count == null || total == null)
+          ? null
+          : n.ios_executables_truncated(count: count, total: total),
       'ios.macho.scan_summary' =>
         bytes == null ? null : n.ios_macho_scan_summary(bytes: bytes),
       'ios.privacy_info.unparsable' =>
@@ -1610,6 +1616,8 @@ class AnalysisReport {
     final n = t.coverage.notes;
     final count = entry.noteArgs['count'];
     final reason = entry.noteArgs['reason'];
+    // 「N 个里有多少没覆盖」这类说明要用总数。
+    final total = entry.noteArgs['total'];
 
     final String? localized = switch (code) {
       'android.manifest.unparsed' =>
@@ -1636,11 +1644,15 @@ class AnalysisReport {
           ? null
           : n.android_native_symbols_skipped_for_budget(count: count),
       'android.arsc.missing' => n.android_arsc_missing,
+      'android.arsc.empty' => n.android_arsc_empty,
       'ios.info_plist.unparsed' => n.ios_info_plist_unparsed,
       'ios.usage_descriptions.not_read' => n.ios_usage_descriptions_not_read,
       'ios.privacy_manifest.absent' => n.ios_privacy_manifest_absent,
       'ios.executables.unscanned' =>
         count == null ? null : n.ios_executables_unscanned(count: count),
+      'ios.executables.truncated' => (count == null || total == null)
+          ? null
+          : n.ios_executables_truncated(count: count, total: total),
       'ios.macho.no_content' => n.ios_macho_no_content,
       'ios.macho.truncated' => n.ios_macho_truncated,
       'ios.native_symbols.no_symtab' => n.ios_native_symbols_no_symtab,

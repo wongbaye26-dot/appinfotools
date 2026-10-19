@@ -76,6 +76,18 @@ class IpaAnalysis {
   /// 全解析会让「打开一个包」变成一次重型操作，而用户关心的是主应用。
   final List<IosNestedBinary> nestedBinaries;
 
+  /// 容器里**含代码**（framework / app extension / watch app / 嵌套 app）的
+  /// bundle 总数，不含主应用。
+  ///
+  /// 与 [nestedBinaries]`.length` 不是一回事：后者是**实际解析**的个数，受
+  /// [IpaAnalysisReader.maxNestedBinaries] 限制。覆盖率的分母必须用这个数 ——
+  /// 用后者会把「24 个里扫了 24 个」显示成「全包已覆盖」，而实测的真实样本
+  /// （`sun_signed.ipa`）有 27 个含代码的嵌套 bundle，只解析了 24 个。
+  ///
+  /// 手工构造的 [IpaAnalysis]（测试、降级路径）可以留 `0`：消费方会取
+  /// `max(这个值, nestedBinaries.length)`，不会因此算出比实际更小的分母。
+  final int nestedBundleTotal;
+
   final List<AnalysisDiagnostic> diagnostics;
 
   const IpaAnalysis({
@@ -89,6 +101,7 @@ class IpaAnalysis {
     this.signature,
     this.authorization,
     this.nestedBinaries = const [],
+    this.nestedBundleTotal = 0,
     this.diagnostics = const [],
   });
 
@@ -295,7 +308,7 @@ class IpaAnalysisReader {
       }
     }
 
-    final nestedBinaries = _readNestedBinaries(
+    final nested = _readNestedBinaries(
       archive,
       container,
       mainApp,
@@ -328,7 +341,10 @@ class IpaAnalysisReader {
       executableBytes: executableBytes,
       signature: signature,
       authorization: authorization,
-      nestedBinaries: nestedBinaries,
+      nestedBinaries: nested.binaries,
+      // 分母：容器里**一共有**多少个装代码的 bundle。
+      // 用 `nested.binaries.length` 会把截断掉的那些悄悄从分母里去掉。
+      nestedBundleTotal: nested.total,
       diagnostics: diagnostics,
     );
   }
@@ -345,7 +361,12 @@ class IpaAnalysisReader {
     return '${bundle.path}/$name';
   }
 
-  static List<IosNestedBinary> _readNestedBinaries(
+  /// 解析嵌套 bundle 的 Mach-O。
+  ///
+  /// 返回值里的 [total] 是**候选总数**（容器里含代码的 bundle 个数，不含主
+  /// 应用），[binaries] 是实际解析的那些 —— 两者在触发数量上限时不同。
+  /// 覆盖率的分母必须用 `total`：截断是「我们没看」，不能从分母里消失。
+  static ({List<IosNestedBinary> binaries, int total}) _readNestedBinaries(
     Archive archive,
     IpaContainer container,
     IosBundle mainApp,
@@ -447,7 +468,7 @@ class IpaAnalysisReader {
       ));
     }
 
-    return result;
+    return (binaries: result, total: candidates.length);
   }
 
   /// 读一个条目，超过 [maxBytes] 时返回 `null`（**逐块中止，不整条分配**）。

@@ -135,7 +135,36 @@
     "parser_engine_aapt2": "aapt2 (외부 도구, 호환성 우수)",
     "parser_engine_builtin": "내장 (Dart, 빠름)",
     "enable_security_audit": "보안 감사 활성화",
-    "title_width_sample": "제목 너비 미리보기용 예시 문구입니다. 길어질 수 있습니다…"
+    "title_width_sample": "제목 너비 미리보기용 예시 문구입니다. 길어질 수 있습니다…",
+    "system_icon": {
+      "title": "시스템 파일 아이콘",
+      "hint_off": "탐색기에서 각 APK / IPA 에 고유한 앱 아이콘을 표시합니다",
+      "hint_on": "탐색기가 설치 패키지 내용에 맞는 실제 앱 아이콘을 표시하고 있습니다",
+      "state_usable": "사용 중",
+      "state_not_registered": "아직 사용하지 않음",
+      "state_dll_missing": "이 설치에는 썸네일 처리기가 없습니다",
+      "state_helper_missing": "이 설치에는 아이콘 추출기가 없습니다",
+      "state_path_mismatch": "다른 설치 위치를 가리키도록 등록되어 있습니다",
+      "state_unknown": "상태를 가져올 수 없습니다",
+      "state_path_mismatch_detail": "레지스트리에는 {registered} 로 기록되어 있지만 현재 이 프로그램은 {current} 에 있습니다. \"다시 등록\"으로 고칠 수 있으며, 그 전까지는 아이콘이 표시되지 않습니다.",
+      "enable": "사용",
+      "disable": "사용 안 함",
+      "refresh": "새로 고침",
+      "refresh_done": "탐색기에 파일 연결을 다시 읽으라고 알렸습니다",
+      "enabled_ok": "사용 설정했습니다 — APK 나 IPA 가 있는 폴더를 열어 확인하십시오",
+      "disabled_ok": "사용 해제했습니다 — 탐색기는 일반 파일 아이콘으로 돌아갑니다",
+      "failed": "작업 실패: {reason}",
+      "extensions_title": "확장자별",
+      "ext_registered": "등록됨",
+      "ext_missing": "등록 안 됨",
+      "limitations": "알려진 제한",
+      "limits": "런처 아이콘이 비트맵(PNG / WebP)인 앱만 지원합니다. adaptive-icon XML 만 제공하는 APK 는 일반 파일 아이콘으로 돌아갑니다. 작은 아이콘, 목록, 자세히 보기는 공통 파일 아이콘 그대로이며, 이 버전은 썸네일만 지원합니다.",
+      "diagnostics": "진단 정보",
+      "diag_dll": "처리기 DLL: {path}",
+      "diag_helper": "아이콘 추출기: {present}",
+      "diag_yes": "있음",
+      "diag_no": "없음"
+    }
   },
   "signature": {
     "status_verified": "서명이 검증되었습니다",
@@ -468,7 +497,8 @@
       "android_native_hardening_some_without_relro": "{total}개 중 {count}개 네이티브 라이브러리에 RELRO 가 없습니다. 정당한 빌드 선택(예: Flutter 의 libapp.so)이며, 그렇지 않으면 모든 Flutter 앱이 해당되므로 지적으로 보고하지 않습니다",
       "android_container_dex_in_native_library": "{name}: 내용이 DEX 바이트코드이며 네이티브 라이브러리가 아닙니다",
       "android_sdk_inventory_no_dex": "DEX 내용이 제공되지 않아 서드파티 SDK 목록을 만들지 않았습니다",
-      "android_sdk_inventory_incomplete": "DEX {truncated}개가 잘렸고 {failed}개를 읽지 못했습니다. 해당 영역에만 있는 SDK 는 목록에 포함되지 않습니다"
+      "android_sdk_inventory_incomplete": "DEX {truncated}개가 잘렸고 {failed}개를 읽지 못했습니다. 해당 영역에만 있는 SDK 는 목록에 포함되지 않습니다",
+      "ios_executables_truncated": "{count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중). 따라서 해당 실행 파일은 API 단서 스캔도, 위의 커버리지 집계도 되지 않았습니다."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -642,7 +672,10 @@
       "android_native_exec_stack_review": "-z execstack 없이 다시 빌드하세요(NDK 기본값은 실행 불가 스택입니다). 서드파티라면 수정된 빌드를 요청하세요.",
       "android_third_party_sdk": "코드에서 서드파티 서비스 SDK {count}개를 찾았습니다: {names}. 이 라이브러리들은 각자의 서버로 데이터를 전송합니다. 이 목록은 정보이며 위험 판정이 아닙니다.",
       "android_third_party_sdk_limitation": "클래스 이름 접두사만 비교하며, 대상은 이 카탈로그에 수록된 서비스 SDK 뿐입니다. 기본 라이브러리(HTTP 클라이언트, JSON, UI, 애니메이션)는 거의 모든 앱에 있으므로 의도적으로 제외했습니다. 참조 수는 해당 접두사를 가진 클래스 이름 개수이며 호출 횟수가 아닙니다. 난독화되거나 재패키징된 SDK 는 인식하지 못합니다. 실제로 읽은 DEX 만 대상입니다(개수는 커버리지 참조).",
-      "android_third_party_sdk_review": "각 SDK 가 앱의 개인정보 처리방침과 일치하는지 확인하세요. 어떤 데이터를 수집하고 어디로 보내는지. 실제로 필요 없는 것은 제거하세요."
+      "android_third_party_sdk_review": "각 SDK 가 앱의 개인정보 처리방침과 일치하는지 확인하세요. 어떤 데이터를 수집하고 어디로 보내는지. 실제로 필요 없는 것은 제거하세요.",
+      "android_unsigned": "이 아카이브에는 서명 자료가 전혀 없습니다. v2 이상 서명 블록도 없고, META-INF 안에 짝을 이루는 .SF와 서명 블록도 없습니다. 이 상태의 패키지는 그대로 설치할 수 없으며, 보통 빌드 산출물이거나 서명이 제거된 중간 산출물입니다.",
+      "android_unsigned_limitation": "여기서는 아카이브 구조에 서명 자료가 없다는 사실만 보고합니다. 악성 여부를 판단하지 않으며 apksigner를 대체하지도 않습니다. 서명 유효성은 apksigner만 판단할 수 있습니다.",
+      "android_unsigned_review": "이 파일의 출처를 확인하십시오. 배포용이라면 설치 전에 v2/v3로 다시 서명하십시오. 서명된 패키지에서 추출한 것이라면 원래 서명은 그 과정에서 사라진 것입니다."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",
@@ -731,7 +764,9 @@
       "ios_native_symbols_unreadable": "{count}개의 이미지에서 심볼 테이블이 범위를 벗어났습니다",
       "ios_privacy_manifest_absent": "이 번들에 PrivacyInfo.xcprivacy가 없습니다 (iOS 17 이전에는 필수가 아닙니다)",
       "ios_signature_separate_step": "서명 검증은 codesign으로 별도 수행합니다. 서명 카드를 참고하세요",
-      "ios_usage_descriptions_not_read": "Info.plist를 해석하지 못해 용도 설명을 읽지 않았습니다"
+      "ios_usage_descriptions_not_read": "Info.plist를 해석하지 못해 용도 설명을 읽지 않았습니다",
+      "android_arsc_empty": "리소스 테이블은 파싱되었지만 항목이 하나도 없습니다",
+      "ios_executables_truncated": "추가로 {count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중): 해당 실행 파일은 이번 스캔 범위에 없습니다"
     },
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",

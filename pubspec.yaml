@@ -51,6 +51,11 @@ dependencies:
     path: packages/analysis_model
   ipa_parser:
     path: packages/ipa_parser
+  # 无界面图标提取器：Windows 缩略图处理器调它的 AOT 产物。
+  # 主应用**不直接依赖**它的提取逻辑（界面用 AdaptiveIconRenderer，
+  # 能合成自适应图标），但一致性测试要拿两者对照（规格 5.2）。
+  app_icon_extractor:
+    path: packages/app_icon_extractor
 
 dev_dependencies:
   flutter_test:

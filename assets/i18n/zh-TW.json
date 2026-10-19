@@ -157,7 +157,36 @@
     "file_association_hint_registered": "已登記為候選開啟方式；設為預設需要在系統「預設應用程式」裡選擇",
     "file_association_hint_register_failed": "登記失敗，請用完整安裝包，或改用「開啟設定」手動指定",
     "file_association_register_ok": "已登記，現在可以在「開啟方式」裡選到本程式",
-    "file_association_register_failed_hint": "登記失敗。請確認使用的是安裝版，或手動在「開啟方式」裡指定程式"
+    "file_association_register_failed_hint": "登記失敗。請確認使用的是安裝版，或手動在「開啟方式」裡指定程式",
+    "system_icon": {
+      "title": "系統檔案圖示",
+      "hint_off": "在檔案總管中為每個 APK / IPA 顯示它自己的應用程式圖示",
+      "hint_on": "檔案總管已依安裝包內容顯示真實應用程式圖示",
+      "state_usable": "已啟用",
+      "state_not_registered": "尚未啟用",
+      "state_dll_missing": "本次安裝缺少縮圖處理器",
+      "state_helper_missing": "本次安裝缺少圖示擷取器",
+      "state_path_mismatch": "註冊指向的是另一個安裝位置",
+      "state_unknown": "狀態不可用",
+      "state_path_mismatch_detail": "登錄檔裡寫的是 {registered}，而目前這個程式在 {current}。按「重新註冊」可以修正；在那之前圖示不會出現。",
+      "enable": "啟用",
+      "disable": "停用",
+      "refresh": "重新整理",
+      "refresh_done": "已通知檔案總管重新讀取檔案關聯",
+      "enabled_ok": "已啟用 —— 開啟一個放有 APK 或 IPA 的資料夾看看",
+      "disabled_ok": "已停用 —— 檔案總管會退回一般檔案圖示",
+      "failed": "操作失敗：{reason}",
+      "extensions_title": "依副檔名",
+      "ext_registered": "已註冊",
+      "ext_missing": "未註冊",
+      "limitations": "已知限制",
+      "limits": "只涵蓋啟動圖示是點陣圖（PNG / WebP）的應用程式。若某個 APK 只提供 adaptive-icon XML，會退回一般檔案圖示。小圖示、清單與詳細資料檢視仍是一般的檔案圖示 —— 本版只做縮圖。",
+      "diagnostics": "診斷資訊",
+      "diag_dll": "處理器 DLL：{path}",
+      "diag_helper": "圖示擷取器：{present}",
+      "diag_yes": "存在",
+      "diag_no": "缺少"
+    }
   },
   "signature": {
     "status_verified": "簽名驗證通過",
@@ -626,9 +655,12 @@
       "ios_push_sandbox": "描述檔宣告了 aps-environment=\"development\"：推送綁定的是沙箱 APNs 環境，說明這是開發簽章的套件。",
       "ios_push_sandbox_limitation": "APNs 環境是簽章描述檔的屬性，不是應用程式邏輯；散佈版用的是 \"production\"。",
       "ios_push_sandbox_review": "確認這個套件是用於測試的；正式發佈應使用 aps-environment=\"production\" 的簽章。",
-      "android_v1_only_signing": "這個 APK 沒有 v2 及更高版本的簽章區塊：只可能有 v1（JAR）簽章。v1 只保護每個項目的摘要，不保護封裝結構，因此往套件裡塞入額外項目不會讓簽章失效。",
+      "android_v1_only_signing": "這個 APK 沒有 v2 及更高版本的簽章區塊：只有 v1（JAR）簽章（META-INF 裡存在配對的 .SF 與簽章區塊）。v1 只保護每個項目的摘要，不保護封裝結構，因此往套件裡塞入額外項目不會讓簽章失效。",
       "android_v1_only_signing_limitation": "這裡只報告封裝結構裡存在哪幾套簽章方案，不驗證任何簽章，也不代表這個套件被人改動過。只有 v1 的套件完全可以是合法有效的簽章 —— 簽章是否有效只能由 apksigner 判定。",
       "android_v1_only_signing_review": "使用 v2（需要輪換金鑰時再加 v3）重新簽章 —— 現代建置工具預設就會這樣做。如果這個套件只有 v1 簽章，核實一下它的來源。",
+      "android_unsigned": "這個封裝裡沒有任何簽章材料：既沒有 v2+ 簽章區塊，META-INF 裡也沒有配對的 .SF 與簽章區塊。這種狀態的套件無法直接安裝，通常是建置產物，或者是被剝掉簽章的中間件。",
+      "android_unsigned_limitation": "這裡只報告封裝結構裡缺少簽章材料，不判斷這個套件是否惡意，也不能替代 apksigner —— 簽章是否有效只能由它判定。",
+      "android_unsigned_review": "核實這個檔案的來源。如果要散佈，安裝前請用 v2/v3 重新簽章；如果它是從已簽章的套件裡解出來的，原簽章在解包過程中已經遺失。",
       "android_webview_bridge": "有 JavaScript 橋暴露給了 WebView 內容（addJavascriptInterface）：那個 WebView 裡執行的指令碼可以呼叫被注入的物件。驗證碼、統計、社交分享這類 SDK 普遍如此，所以出現它不代表應用程式自己定義了橋。",
       "android_webview_bridge_limitation": "這裡報告的是「用了這個 API」，不是「這條路徑能從不可信內容到達」：WebView 載入的 URL 與導覽白名單都未做判定。真實應用裡絕大多數命中來自第三方 SDK（驗證碼、統計、社交分享）——把它當成應用程式自己的設計之前，先看證據裡的呼叫點。",
       "android_webview_bridge_review": "除非確實需要，否則移除 JavaScript 橋；否則應把導覽限制在可信來源白名單內，並且不要把 http:// 或深層連結參數直接載入那個 WebView。",
@@ -809,7 +841,8 @@
       "android_native_hardening_some_without_relro": "{total} 個原生函式庫中有 {count} 個缺少 RELRO；這沒有作為發現項報出，因為它是合法的建置選擇（例如 Flutter 的 libapp.so），否則所有 Flutter 應用程式都會被報一條",
       "android_container_dex_in_native_library": "{name}：內容是 DEX 位元碼，不是原生函式庫",
       "android_sdk_inventory_no_dex": "沒有提供 DEX 內容，因此未建立第三方 SDK 清單",
-      "android_sdk_inventory_incomplete": "{truncated} 個 DEX 被截斷、{failed} 個讀不出來；只出現在那些區域的 SDK 不會被列出"
+      "android_sdk_inventory_incomplete": "{truncated} 個 DEX 被截斷、{failed} 個讀不出來；只出現在那些區域的 SDK 不會被列出",
+      "ios_executables_truncated": "有 {count} 個嵌套 bundle 完全沒有解析（共 {total} 個含程式碼的 bundle），因此它們的可執行檔既沒有做 API 線索掃描，也沒有算進上面的覆蓋率。"
     },
     "findings": "發現項",
     "sdk_categories": {
@@ -892,7 +925,9 @@
       "ios_native_symbols_no_symtab": "沒有可讀符號表的 Mach-O 映像",
       "ios_native_symbols_unreadable": "{count} 個映像的符號表越界",
       "ios_native_symbols_stripped": "部分映像沒有 LC_SYMTAB（符號表被剝離）",
-      "ios_signature_separate_step": "簽名驗證由 codesign 單獨執行，見簽名資訊卡片"
+      "ios_signature_separate_step": "簽名驗證由 codesign 單獨執行，見簽名資訊卡片",
+      "ios_executables_truncated": "另有 {count} 個嵌套 bundle 完全未解析（共 {total} 個含程式碼的 bundle）：它們的可執行檔不在本次掃描範圍內",
+      "android_arsc_empty": "資源表解析成功，但裡面沒有任何項目"
     }
   },
   "diff": {

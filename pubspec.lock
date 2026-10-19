@@ -55,6 +55,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  app_icon_extractor:
+    dependency: "direct main"
+    description:
+      path: "packages/app_icon_extractor"
+      relative: true
+    source: path
+    version: "0.1.0"
   archive:
     dependency: "direct main"
     description:

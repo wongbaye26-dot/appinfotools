@@ -11,6 +11,8 @@ import 'package:apk_info_tool/utils/app_links.dart';
 import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
+import 'package:apk_info_tool/utils/system_thumbnail.dart';
+import 'package:apk_info_tool/widgets/system_icon_section.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/tool_downloader.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
@@ -40,11 +42,37 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   /// 方法通道既浪费，也会让副标题在「已登记 / 未登记」之间闪。
   bool? _fileAssociationRegistered;
 
+  /// 系统文件图标（Windows 缩略图处理器）的当前状态。
+  ///
+  /// 与 [_fileAssociationRegistered] 同样**不在 build 里查**：由
+  /// [initState] 查一次，之后只在用户操作后更新。默认是 `unknown`
+  /// （全 false）—— 「没查」不能显示成「可用」。
+  SystemThumbnailStatus _thumbnailStatus =
+      const SystemThumbnailStatus.unknown();
+
+  /// 正在执行注册 / 注销 / 刷新，用于禁用按钮并显示进度。
+  ///
+  /// 不加这个的话，连点两次「启用」会并发写注册表 —— 第二次读到的状态
+  /// 取决于第一次写到哪里，结果不可预测。
+  bool _thumbnailBusy = false;
+
   @override
   void initState() {
     super.initState();
     _maxLinesController.text = ref.read(
         uiConfigStateProvider.select((value) => value.textMaxLines.toString()));
+    _loadThumbnailStatus();
+  }
+
+  /// 首次查询缩略图处理器状态。
+  ///
+  /// 用 `unawaited` 语义（不 await）：设置页不该因为一次方法通道往返而
+  /// 延迟首帧。查完 `setState` 刷新即可。
+  Future<void> _loadThumbnailStatus() async {
+    if (!SystemThumbnailManager.isSupported) return;
+    final status = await SystemThumbnailManager.getStatus();
+    if (!mounted) return;
+    setState(() => _thumbnailStatus = status);
   }
 
   void openFilePicker(ValueChanged<String> cb) async {
@@ -620,6 +648,67 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     }
   }
 
+  /// 「系统文件图标」区块（Windows）。
+  ///
+  /// 实体在 [SystemIconSection] —— 抽出去是为了能在任意平台真实渲染与驱动：
+  /// 留在本文件里时整块被 `Platform.isWindows` 门控，测试只能跳过，
+  /// 那是「没验证」而不是「通过」。
+  Widget _buildSystemIconSection() {
+    return SystemIconSection(
+      status: _thumbnailStatus,
+      busy: _thumbnailBusy,
+      onToggle: _toggleThumbnailProvider,
+      onRefresh: _refreshThumbnailAssociations,
+    );
+  }
+
+  /// 启用 / 停用。
+  ///
+  /// 用返回的**实际状态**刷新界面，而不是假定操作成功 ——
+  /// 原生侧会拒绝「DLL 不在却写注册表」这类请求，这里必须如实反映。
+  Future<void> _toggleThumbnailProvider() async {
+    if (_thumbnailBusy) return;
+    setState(() => _thumbnailBusy = true);
+    final wasUsable = _thumbnailStatus.usable;
+    final next = wasUsable
+        ? await SystemThumbnailManager.unregister()
+        : await SystemThumbnailManager.register();
+    if (!mounted) return;
+    setState(() {
+      _thumbnailStatus = next;
+      _thumbnailBusy = false;
+    });
+
+    // 提示语按**结果**给，不按意图给：点了启用但 `usable` 仍是 false 时，
+    // 说「已启用」就是虚假成功。
+    final String message;
+    if (next.usable) {
+      message = t.settings.system_icon.enabled_ok;
+    } else if (wasUsable) {
+      message = t.settings.system_icon.disabled_ok;
+    } else {
+      message = t.settings.system_icon
+          .failed(reason: SystemIconSection.stateLabel(next, t));
+    }
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// 通知 Shell 重新读取关联（不清缓存，见 [SystemThumbnailManager] 注释）。
+  Future<void> _refreshThumbnailAssociations() async {
+    if (_thumbnailBusy) return;
+    setState(() => _thumbnailBusy = true);
+    final next = await SystemThumbnailManager.refreshCache();
+    if (!mounted) return;
+    setState(() {
+      _thumbnailStatus = next;
+      _thumbnailBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(t.settings.system_icon.refresh_done)),
+    );
+  }
+
   Widget _buildAppearanceSection() {
     final themeColor =
         ref.watch(themeManagerProvider.select((value) => value.themeColor));
@@ -1011,6 +1100,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           const SizedBox(height: 18),
           _buildEnvironmentSection(),
           _buildFeaturesSection(),
+          // 只在 Windows 出现：其它平台没有 Shell 缩略图处理器这个概念，
+          // 显示一个永远不可用的开关比不显示更糟（规格 8.2 同一条原则）。
+          if (SystemThumbnailManager.isSupported) _buildSystemIconSection(),
           _buildAppearanceSection(),
           _buildDebugSection(),
           _buildAboutSection(),

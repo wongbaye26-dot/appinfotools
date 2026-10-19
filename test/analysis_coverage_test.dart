@@ -123,16 +123,18 @@ void main() {
       required List<DexBytes> dexEntries,
       bool manifestParsed = true,
       List<NativeLibraryBytes> nativeEntries = const [],
+      // 生产调用方（`parse_task` / `_auditExtractedBaseApk`）总会传实际条目数。
+      // 这里显式给一个值，而不是靠 `meta.locales` 去凑 —— 那正是旧实现的
+      // 缺陷：覆盖量由「内容的形状」推断，而不是由读取方的结果。
+      int? arscEntryCount = 5,
     }) =>
         AndroidSecurityAudit.audit(
-          meta: ApkMeta()
-            ..permissionRequests = const []
-            ..locales = const ['en']
-            ..densities = const [240],
+          meta: ApkMeta()..permissionRequests = const [],
           dexEntries: dexEntries,
           nativeEntries: nativeEntries,
           manifestParsed: manifestParsed,
           manifestFailureReason: manifestParsed ? null : 'manifest truncated',
+          arscEntryCount: arscEntryCount,
         );
 
     test('结构正常的 DEX 下各维度都是 covered', () {
@@ -159,6 +161,48 @@ void main() {
           reason: '$id 应当是 covered：${coverage.entry(id)}',
         );
       }
+      expect(coverage.entry('android.arsc')!.covered, 5);
+    });
+
+    test('资源表覆盖量用实际条目数，不看 locales / densities', () {
+      // 旧实现：`meta.locales.length + meta.densities.length` 当覆盖量。
+      // 一个单语言、单密度的正常应用两项都空，于是「已解析」被稳定地报成
+      // 「资源表缺失」—— 实测 7 个夹具全部命中。
+      final meta = ApkMeta()
+        ..permissionRequests = const []
+        ..locales = const ['en']
+        ..densities = const [240];
+      final withProxyFieldsOnly = AndroidSecurityAudit.audit(
+        meta: meta,
+        dexEntries: [DexBytes('classes.dex', _fixture('real-netprobe.dex'))],
+        // 没有传 arscEntryCount：调用方没读到资源表。
+        // 即使 meta 的 locales / densities 非空，也必须判 notCovered。
+      );
+      expect(
+        withProxyFieldsOnly.coverage.entry('android.arsc')!.status,
+        CoverageStatus.notCovered,
+        reason: 'locales / densities 不是「资源表读到了」的证据',
+      );
+
+      final singleLocale = AndroidSecurityAudit.audit(
+        meta: ApkMeta()..permissionRequests = const [],
+        dexEntries: [DexBytes('classes.dex', _fixture('real-netprobe.dex'))],
+        arscEntryCount: 3,
+      );
+      final entry = singleLocale.coverage.entry('android.arsc')!;
+      expect(entry.status, CoverageStatus.covered);
+      expect(entry.covered, 3);
+      expect(entry.noteCode, isNull);
+    });
+
+    test('解析成功但表是空的：notCovered，措辞是「空表」而不是「缺失」', () {
+      final result = auditWith(
+        dexEntries: [DexBytes('classes.dex', _fixture('real-netprobe.dex'))],
+        arscEntryCount: 0,
+      );
+      final entry = result.coverage.entry('android.arsc')!;
+      expect(entry.status, CoverageStatus.notCovered);
+      expect(entry.noteCode, 'android.arsc.empty');
     });
 
     test('没有原生库时该维度是 notApplicable，不是缺口', () {
@@ -234,6 +278,7 @@ void main() {
     SecurityAnalysisResult auditWith({
       Uint8List? bytes,
       List<IosNestedExecutableInput> nested = const [],
+      int? nestedBundleTotal,
     }) {
       final bundle = const IosBundle(
         kind: IosBundleKind.mainApp,
@@ -255,6 +300,7 @@ void main() {
         executableBytes: bytes,
         executablePath: '${bundle.path}/Example',
         nestedExecutables: nested,
+        nestedBundleTotal: nestedBundleTotal,
       );
     }
 
@@ -320,6 +366,61 @@ void main() {
       final entry = result.coverage.entry('ios.executables')!;
       expect(entry.status, CoverageStatus.partial);
       expect(entry.ratioText, '1/2');
+    });
+
+    test('被数量上限截断的嵌套 bundle 仍计入分母（不能显示成全覆盖）', () {
+      // 真实样本：28 个含代码的 bundle，只解析了 1 个传进来。
+      // 旧口径的分母是 `1 + nested.length` = 2，于是「1/2」看起来只是
+      // 「有一半没扫」；真实情况是 28 个里只碰了 1 个。
+      final result = auditWith(
+        bytes: const Utf8Encoder().convert('nothing\n'),
+        nested: const [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/Frameworks/A.framework/A',
+            bundlePath: 'Payload/Example.app/Frameworks/A.framework',
+            kind: IosBundleKind.framework,
+            bytes: null,
+          ),
+        ],
+        nestedBundleTotal: 27,
+      );
+
+      final entry = result.coverage.entry('ios.executables')!;
+      expect(entry.limit, 28, reason: '分母必须是包里一共有的可执行文件数');
+      expect(entry.status, CoverageStatus.partial);
+      expect(entry.noteCode, 'ios.executables.truncated');
+      expect(entry.noteArgs['count'], 26);
+      expect(entry.noteArgs['total'], 27);
+
+      // 截断必须**同时**进结果级限制说明 —— 只放在覆盖表里，
+      // 读「未覆盖范围」那一节的人会以为没有这件事。
+      expect(
+        result.limitations.map((l) => l.code),
+        contains('ios.executables.truncated'),
+      );
+
+      // 扫描覆盖那条发现的正文也不能再写「25 个里 25 个」。
+      final coverageFinding =
+          result.findings.firstWhere((f) => f.ruleId == 'IOS-SCAN-COVERAGE');
+      expect(coverageFinding.messageArgs['total'], 28);
+      expect(coverageFinding.messageArgs['uncovered'], 27);
+    });
+
+    test('分母不会小于实际传进来的个数（旧调用方不传 total 时）', () {
+      final result = auditWith(
+        bytes: const Utf8Encoder().convert('nothing\n'),
+        nested: const [
+          IosNestedExecutableInput(
+            path: 'Payload/Example.app/Frameworks/A.framework/A',
+            bundlePath: 'Payload/Example.app/Frameworks/A.framework',
+            kind: IosBundleKind.framework,
+            bytes: null,
+          ),
+        ],
+      );
+      final entry = result.coverage.entry('ios.executables')!;
+      expect(entry.limit, 2);
+      expect(entry.noteCode, 'ios.executables.unscanned');
     });
   });
 
@@ -551,10 +652,12 @@ void main() {
       'android.native_symbols.not_provided',
       'android.native_symbols.skipped_for_budget',
       'android.arsc.missing',
+      'android.arsc.empty',
       'ios.info_plist.unparsed',
       'ios.usage_descriptions.not_read',
       'ios.privacy_manifest.absent',
       'ios.executables.unscanned',
+      'ios.executables.truncated',
       'ios.macho.no_content',
       'ios.macho.truncated',
       'ios.native_symbols.no_symtab',
@@ -563,7 +666,7 @@ void main() {
       'ios.signature.separate_step',
     ];
 
-    /// 带参数的两个：`count` 与 `reason`。
+    /// 带参数的两个：`count` 与 `reason`（`total` 给截断那条用）。
     const codeWithCount = 'android.dex.desynced_bodies';
     const codeWithReason = 'android.manifest.unparsed';
 
@@ -575,6 +678,7 @@ void main() {
           noteArgs: {
             'count': 3,
             'reason': 'boom',
+            'total': 4,
           },
         );
 
@@ -640,7 +744,7 @@ void main() {
       expect(line, isNot(contains('ENGLISH FALLBACK')));
     });
 
-    test('维护中的语言包带齐 22 条说明，且中文确实翻译过', () {
+    test('维护中的语言包带齐全部 ${allNoteCodes.length} 条说明，且中文确实翻译过', () {
       const mustHave = ['en', 'zh-CN', 'zh-HK', 'zh-TW'];
       const mayFallback = ['ja', 'ko'];
 

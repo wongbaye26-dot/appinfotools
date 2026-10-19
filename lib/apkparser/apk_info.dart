@@ -645,6 +645,8 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       containerAnomalyNotes: [
         for (final obs in reader.scanHardeningSignals()) obs.asNote,
       ],
+      // 与内置解析路径同一个口径：资源表覆盖量用实际读到的条目数。
+      arscEntryCount: reader.arscParser?.getAllResources().length,
     );
     return result.withLimitation(const AnalysisNote(
       'android.split_apk.base_only',

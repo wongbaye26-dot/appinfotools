@@ -254,6 +254,9 @@ class ApkReader {
     if (meta.signingSchemes != null && !meta.signingSchemes!.parsed) {
       _log.warning('signing block: ${meta.signingSchemes!.failure}');
     }
+    // v1 是**另一件事**：签名块只回答「有没有 v2+」，未签名的包同样没有 v2+。
+    // 不看 META-INF 就无法把「只有 v1」与「根本没签名」分开。
+    meta.hasV1Signature = _detectV1Signature();
 
     // 2. 读取并解析 resources.arsc
     onStage?.call(ApkParseStage.resources);
@@ -430,6 +433,41 @@ class ApkReader {
     for (final entry in paths) {
       meta.iconPaths[entry.key] = entry.value;
     }
+  }
+
+  /// 归档里是否带 **v1（JAR）签名材料**。
+  ///
+  /// v1 签名由两件套构成：`META-INF/<name>.SF`（清单摘要）与
+  /// `META-INF/<name>.RSA|.DSA|.EC`（签名块）。**两件都要，且必须同名** ——
+  /// 只有一个 `.SF` 不成其为签名，随便塞一个同名块也不算。
+  ///
+  /// 只认 `META-INF/` **顶层**：平台只在那里找，`META-INF/sub/x.SF` 不生效，
+  /// 把它算进来会给出平台不认的结论。
+  ///
+  /// 返回值恒为 `true` / `false`（归档表已经打开，这个问题总能回答）。
+  bool _detectV1Signature() {
+    final files = _archive?.files ?? const [];
+    final blocks = <String>{};
+    final manifests = <String>{};
+    for (final file in files) {
+      if (!file.isFile) continue;
+      final name = file.name.toUpperCase();
+      if (!name.startsWith('META-INF/')) continue;
+      final rest = name.substring('META-INF/'.length);
+      // 顶层条目才生效。
+      if (rest.isEmpty || rest.contains('/')) continue;
+      if (rest.endsWith('.SF')) {
+        manifests.add(rest.substring(0, rest.length - 3));
+      } else if (rest.endsWith('.RSA') ||
+          rest.endsWith('.DSA') ||
+          rest.endsWith('.EC')) {
+        blocks.add(rest.substring(0, rest.lastIndexOf('.')));
+      }
+    }
+    for (final stem in manifests) {
+      if (blocks.contains(stem)) return true;
+    }
+    return false;
   }
 
   /// 读 APK Signing Block。返回 `null` 表示**没法读**（不是「没有签名」）。
