@@ -100,6 +100,36 @@ app has them, while contacts / SMS / microphone combined with upload are P2.
 - **Rename** — rename by app name, or name + version
 - **Light/dark themes** and a multilingual UI
 
+### Windows: real app icons in File Explorer
+
+`.apk` / `.ipa` files can show their own app icon in File Explorer instead of the generic
+file icon.
+
+**Off by default.** Turn it on once under Settings → System file icons. The feature
+writes a thumbnail-handler registration under the registry (per-user `HKCU`), which is
+installing something into your system — it should not happen behind your back.
+Disabling it removes exactly the two keys this app wrote; it does not touch other
+handlers or change the default app for `.apk`.
+
+The design is an in-proc COM thumbnail handler plus an out-of-process parser. Explorer
+loads the handler into itself, so the parsing must **not** run there — a crash would take
+the whole desktop down. The DLL only launches the child process (killed after 1.5 s) and
+decodes the result into a bitmap with WIC.
+
+Known boundaries, stated up front:
+
+- **Adaptive icons (`<adaptive-icon>` XML) are not supported**; such APKs fall back to the
+  file icon. It deliberately does not fall back to the foreground layer — that would show
+  a half-complete icon, which is worse than none.
+- WebP icons depend on the system decoder (built into Windows 11; Windows 10 needs the
+  WebP Image Extension from the Store). When decoding fails it falls back to the file icon.
+- Thumbnail views only (large / medium icons). List, details and small-icon views still
+  show the generic file icon.
+- **Runtime behaviour has not been verified on real hardware yet.** CI proves it compiles,
+  ships in the installer, and that the self-test binary links — but "the icon actually
+  shows up in Explorer" needs a human on Windows. Checklist:
+  `docs/plans/V2.5.0-windows-manual-acceptance.md`.
+
 ### UI languages
 
 Four languages are **fully covered**: English / 简体中文 / 繁體中文 (Taiwan) / 繁體中文 (Hong Kong).

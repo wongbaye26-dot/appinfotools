@@ -1,5 +1,66 @@
 # Changelog
 
+## 2.5.0 — 2026-10-19
+
+### Windows 系统文件图标（新增，**默认关闭**）
+
+资源管理器里，`.apk` / `.ipa` 现在可以显示各自应用的真实图标，而不是统一的文件图标。
+
+**默认不启用**：需要在「设置 → 系统文件图标」里点一次「启用」。原因是这项功能要往
+注册表写 `HKCU\Software\Classes` 下的缩略图处理器登记项——那是往系统里装东西，
+不该在用户不知情时发生。点「停用」会精确删掉我们写的那两个键，不碰别的应用。
+
+实现上是一个 **in-proc COM 缩略图处理器 DLL** + 一个**独立进程**的解析器：
+
+```
+explorer.exe
+  └─ appinfotool_thumbnail.dll        （只做转发）
+       └─ CreateProcessW ──► app_icon_extractor.exe   （纯 Dart，AOT）
+                                 └─ 读包 → 取图标字节
+       ◄── WIC 解码 ──► HBITMAP ──► Shell
+```
+
+解析必须在进程外：缩略图处理器由 Explorer 加载，任何解析崩溃都会**带崩整个桌面**。
+所以 DLL 只负责「拿路径 → 起子进程（1.5 秒超时即杀）→ 用 WIC 解码」。
+
+同时新增 `packages/app_icon_extractor`：零 Flutter 依赖的图标提取器，
+`dart compile exe` 可编成独立可执行文件。它按 density 从高到低取位图，
+支持 PNG / WebP / JPEG / GIF（不转码，交给系统 WIC 解码）。
+
+实测覆盖率：本机 31 个真实 APK + 1 个 IPA，**31/32 成功**。唯一失败的是
+一个 343 MB 的加固包（资源表里没有可用的图标条目）。
+
+### 已知限制（写在这里而不是藏起来）
+
+- **运行时行为尚未在真机验证过。** CI 证明了能编译、DLL 与 helper 都进了安装包、
+  自检程序也能链接，但「资源管理器里真的出现图标」这一条需要 Windows 上人眼看。
+  验收清单见 `docs/plans/V2.5.0-windows-manual-acceptance.md`。
+- 自适应图标（`<adaptive-icon>` XML）**不支持**：只有这类图标的 APK 会回退到文件图标。
+  不退而取前景层——那会显示一个缺了一半的图标，比没有更糟。
+- WebP 图标依赖系统解码器。Windows 11 内置；Windows 10 需要 Store 里的「WebP 图像扩展」，
+  没有时回退文件图标（不崩、不猜）。
+- 小图标 / 列表 / 详细信息视图仍是统一的文件图标——本版只做缩略图。
+- 大包首次出图慢：343 MB 的包冷启动约 0.6 秒。
+
+### 分析模块审计的三项修复
+
+- **iOS 可执行文件覆盖率不再虚报全绿。** 分母原本是「传进审计的嵌套数」，受
+  24 个的上限截断后仍显示 25/25 covered。真实样本 `sun_signed.ipa` 有 27 个含代码的
+  bundle，只解析了 24 个。现在如实带出容器里的总数，截断另出一条限制说明。
+- **`android.arsc` 不再把「已解析」报成「缺失」。** 覆盖量原本用
+  `locales.length + densities.length` 这个代理指标，单语言单密度的正常应用两项都空，
+  于是被稳定地报成「资源表缺失」。
+- **`ANDROID-V1-ONLY-SIGNING` 不再与「未签名」混淆。** 判据改为检查
+  `META-INF/` 里是否真有 `.SF` + 签名块两件套，并新增 `ANDROID-UNSIGNED` 覆盖
+  「两者都没有」的情况。规则数 18 → 19。
+
+### 质量
+
+- 根测试 1,537 → **1,567**；五个包的测试合计 357。
+- 新增 `packages/app_icon_extractor`（25 条测试）。
+- 新增夹具 `icon-png.apk` / `icon-png-alt.apk` / `icon-adaptive.apk`，
+  全部由 `aapt2 link` 生成（`tool/make_icon_fixtures.sh` 可复现），不手拼字节。
+
 ## 2.4.16 — 2026-10-19
 
 ### 界面
