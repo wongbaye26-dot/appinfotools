@@ -1452,10 +1452,21 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
     relationship: note.fallback,
     relationshipCode: note.code,
     relationshipArgs: note.args,
-    limitation: 'The association comes from multiple markers co-occurring, '
-        'not from call-graph analysis; reflection, dynamic loading and '
-        'hardening may all make the real path different.',
-    limitationCode: 'android.rule_c.limitation',
+    // 找到调用链之后，再说「不是调用图分析」就是**说错了** —— 那正是它。
+    limitation: note.hops < 1
+        ? 'The association comes from multiple markers co-occurring, not '
+            'from call-graph analysis; reflection, dynamic loading and '
+            'hardening may all make the real path different.'
+        : 'The chain comes from the call graph (shortest path, '
+            '${note.hops} hop(s)), which is method-level only: the arguments '
+            'passed along the chain are not tracked, so "the value flows from '
+            'one to the other" is still unproven.',
+    limitationCode: note.hops < 1
+        ? 'android.rule_c.limitation'
+        : (note.graphTruncated
+            ? 'android.rule_c.limitation_graph_truncated'
+            : 'android.rule_c.limitation_graph'),
+    limitationArgs: {'hops': '${note.hops}'},
     recommendation: 'Review manually first; you can capture and verify '
         'the actual outbound content in an isolated environment '
         '(requires dynamic testing, not provided in this version).',
@@ -1839,6 +1850,9 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
 
   /// 调用链路径（`A → X → B`），整包层面与同方法体时为 `null`。
   String? path,
+
+  /// 调用图是否因上限被截断（链路可能因此找不到）。
+  bool graphTruncated,
 }) coOccurrenceNote(
   DexMethodScanResult scan,
   List<CodeReference> ocrReferences,
@@ -1864,6 +1878,7 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
         caller: null,
         hops: chain.hops,
         path: chain.path,
+        graphTruncated: scan.deepGraphTruncated,
       );
     }
     return (
@@ -1879,6 +1894,7 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
       caller: null,
       hops: -1,
       path: null,
+      graphTruncated: scan.deepGraphTruncated,
     );
   }
   return (
@@ -1895,5 +1911,6 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
     caller: occurrence.callerDisplayName,
     hops: 0,
     path: null,
+    graphTruncated: scan.deepGraphTruncated,
   );
 }

@@ -708,7 +708,14 @@
       "android_deeplink_review": "Check that each scheme handler validates its input (host, path, parameters) before acting on it, and that the target component is the one you intended to expose.",
       "android_deeplink_limitation": "Only the scheme is listed. Whether the target component validates the incoming host, path and parameters cannot be determined from the manifest — that would need the code.",
       "android_cert_pinning": "The app declares certificate pinning for {count} domain(s): {domains}. This is what the configuration declares — whether the pins match the served certificate, and whether an expiration date has already passed, cannot be determined statically.",
-      "android_cert_pinning_review": "Keep the pin set current (rotate before the expiration date) and make sure at least one backup pin is present — a pin set with a single pin will brick networking when the certificate rotates."
+      "android_cert_pinning_review": "Keep the pin set current (rotate before the expiration date) and make sure at least one backup pin is present — a pin set with a single pin will brick networking when the certificate rotates.",
+      "android_rule_c_limitation_graph": "The chain comes from the call graph (shortest path, {hops} hop(s)), which is method-level only: the arguments passed along the chain are not tracked, so \"the value flows from one to the other\" is still unproven.",
+      "android_rule_c_limitation_graph_truncated": "The chain comes from the call graph (shortest path, {hops} hop(s)), but the graph was truncated at the edge cap — longer paths may exist that were not found. It is method-level only: the arguments passed along the chain are not tracked.",
+      "ios_reference_tables": "Decoded {classes} class reference(s) and {selectors} selector reference(s) from __objc_classrefs / __objc_selrefs. These are pointers the code actually uses, not words that happen to appear in the binary.",
+      "ios_reference_tables_no_action": "No action needed: this entry exists so that other findings can say \"the code references this class\" instead of \"the string appears somewhere\".",
+      "ios_reference_tables_limitation": "Only the main slice of each executable is decoded. Pointers in ARM64E binaries (PAC-authenticated formats) are not resolved — a wrong decode would look plausible but be garbage, so it is reported as unsupported instead.",
+      "android_packer": "This package carries the native libraries of a known hardening packer: {names}. Packed apps load the real DEX at runtime, so the DEX- and string-based findings in this report may be incomplete — \"not found\" here means \"not visible in the file\", not \"does not exist\".",
+      "android_packer_review": "Treat DEX-based conclusions on this package as a lower bound. For a definitive answer the app has to be run and its loaded DEX dumped — outside what this tool does."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -884,7 +891,8 @@
       "ios_executables_truncated": "{count} nested bundle(s) were not parsed at all (of {total} bundles that contain code), so their executables were neither scanned for API clues nor counted in the coverage figures above.",
       "android_signing_block_unreadable": "The APK Signing Block could not be read ({reason}): the v2+ signature schemes are unknown, so \"no signature block found\" is not a conclusion this run can make. This is not a verdict that the signature is invalid.",
       "ios_permission_request_no_methname": "No executable had a readable __objc_methname section, so active permission requests could not be determined. This is not a statement that the app requests no permissions.",
-      "android_provider_exposed": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence."
+      "android_provider_exposed": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence.",
+      "ios_reference_tables_unsupported": "Class / selector reference tables could not be decoded ({reason}), so \"the code references this class\" cannot be distinguished from \"the string appears somewhere\"."
     },
     "findings": "Findings",
     "sdk_categories": {

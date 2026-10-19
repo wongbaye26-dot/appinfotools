@@ -117,6 +117,24 @@ class DexMethodScanResult {
   /// 同一方法体内出现多个标记的位置（按调用者稳定排序）。
   final List<CodeCoOccurrence> coOccurrences;
 
+  /// 调用方方法**下标** → 它方法体内命中的标记 id。
+  ///
+  /// 深链（3 跳以上）要用整数下标建图：字符串键在千万级调用点上会吃掉
+  /// 几百 MB，而且每次插入都要拼串。
+  final Map<int, Set<String>> markerIndices;
+
+  /// 下标 → 方法显示名（只覆盖出现在图里的方法）。
+  final Map<int, String> indexNames;
+
+  /// 完整调用图：调用方下标 → 被调用方下标。
+  ///
+  /// **只在两组标记都存在时才建**（见 `scan` 的 `deepChainFrom` / `deepChainTo`），
+  /// 其余情况为空 —— 建图要再遍历一遍字节码。
+  final Map<int, List<int>> deepEdges;
+
+  /// 调用图是否因上限被截断。
+  final bool deepGraphTruncated;
+
   /// 每个调用方方法体内命中的标记：调用方 → 标记 id。
   ///
   /// `coOccurrences` 只收「同一个方法体里命中 **2 个以上**标记」的方法，
@@ -140,6 +158,10 @@ class DexMethodScanResult {
   final Map<String, Set<String>> edgesFromMarkerCallers;
 
   const DexMethodScanResult({
+    this.markerIndices = const {},
+    this.indexNames = const {},
+    this.deepEdges = const {},
+    this.deepGraphTruncated = false,
     this.markersByCaller = const {},
     this.callersOfMarkerMethods = const {},
     this.edgesFromMarkerCallers = const {},
@@ -208,12 +230,80 @@ class DexMethodScanResult {
   CodeCallChain? firstChainBetween(
     Iterable<String> groupA,
     Iterable<String> groupB, {
-    int maxHops = 2,
+    int maxHops = 4,
   }) {
     final a = groupA.toSet();
     final b = groupB.toSet();
     if (a.isEmpty || b.isEmpty) return null;
 
+    // 有完整调用图时走 BFS（1–maxHops 跳统一处理）；没有时退回 1–2 跳的
+    // 启发式 —— 那条路不需要建全图，代价小，覆盖了大多数样本。
+    if (deepEdges.isEmpty) return _shallowChain(a, b, maxHops);
+
+    final from = <int>[
+      for (final entry in markerIndices.entries)
+        if (entry.value.any(a.contains)) entry.key,
+    ]..sort();
+    final to = <int>{
+      for (final entry in markerIndices.entries)
+        if (entry.value.any(b.contains)) entry.key,
+    };
+    if (from.isEmpty || to.isEmpty) return null;
+
+    CodeCallChain? best;
+    for (final start in from.take(_maxChainSeeds)) {
+      final chain = _bfsChain(start, to, maxHops);
+      if (chain == null) continue;
+      if (best == null || chain.hops < best.hops) best = chain;
+      if (best.hops <= 1) break;
+    }
+    return best;
+  }
+
+  /// 从 [start] 出发做逐层 BFS，找到最近的 [targets] 成员。
+  ///
+  /// 逐层推进（而不是一次入队全部）是为了保证**跳数最小** —— 报告里写的
+  /// 「3 跳」必须是真实最短路径，不能因为遍历顺序写成 4 跳。
+  CodeCallChain? _bfsChain(int start, Set<int> targets, int maxHops) {
+    final parent = <int, int>{start: -1};
+    var frontier = <int>[start];
+    for (var depth = 1; depth <= maxHops; depth++) {
+      final next = <int>[];
+      for (final node in frontier) {
+        final children = deepEdges[node];
+        if (children == null) continue;
+        for (final child in children) {
+          if (parent.containsKey(child)) continue;
+          parent[child] = node;
+          if (targets.contains(child)) {
+            final path = <int>[child];
+            var cursor = node;
+            while (cursor != -1) {
+              path.add(cursor);
+              cursor = parent[cursor]!;
+            }
+            final names = [for (final i in path.reversed) _nameOf(i)];
+            return CodeCallChain(
+              from: names.first,
+              to: names.last,
+              hops: depth,
+              pathText: names.join(' → '),
+            );
+          }
+          next.add(child);
+        }
+      }
+      if (next.isEmpty) return null;
+      frontier = next;
+    }
+    return null;
+  }
+
+  String _nameOf(int index) => indexNames[index] ?? 'method#$index';
+
+  /// 没有完整调用图时的退路：只找 1–2 跳（靠 `callersOfMarkerMethods` /
+  /// `edgesFromMarkerCallers` 两条边表，不建全图）。
+  CodeCallChain? _shallowChain(Set<String> a, Set<String> b, int maxHops) {
     // 带 A / B 标记的方法。
     //
     // **不能拿 `coOccurrences` 当索引**：它只收「一个方法体里命中 2 个以上
@@ -280,15 +370,23 @@ class CodeCallChain {
   /// 2 跳时的中间方法。
   final String? via;
 
+  /// 完整链路文本（BFS 走出来的，可能超过 2 跳）。
+  ///
+  /// 为空时按 [from] / [via] / [to] 拼 —— 两条路径共用同一个 getter，
+  /// 调用方不必区分是哪条算法找出来的。
+  final String? pathText;
+
   const CodeCallChain({
     required this.from,
     required this.to,
     required this.hops,
     this.via,
+    this.pathText,
   });
 
   /// 给报告读的链路，例如 `A → X → B`。
-  String get path => via == null ? '$from → $to' : '$from → $via → $to';
+  String get path =>
+      pathText ?? (via == null ? '$from → $to' : '$from → $via → $to');
 }
 
 /// DEX 方法引用与调用点的扫描器（安全分析的**第二、三层**）。
@@ -322,10 +420,61 @@ class DexMethodScanner {
   static const int maxGraphNodes = 4000;
   static const int maxCallersPerNode = 32;
 
+  /// 一次深链建图最多多少条边 / 每个节点多少条出边。
+  ///
+  /// 500k 条约 10–20 MB；正常应用（几千到几万个 invoke）远低于此，
+  /// 只有几百 MB 的重型样本会触顶 —— 触顶时 `deepGraphTruncated` 为 true，
+  /// 报告里要如实写「链路可能因图被截断而找不到」。
+  static const int maxDeepEdges = 500000;
+  static const int maxDeepEdgesPerNode = 64;
+
+  /// 再遍历一遍字节码，建**整数下标**的完整调用图。
+  static ({Map<int, List<int>> edges, Map<int, String> names, bool truncated})
+      _buildCallGraph(List<DexBytes> entries) {
+    final edges = <int, List<int>>{};
+    final names = <int, String>{};
+    var edgeCount = 0;
+    var truncated = false;
+
+    for (final entry in entries) {
+      if (truncated) break;
+      final structure = DexStructure.read(entry.name, entry.bytes);
+      if (!structure.isTraversable) continue;
+      DexMethodBodies.walk(
+        entry.bytes,
+        structure,
+        onCallSite: (site) {
+          if (truncated) return;
+          final caller = site.callerMethodIndex;
+          final callee = site.target.index;
+          if (caller == null || callee == null) return;
+          final list = edges[caller] ??= <int>[];
+          if (list.length >= maxDeepEdgesPerNode) return;
+          list.add(callee);
+          names[caller] ??= site.callerDisplayName;
+          names[callee] ??= site.target.displayName;
+          edgeCount++;
+          if (edgeCount >= maxDeepEdges) truncated = true;
+        },
+      );
+    }
+    return (edges: edges, names: names, truncated: truncated);
+  }
+
   /// 最多保留多少条同现记录。
   static const int maxCoOccurrences = 20;
 
-  static DexMethodScanResult scan(List<DexBytes> entries) {
+  /// [deepChainFrom] / [deepChainTo]：两组标记 id。
+  ///
+  /// 两组**都在**本次扫描中命中时，才会额外遍历一遍字节码建完整调用图，
+  /// 用于找 3 跳以上的链路。其余情况零额外成本 —— 这一步在 343 MB 样本上
+  /// 约 +3.2 秒，不该让每个包都付。
+  static DexMethodScanResult scan(
+    List<DexBytes> entries, {
+    Iterable<String> deepChainFrom = const [],
+    Iterable<String> deepChainTo = const [],
+    int maxHops = 4,
+  }) {
     final samples = <String, Set<String>>{};
     final dexes = <String, Set<String>>{};
     final callSiteSamples = <String, Set<String>>{};
@@ -336,6 +485,8 @@ class DexMethodScanner {
     // 调用图的两条边（只围绕带标记的方法，规模可控）。
     final callersOfMarkerMethods = <String, Set<String>>{};
     final edgesFromMarkerCallers = <String, Set<String>>{};
+    final markerIndices = <int, Set<String>>{};
+    final indexNames = <int, String>{};
 
     final notTraversable = <String>[];
     final truncated = <String>[];
@@ -451,6 +602,14 @@ class DexMethodScanner {
             pendingCallees.add(callee);
           }
 
+          // 下标级的标记归属（深链用）。
+          final callerIndex = site.callerMethodIndex;
+          if (callerIndex != null) {
+            (markerIndices[callerIndex] ??= <String>{})
+                .addAll(markers.map((m) => m.id));
+            indexNames[callerIndex] ??= callerName;
+          }
+
           for (final marker in markers) {
             (callSiteSamples[marker.id] ??= <String>{}).add(
               '$callee @ $callerName '
@@ -481,6 +640,25 @@ class DexMethodScanner {
     }
 
     flushPendingEdges();
+
+    // ---- 深链：完整调用图（只在两组标记都存在时才建）----
+    //
+    // 判据放在这里而不是调用方：调用方传的是**标记 id 列表**，只有扫描完
+    // 才知道两组是否都命中。没命中就不建图 —— 这一步要再遍历一遍字节码。
+    var deepEdges = const <int, List<int>>{};
+    var deepGraphTruncated = false;
+    final needDeep = deepChainFrom.isNotEmpty &&
+        deepChainTo.isNotEmpty &&
+        markerIndices.values.any((ids) => ids.any(deepChainFrom.contains)) &&
+        markerIndices.values.any((ids) => ids.any(deepChainTo.contains));
+    if (needDeep) {
+      final deep = _buildCallGraph(entries);
+      deepEdges = deep.edges;
+      deepGraphTruncated = deep.truncated;
+      for (final entry in deep.names.entries) {
+        indexNames.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
 
     final references = <CodeReference>[];
     for (final marker in codeMarkers) {
@@ -538,6 +716,10 @@ class DexMethodScanner {
       markersByCaller: callerMarkers,
       callersOfMarkerMethods: callersOfMarkerMethods,
       edgesFromMarkerCallers: edgesFromMarkerCallers,
+      markerIndices: markerIndices,
+      indexNames: indexNames,
+      deepEdges: deepEdges,
+      deepGraphTruncated: deepGraphTruncated,
     );
   }
 }

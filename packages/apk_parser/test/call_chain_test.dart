@@ -132,6 +132,78 @@ void main() {
     expect(scan.firstChainBetween([_ocr], [_upload]), isNotNull);
   });
 
+  group('深链（有完整调用图时走 BFS）', () {
+    DexMethodScanResult deep({
+      required Map<int, List<int>> edges,
+      Map<int, Set<String>> markers = const {},
+      bool truncated = false,
+    }) =>
+        DexMethodScanResult(
+          deepEdges: edges,
+          deepGraphTruncated: truncated,
+          markerIndices: markers.isEmpty
+              ? {
+                  1: {_ocr},
+                  9: {_upload},
+                }
+              : markers,
+          indexNames: const {
+            1: 'A.doOcr',
+            2: 'X.step1',
+            3: 'Y.step2',
+            9: 'B.upload',
+          },
+        );
+
+    test('3 跳：A → X → Y → B', () {
+      final scan = deep(edges: {
+        1: [2],
+        2: [3],
+        3: [9],
+      });
+      final chain = scan.firstChainBetween([_ocr], [_upload]);
+      expect(chain, isNotNull);
+      expect(chain!.hops, 3);
+      expect(chain.path, 'A.doOcr → X.step1 → Y.step2 → B.upload');
+    });
+
+    test('4 跳也能找到，但不会超过 maxHops', () {
+      final edges = {
+        1: [2],
+        2: [3],
+        3: [4],
+        4: [9],
+      };
+      final scan = deep(
+        edges: edges,
+        markers: {
+          1: {_ocr},
+          9: {_upload},
+        },
+      );
+      // indexNames 里没有 4，退化成 method#4 —— 路径仍要完整。
+      expect(scan.firstChainBetween([_ocr], [_upload])!.hops, 4);
+      expect(scan.firstChainBetween([_ocr], [_upload], maxHops: 3), isNull);
+    });
+
+    test('有更短的路径时给最短的（不能因为遍历顺序写大跳数）', () {
+      final scan = deep(edges: {
+        1: [2, 9], // 1 → 9 是 1 跳
+        2: [3],
+        3: [9],
+      });
+      expect(scan.firstChainBetween([_ocr], [_upload])!.hops, 1);
+    });
+
+    test('图里没有通路时返回 null', () {
+      final scan = deep(edges: {
+        1: [2],
+        2: [3],
+      });
+      expect(scan.firstChainBetween([_ocr], [_upload]), isNull);
+    });
+  });
+
   test('空输入返回 null，不抛异常', () {
     final scan = _scan(markers: const {});
     expect(scan.firstChainBetween([_ocr], [_upload]), isNull);

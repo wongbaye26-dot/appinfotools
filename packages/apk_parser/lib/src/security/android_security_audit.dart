@@ -4,9 +4,11 @@ import '../dex/dex_structure.dart';
 import '../models.dart';
 import '../native/elf_hardening.dart';
 import 'android_security_rules.dart';
+import 'code_markers.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
 import 'native_symbol_scanner.dart';
+import 'packer_catalog.dart';
 import 'permission_catalog.dart';
 import 'sdk_inventory_scanner.dart';
 
@@ -273,7 +275,27 @@ class AndroidSecurityAudit {
     // `method_ids` 的条目只可能来自字节码的 invoke 指令、方法签名或方法句柄，
     // 不会来自字符串字面量。因此「命中」的含义比字符串线索强一档 ——
     // 但**仍然不等于「调用了」**：那要遍历 code_item 里的指令。
-    final methodScan = DexMethodScanner.scan(dexEntries);
+    // 上传类标记：深链分析要用同一份定义（见下面 `uploadMarkerIds` 的用法）。
+    const uploadMarkerIds = {
+      'multipart',
+      'multipartbody',
+      'uploadfile',
+      'uploadimage',
+    };
+    // OCR 类标记按**类别**取：与 `ocrCodeRefs` 的判据保持一致。
+    final ocrMarkerIds = {
+      for (final marker in codeMarkers)
+        if (marker.category == SecurityCategory.ocrImage) marker.id,
+    };
+
+    final methodScan = DexMethodScanner.scan(
+      dexEntries,
+      // 「OCR → 上传」的深链（3 跳以上）只有在这两组标记**都存在**时才有意义，
+      // 而建完整调用图要再遍历一遍字节码（343 MB 样本约 +3.2 s）。
+      // 因此把判据交给扫描器：两组都在才建图，其余情况零成本。
+      deepChainFrom: ocrMarkerIds,
+      deepChainTo: uploadMarkerIds,
+    );
     if (methodScan.notTraversable.isNotEmpty) {
       limitations.add(AnalysisNote(
         'android.dex.method_not_traversable',
@@ -375,12 +397,6 @@ class AndroidSecurityAudit {
             .where((r) => markerIds.contains(r.markerId))
             .toList();
 
-    const uploadMarkerIds = {
-      'multipart',
-      'multipartbody',
-      'uploadfile',
-      'uploadimage',
-    };
     final uploadCodeRefs = codeRefsOf(uploadMarkerIds);
     final ocrCodeRefs = methodScan.references
         .where((r) => r.category == SecurityCategory.ocrImage)
@@ -1096,6 +1112,53 @@ class AndroidSecurityAudit {
             'traffic auditing; using some networking library is not a risk '
             'verdict by itself.',
         recommendationCode: 'android.network_client.manual_review',
+      ));
+    }
+
+    // ---- 加固壳识别（只识别，不脱壳）----
+    //
+    // 判据是原生库文件名：壳必须把解密器编译成 `.so` 并随包分发，名字由各家
+    // 自己定、极少改动。识别出来之后，报告里那些「没扫到 DEX 内容」的维度
+    // 才有解释 —— 但**不声称能脱壳**。
+    final packerHits = PackerDetector.detect([
+      for (final entry in nativeEntries) entry.name,
+    ]);
+    if (packerHits.isNotEmpty) {
+      final names = [for (final hit in packerHits) hit.displayName];
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-PACKER',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.suspected,
+        finding: 'This package carries the native libraries of a known '
+            'hardening packer: ${names.join(', ')}. Packed apps load the real '
+            'DEX at runtime, so the DEX- and string-based findings in this '
+            'report may be incomplete — "not found" here means "not visible '
+            'in the file", not "does not exist".',
+        messageCode: 'android.packer',
+        messageArgs: {
+          'names': names,
+          'libraries': [
+            for (final hit in packerHits) ...hit.libraries,
+          ],
+        },
+        evidence: [
+          for (final hit in packerHits)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.zipEntry,
+              location: hit.libraries.join(', '),
+              detail: '${hit.displayName} (${hit.id})',
+            ),
+        ],
+        limitation: 'Identification is by native library name only. This '
+            'tool does not unpack: the real DEX is decrypted in memory by the '
+            'packer, which needs dynamic analysis. A packer we do not know '
+            'yet shows up as "no packer detected", not as "not packed".',
+        recommendation: 'Treat DEX-based conclusions on this package as a '
+            'lower bound. For a definitive answer the app has to be run and '
+            'its loaded DEX dumped — outside what this tool does.',
+        recommendationCode: 'android.packer.review',
       ));
     }
 

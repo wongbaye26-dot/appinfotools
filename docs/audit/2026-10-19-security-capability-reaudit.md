@@ -983,3 +983,76 @@ DEX 里只有类名，**没有版本**。用 Maven 构建的 SDK 常把
 | `dart format --set-exit-if-changed` | 0 | 0 changed |
 
 合计 **1,987** 条（上一批 1,979）。
+
+---
+
+## 15. 能力增强记录（2026-10-19，第六批）
+
+用户要求做三件「超出原设计边界」的事。**两件做了、一件没做**，逐条交代。
+
+### 15.1 iOS 字节码级分析 → 做的是**结构化引用表**，不是反汇编
+
+先纠正预期：完整 ARM64 反汇编器是几千行的工程（指令解码表、控制流恢复），
+本轮没有做，也不建议在没有验证手段的情况下做 —— 解错一条指令，产出的
+「调用点偏移」看起来完全正常，实际是垃圾。
+
+**真正做成的**是 iOS 一直缺的那一级证据：`__objc_classrefs` / `__objc_selrefs`。
+
+| 变更 | 说明 |
+|---|---|
+| `MachOSection` / `MachOSegment.vmAddress` | 段要带虚拟地址，否则链式修复解出的目标无法映射回文件偏移 |
+| `LC_DYLD_CHAINED_FIXUPS` 解析 | 读 `dyld_chained_fixups_header` → `starts_in_image` → `dyld_chained_starts_in_segment.pointer_format` |
+| 指针解码 | `PTR_64`（2）与 `PTR_64_OFFSET`（6）：rebase 取 36 位 target；bind 槽位走 `imports` 表取符号名（`_OBJC_CLASS_$_PHPhotoLibrary` → `PHPhotoLibrary`） |
+| 新发现项 `IOS-REFERENCE-TABLES` | info，报解出多少个类 / 选择子引用，以及跳过了多少槽位 |
+
+**实测 `sun_signed.ipa`**：3,094 个选择子引用、102 个类引用、3,196 个指针解出，
+313 个跳过。`PHPhotoLibrary` / `ATTrackingManager` / `AVCaptureDevice` 都在
+**类引用表**里 —— 这三个此前只能靠「整文件搜到这个词」判定。
+
+**不做的部分**：ARM64E（PAC 认证）的指针格式不解，返回 `unsupported` 并写进
+限制说明。理由同上：解错会产出看起来像真的垃圾，比不解析更糟。
+
+顺带把「类表命中」接进了线索证据：`detail` 里会标 `(class table)`，
+读者能区分「代码引用了这个类」与「这个词在包里出现过」。
+
+### 15.2 跨 3 跳以上调用链 → 做了，带明确代价与上限
+
+| 变更 | 说明 |
+|---|---|
+| `DexCallSite.callerMethodIndex` | 调用点带上调用者的 `method_idx`，调用图才能用**整数**建边 |
+| `_buildCallGraph` | 第二遍遍历字节码，建 `Map<int, List<int>>`；500k 条边、每节点 64 条出边的上限 |
+| `firstChainBetween` | 有完整图时走**逐层 BFS**（1–4 跳，保证最短）；没有时退回原来的 1–2 跳启发式 |
+| RULE-C 局限文案 | 找到链路后不再写「不是调用图分析」—— 那正是它；改为「方法级最短路径，参数未跟踪」 |
+
+**代价是显式的**：建图要多遍历一遍字节码（343 MB 样本约 +3.2 秒），所以只在
+**OCR 与上传两组标记都命中**时才建图；其余包零额外成本。图被截断时
+`deepGraphTruncated` 为 true，局限文案会换成「可能存在更长、未被找到的路径」。
+
+**等级不变**：0–1 跳 P1，2 跳及以上 P2。跳数越多越像巧合，这一点没有为了
+「支持更多跳」而放宽。
+
+### 15.3 加固脱壳 → **没有做**，做的是识别 + 边界
+
+脱壳需要在 ART 里把应用跑起来、在 `DexClassLoader` 加载后 dump 内存里的 DEX，
+那是**动态分析**，与本项目「静态、不解包执行」的边界直接冲突。静态侧能做的
+只有识别：
+
+- 新增 `packer_catalog.dart`：10 家商业壳的原生库名特征（360 / 乐固 / 梆梆 /
+  爱加密 / 阿里 / 网易 / 百度 / 顶象 / 几维 / 娜迦）；
+- 新发现项 `ANDROID-PACKER`（info）：报出壳名与命中的库文件；
+- **限制说明写死**：`does not unpack`，并且「没认出来的壳」只会表现为
+  「没有检测到壳」，不会误报。
+
+这一条的价值在于**解释力**：加固包上那些「没扫到 DEX 内容」的维度，
+从此有了一句明确的归因，而不是让读者以为应用真的没有这些能力。
+
+### 15.4 门禁（实测）
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `flutter test` | 0 | **1,618 通过 / 14 跳过**（上一批 1,614） |
+| `analysis_model` / `apk_parser` / `ipa_parser` / `archive_safety` / `app_icon_extractor` | 0 | 65 / **122** / 125 / 40 / 25 |
+| 6 个 `analyze --fatal-infos --fatal-warnings` | 0 | 全部 No issues found |
+| `dart format --set-exit-if-changed` | 0 | 0 changed |
+
+合计 **1,995** 条（上一批 1,987）。

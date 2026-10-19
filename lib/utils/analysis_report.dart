@@ -663,6 +663,9 @@ class AnalysisReport {
     final weakened = finding.messageArgs['weakened'];
     // 证书固定涉及的域名（`<pin-set>` 所在域）。
     final domains = finding.messageArgs['domains'];
+    // 引用表的两个计数。
+    final classes = finding.messageArgs['classes'];
+    final selectors = finding.messageArgs['selectors'];
     final total = finding.messageArgs['total'];
     final scanned = finding.messageArgs['scanned'];
     final bytes = finding.messageArgs['bytes'];
@@ -696,6 +699,7 @@ class AnalysisReport {
           : f.ios_nested_usage_description(bundle: bundle, key: key),
       'ios.photo_picker' => f.ios_photo_picker,
       'android.webview_bridge_unsafe' => f.android_webview_bridge_unsafe,
+      'android.packer' => names == null ? null : f.android_packer(names: names),
       'android.deeplink' => (count == null || schemes == null)
           ? null
           : f.android_deeplink(
@@ -723,6 +727,12 @@ class AnalysisReport {
               count: count,
               weakened: weakened,
               domains: _joinNames(finding.messageArgs['domains'], t) ?? '—',
+            ),
+      'ios.reference_tables' => (classes == null || selectors == null)
+          ? null
+          : f.ios_reference_tables(
+              classes: classes,
+              selectors: selectors,
             ),
       'ios.permission_request' => (count == null || apis == null)
           ? null
@@ -926,11 +936,13 @@ class AnalysisReport {
         f.ios_photo_picker_confirm_input_path,
       'ios.permission_request.review' => f.ios_permission_request_review,
       'ios.ats_exception.review' => f.ios_ats_exception_review,
+      'ios.reference_tables.no_action' => f.ios_reference_tables_no_action,
       'android.permission_not_grantable.review' =>
         f.android_permission_not_grantable_review,
       'android.provider_exposed.review' => f.android_provider_exposed_review,
       'android.deeplink.review' => f.android_deeplink_review,
       'android.cert_pinning.review' => f.android_cert_pinning_review,
+      'android.packer.review' => f.android_packer_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
@@ -1060,6 +1072,8 @@ class AnalysisReport {
   static String? limitationText(SecurityFinding finding, Translations t) {
     final raw = finding.limitation;
     final code = finding.limitationCode;
+    // 调用链局限里的跳数（由引擎写在 `limitationArgs` 里）。
+    final hops = finding.limitationArgs['hops'];
     if (code == null) return raw;
 
     final f = t.security.finding_texts;
@@ -1128,7 +1142,14 @@ class AnalysisReport {
         f.android_screen_capture_limitation,
       'android.provider_exposed.limitation' =>
         f.android_provider_exposed_limitation,
+      // 找到调用链之后的局限说明：不能再写「不是调用图分析」。
+      'android.rule_c.limitation_graph' =>
+        hops == null ? null : f.android_rule_c_limitation_graph(hops: hops),
+      'android.rule_c.limitation_graph_truncated' => hops == null
+          ? null
+          : f.android_rule_c_limitation_graph_truncated(hops: hops),
       'android.deeplink.limitation' => f.android_deeplink_limitation,
+      'ios.reference_tables.limitation' => f.ios_reference_tables_limitation,
       _ => null,
     };
     return localized ?? raw;
@@ -1539,6 +1560,9 @@ class AnalysisReport {
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
       'ios.permission_request.no_methname' =>
         n.ios_permission_request_no_methname,
+      'ios.reference_tables.unsupported' => reason == null
+          ? null
+          : n.ios_reference_tables_unsupported(reason: reason),
       'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.sdk_inventory.no_dex' => n.android_sdk_inventory_no_dex,
       'android.sdk_inventory.incomplete' =>

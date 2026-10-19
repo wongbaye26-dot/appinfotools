@@ -32,6 +32,7 @@ export 'src/png_encoder.dart';
 export 'src/ipa_info_plist.dart';
 export 'src/ios_signature.dart';
 export 'src/macho.dart';
+export 'src/ios_reference_tables.dart';
 // 安全检测引擎（V1.1）：iOS 侧隐私审计。
 export 'src/security/ios_privacy_audit.dart';
 export 'src/security/ios_native_symbol_audit.dart';

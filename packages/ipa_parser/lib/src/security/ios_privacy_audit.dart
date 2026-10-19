@@ -4,6 +4,7 @@ import 'package:analysis_model/analysis_model.dart';
 
 import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
+import '../ios_reference_tables.dart';
 import '../macho.dart';
 import '../ios_signature.dart';
 import '../plist/plist_value.dart';
@@ -43,13 +44,29 @@ class _MachOClue {
   /// 报告里要能指出是哪一个，否则「扩展里有 OCR」这种结论无从核对。
   final List<String> sources;
 
+  /// 这个字面量是否出现在 **`__objc_classrefs` 的引用表**里。
+  ///
+  /// 引用表命中说明代码里真的引用了这个类（`objc_msgSend` 拿它当参数），
+  /// 比「整文件里搜到这个词」强一档 —— 后者可能只是注释、日志或资源名。
+  final bool classReference;
+
   const _MachOClue(
     this.markerId,
     this.description,
     this.literal,
     this.samples, {
     this.sources = const [],
+    this.classReference = false,
   });
+
+  _MachOClue withClassReference(bool value) => _MachOClue(
+        markerId,
+        description,
+        literal,
+        samples,
+        sources: sources,
+        classReference: value,
+      );
 }
 
 /// 一个参与安全扫描的嵌套可执行文件。
@@ -438,6 +455,12 @@ class IosPrivacyAudit {
     final requestSources = <String, Set<String>>{};
     // 有没有任何一个可执行文件真的读到了 `__objc_methname`。
     var methnameReadable = false;
+    // 结构化引用表（`__objc_selrefs` / `__objc_classrefs`）。
+    final referencedClasses = <String>{};
+    final referencedSelectors = <String>{};
+    var tablePointers = 0;
+    var tableSkipped = 0;
+    String? tableFailure;
     var scanned = 0;
     // 参与扫描的可执行文件**总字节数**（未被预算截断的那个数）。
     // 用它当 `ios.macho.strings` 的 limit，读者才看得出「扫了 64 MiB 里的
@@ -479,8 +502,25 @@ class IosPrivacyAudit {
       scanned += limit;
       attempted += bytes.length;
 
+      // Mach-O 只解析一次：引用表与选择子表都要用。
+      final macho = MachOParser.parse(bytes);
+
+      // 引用表：`__objc_classrefs` / `__objc_selrefs` 的槽位解出来的类名
+      // 与选择子名。这是 iOS 侧的「结构化引用」一级，比裸字符串强。
+      final tables = macho.images.isEmpty
+          ? const IosReferenceTables(failure: 'no Mach-O image')
+          : IosReferenceTables.resolve(bytes, macho.images.first);
+      if (tables.failure != null) {
+        tableFailure ??= tables.failure;
+      } else {
+        referencedClasses.addAll(tables.classes);
+        referencedSelectors.addAll(tables.selectors);
+        tablePointers += tables.decodedPointers;
+        tableSkipped += tables.skippedPointers;
+      }
+
       // 选择子表：按节取，而不是在整文件里搜。
-      final methname = MachOParser.parse(bytes).sectionBytes(
+      final methname = macho.sectionBytes(
         bytes,
         segment: '__TEXT',
         section: '__objc_methname',
@@ -527,7 +567,7 @@ class IosPrivacyAudit {
         literal,
         samples.toSet().take(_Budget.maxSamplesPerMarker).toList(),
         sources: (sourcesByMarker[id] ?? const <String>{}).toList()..sort(),
-      );
+      ).withClassReference(referencedClasses.contains(literal));
     }
 
     // ---- 覆盖范围：按可执行文件统计 ----
@@ -678,6 +718,57 @@ class IosPrivacyAudit {
         'No executable had a readable `__objc_methname` section, so active '
             'permission requests could not be determined. This is not a '
             'statement that the app requests no permissions.',
+      ));
+    }
+
+    // ---- 结构化引用表 ----
+    //
+    // 这是 iOS 侧第一次不靠「整文件搜字符串」下结论：`__objc_classrefs` /
+    // `__objc_selrefs` 的槽位解出来的是**代码真的引用过的**类与选择子。
+    if (referencedClasses.isNotEmpty || referencedSelectors.isNotEmpty) {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-REFERENCE-TABLES',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'Decoded ${referencedClasses.length} class reference(s) and '
+            '${referencedSelectors.length} selector reference(s) from '
+            '`__objc_classrefs` / `__objc_selrefs`. These are pointers the '
+            'code actually uses, not words that happen to appear in the '
+            'binary.',
+        messageCode: 'ios.reference_tables',
+        messageArgs: {
+          'classes': referencedClasses.length,
+          'selectors': referencedSelectors.length,
+          'skipped': tableSkipped,
+        },
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.machoSymbol,
+            location: '__DATA,__objc_classrefs / __objc_selrefs',
+            detail: '$tablePointers pointer(s) decoded, '
+                '$tableSkipped skipped (bind slots or non-string targets)',
+          ),
+        ],
+        limitation: 'Only the main slice of each executable is decoded. '
+            'Pointers in ARM64E binaries (PAC-authenticated formats) are not '
+            'resolved — a wrong decode would look plausible but be garbage, '
+            'so it is reported as unsupported instead.',
+        limitationCode: 'ios.reference_tables.limitation',
+        recommendation: 'No action needed: this entry exists so that other '
+            'findings can say "the code references this class" instead of '
+            '"the string appears somewhere".',
+        recommendationCode: 'ios.reference_tables.no_action',
+      ));
+    } else if (tableFailure != null && scannedPaths.isNotEmpty) {
+      // 解不出来要**说出来**：否则「没有类引用」会被读成结论。
+      limitations.add(AnalysisNote(
+        'ios.reference_tables.unsupported',
+        'Class / selector reference tables could not be decoded '
+            '($tableFailure), so "the code references this class" cannot be '
+            'distinguished from "the string appears somewhere".',
+        {'reason': tableFailure},
       ));
     }
 
@@ -1870,7 +1961,9 @@ class IosPrivacyAudit {
         location: clue.sources.isEmpty
             ? 'Mach-O executable strings'
             : clue.sources.join(', '),
-        detail: '${clue.markerId}: ${clue.samples.join(' | ')}',
+        detail: '${clue.markerId}'
+            '${clue.classReference ? ' (class table)' : ''}: '
+            '${clue.samples.join(' | ')}',
       ));
     }
     return evidence;

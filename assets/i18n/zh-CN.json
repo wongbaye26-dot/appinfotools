@@ -708,7 +708,14 @@
       "android_deeplink_review": "确认每个 scheme 的处理逻辑都校验了输入（host、path、参数），并确认目标组件正是你打算暴露的那个。",
       "android_deeplink_limitation": "只列出 scheme。目标组件是否校验传入的 host、path 与参数，从清单里看不出来 —— 那需要看代码。",
       "android_cert_pinning": "应用为 {count} 个域名声明了证书固定：{domains}。这只是配置里的声明 —— pin 是否与服务端证书匹配、过期时间是否已过，静态分析都判断不了。",
-      "android_cert_pinning_review": "保持 pin 集更新（在过期前轮换），并确保至少有一个备用 pin —— 只配一个 pin 时，证书轮换会直接让网络不可用。"
+      "android_cert_pinning_review": "保持 pin 集更新（在过期前轮换），并确保至少有一个备用 pin —— 只配一个 pin 时，证书轮换会直接让网络不可用。",
+      "android_rule_c_limitation_graph": "这条链路来自调用图（最短路径 {hops} 跳）。它只到方法级：沿链路传递的参数没有被跟踪，所以「值从前者流到后者」仍未被证明。",
+      "android_rule_c_limitation_graph_truncated": "这条链路来自调用图（最短路径 {hops} 跳），但图在边数上限处被截断 —— 可能存在更长、未被找到的路径。它只到方法级：沿链路传递的参数没有被跟踪。",
+      "ios_reference_tables": "从 __objc_classrefs / __objc_selrefs 解出 {classes} 个类引用、{selectors} 个选择子引用。这些是代码**真正用到**的指针，不是碰巧出现在二进制里的词。",
+      "ios_reference_tables_no_action": "无需处理：这一条的作用是让其他发现可以说「代码引用了这个类」，而不是「这个词在包里出现过」。",
+      "ios_reference_tables_limitation": "只解每个可执行文件的主切片。ARM64E（带 PAC 认证）的指针格式没有解 —— 解错会产出看起来合理、实际是垃圾的结果，所以宁可报「不支持」。",
+      "android_packer": "这个包里带着已知加固壳的原生库：{names}。加固包的真实 DEX 在运行时才加载，所以本报告里基于 DEX 与字符串的结论可能不完整 —— 「没发现」在这里是「文件里看不到」，不是「不存在」。",
+      "android_packer_review": "把这个包上基于 DEX 的结论当下限看。要得到确定答案，需要运行应用并 dump 已加载的 DEX —— 那超出本工具的范围。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -884,7 +891,8 @@
       "ios_executables_truncated": "有 {count} 个嵌套 bundle 完全没有解析（共 {total} 个含代码的 bundle），因此它们的可执行文件既没有做 API 线索扫描，也没有算进上面的覆盖率。",
       "android_signing_block_unreadable": "APK 签名块读不出来（{reason}）：v2+ 签名方案未知，因此本次不能下「没有签名块」的结论。这不等于「签名无效」。",
       "ios_permission_request_no_methname": "没有任何可执行文件带有可读的 __objc_methname 节，因此无法判定是否主动请求权限。这不等于「没有申请权限」。",
-      "android_provider_exposed": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。"
+      "android_provider_exposed": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。",
+      "ios_reference_tables_unsupported": "类 / 选择子引用表解不出来（{reason}），因此无法区分「代码引用了这个类」与「这个词在包里出现过」。"
     },
     "findings": "发现项",
     "sdk_categories": {

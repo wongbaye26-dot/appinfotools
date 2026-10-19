@@ -509,7 +509,8 @@
       "ios_executables_truncated": "{count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중). 따라서 해당 실행 파일은 API 단서 스캔도, 위의 커버리지 집계도 되지 않았습니다.",
       "android_signing_block_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}): v2+ 서명 방식을 알 수 없으므로 이번에 \"서명 블록이 없다\"고 결론 내릴 수 없습니다. 이것은 \"서명이 유효하지 않다\"는 뜻이 아닙니다.",
       "ios_permission_request_no_methname": "읽을 수 있는 __objc_methname 섹션이 있는 실행 파일이 없어 권한의 능동적 요청을 판정할 수 없습니다. \"권한을 요청하지 않는다\"는 뜻이 아닙니다.",
-      "android_provider_exposed": "권한이 없는 provider는 기기의 어떤 앱에서도 접근할 수 있지만, 데이터가 반환되는지는 내용에 달려 있습니다. android:enabled=false인 provider도 여기 표시됩니다 — 증거를 확인하세요."
+      "android_provider_exposed": "권한이 없는 provider는 기기의 어떤 앱에서도 접근할 수 있지만, 데이터가 반환되는지는 내용에 달려 있습니다. android:enabled=false인 provider도 여기 표시됩니다 — 증거를 확인하세요.",
+      "ios_reference_tables_unsupported": "클래스 / 선택자 참조 표를 디코딩하지 못했습니다({reason}). 따라서 \"코드가 이 클래스를 참조한다\"와 \"그 단어가 어딘가에 등장했다\"를 구분할 수 없습니다."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -712,7 +713,14 @@
       "android_deeplink_review": "각 scheme 처리기가 입력(host, path, 매개변수)을 검증하는지, 대상 컴포넌트가 의도한 노출인지 확인하세요.",
       "android_deeplink_limitation": "scheme만 나열합니다. 대상 컴포넌트가 host/path/매개변수를 검증하는지는 매니페스트에서 알 수 없습니다(코드가 필요합니다).",
       "android_cert_pinning": "{count}개 도메인에 인증서 피닝을 선언했습니다: {domains}. 이는 설정상의 선언이며, 핀이 실제 서버 인증서와 일치하는지, 만료일이 지났는지는 정적으로 판단할 수 없습니다.",
-      "android_cert_pinning_review": "핀 집합을 최신으로 유지하고(만료 전 교체), 최소 하나의 백업 핀을 두세요. 핀이 하나뿐이면 인증서 교체 시 통신이 끊깁니다."
+      "android_cert_pinning_review": "핀 집합을 최신으로 유지하고(만료 전 교체), 최소 하나의 백업 핀을 두세요. 핀이 하나뿐이면 인증서 교체 시 통신이 끊깁니다.",
+      "android_rule_c_limitation_graph": "이 체인은 호출 그래프(최단 경로 {hops} 홉)에서 나왔습니다. 메서드 수준까지만 다루며, 체인을 따라 전달되는 인자는 추적하지 않으므로 \"값이 한쪽에서 다른 쪽으로 흐른다\"는 여전히 증명되지 않았습니다.",
+      "android_rule_c_limitation_graph_truncated": "이 체인은 호출 그래프(최단 경로 {hops} 홉)에서 나왔지만, 그래프가 간선 수 상한에서 잘렸으므로 더 긴 미발견 경로가 있을 수 있습니다. 메서드 수준까지만 다루며 인자는 추적하지 않습니다.",
+      "ios_reference_tables": "__objc_classrefs / __objc_selrefs에서 클래스 참조 {classes}개, 선택자 참조 {selectors}개를 디코딩했습니다. 코드가 **실제로 사용하는** 포인터이며, 우연히 바이너리에 등장한 단어가 아닙니다.",
+      "ios_reference_tables_no_action": "조치 불필요: 이 항목은 다른 발견이 \"그 단어가 어딘가에 등장했다\"가 아니라 \"코드가 이 클래스를 참조한다\"고 말할 수 있게 하기 위한 것입니다.",
+      "ios_reference_tables_limitation": "각 실행 파일의 메인 슬라이스만 디코딩합니다. ARM64E(PAC 인증) 포인터 형식은 디코딩하지 않습니다 — 잘못 디코딩하면 그럴듯해 보이는 쓰레기가 되므로 \"미지원\"으로 보고합니다.",
+      "android_packer": "이 패키지에는 알려진 보호(패킹) 도구의 네이티브 라이브러리가 포함되어 있습니다: {names}. 패킹된 앱의 실제 DEX는 런타임에 로드되므로 이 보고서의 DEX/문자열 기반 결론은 불완전할 수 있습니다 — 여기서 \"발견되지 않음\"은 \"파일에서 보이지 않음\"이며 \"존재하지 않음\"이 아닙니다.",
+      "android_packer_review": "이 패키지의 DEX 기반 결론은 하한으로 보세요. 확정하려면 앱을 실행해 로드된 DEX를 덤프해야 하며, 이는 이 도구의 범위를 벗어납니다."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",

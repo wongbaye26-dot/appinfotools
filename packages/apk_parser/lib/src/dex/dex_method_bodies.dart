@@ -40,6 +40,12 @@ class DexCallSite {
   /// 被引用的方法。
   final DexMethodReference target;
 
+  /// 调用者方法的 `method_idx`。
+  ///
+  /// 调用图要用**整数下标**建边：字符串键在千万级调用点上会吃掉几百 MB，
+  /// 而且每次插入都要拼串。`null` 表示调用者身份读不出来（畸形文件）。
+  final int? callerMethodIndex;
+
   /// `invoke-*` 指令在 `insns` 里的代码单元偏移。
   final int instructionOffset;
 
@@ -53,6 +59,7 @@ class DexCallSite {
     required this.instructionOffset,
     required this.opcode,
     this.callerProtoDescriptor,
+    this.callerMethodIndex,
   });
 
   /// 调用者的完整描述，例如
@@ -283,6 +290,7 @@ class DexMethodBodies {
           callerClassDescriptor: classDescriptor ?? caller.$1,
           callerMethodName: caller.$2,
           callerProtoDescriptor: caller.$3,
+          callerMethodIndex: method.methodIdx,
           onInstruction: onInstruction,
           onCallSite: onCallSite,
           onCallSiteCount: () => callSiteCount++,
@@ -437,6 +445,7 @@ class DexMethodBodies {
     required String callerClassDescriptor,
     required String callerMethodName,
     required String? callerProtoDescriptor,
+    int? callerMethodIndex,
     void Function(DexInstruction)? onInstruction,
     void Function(DexCallSite)? onCallSite,
     required void Function() onCallSiteCount,
@@ -468,6 +477,7 @@ class DexMethodBodies {
         callerClassDescriptor: callerClassDescriptor,
         callerMethodName: callerMethodName,
         callerProtoDescriptor: callerProtoDescriptor,
+        callerMethodIndex: callerMethodIndex,
         target: DexMethodReference(
           classDescriptor: resolved.$1,
           name: resolved.$2,

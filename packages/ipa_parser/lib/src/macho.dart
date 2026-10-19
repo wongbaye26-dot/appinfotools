@@ -41,6 +41,14 @@ enum MachOFileType {
       };
 }
 
+/// `LC_DYLD_CHAINED_FIXUPS` 指向的数据范围（相对切片起点）。
+class ChainedFixups {
+  final int dataOffset;
+  final int dataSize;
+
+  const ChainedFixups({required this.dataOffset, required this.dataSize});
+}
+
 /// 一个 Mach-O 节（`section` / `section_64`）。
 ///
 /// **为什么需要节而不是只要段**：`__TEXT` 段里既有代码也有好几张字符串表，
@@ -81,6 +89,10 @@ class MachOSegment {
   final int fileOffset;
   final int fileSize;
 
+  /// 段的**虚拟地址**。链式修复（chained fixups）解出来的目标是指针的
+  /// vmaddr，要映射回文件偏移必须靠它。
+  final int vmAddress;
+
   /// 段在内存中的大小。
   final int vmSize;
 
@@ -96,6 +108,7 @@ class MachOSegment {
     required this.fileSize,
     required this.vmSize,
     required this.sectionCount,
+    this.vmAddress = 0,
     this.sections = const [],
   });
 
@@ -228,6 +241,9 @@ class MachOImage {
 
   final List<MachOSegment> segments;
 
+  /// `LC_DYLD_CHAINED_FIXUPS`；老二进制（iOS 13 之前）为 `null`。
+  final ChainedFixups? chainedFixups;
+
   /// `LC_MAIN` 的入口偏移（可执行文件才有）。
   final int? entryOffset;
 
@@ -264,6 +280,7 @@ class MachOImage {
     this.linkedLibraries = const [],
     this.rpaths = const [],
     this.segments = const [],
+    this.chainedFixups,
     this.entryOffset,
     this.symtab,
     this.symbols = const [],
@@ -434,6 +451,7 @@ class MachOParser {
 
   // Load command
   static const int _lcSymtab = 0x2;
+  static const int _lcDyldChainedFixups = 0x80000034;
   static const int _lcSegment = 0x1;
   static const int _lcSegment64 = 0x19;
   static const int _lcUuid = 0x1B;
@@ -717,6 +735,7 @@ class MachOParser {
     final segments = <MachOSegment>[];
     int? entryOffset;
     MachOSymtab? symtab;
+    ChainedFixups? chainedFixups;
 
     final commandsEnd = base + headerSize + sizeofcmds;
     var cursor = base + headerSize;
@@ -768,6 +787,16 @@ class MachOParser {
                 stringOffset: stroff,
                 stringSize: strsize,
               );
+            }
+          }
+        case _lcDyldChainedFixups:
+          // `linkedit_data_command`: cmd + cmdsize + dataoff + datasize。
+          if (cmdsize >= 16) {
+            final dataoff = _readUint32(data, cursor + 8, byteOrder);
+            final datasize = _readUint32(data, cursor + 12, byteOrder);
+            if (dataoff != null && datasize != null) {
+              chainedFixups =
+                  ChainedFixups(dataOffset: dataoff, dataSize: datasize);
             }
           }
         case _lcUuid:
@@ -848,6 +877,7 @@ class MachOParser {
       linkedLibraries: linkedLibraries,
       rpaths: rpaths,
       segments: segments,
+      chainedFixups: chainedFixups,
       entryOffset: entryOffset,
       symtab: symtab,
       symbols: symbols,
@@ -987,12 +1017,15 @@ class MachOParser {
     final int? fileOffset;
     final int? fileSize;
     final int? sectionCount;
+    final int? vmAddress;
     if (is64) {
+      vmAddress = _readUint64(data, cursor + 24, order);
       vmSize = _readUint64(data, cursor + 32, order);
       fileOffset = _readUint64(data, cursor + 40, order);
       fileSize = _readUint64(data, cursor + 48, order);
       sectionCount = _readUint32(data, cursor + 64, order);
     } else {
+      vmAddress = _readUint32(data, cursor + 24, order);
       vmSize = _readUint32(data, cursor + 28, order);
       fileOffset = _readUint32(data, cursor + 32, order);
       fileSize = _readUint32(data, cursor + 36, order);
@@ -1006,6 +1039,7 @@ class MachOParser {
       fileOffset: fileOffset,
       fileSize: fileSize,
       vmSize: vmSize,
+      vmAddress: vmAddress ?? 0,
       sectionCount: sectionCount ?? 0,
       sections: _readSections(
         data,
