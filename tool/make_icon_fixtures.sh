@@ -33,16 +33,23 @@ done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-cat > "$WORK/AndroidManifest.xml" <<'MANIFEST'
+# 两个 manifest：包名不同，便于在日志里区分是哪一个产物。
+write_manifest() {
+  local path="$1" package="$2" label="$3"
+  cat > "$path" <<MANIFEST
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.iconfixture"
+    package="$package"
     android:versionCode="1"
     android:versionName="1.0">
   <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
-  <application android:label="Icon Fixture" android:icon="@mipmap/ic_launcher" />
+  <application android:label="$label" android:icon="@mipmap/ic_launcher" />
 </manifest>
 MANIFEST
+}
+
+write_manifest "$WORK/AndroidManifest.xml" com.example.iconfixture "Icon Fixture"
+write_manifest "$WORK/AndroidManifest-alt.xml" com.example.iconfixturealt "Icon Fixture Alt"
 
 # ---- 1. PNG 图标 ----
 mkdir -p "$WORK/res/mipmap-hdpi"
@@ -71,6 +78,19 @@ COLORS
 "$AAPT2" link -o "$REPO_ROOT/test/fixtures/apk/icon-adaptive.apk" \
   -I "$ANDROID_JAR" --manifest "$WORK/AndroidManifest.xml" "$WORK/adaptive.zip"
 
+# ---- 3. 第二个 PNG 图标（内容与 #1 不同）----
+#
+# 用途：验证**规格 2.4 的第一条验收项** —— 两个内容不同的 APK 必须显示
+# 不同的图标。CI 里比的是解码后的像素哈希，因此这两个包的图标必须真的
+# 不一样：这里旋转 180° 并放大到 96px，xhdpi 档。
+mkdir -p "$WORK/res3/mipmap-xhdpi"
+cp "$REPO_ROOT/assets/image/icon.png" "$WORK/res3/mipmap-xhdpi/ic_launcher.png"
+sips -r 180 -z 96 96 "$WORK/res3/mipmap-xhdpi/ic_launcher.png" >/dev/null
+"$AAPT2" compile --dir "$WORK/res3" -o "$WORK/alt.zip"
+"$AAPT2" link -o "$REPO_ROOT/test/fixtures/apk/icon-png-alt.apk" \
+  -I "$ANDROID_JAR" --manifest "$WORK/AndroidManifest-alt.xml" "$WORK/alt.zip"
+
 echo "generated:"
 ls -l "$REPO_ROOT/test/fixtures/apk/icon-png.apk" \
+      "$REPO_ROOT/test/fixtures/apk/icon-png-alt.apk" \
       "$REPO_ROOT/test/fixtures/apk/icon-adaptive.apk"

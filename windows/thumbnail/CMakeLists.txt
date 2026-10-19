@@ -61,3 +61,52 @@ install(TARGETS appinfotool_thumbnail
   RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime
 )
+
+# ---------------------------------------------------------------------------
+# 自动化自检程序（**不进安装包**，只在构建目录里）
+#
+# 它 LoadLibrary 我们的 DLL 并直接调 GetThumbnail，绕过注册表 ——
+# 这样能把「DLL 出不出得来图」与「注册有没有生效」分开验。
+# CI 拿它当门禁；手工排查时也可以直接跑。
+#
+# 没有 install(...) 是**有意的**：这个 exe 不该出现在用户机器上。
+# ---------------------------------------------------------------------------
+# **不加 WIN32**：那是 Windows 子系统，入口是 WinMain，而本程序用 wmain
+# 且要向 stdout 打印结果（CI 靠这些行判断成败）。
+add_executable(appinfotool_thumbnail_selftest
+  "selftest.cpp"
+)
+target_compile_features(appinfotool_thumbnail_selftest PUBLIC cxx_std_17)
+target_compile_options(appinfotool_thumbnail_selftest PRIVATE /W4 /WX /EHsc)
+target_compile_definitions(appinfotool_thumbnail_selftest PRIVATE
+  UNICODE
+  _UNICODE
+  NOMINMAX
+)
+target_link_libraries(appinfotool_thumbnail_selftest PRIVATE
+  "ole32.lib"
+  "shell32.lib"
+  "shlwapi.lib"
+  "uuid.lib"
+)
+# **输出到独立目录**，不能和 DLL 同一目录：
+#
+# `inno_bundle` 打包的是整个 `runner/Release` 目录 —— 自检 exe 放在那里
+# 就会被一起打进用户安装包。它是测试工具，不该出现在用户机器上。
+#
+# 三个配置分别指定，因为多配置生成器（VS）会忽略不带后缀的
+# `RUNTIME_OUTPUT_DIRECTORY` —— 只写那一个时 Release 产物仍会落在
+# 默认的 `thumbnail/Release/`，CI 按固定路径找不到。
+#
+# 代价：自检按 exe 所在目录找 DLL 与 helper，所以 CI 跑之前要把这两个
+# 文件拷进 selftest 目录（见 workflow 里的步骤）。
+set(_selftest_dir "${CMAKE_BINARY_DIR}/selftest")
+set_target_properties(appinfotool_thumbnail_selftest PROPERTIES
+  OUTPUT_NAME "appinfotool_thumbnail_selftest"
+  RUNTIME_OUTPUT_DIRECTORY "${_selftest_dir}"
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${_selftest_dir}"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${_selftest_dir}"
+  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${_selftest_dir}"
+  RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${_selftest_dir}"
+)
+add_dependencies(appinfotool_thumbnail_selftest appinfotool_thumbnail)

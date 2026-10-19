@@ -235,6 +235,97 @@ jobs:
           ls -l build/windows/x64/runner/Release/app_icon_extractor.exe \
                 build/windows/x64/runner/Release/appinfotool_thumbnail.dll
 
+      - name: Self-test the thumbnail provider (no registry, no Explorer)
+        # 直接 LoadLibrary 我们的 DLL 并调 GetThumbnail —— **绕过注册表**，
+        # 因此能把「DLL 本身能不能出图」与「注册有没有生效」分开。
+        # 这一层在 CI 里能验，不必等真机：
+        #
+        # 1. 两个内容不同的 APK 必须产出**不同**的图标（比较像素哈希）；
+        # 2. 自适应图标的包必须**失败**（本版不支持，回退文件图标）；
+        # 3. 坏文件必须失败，而不是给出一张猜的图。
+        #
+        # 真机只剩「注册 + Explorer 集成 + 缓存」这几条要人眼确认。
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # 自检 exe 在独立目录（不与 DLL 同放，否则会被 inno_bundle
+          # 打进用户安装包）。它按**自身所在目录**找 DLL 与 helper，
+          # 所以先把这两个文件拷过去。
+          $selftestDir = 'build/windows/x64/selftest'
+          $releaseDir = 'build/windows/x64/runner/Release'
+          $exe = Join-Path $selftestDir 'appinfotool_thumbnail_selftest.exe'
+          if (-not (Test-Path $exe)) {
+            Write-Host "::error::thumbnail selftest binary is missing: $exe"
+            Get-ChildItem -Recurse -Filter '*selftest*' build/windows | Select-Object FullName | Write-Host
+            exit 1
+          }
+          Copy-Item (Join-Path $releaseDir 'appinfotool_thumbnail.dll') $selftestDir -Force
+          Copy-Item (Join-Path $releaseDir 'app_icon_extractor.exe') $selftestDir -Force
+          Get-ChildItem $selftestDir | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+
+          $a = 'test/fixtures/apk/icon-png.apk'        # 72x72
+          $b = 'test/fixtures/apk/icon-png-alt.apk'    # 96x96，内容不同
+          $noIcon = 'test/fixtures/apk/signed-v2-v3.apk'  # 无图标声明 → 应失败
+          $adaptive = 'test/fixtures/apk/icon-adaptive.apk'
+
+          # 先跑「应当成功」的那个，并抓出哈希。
+          $ok = & $exe $a 2>&1 | Out-String
+          Write-Host $ok
+          if ($ok -notmatch 'OK\s+icon-png\.apk\s+(\d+)x(\d+)\s+hash=([0-9A-F]{8})') {
+            Write-Host "::error::icon-png.apk did not produce a thumbnail"
+            exit 1
+          }
+          $hashA = $Matches[3]
+          $widthA = [int]$Matches[1]
+          Write-Host "icon-png.apk -> ${widthA}px hash=$hashA"
+
+          # 同一个包再跑一次，哈希必须稳定（否则读到的不是同一份字节）。
+          $again = & $exe $a 2>&1 | Out-String
+          if ($again -notmatch "hash=$hashA") {
+            Write-Host "::error::thumbnail hash is not stable across runs"
+            exit 1
+          }
+
+          # **规格 2.4 的第一条验收项**：两个内容不同的 APK 必须显示不同图标。
+          # 这一条可以自动化 —— 比较解码后的像素哈希，而不是肉眼看。
+          $alt = & $exe $b 2>&1 | Out-String
+          Write-Host $alt
+          if ($alt -notmatch 'OK\s+icon-png-alt\.apk\s+(\d+)x(\d+)\s+hash=([0-9A-F]{8})') {
+            Write-Host "::error::icon-png-alt.apk did not produce a thumbnail"
+            exit 1
+          }
+          $hashB = $Matches[3]
+          if ($hashB -eq $hashA) {
+            Write-Host "::error::two different APKs produced the SAME icon (hash $hashA) — the provider is not reading per-file content"
+            exit 1
+          }
+          Write-Host "two different APKs produced different icons ($hashA vs $hashB)"
+
+          # 自适应图标：必须失败（本版不支持），且**不能**给出位图。
+          & $exe $adaptive 2>&1 | Out-String | Write-Host
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "::error::adaptive-icon APK should fail but succeeded — an incomplete icon would be shown instead of the file icon"
+            exit 1
+          }
+
+          # 无图标声明的包：同样必须失败。
+          & $exe $noIcon 2>&1 | Out-String | Write-Host
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "::error::$noIcon has no launcher icon and should fail"
+            exit 1
+          }
+
+          # 损坏文件：必须失败且不崩（退出码 1，不是崩溃码）。
+          $bad = Join-Path $env:RUNNER_TEMP 'not-a-zip.apk'
+          Set-Content -Path $bad -Value 'this is not a zip archive' -NoNewline
+          & $exe $bad 2>&1 | Out-String | Write-Host
+          if ($LASTEXITCODE -ne 1) {
+            Write-Host "::error::corrupt input should exit 1 (got $LASTEXITCODE) — a crash here would take Explorer down"
+            exit 1
+          }
+
+          Write-Host "thumbnail provider self-test passed"
+
       - name: Create Installer
         run: dart run inno_bundle:build --release
 

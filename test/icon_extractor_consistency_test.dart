@@ -22,6 +22,13 @@ import 'package:flutter_test/flutter_test.dart';
 const _pngFixture = 'test/fixtures/apk/icon-png.apk';
 const _adaptiveFixture = 'test/fixtures/apk/icon-adaptive.apk';
 
+/// 第二个**有图标且内容不同**的包（96×96，`icon-png.apk` 是 72×72）。
+///
+/// 存在的唯一理由是规格 2.4 的第一条验收项：「两个内容不同的 APK 显示
+/// 不同的真实应用图标」。这条在 Windows 侧由 `thumbnail_selftest` 比像素
+/// 哈希；这里用同一对夹具在**本地**先验一遍，不必等 CI。
+const _altPngFixture = 'test/fixtures/apk/icon-png-alt.apk';
+
 void main() {
   group('提取器与主应用的图标选择一致', () {
     test('同一个 APK：两边取到的是**同一份字节**', () async {
@@ -66,6 +73,31 @@ void main() {
       expect(extracted.status, AppIconStatus.unsupported);
       expect(extracted.reasonCode, 'android.adaptive_icon_unsupported');
       expect(extracted.png, isNull);
+    });
+
+    test('两个内容不同的包产出**不同**的图标（规格 2.4 第一条）', () async {
+      final a = await extractAppIcon(_pngFixture);
+      final b = await extractAppIcon(_altPngFixture);
+
+      expect(a.status, AppIconStatus.success, reason: '${a.reasonCode}');
+      expect(b.status, AppIconStatus.success, reason: '${b.reasonCode}');
+
+      // 尺寸不同是最粗的证据，但真正要验的是**字节不同** ——
+      // 两个包若读到同一个条目，尺寸也会一样。
+      expect(a.pixelWidth, 72);
+      expect(b.pixelWidth, 96);
+      expect(
+        a.png,
+        isNot(equals(b.png)),
+        reason: '两个包的图标字节完全相同 —— 提取器没有按文件内容取值',
+      );
+    });
+
+    test('同一个包两次提取必须逐字节相同（结果不受顺序/缓存影响）', () async {
+      final first = await extractAppIcon(_pngFixture);
+      final second = await extractAppIcon(_pngFixture);
+      expect(first.png, equals(second.png));
+      expect(first.pixelWidth, second.pixelWidth);
     });
 
     test('提取器的 format 与像素尺寸与 PNG 头自洽', () async {
