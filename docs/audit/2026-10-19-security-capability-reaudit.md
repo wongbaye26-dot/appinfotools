@@ -860,3 +860,59 @@ OCR 的方法根本不在里面 —— 而它恰恰是最常见的起点。结�
 | `dart format --set-exit-if-changed` | 0 | 0 changed |
 
 合计 **1,969** 条（上一批 1,965）。
+
+---
+
+## 13. 能力增强记录（2026-10-19，第四批）
+
+两项：**ContentProvider 专项**与 **WebView 配置组合**。都来自「规则表里的明显空白」。
+
+### 13.1 ContentProvider 从「导出组件」里拆出来
+
+此前 provider 混在 `ANDROID-EXPORTED-COMPONENT` 的汇总里。真实样本上那个列表
+能有 **159 个**组件（抖音），provider 虽然按类型排在最前，但读者看到的是
+一长串类名 —— 看不出**暴露的是哪个 authority**，也看不出 `grantUriPermissions`
+和 `readPermission` / `writePermission` 的状态，而这三件事恰恰决定数据能不能被拿走。
+
+| 变更 | 位置 |
+|---|---|
+| 解析 `android:readPermission` / `android:writePermission` / `android:grantUriPermissions` | `manifest_parser.dart` + `AndroidComponent` |
+| provider 从 `_unprotectedExported` 排除，新增 `_unprotectedProviders` | `android_security_rules.dart` |
+| 新规则 `ANDROID-PROVIDER-EXPOSED`（P2），正文点名 authority，证据逐条给出 `permission` / `readPermission` / `writePermission` / `grantUriPermissions` / `guard` / `protectionLevel` | 同上 |
+
+判据上的两个细节：
+
+- **`readPermission` + `writePermission` 都声明才算关上两个方向**。只声明一个时
+  记为 `partialPermission`，正文补一句「另一个方向仍然敞开」—— 此前只读
+  `android:permission`，会把这种半开的 provider 误判成受保护。
+- 弱权限（本包声明的 normal/dangerous 级）仍按「名存实亡」处理，并在证据里
+  带上 `protectionLevel=normal`，不让读者自己去查。
+
+**行为变更**：同一条 provider 不再同时出现在「导出组件」汇总里。四条既有测试
+（`manifest_extra_fixture_test` / `manifest_attr_resolution_test` /
+`android_manifest_hygiene_test`）已同步到新归属，规则表的顺序守卫与逐条驱动表
+也补了新规则。
+
+### 13.2 WebView：补一个开关，并按组合分级
+
+| 变更 | 说明 |
+|---|---|
+| 新标记 `webview-file-url-access` | `setAllowFileAccessFromFileURLs` —— 与 `setAllowUniversalAccessFromFileURLs` 是**不同**的开关（前者允许 file:// 页面互读本地文件），漏掉会少算一半组合 |
+| 分级 | 单有 JS 桥仍 P3（第三方 SDK 普遍如此，见原注释的样本表）；桥 + 任一 file:// 跨域开关 → **P2**，换 `android.webview_bridge_unsafe` 措辞，置信度 `suspected` |
+| 证据 | 开关本身进证据（此前只在正文里提一句） |
+| 顺带修一个本地化 bug | 开关列表此前是**英文句子直接拼进 `finding`**，中文界面上会出现「Also observed: JavaScript enabled」。改成传稳定 id（`js-enabled` / `universal-file-access` / `file-url-access`），由呈现层按语言组装 |
+
+新增测试 `test/android_provider_and_webview_test.dart`（9 条），覆盖：
+无权限 / 读写都声明 / 只声明一个 / `grantUriPermissions` / `exported=false`，
+以及单桥 P3、两种组合 P2、中文界面不夹英文。
+
+### 13.3 门禁（实测）
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `flutter test` | 0 | **1,607 通过 / 14 跳过**（上一批 1,598） |
+| `analysis_model` / `apk_parser` / `ipa_parser` / `archive_safety` / `app_icon_extractor` | 0 | 65 / **117** / 125 / 40 / 25 |
+| 6 个 `analyze --fatal-infos --fatal-warnings` | 0 | 全部 No issues found |
+| `dart format --set-exit-if-changed` | 0 | 0 changed |
+
+合计 **1,979** 条（上一批 1,969）。

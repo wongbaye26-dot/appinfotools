@@ -693,6 +693,10 @@ class AnalysisReport {
           ? null
           : f.ios_nested_usage_description(bundle: bundle, key: key),
       'ios.photo_picker' => f.ios_photo_picker,
+      'android.webview_bridge_unsafe' => f.android_webview_bridge_unsafe,
+      'android.provider_exposed' => (count == null || names == null)
+          ? null
+          : f.android_provider_exposed(count: count, names: names),
       'android.permission_not_grantable' =>
         name == null ? null : f.android_permission_not_grantable(name: name),
       'ios.entitlement_capability' => (name == null || capability == null)
@@ -839,7 +843,57 @@ class AnalysisReport {
             ),
       _ => null,
     };
-    return localized ?? finding.finding;
+    var text = localized ?? finding.finding;
+    // WebView 的「同时观察到」与 provider 的几种补充说明都是**条件句**，
+    // 塞进模板会变成一堆条件占位符；改成拼在正文后面，每种情况一句、各自本地化。
+    if (code == 'android.webview_bridge' ||
+        code == 'android.webview_bridge_unsafe') {
+      text = _appendWebViewExtras(text, finding.messageArgs['extras'], t);
+    } else if (code == 'android.provider_exposed') {
+      text = _appendProviderSuffixes(text, finding, t);
+    }
+    return text;
+  }
+
+  /// WebView 开关的「同时观察到」句子。
+  static String _appendWebViewExtras(
+    String base,
+    Object? extrasArg,
+    Translations t,
+  ) {
+    if (extrasArg is! List || extrasArg.isEmpty) return base;
+    final f = t.security.finding_texts;
+    final labels = <String>[
+      for (final id in extrasArg)
+        switch ('$id') {
+          'js-enabled' => f.android_webview_extra_js_enabled,
+          'universal-file-access' =>
+            f.android_webview_extra_universal_file_access,
+          'file-url-access' => f.android_webview_extra_file_url_access,
+          _ => '$id',
+        },
+    ];
+    return '$base ${f.android_webview_extras(extras: labels.join(t.security.list_join))}';
+  }
+
+  /// provider 发现的补充句（省略数量 / URI 授权 / 单向保护 / 弱权限）。
+  static String _appendProviderSuffixes(
+    String base,
+    SecurityFinding finding,
+    Translations t,
+  ) {
+    final f = t.security.finding_texts;
+    final more = finding.messageArgs['more'];
+    final parts = <String>[
+      base,
+      if (more != null) f.android_provider_exposed_more(more: more),
+      if (finding.messageArgs['grantUri'] == true)
+        f.android_provider_exposed_grant_uri,
+      if (finding.messageArgs['partial'] == true)
+        f.android_provider_exposed_partial,
+      if (finding.messageArgs['weak'] == true) f.android_provider_exposed_weak,
+    ];
+    return parts.join(' ');
   }
 
   /// 发现项**建议**的本地化正文，语义同 [findingText]。
@@ -859,6 +913,7 @@ class AnalysisReport {
       'ios.ats_exception.review' => f.ios_ats_exception_review,
       'android.permission_not_grantable.review' =>
         f.android_permission_not_grantable_review,
+      'android.provider_exposed.review' => f.android_provider_exposed_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
@@ -1054,6 +1109,8 @@ class AnalysisReport {
         f.android_native_symbols_limitation,
       'android.screen_capture.limitation' =>
         f.android_screen_capture_limitation,
+      'android.provider_exposed.limitation' =>
+        f.android_provider_exposed_limitation,
       _ => null,
     };
     return localized ?? raw;
@@ -1473,6 +1530,7 @@ class AnalysisReport {
                 truncated: truncated, failed: failed),
       'android.native_hardening.not_provided' =>
         n.android_native_hardening_not_provided,
+      'android.provider_exposed' => n.android_provider_exposed,
       'android.signing_block.unreadable' => reason == null
           ? null
           : n.android_signing_block_unreadable(reason: reason),

@@ -439,6 +439,9 @@ class AndroidSecurityAudit {
       'webview-js-bridge',
       'webview-js-enabled',
       'webview-file-access',
+      // `setAllowFileAccessFromFileURLs` —— 与 universal access 不同的开关，
+      // 漏在这里会让「桥 + 本地文件互读」的组合判不出来。
+      'webview-file-url-access',
     };
     final webViewClues =
         scan.clues.where((c) => webViewMarkers.contains(c.markerId)).toList();

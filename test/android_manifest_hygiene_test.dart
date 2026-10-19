@@ -113,14 +113,16 @@ void main() {
           contains('com.example.Exported'));
     });
 
-    test('导出的 provider 无 permission → **P2**（数据暴露风险最高）', () {
+    test('导出的 provider 无 permission → 走专项规则，P2', () {
+      // provider 已从「导出组件」汇总里拆出来单独成条：那里有 159 个组件时
+      // 会被淹没，而且读者看不到暴露的是哪个 authority。
       final result = _audit(_meta(components: [
         _component(ComponentType.provider, 'com.example.Provider',
             exported: true),
       ]));
-      final finding = _byId(result, 'ANDROID-EXPORTED-COMPONENT');
-      expect(finding, hasLength(1));
-      expect(finding.single.severity, SecuritySeverity.p2,
+      expect(_byId(result, 'ANDROID-EXPORTED-COMPONENT'), isEmpty);
+      final finding = _byId(result, 'ANDROID-PROVIDER-EXPOSED').single;
+      expect(finding.severity, SecuritySeverity.p2,
           reason: 'ContentProvider 直接暴露数据，比 activity 更危险');
     });
 
@@ -260,15 +262,18 @@ void main() {
       expect(finding.evidence.length, lessThanOrEqualTo(20));
     });
 
-    test('provider 排在点名列表最前面（它最危险）', () {
+    test('provider 不进「导出组件」列表，单独成条点名 authority', () {
       final result = _audit(_meta(components: [
         ...many(12),
         _component(ComponentType.provider, 'com.example.ZProvider',
             exported: true),
       ]));
-      final finding = _byId(result, 'ANDROID-EXPORTED-COMPONENT').single;
-      expect((finding.messageArgs['names']! as List).first,
-          'com.example.ZProvider');
+      final generic = _byId(result, 'ANDROID-EXPORTED-COMPONENT').single;
+      expect((generic.messageArgs['names']! as List),
+          isNot(contains('com.example.ZProvider')));
+      // provider 在专项规则里被点名（没有 authorities 时退回类名）。
+      final provider = _byId(result, 'ANDROID-PROVIDER-EXPOSED').single;
+      expect(provider.messageArgs['names'], ['com.example.ZProvider']);
     });
   });
 

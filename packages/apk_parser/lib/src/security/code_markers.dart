@@ -131,6 +131,13 @@ const List<CodeMarker> codeMarkers = [
       SecurityCategory.other,
       'file:// pages may access any origin',
       'setAllowUniversalAccessFromFileURLs'),
+  // 另一个方向：file:// 页面能读取**其他 file:// 内容**（本地文件互相读）。
+  // 与 universal access 是不同的开关，漏掉它会少算一半的组合。
+  CodeMarker(
+      'webview-file-url-access',
+      SecurityCategory.other,
+      'file:// pages may read other file:// content',
+      'setAllowFileAccessFromFileURLs'),
   // ---- 音频录制（`MediaRecorder` 之外的第二个入口）----
   //
   // `RECORD_AUDIO` 的代码证据此前只认 `MediaRecorder`。用 `AudioRecord`

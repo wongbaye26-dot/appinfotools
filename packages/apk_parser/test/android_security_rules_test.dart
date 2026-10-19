@@ -115,6 +115,8 @@ void main() {
           'ANDROID-V1-ONLY-SIGNING',
           'ANDROID-UNSIGNED',
           'ANDROID-WEBVIEW-BRIDGE',
+          // provider 直接暴露数据，排在「声明了权限但没用」之前。
+          'ANDROID-PROVIDER-EXPOSED',
           'ANDROID-PERMISSION-WITHOUT-API',
           'ANDROID-RULE-A',
           'ANDROID-RULE-B',
@@ -227,6 +229,18 @@ void main() {
       'ANDROID-WEBVIEW-BRIDGE': () => _audit(
             meta: _meta(targetSdk: 34),
             strings: ['addJavascriptInterface'],
+          ),
+      // 导出且无权限的 ContentProvider。
+      'ANDROID-PROVIDER-EXPOSED': () => _audit(
+            meta: _meta(targetSdk: 34)
+              ..components = [
+                const AndroidComponent(
+                  type: ComponentType.provider,
+                  name: 'com.example.LeakyProvider',
+                  exported: true,
+                  authorities: 'com.example.leaky',
+                ),
+              ],
           ),
       // 声明了通讯录权限但代码里没有 ContactsContract。
       'ANDROID-PERMISSION-WITHOUT-API': () => _audit(

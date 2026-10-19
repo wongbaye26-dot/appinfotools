@@ -215,6 +215,10 @@ class ManifestParser {
           intentFilters: _parseIntentFilters(child),
           enabled: _parseBool(child.attributes['enabled']),
           authorities: child.attributes['authorities'],
+          readPermission: child.attributes['readPermission'],
+          writePermission: child.attributes['writePermission'],
+          grantUriPermissions:
+              _parseBool(child.attributes['grantUriPermissions']),
         ));
 
         if (isActivity && _isLaunchableActivity(child)) {

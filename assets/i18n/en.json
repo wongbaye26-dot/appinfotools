@@ -691,7 +691,19 @@
       "ios_entitlement_capability": "The provisioning profile grants the capability entitlement {name} ({capability}). Unlike keychain or app groups, this one is rare in ordinary apps and widens what the app can reach.",
       "ios_entitlement_capability_review": "Confirm the capability is required by a visible feature, and that the profile is the one you intended to ship.",
       "ios_ats_exception": "Info.plist declares ATS exceptions for {count} domain(s); {weakened} of them actually weaken transport security: {domains}. ATS exceptions are scoped to those hosts and are a common, legitimate practice — but a host that allows insecure HTTP is a real downgrade for that host only.",
-      "ios_ats_exception_review": "Check that every exception is still needed, and prefer removing NSExceptionAllowsInsecureHTTPLoads in favour of a valid certificate for that host."
+      "ios_ats_exception_review": "Check that every exception is still needed, and prefer removing NSExceptionAllowsInsecureHTTPLoads in favour of a valid certificate for that host.",
+      "android_webview_bridge_unsafe": "A JavaScript bridge (addJavascriptInterface) is combined with file:// cross-origin access: any page loaded into that WebView can read local files and call the injected object — the classic local-file exfiltration path.",
+      "android_webview_extras": "Also observed: {extras}.",
+      "android_webview_extra_js_enabled": "JavaScript enabled",
+      "android_webview_extra_universal_file_access": "file:// pages may access any origin",
+      "android_webview_extra_file_url_access": "file:// pages may read other file:// content",
+      "android_provider_exposed": "{count} ContentProvider(s) are exported without an effective permission guard: {names}. Other apps on the device can query, and possibly modify, the data behind these authorities.",
+      "android_provider_exposed_more": "{more} more are not listed.",
+      "android_provider_exposed_grant_uri": "At least one of them sets grantUriPermissions, so it can hand out per-URI access even to apps without the declared permission.",
+      "android_provider_exposed_partial": "Some providers guard only one direction (readPermission or writePermission), leaving the other open.",
+      "android_provider_exposed_weak": "Some are guarded by a permission this app declares itself at normal/dangerous level, which any app can request.",
+      "android_provider_exposed_review": "Guard the provider with a signature-level permission, or set android:exported=\"false\" if no other app needs it. If URI grants are required, keep grantUriPermissions but make sure the URIs handed out are scoped.",
+      "android_provider_exposed_limitation": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -866,7 +878,8 @@
       "android_sdk_inventory_incomplete": "{truncated} DEX file(s) were truncated and {failed} could not be read; SDKs that only appear in those regions are not listed",
       "ios_executables_truncated": "{count} nested bundle(s) were not parsed at all (of {total} bundles that contain code), so their executables were neither scanned for API clues nor counted in the coverage figures above.",
       "android_signing_block_unreadable": "The APK Signing Block could not be read ({reason}): the v2+ signature schemes are unknown, so \"no signature block found\" is not a conclusion this run can make. This is not a verdict that the signature is invalid.",
-      "ios_permission_request_no_methname": "No executable had a readable __objc_methname section, so active permission requests could not be determined. This is not a statement that the app requests no permissions."
+      "ios_permission_request_no_methname": "No executable had a readable __objc_methname section, so active permission requests could not be determined. This is not a statement that the app requests no permissions.",
+      "android_provider_exposed": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence."
     },
     "findings": "Findings",
     "sdk_categories": {

@@ -508,7 +508,8 @@
       "android_sdk_inventory_incomplete": "DEX {truncated}개가 잘렸고 {failed}개를 읽지 못했습니다. 해당 영역에만 있는 SDK 는 목록에 포함되지 않습니다",
       "ios_executables_truncated": "{count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중). 따라서 해당 실행 파일은 API 단서 스캔도, 위의 커버리지 집계도 되지 않았습니다.",
       "android_signing_block_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}): v2+ 서명 방식을 알 수 없으므로 이번에 \"서명 블록이 없다\"고 결론 내릴 수 없습니다. 이것은 \"서명이 유효하지 않다\"는 뜻이 아닙니다.",
-      "ios_permission_request_no_methname": "읽을 수 있는 __objc_methname 섹션이 있는 실행 파일이 없어 권한의 능동적 요청을 판정할 수 없습니다. \"권한을 요청하지 않는다\"는 뜻이 아닙니다."
+      "ios_permission_request_no_methname": "읽을 수 있는 __objc_methname 섹션이 있는 실행 파일이 없어 권한의 능동적 요청을 판정할 수 없습니다. \"권한을 요청하지 않는다\"는 뜻이 아닙니다.",
+      "android_provider_exposed": "권한이 없는 provider는 기기의 어떤 앱에서도 접근할 수 있지만, 데이터가 반환되는지는 내용에 달려 있습니다. android:enabled=false인 provider도 여기 표시됩니다 — 증거를 확인하세요."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -694,7 +695,19 @@
       "ios_entitlement_capability": "프로비저닝 프로파일이 능력 엔타이틀먼트 {name}({capability})을 부여합니다. 키체인이나 앱 그룹만큼 흔하지 않고 일반 앱에서는 드물며, 앱이 접근할 수 있는 범위를 넓힙니다.",
       "ios_entitlement_capability_review": "눈에 보이는 기능이 이 능력을 필요로 하는지, 배포하려는 프로파일이 맞는지 확인하세요.",
       "ios_ats_exception": "Info.plist가 {count}개 도메인에 ATS 예외를 선언했으며, 그중 {weakened}개가 실제로 전송 보안을 약화합니다: {domains}. ATS 예외는 해당 호스트에만 적용되며 흔한 정당 관행이지만, 평문 HTTP를 허용한 호스트에서는 실제로 다운그레이드됩니다.",
-      "ios_ats_exception_review": "각 예외가 여전히 필요한지 확인하고, 해당 호스트의 유효한 인증서를 쓸 수 있다면 NSExceptionAllowsInsecureHTTPLoads를 제거하는 것을 우선하세요."
+      "ios_ats_exception_review": "각 예외가 여전히 필요한지 확인하고, 해당 호스트의 유효한 인증서를 쓸 수 있다면 NSExceptionAllowsInsecureHTTPLoads를 제거하는 것을 우선하세요.",
+      "android_webview_bridge_unsafe": "JavaScript 브리지(addJavascriptInterface)와 file:// 교차 출처 접근이 동시에 켜져 있습니다. 이 WebView에 로드된 임의의 페이지가 로컬 파일을 읽고 주입된 객체를 호출할 수 있습니다 — 전형적인 \"로컬 파일 유출\" 경로입니다.",
+      "android_webview_extras": "함께 관찰됨: {extras}.",
+      "android_webview_extra_js_enabled": "JavaScript 사용",
+      "android_webview_extra_universal_file_access": "file:// 페이지가 임의 출처에 접근 가능",
+      "android_webview_extra_file_url_access": "file:// 페이지가 다른 file:// 내용을 읽을 수 있음",
+      "android_provider_exposed": "{count}개의 ContentProvider가 권한 보호 없이 외부에 노출되어 있습니다: {names}. 같은 기기의 다른 앱이 이 authority 뒤의 데이터를 조회하거나 수정할 수 있습니다.",
+      "android_provider_exposed_more": "추가로 {more}개는 표시하지 않았습니다.",
+      "android_provider_exposed_grant_uri": "적어도 하나가 grantUriPermissions를 설정해, 권한을 선언하지 않은 앱에도 단일 URI 접근 권한을 넘길 수 있습니다.",
+      "android_provider_exposed_partial": "일부 provider는 한 방향(readPermission 또는 writePermission)만 보호되어 다른 방향이 열려 있습니다.",
+      "android_provider_exposed_weak": "일부는 이 앱이 normal/dangerous로 선언한 권한으로 보호되어 어떤 앱이든 얻을 수 있습니다.",
+      "android_provider_exposed_review": "signature 수준 권한으로 provider를 보호하거나, 다른 앱이 필요 없다면 android:exported=\"false\"로 설정하세요. URI 부여가 필요하면 grantUriPermissions를 유지하되 넘기는 URI를 제한하세요.",
+      "android_provider_exposed_limitation": "권한이 없는 provider는 기기의 어떤 앱에서도 접근할 수 있지만, 데이터가 반환되는지는 내용에 달려 있습니다. android:enabled=false인 provider도 여기 표시됩니다 — 증거를 확인하세요."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",

@@ -82,18 +82,22 @@ void main() {
       expect(_byId(result, 'ANDROID-WEBVIEW-BRIDGE'), isEmpty);
     });
 
-    test('同时开了 JS 与 file 跨域 → 正文里带出这两个附加事实', () {
+    test('同时开了 JS 与 file 跨域 → 升级 P2，附加事实用 id 传给呈现层', () {
       final result = _audit(_meta(), [
         'addJavascriptInterface',
         'setJavaScriptEnabled',
         'setAllowUniversalAccessFromFileURLs',
       ]);
       final finding = _byId(result, 'ANDROID-WEBVIEW-BRIDGE').single;
+      // 桥 + file:// 跨域 = 完整外传通路，不再按 P3 报。
+      expect(finding.severity, SecuritySeverity.p2);
+      expect(finding.messageCode, 'android.webview_bridge_unsafe');
+      // 附加事实传的是**稳定 id**，不是英文句子 —— 否则中文界面里会夹英文。
       final extras = (finding.messageArgs['extras']! as List).cast<String>();
-      expect(extras, contains('JavaScript enabled'));
-      expect(extras, contains('file:// pages may access any origin'));
-      // 附加事实要写进正文，不能只在 messageArgs 里
-      expect(finding.finding, contains('JavaScript enabled'));
+      expect(extras, contains('js-enabled'));
+      expect(extras, contains('universal-file-access'));
+      // 英文回退里仍要有这两条（日志 / en 界面）。
+      expect(finding.finding, contains('file://'));
     });
 
     test('完全没有 WebView 线索 → 不报', () {

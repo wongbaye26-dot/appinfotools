@@ -313,6 +313,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     build: _buildWebViewBridge,
   ),
   AndroidSecurityRule(
+    id: 'ANDROID-PROVIDER-EXPOSED',
+    summary: '导出的 ContentProvider 没有有效权限保护 —— 别的应用可以直接查询它的数据。',
+    matches: _matchesExportedProvider,
+    build: _buildExportedProvider,
+  ),
+  AndroidSecurityRule(
     id: 'ANDROID-PERMISSION-WITHOUT-API',
     summary: '声明了敏感权限，但代码里找不到对应的 API 调用。',
     matches: _matchesUnusedPermission,
@@ -423,6 +429,10 @@ enum _UnprotectedReason {
   /// 声明了 `android:permission`，但那个权限是**本包自己声明**的，
   /// 且 `protectionLevel` 不是 `signature` —— 任何应用都能申请到它。
   weakPermission,
+
+  /// 仅 provider：`readPermission` / `writePermission` 只声明了一个。
+  /// 另一个方向仍然对任何应用敞开。
+  partialPermission,
 }
 
 /// 一个导出且未受保护的组件，连同原因。
@@ -436,15 +446,58 @@ Map<String, AndroidDeclaredPermission> _ownPermissions(ApkMeta meta) => {
       for (final p in meta.declaredPermissions) p.name: p,
     };
 
-List<_Unprotected> _unprotectedExported(AndroidRuleFacts f) {
+/// 导出且没有有效权限保护的组件。
+///
+/// **provider 不在这里**：它由 `ANDROID-PROVIDER-EXPOSED` 单独负责。
+/// 混在「导出组件」的汇总里，159 个组件的列表会把 provider 这条最重要的
+/// 信号稀释掉，读者也看不到具体暴露的是哪个 authority。
+List<_Unprotected> _unprotectedExported(AndroidRuleFacts f) =>
+    _unprotectedOf(f, (c) => c.type != ComponentType.provider);
+
+/// 导出且没有有效权限保护的 ContentProvider。
+List<_Unprotected> _unprotectedProviders(AndroidRuleFacts f) =>
+    _unprotectedOf(f, (c) => c.type == ComponentType.provider);
+
+List<_Unprotected> _unprotectedOf(
+  AndroidRuleFacts f,
+  bool Function(AndroidComponent) keep,
+) {
   final launchers = {for (final a in f.meta.launchableActivities) a.name};
   final own = _ownPermissions(f.meta);
   final result = <_Unprotected>[];
   for (final c in f.meta.components) {
+    if (!keep(c)) continue;
     if (c.exported != true) continue;
     if (launchers.contains(c.name)) continue;
     final permission = c.permission;
     if (permission == null || permission.isEmpty) {
+      // provider 还可能靠 readPermission / writePermission 保护：
+      // 两个都声明才算「两个方向都关上」；只声明一个仍是半开。
+      if (c.type == ComponentType.provider) {
+        final read = c.readPermission;
+        final write = c.writePermission;
+        final hasRead = read != null && read.isNotEmpty;
+        final hasWrite = write != null && write.isNotEmpty;
+        if (hasRead && hasWrite) {
+          // 两个方向都有权限：按 android:permission 的同一套判据看强弱。
+          final readDecl = own[read];
+          final writeDecl = own[write];
+          final weak = (readDecl != null && !readDecl.signatureProtected) ||
+              (writeDecl != null && !writeDecl.signatureProtected);
+          if (weak) {
+            result
+                .add((component: c, reason: _UnprotectedReason.weakPermission));
+          }
+          continue;
+        }
+        result.add((
+          component: c,
+          reason: hasRead || hasWrite
+              ? _UnprotectedReason.partialPermission
+              : _UnprotectedReason.noPermission,
+        ));
+        continue;
+      }
       result.add((component: c, reason: _UnprotectedReason.noPermission));
       continue;
     }
@@ -582,6 +635,11 @@ SecurityFinding _buildExportedComponent(AndroidRuleFacts f) {
                   'protectionLevel="'
                   '${_ownPermissions(f.meta)[e.component.permission]?.protectionLevelText ?? 'normal'}" '
                   '— any app can request it',
+            // provider 专属：只护住一个方向。这条分支到不了普通组件
+            // （`_unprotectedExported` 已排除 provider）。
+            _UnprotectedReason.partialPermission =>
+              'android:exported="true" with only one of readPermission / '
+                  'writePermission declared',
           },
         ),
     ],
@@ -630,6 +688,106 @@ bool _matchesUnsigned(AndroidRuleFacts f) =>
     (f.meta.signingSchemes?.v1Only ?? false) && f.meta.hasV1Signature == false;
 
 bool _matchesWebViewBridge(AndroidRuleFacts f) => f.hasWebViewBridge;
+
+bool _matchesExportedProvider(AndroidRuleFacts f) =>
+    _unprotectedProviders(f).isNotEmpty;
+
+/// 导出且无有效保护的 ContentProvider。
+///
+/// 与「导出组件」分开单列，理由有三：
+/// 1. provider **直接暴露数据**（query / insert / delete），不是「能被唤起」；
+/// 2. 需要说清暴露的是哪个 `authorities`，而不是一个类名；
+/// 3. `grantUriPermissions` 让「没有权限」不再等于「拿不到数据」，要一起说。
+///
+/// 等级 P2：需要另一侧真的来访问，且 provider 可能返回空 —— 但一旦返回，
+/// 泄漏的就是应用私有数据（数据库、文件、偏好）。
+SecurityFinding _buildExportedProvider(AndroidRuleFacts f) {
+  final entries = _unprotectedProviders(f);
+  final ordered = [...entries]..sort((a, b) {
+      final an = a.component.authorities ?? a.component.name ?? '';
+      final bn = b.component.authorities ?? b.component.name ?? '';
+      return an.compareTo(bn);
+    });
+  final names = [
+    for (final e in ordered)
+      e.component.authorities ?? e.component.name ?? '<unnamed>',
+  ];
+  final shown = names.take(_kMaxNamedExportedComponents).toList();
+  final omitted = names.length - shown.length;
+  final grantUri = ordered.any((e) => e.component.grantUriPermissions == true);
+  final partial =
+      ordered.any((e) => e.reason == _UnprotectedReason.partialPermission);
+  final weak =
+      ordered.any((e) => e.reason == _UnprotectedReason.weakPermission);
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-PROVIDER-EXPOSED',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.deviceData,
+    severity: SecuritySeverity.p2,
+    confidence: SecurityConfidence.confirmed,
+    finding: '${names.length} ContentProvider(s) are exported without an '
+        'effective permission guard: ${shown.join(', ')}'
+        '${omitted > 0 ? ' and $omitted more' : ''}. Other apps on the device '
+        'can query, and possibly modify, the data behind these authorities.'
+        '${grantUri ? ' At least one of them also sets '
+            'grantUriPermissions, so it can hand out per-URI access even to '
+            'apps without the declared permission.' : ''}'
+        '${partial ? ' Some providers guard only one direction '
+            '(readPermission or writePermission), leaving the other open.' : ''}'
+        '${weak ? ' Some are guarded by a permission this app declares itself '
+            'at normal/dangerous level, which any app can request.' : ''}',
+    messageCode: 'android.provider_exposed',
+    messageArgs: {
+      'count': names.length,
+      'names': shown,
+      if (omitted > 0) 'more': omitted,
+      if (grantUri) 'grantUri': true,
+      if (partial) 'partial': true,
+      if (weak) 'weak': true,
+    },
+    evidence: [
+      for (final e in ordered.take(_kMaxExportedEvidence))
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'AndroidManifest.xml / <provider>',
+          detail: _providerDetail(e, f),
+        ),
+    ],
+    limitation: 'A provider with no permission is reachable by any app on '
+        'the device, but whether it returns anything depends on the data it '
+        'holds. Providers disabled by android:enabled=false are still listed '
+        'here — check the evidence.',
+    limitationCode: 'android.provider_exposed.limitation',
+    recommendation: 'Guard the provider with a signature-level permission, '
+        'or set android:exported="false" if no other app needs it. If URI '
+        'grants are required, keep grantUriPermissions but make sure the '
+        'URIs handed out are scoped.',
+    recommendationCode: 'android.provider_exposed.review',
+  );
+}
+
+String _providerDetail(_Unprotected e, AndroidRuleFacts f) {
+  final c = e.component;
+  final own = _ownPermissions(f.meta);
+  final guarded = c.permission ?? c.readPermission ?? c.writePermission;
+  final parts = <String>[
+    'authorities=${c.authorities ?? '<none>'}',
+    'class=${c.name ?? '<unnamed>'}',
+    if (c.permission != null) 'permission=${c.permission}',
+    if (c.readPermission != null) 'readPermission=${c.readPermission}',
+    if (c.writePermission != null) 'writePermission=${c.writePermission}',
+    if (c.grantUriPermissions != null)
+      'grantUriPermissions=${c.grantUriPermissions}',
+    'guard=${e.reason.name}',
+    // 弱权限时把级别写进证据：读者要能看懂「为什么这条权限不算保护」，
+    // 而不是看到一个权限名去自己查。
+    if (e.reason == _UnprotectedReason.weakPermission && guarded != null)
+      'protectionLevel='
+          '${own[guarded]?.protectionLevelText ?? 'normal'}',
+  ];
+  return parts.join(', ');
+}
 
 /// 只有**真的扫过 DEX** 才判 —— 没扫过的时候「找不到调用」只是我们没看。
 bool _matchesUnusedPermission(AndroidRuleFacts f) =>
@@ -878,35 +1036,56 @@ SecurityFinding _buildWebViewBridge(AndroidRuleFacts f) {
       .toList();
   final bridgeClues =
       f.webViewClues.where((c) => c.markerId == 'webview-js-bridge').toList();
-  // 附带说明：同一个 WebView 还开了哪些开关（影响后果的严重程度）。
+  bool has(String id) =>
+      f.webViewClues.any((c) => c.markerId == id) ||
+      f.webViewCodeRefs.any((r) => r.markerId == id);
+
+  // 同一个 WebView 还开了哪些开关。**只传 id**，由呈现层按语言取文案 ——
+  // 此前把英文句子直接拼进 `finding`，中文界面里就会出现
+  // 「Also observed: JavaScript enabled」。
   final extras = <String>[
-    if (f.webViewClues.any((c) => c.markerId == 'webview-js-enabled') ||
-        f.webViewCodeRefs.any((r) => r.markerId == 'webview-js-enabled'))
-      'JavaScript enabled',
-    if (f.webViewClues.any((c) => c.markerId == 'webview-file-access') ||
-        f.webViewCodeRefs.any((r) => r.markerId == 'webview-file-access'))
-      'file:// pages may access any origin',
+    if (has('webview-js-enabled')) 'js-enabled',
+    if (has('webview-file-access')) 'universal-file-access',
+    if (has('webview-file-url-access')) 'file-url-access',
   ];
+  // 桥 + 任一 file:// 跨域开关 = 「本地文件 → 页面 → 外传」的完整通路，
+  // 这时才升 P2。单有桥仍是 P3（见上面的样本表）。
+  final unsafe = has('webview-file-access') || has('webview-file-url-access');
 
   return SecurityFinding(
     ruleId: 'ANDROID-WEBVIEW-BRIDGE',
     platform: SecurityPlatform.android,
     category: SecurityCategory.other,
-    // P3：见上面的样本表 —— 这个 API 绝大多数来自第三方 SDK（验证码 / 统计 /
-    // 分享），报成 P2 会让它在多数应用上出现，读者会学会忽略。
-    severity: SecuritySeverity.p3,
-    confidence: SecurityConfidence.independentCapability,
-    finding: 'A JavaScript bridge is exposed to WebView content '
-        '(addJavascriptInterface): scripts running in that WebView can call '
-        'the injected object. CAPTCHA, analytics and social-sharing SDKs use '
-        'this routinely, so its presence does not mean the app itself '
-        'defined a bridge.'
-        '${extras.isEmpty ? '' : ' Also observed: ${extras.join('; ')}.'}',
-    messageCode: 'android.webview_bridge',
+    // 单有桥 → P3（第三方 SDK 普遍这么干）；桥 + file:// 跨域 → P2。
+    severity: unsafe ? SecuritySeverity.p2 : SecuritySeverity.p3,
+    confidence: unsafe
+        ? SecurityConfidence.suspected
+        : SecurityConfidence.independentCapability,
+    finding: unsafe
+        ? 'A JavaScript bridge (addJavascriptInterface) is combined with '
+            'file:// cross-origin access: any page loaded into that WebView '
+            'can read local files and call the injected object, which is the '
+            'classic local-file exfiltration path.'
+        : 'A JavaScript bridge is exposed to WebView content '
+            '(addJavascriptInterface): scripts running in that WebView can '
+            'call the injected object. CAPTCHA, analytics and social-sharing '
+            'SDKs use this routinely, so its presence does not mean the app '
+            'itself defined a bridge.',
+    messageCode:
+        unsafe ? 'android.webview_bridge_unsafe' : 'android.webview_bridge',
     messageArgs: {if (extras.isNotEmpty) 'extras': extras},
     evidence: [
       ...referenceEvidence(bridgeRefs),
       ...clueEvidence(bridgeClues),
+      // 开关本身也是证据：读者要能核对「到底开了哪个」。
+      ...clueEvidence([
+        for (final c in f.webViewClues)
+          if (c.markerId != 'webview-js-bridge') c,
+      ]),
+      ...referenceEvidence([
+        for (final r in f.webViewCodeRefs)
+          if (r.markerId != 'webview-js-bridge') r,
+      ]),
     ],
     limitation: 'This reports that the API is used, not that it is '
         'reachable from untrusted content: the URL loaded into the WebView '

@@ -141,24 +141,27 @@ void main() {
       expect(finding.single.severity, SecuritySeverity.p1);
     });
 
-    test('ANDROID-EXPORTED-COMPONENT 只报 provider，不报启动页', () async {
+    test('导出组件只报 LeakyProvider（走 provider 专项），不报启动页', () async {
       final meta = await _parseFixture();
       final result = AndroidSecurityAudit.audit(
         meta: meta,
         dexEntries: const [],
       );
-      final finding = result.findings
-          .where((f) => f.ruleId == 'ANDROID-EXPORTED-COMPONENT')
+      // provider 现在由 `ANDROID-PROVIDER-EXPOSED` 负责。
+      final provider = result.findings
+          .where((f) => f.ruleId == 'ANDROID-PROVIDER-EXPOSED')
           .toList();
-      expect(finding, hasLength(1));
-      expect(finding.single.severity, SecuritySeverity.p2,
-          reason: 'ContentProvider 暴露数据，等级高于 activity');
-      // 组件名在证据的 location 里（detail 是统一的判定依据）。
-      final locations =
-          finding.single.evidence.map((e) => e.location).join('\n');
-      expect(locations, contains('LeakyProvider'));
-      expect(locations, isNot(contains('MainActivity')),
+      expect(provider, hasLength(1));
+      expect(provider.single.severity, SecuritySeverity.p2);
+      final detail = provider.single.evidence.map((e) => e.detail).join('\n');
+      expect(detail, contains('LeakyProvider'));
+      expect(detail, isNot(contains('MainActivity')),
           reason: '启动页必须导出，报它等于每个应用都报一条');
+      // 「导出组件」汇总里不该再有 provider。
+      expect(
+        result.findings.where((f) => f.ruleId == 'ANDROID-EXPORTED-COMPONENT'),
+        isEmpty,
+      );
     });
 
     test('allowBackup=false → ANDROID-ALLOW-BACKUP 不触发（能区分 true/false）',

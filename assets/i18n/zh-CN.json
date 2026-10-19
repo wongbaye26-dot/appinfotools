@@ -691,7 +691,19 @@
       "ios_entitlement_capability": "描述文件授予了能力授权项 {name}（{capability}）。它不像钥匙串或应用组那样普遍，普通应用里很少见，而且扩大了应用能触达的范围。",
       "ios_entitlement_capability_review": "确认这项能力有可见功能需要，并确认这是你打算发布的那份描述文件。",
       "ios_ats_exception": "Info.plist 为 {count} 个域名声明了 ATS 例外，其中 {weakened} 个确实放宽了传输安全：{domains}。ATS 例外只作用于这些主机，本身是常见的合规做法；但允许明文 HTTP 的那几个域名确实在该主机上降级了。",
-      "ios_ats_exception_review": "核对每条例外是否仍然必要；能换用该主机的有效证书时，优先去掉 NSExceptionAllowsInsecureHTTPLoads。"
+      "ios_ats_exception_review": "核对每条例外是否仍然必要；能换用该主机的有效证书时，优先去掉 NSExceptionAllowsInsecureHTTPLoads。",
+      "android_webview_bridge_unsafe": "JavaScript 桥（addJavascriptInterface）与 file:// 跨域访问同时开启：加载进这个 WebView 的任何页面都能读取本地文件并调用被注入的对象 —— 这是典型的「本地文件外传」通路。",
+      "android_webview_extras": "同时观察到：{extras}。",
+      "android_webview_extra_js_enabled": "JavaScript 已启用",
+      "android_webview_extra_universal_file_access": "file:// 页面可访问任意源",
+      "android_webview_extra_file_url_access": "file:// 页面可读取其他 file:// 内容",
+      "android_provider_exposed": "{count} 个 ContentProvider 对外导出且没有有效权限保护：{names}。同一设备上的其他应用可以查询、甚至修改这些 authority 背后的数据。",
+      "android_provider_exposed_more": "另有 {more} 个未列出。",
+      "android_provider_exposed_grant_uri": "其中至少一个设置了 grantUriPermissions，可以把单个 URI 的访问权临时授予没有声明权限的应用。",
+      "android_provider_exposed_partial": "部分 provider 只护住一个方向（readPermission 或 writePermission），另一个方向仍然敞开。",
+      "android_provider_exposed_weak": "部分 provider 由本应用自己声明的 normal/dangerous 级权限保护，任何应用都能申请到。",
+      "android_provider_exposed_review": "用 signature 级权限保护该 provider；没有其他应用需要时直接设 android:exported=\"false\"。确实需要 URI 授权时保留 grantUriPermissions，但要确保授出的 URI 是收敛的。",
+      "android_provider_exposed_limitation": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -866,7 +878,8 @@
       "android_sdk_inventory_incomplete": "{truncated} 个 DEX 被截断、{failed} 个读不出来；只出现在那些区域的 SDK 不会被列出",
       "ios_executables_truncated": "有 {count} 个嵌套 bundle 完全没有解析（共 {total} 个含代码的 bundle），因此它们的可执行文件既没有做 API 线索扫描，也没有算进上面的覆盖率。",
       "android_signing_block_unreadable": "APK 签名块读不出来（{reason}）：v2+ 签名方案未知，因此本次不能下「没有签名块」的结论。这不等于「签名无效」。",
-      "ios_permission_request_no_methname": "没有任何可执行文件带有可读的 __objc_methname 节，因此无法判定是否主动请求权限。这不等于「没有申请权限」。"
+      "ios_permission_request_no_methname": "没有任何可执行文件带有可读的 __objc_methname 节，因此无法判定是否主动请求权限。这不等于「没有申请权限」。",
+      "android_provider_exposed": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。"
     },
     "findings": "发现项",
     "sdk_categories": {

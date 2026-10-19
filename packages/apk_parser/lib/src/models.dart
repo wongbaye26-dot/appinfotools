@@ -427,6 +427,20 @@ class AndroidComponent {
   /// 仅 provider 有：`android:authorities`。
   final String? authorities;
 
+  /// 仅 provider 有：`android:readPermission` / `android:writePermission`。
+  ///
+  /// 它们比 `android:permission` 更细：只读或只写受保护时，另一个方向仍然
+  /// 敞开。只读 `permission` 会把这种「半开」的 provider 误判成受保护。
+  final String? readPermission;
+  final String? writePermission;
+
+  /// 仅 provider 有：`android:grantUriPermissions`。
+  ///
+  /// 为 `true` 时，provider 可以通过 `FLAG_GRANT_READ_URI_PERMISSION` 把
+  /// **单个 URI** 的访问权临时授予别的应用，即使对方没有 read/write 权限。
+  /// 这不是漏洞，但它让「没有权限」不再等于「拿不到数据」，判级时要一起看。
+  final bool? grantUriPermissions;
+
   const AndroidComponent({
     required this.type,
     this.name,
@@ -436,6 +450,9 @@ class AndroidComponent {
     this.intentFilters = const [],
     this.enabled,
     this.authorities,
+    this.readPermission,
+    this.writePermission,
+    this.grantUriPermissions,
   });
 
   /// 按平台默认规则推导的「是否对外可见」。

@@ -691,7 +691,19 @@
       "ios_entitlement_capability": "描述檔授予了能力授權項 {name}（{capability}）。它不像鑰匙圈或應用程式群組那樣普遍，普通應用程式裡很少見，而且擴大了應用程式能觸達的範圍。",
       "ios_entitlement_capability_review": "確認這項能力有可見功能需要，並確認這是你打算發佈的那份描述檔。",
       "ios_ats_exception": "Info.plist 為 {count} 個網域宣告了 ATS 例外，其中 {weakened} 個確實放寬了傳輸安全：{domains}。ATS 例外只作用於這些主機，本身是常見的合規做法；但允許明文 HTTP 的那幾個網域確實在該主機上降級了。",
-      "ios_ats_exception_review": "核對每條例外是否仍然必要；能換用該主機的有效憑證時，優先移除 NSExceptionAllowsInsecureHTTPLoads。"
+      "ios_ats_exception_review": "核對每條例外是否仍然必要；能換用該主機的有效憑證時，優先移除 NSExceptionAllowsInsecureHTTPLoads。",
+      "android_webview_bridge_unsafe": "JavaScript 橋（addJavascriptInterface）與 file:// 跨來源存取同時開啟：載入這個 WebView 的任何頁面都能讀取本機檔案並呼叫被注入的物件 —— 這是典型的「本機檔案外傳」通路。",
+      "android_webview_extras": "同時觀察到：{extras}。",
+      "android_webview_extra_js_enabled": "JavaScript 已啟用",
+      "android_webview_extra_universal_file_access": "file:// 頁面可存取任意來源",
+      "android_webview_extra_file_url_access": "file:// 頁面可讀取其他 file:// 內容",
+      "android_provider_exposed": "{count} 個 ContentProvider 對外匯出且沒有有效權限保護：{names}。同一裝置上的其他應用程式可以查詢、甚至修改這些 authority 背後的資料。",
+      "android_provider_exposed_more": "另有 {more} 個未列出。",
+      "android_provider_exposed_grant_uri": "其中至少一個設定了 grantUriPermissions，可以把單一 URI 的存取權暫時授予沒有宣告權限的應用程式。",
+      "android_provider_exposed_partial": "部分 provider 只護住一個方向（readPermission 或 writePermission），另一個方向仍然敞開。",
+      "android_provider_exposed_weak": "部分 provider 由本應用程式自己宣告的 normal/dangerous 級權限保護，任何應用程式都能申請到。",
+      "android_provider_exposed_review": "用 signature 級權限保護該 provider；沒有其他應用程式需要時直接設 android:exported=\"false\"。確實需要 URI 授權時保留 grantUriPermissions，但要確保授出的 URI 是收斂的。",
+      "android_provider_exposed_limitation": "沒有權限的 provider 對本機任何應用程式都可達，但能否取到資料取決於它存了什麼。android:enabled=false 的 provider 也會列在這裡 —— 請看證據。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",
@@ -866,7 +878,8 @@
       "android_sdk_inventory_incomplete": "{truncated} 個 DEX 被截斷、{failed} 個讀不出來；只出現在那些區域的 SDK 不會被列出",
       "ios_executables_truncated": "有 {count} 個嵌套 bundle 完全沒有解析（共 {total} 個含程式碼的 bundle），因此它們的可執行檔既沒有做 API 線索掃描，也沒有算進上面的覆蓋率。",
       "android_signing_block_unreadable": "APK 簽章區塊無法讀取（{reason}）：v2+ 簽章方案未知，因此本次不能下「沒有簽章區塊」的結論。這不等於「簽章無效」。",
-      "ios_permission_request_no_methname": "沒有任何可執行檔帶有可讀的 __objc_methname 節，因此無法判定是否主動請求權限。這不等於「沒有申請權限」。"
+      "ios_permission_request_no_methname": "沒有任何可執行檔帶有可讀的 __objc_methname 節，因此無法判定是否主動請求權限。這不等於「沒有申請權限」。",
+      "android_provider_exposed": "沒有權限的 provider 對本機任何應用程式都可達，但能否取到資料取決於它存了什麼。android:enabled=false 的 provider 也會列在這裡 —— 請看證據。"
     },
     "findings": "發現項",
     "sdk_categories": {

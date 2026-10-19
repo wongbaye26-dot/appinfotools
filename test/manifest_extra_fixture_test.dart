@@ -107,49 +107,48 @@ void main() {
   });
 
   group('规则：导出组件的权限是否名存实亡', () {
-    test('normal 级自定义权限 → **仍然报**，且措辞换成「effective」', () async {
+    // WeakProvider 是 provider，现在由 `ANDROID-PROVIDER-EXPOSED` 负责 ——
+    // 判据不变（normal 级自定义权限 = 没保护），只是归属换了。
+    test('normal 级自定义权限 → **仍然报**，并标出 weak 与保护级别', () async {
       final result = _audit(await _parseFixture());
-      final finding = _byId(result, 'ANDROID-EXPORTED-COMPONENT');
+      final finding = _byId(result, 'ANDROID-PROVIDER-EXPOSED');
       expect(finding, hasLength(1), reason: 'WeakProvider 的权限任何应用都能申请，等于没保护');
-      expect(finding.single.messageCode, 'android.exported_component_weak');
-      expect(finding.single.finding, contains('effective'));
+      expect(finding.single.severity, SecuritySeverity.p2);
+      expect(finding.single.messageArgs['weak'], isTrue);
 
       final details = finding.single.evidence.map((e) => e.detail).join('\n');
       expect(details, contains('com.example.permission.WEAK'));
-      expect(details, contains('protectionLevel="normal"'),
-          reason: '证据要能看懂级别，不能是裸的 0x0');
+      expect(details, contains('protectionLevel=normal'),
+          reason: '证据要能看懂级别，不能只给一个权限名');
     });
 
     test('signature 级自定义权限 → 受保护，不报', () async {
       final result = _audit(await _parseFixture());
-      final locations = _byId(result, 'ANDROID-EXPORTED-COMPONENT')
-          .single
-          .evidence
-          .map((e) => e.location)
-          .join('\n');
-      expect(locations, isNot(contains('StrongService')),
+      final all = [
+        ..._byId(result, 'ANDROID-EXPORTED-COMPONENT'),
+        ..._byId(result, 'ANDROID-PROVIDER-EXPOSED'),
+      ].map((f) => f.evidence.map((e) => e.detail).join('\n')).join('\n');
+      expect(all, isNot(contains('StrongService')),
           reason: 'signature 级权限只有同签名应用能拿到，是真的保护');
     });
 
     test('框架权限 → 看不到级别，保守当成受保护，不报', () async {
       final result = _audit(await _parseFixture());
-      final locations = _byId(result, 'ANDROID-EXPORTED-COMPONENT')
-          .single
-          .evidence
-          .map((e) => e.location)
-          .join('\n');
-      expect(locations, isNot(contains('JobReceiver')),
+      final all = [
+        ..._byId(result, 'ANDROID-EXPORTED-COMPONENT'),
+        ..._byId(result, 'ANDROID-PROVIDER-EXPOSED'),
+      ].map((f) => f.evidence.map((e) => e.detail).join('\n')).join('\n');
+      expect(all, isNot(contains('JobReceiver')),
           reason: '猜错的方向必须偏向「不误报」：别包声明的权限不判');
     });
 
     test('启动页依然被排除', () async {
       final result = _audit(await _parseFixture());
-      final locations = _byId(result, 'ANDROID-EXPORTED-COMPONENT')
-          .single
-          .evidence
-          .map((e) => e.location)
-          .join('\n');
-      expect(locations, isNot(contains('MainActivity')));
+      final all = [
+        ..._byId(result, 'ANDROID-EXPORTED-COMPONENT'),
+        ..._byId(result, 'ANDROID-PROVIDER-EXPOSED'),
+      ].map((f) => f.evidence.map((e) => e.detail).join('\n')).join('\n');
+      expect(all, isNot(contains('MainActivity')));
     });
   });
 
