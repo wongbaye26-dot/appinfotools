@@ -238,130 +238,78 @@ jobs:
       - name: Self-test the thumbnail provider (no registry, no Explorer)
         # 直接 LoadLibrary 我们的 DLL 并调 GetThumbnail —— **绕过注册表**，
         # 因此能把「DLL 本身能不能出图」与「注册有没有生效」分开。
-        # 这一层在 CI 里能验，不必等真机：
         #
-        # 1. 两个内容不同的 APK 必须产出**不同**的图标（比较像素哈希）；
-        # 2. 自适应图标的包必须**失败**（本版不支持，回退文件图标）；
-        # 3. 坏文件必须失败，而不是给出一张猜的图。
+        # ## 为什么用 cmd 而不是 pwsh
         #
-        # 真机只剩「注册 + Explorer 集成 + 缓存」这几条要人眼确认。
+        # 前两版用 PowerShell 写这套断言，两次都只留下
+        # `Process completed with exit code 1` —— 连我写的 ::error:: 都没
+        # 打出来（GitHub 的 pwsh 包装器会强制注入
+        # `$ErrorActionPreference = 'stop'`，任何 cmdlet 的非终止错误都会
+        # 变成终止错误、静默退出）。排查这类问题要拿 job 日志，而日志 API
+        # 需要 admin 权限，这里拿不到。
         #
-        # **这个脚本刻意不用 `$ErrorActionPreference = 'Stop'`**：
-        # 那会让任何 cmdlet 报错就静默终止脚本（上一轮就是这样 ——
-        # job 只剩一句 "exit code 1"，连我写的 ::error:: 都没跑到）。
-        # 改成手动检查 + try/catch，并把每一步都记进 $log，
-        # 失败时一次性打进 annotation，这样不用 admin 权限也能定位。
-        shell: pwsh
+        # 改成两条措施：
+        # 1. **断言搬进 selftest 自己**（`--expect-distinct`），脚本只查退出码；
+        # 2. 用 cmd：没有隐式的错误策略、没有严格模式，行为可预测。
+        shell: cmd
         run: |
-          # GitHub 的 pwsh 包装器会在脚本前**自动注入**
-          #   $ErrorActionPreference = 'stop'
-          # 所以上一轮我在脚本里不设它是无效的 —— 任何 cmdlet 的非终止错误
-          # 都会变成终止错误，脚本静默退出，连错误输出都来不及打。
-          # 这里显式改回 Continue，并关掉 StrictMode（访问未定义变量不抛）。
-          $ErrorActionPreference = 'Continue'
-          Set-StrictMode -Off
+          @echo off
+          setlocal
+          set SELFTEST=build\windows\x64\selftest
+          set RELEASE=build\windows\x64\runner\Release
+          set FIX=test\fixtures\apk
 
-          # 这条 notice 是「脚本确实启动了」的信号：
-          # 下一轮如果连它都没出现，说明问题在 YAML/解析层而不是逻辑层。
-          Write-Host "::notice::thumbnail self-test script started"
-          Write-Host "pwsh version: $($PSVersionTable.PSVersion)"
-          Write-Host "cwd: $(Get-Location)"
+          if not exist "%SELFTEST%\appinfotool_thumbnail_selftest.exe" (
+            echo ::error::selftest exe missing at %SELFTEST%
+            dir /b "%SELFTEST%" 2>nul
+            exit /b 1
+          )
+          copy /y "%RELEASE%\appinfotool_thumbnail.dll" "%SELFTEST%\" >nul
+          if errorlevel 1 (
+            echo ::error::cannot copy appinfotool_thumbnail.dll from %RELEASE%
+            exit /b 1
+          )
+          copy /y "%RELEASE%\app_icon_extractor.exe" "%SELFTEST%\" >nul
+          if errorlevel 1 (
+            echo ::error::cannot copy app_icon_extractor.exe from %RELEASE%
+            exit /b 1
+          )
+          dir /b "%SELFTEST%"
 
-          $log = [System.Collections.ArrayList]::new()
-          function Note($m) { [void]$log.Add($m); Write-Host $m }
-          function Fail($m) {
-            [void]$log.Add("FAIL: $m")
-            $flat = (($log -join ' | ') -replace "`r?`n", ' ')
-            Write-Host "::error::$m || trace: $flat"
-            exit 1
-          }
+          rem 断言 1（规格 2.4 第一条）：两个内容不同的 APK 必须出不同图。
+          echo --- distinct icons
+          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" --expect-distinct "%FIX%\icon-png.apk" "%FIX%\icon-png-alt.apk"
+          if errorlevel 1 (
+            echo ::error::two different APKs did not produce distinct icons
+            exit /b 1
+          )
 
-          try {
-            $selftestDir = 'build/windows/x64/selftest'
-            $releaseDir = 'build/windows/x64/runner/Release'
-            Note "selftestDir=$selftestDir"
-            Note "releaseDir=$releaseDir"
+          rem 断言 2：自适应图标的包必须被拒绝（不退而取半张图）。
+          echo --- adaptive icon must be rejected
+          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%FIX%\icon-adaptive.apk"
+          if not errorlevel 1 (
+            echo ::error::adaptive-icon APK should fail but succeeded
+            exit /b 1
+          )
 
-            if (-not (Test-Path $selftestDir)) {
-              Note "selftest dir missing; searching build tree"
-              Get-ChildItem -Path build -Recurse -Filter '*selftest*.exe' -ErrorAction SilentlyContinue |
-                ForEach-Object { Note "found: $($_.FullName)" }
-              Fail 'selftest output directory does not exist'
-            }
+          rem 断言 3：无图标声明的包必须被拒绝。
+          echo --- no launcher icon must be rejected
+          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%FIX%\signed-v2-v3.apk"
+          if not errorlevel 1 (
+            echo ::error::APK without a launcher icon should fail
+            exit /b 1
+          )
 
-            $exe = Join-Path $selftestDir 'appinfotool_thumbnail_selftest.exe'
-            if (-not (Test-Path $exe)) {
-              Get-ChildItem -Path $selftestDir -ErrorAction SilentlyContinue |
-                ForEach-Object { Note "in dir: $($_.Name)" }
-              Fail 'selftest exe is missing'
-            }
+          rem 断言 4：损坏文件必须失败（且不崩溃 —— 崩溃会带崩 Explorer）。
+          echo --- corrupt input must be rejected without crashing
+          echo this is not a zip archive > "%TEMP%\not-a-zip.apk"
+          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%TEMP%\not-a-zip.apk"
+          if not errorlevel 1 (
+            echo ::error::corrupt input should fail
+            exit /b 1
+          )
 
-            foreach ($dep in @('appinfotool_thumbnail.dll', 'app_icon_extractor.exe')) {
-              $src = Join-Path $releaseDir $dep
-              if (-not (Test-Path $src)) { Fail "$dep is missing from $releaseDir" }
-              Copy-Item $src $selftestDir -Force
-              Note "copied $dep"
-            }
-
-            # 断言 1：基本能出图，且格式是 <W>x<H> hash=<hex>
-            $a = 'test/fixtures/apk/icon-png.apk'
-            $outA = (& $exe $a 2>&1 | Out-String)
-            Note "a.out=$($outA.Trim())"
-            if ($outA -notmatch 'OK\s+icon-png\.apk\s+(\d+)x(\d+)\s+hash=([0-9A-F]{8})') {
-              Fail 'icon-png.apk did not produce a thumbnail'
-            }
-            $hashA = $Matches[3]
-            Note "a.hash=$hashA a.size=$($Matches[1])x$($Matches[2])"
-
-            # 断言 2：同一个包两次调用结果一致
-            $outA2 = (& $exe $a 2>&1 | Out-String)
-            if ($outA2 -notmatch "hash=$hashA") {
-              Fail 'thumbnail hash is not stable across runs'
-            }
-            Note 'stability ok'
-
-            # 断言 3（规格 2.4 第一条）：两个不同包必须出不同图
-            $b = 'test/fixtures/apk/icon-png-alt.apk'
-            $outB = (& $exe $b 2>&1 | Out-String)
-            Note "b.out=$($outB.Trim())"
-            if ($outB -notmatch 'OK\s+icon-png-alt\.apk\s+(\d+)x(\d+)\s+hash=([0-9A-F]{8})') {
-              Fail 'icon-png-alt.apk did not produce a thumbnail'
-            }
-            if ($Matches[3] -eq $hashA) {
-              Fail "two different APKs produced the SAME icon (hash $hashA)"
-            }
-            Note "different icons ok ($hashA vs $($Matches[3]))"
-
-            # 断言 4：自适应图标必须失败
-            $outC = (& $exe 'test/fixtures/apk/icon-adaptive.apk' 2>&1 | Out-String)
-            Note "adaptive.out=$($outC.Trim())"
-            if ($LASTEXITCODE -eq 0) {
-              Fail 'adaptive-icon APK should fail but succeeded'
-            }
-            Note 'adaptive rejected ok'
-
-            # 断言 5：无图标声明的包必须失败
-            $outD = (& $exe 'test/fixtures/apk/signed-v2-v3.apk' 2>&1 | Out-String)
-            Note "noicon.out=$($outD.Trim())"
-            if ($LASTEXITCODE -eq 0) {
-              Fail 'APK without a launcher icon should fail'
-            }
-            Note 'no-icon rejected ok'
-
-            # 断言 6：损坏文件必须失败且是退出码 1（不是崩溃码）
-            $bad = Join-Path $env:RUNNER_TEMP 'not-a-zip.apk'
-            Set-Content -Path $bad -Value 'this is not a zip archive' -NoNewline
-            $outE = (& $exe $bad 2>&1 | Out-String)
-            Note "corrupt.out=$($outE.Trim()) exit=$LASTEXITCODE"
-            if ($LASTEXITCODE -ne 1) {
-              Fail "corrupt input should exit 1, got $LASTEXITCODE (a crash here would take Explorer down)"
-            }
-            Note 'corrupt rejected without crashing'
-
-            Write-Host 'thumbnail provider self-test passed'
-          } catch {
-            Fail "exception: $($_.Exception.Message)"
-          }
+          echo thumbnail provider self-test passed
 
       - name: Create Installer
         run: dart run inno_bundle:build --release

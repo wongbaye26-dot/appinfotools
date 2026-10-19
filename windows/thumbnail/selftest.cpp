@@ -16,7 +16,7 @@
 //
 // ## 用法
 //
-//   appinfotool_thumbnail_selftest [--cx N] file1.apk [file2.ipa ...]
+//   appinfotool_thumbnail_selftest [--cx N] [--expect-distinct] file...
 //
 // 每个输入打印一行：
 //
@@ -24,6 +24,17 @@
 //   FAIL <path> <原因>
 //
 // 退出码：全部成功为 0，任一失败为 1（CI 直接用它当门禁）。
+//
+// ## `--expect-distinct`
+//
+// 断言「所有成功的输入产出的图标两两不同」。
+//
+// 这一条正是规格 2.4 的第一条验收项（两个内容不同的 APK 显示不同图标），
+// 而它必须由**被测程序自己**判断 —— 否则 CI 脚本要去解析 stdout 的哈希，
+// 多一层解析就多一类失败方式（实际踩过：PowerShell 脚本静默退出，
+// 连错误都打不出来）。
+//
+// 断言留在程序里，CI 只需检查退出码。
 //
 // ## 「坏包应该失败」怎么验
 //
@@ -44,6 +55,8 @@
 // `_wtoi`（--cx 的参数解析）。
 #include <cstdlib>
 #include <string>
+// `std::pair`（--expect-distinct 收集的 (文件名, 哈希)）。
+#include <utility>
 #include <vector>
 
 namespace {
@@ -220,11 +233,16 @@ int wmain(int argc, wchar_t** argv) {
   }
 
   UINT cx = 256;
+  bool expect_distinct = false;
   std::vector<std::wstring> files;
   for (int i = 1; i < argc; ++i) {
     const std::wstring arg = argv[i];
     if (arg == L"--cx" && i + 1 < argc) {
       cx = static_cast<UINT>(_wtoi(argv[++i]));
+      continue;
+    }
+    if (arg == L"--expect-distinct") {
+      expect_distinct = true;
       continue;
     }
     if (arg == L"--help" || arg == L"-h") {
@@ -274,6 +292,8 @@ int wmain(int argc, wchar_t** argv) {
   }
 
   int failures = 0;
+  // 成功项的像素哈希（用于 `--expect-distinct`）。
+  std::vector<std::pair<std::wstring, unsigned int>> succeeded;
   for (const auto& file : files) {
     // **转成绝对路径再传**。
     //
@@ -299,9 +319,35 @@ int wmain(int argc, wchar_t** argv) {
         slash == std::wstring::npos ? resolved : resolved.substr(slash + 1);
     if (ok) {
       std::wprintf(L"OK   %s %s\n", name.c_str(), detail.c_str());
+      // detail 形如 `72x72 hash=1A2B3C4D alpha=3`：取 hash= 之后的 8 个字符。
+      const std::wstring marker = L"hash=";
+      const size_t at = detail.find(marker);
+      if (at != std::wstring::npos && at + marker.size() + 8 <= detail.size()) {
+        const std::wstring hex = detail.substr(at + marker.size(), 8);
+        succeeded.emplace_back(name, static_cast<unsigned int>(
+                                         wcstoul(hex.c_str(), nullptr, 16)));
+      }
     } else {
       std::wprintf(L"FAIL %s %s\n", name.c_str(), detail.c_str());
       ++failures;
+    }
+  }
+
+  // `--expect-distinct`：所有成功项的图标必须两两不同。
+  //
+  // 用「两两比较」而不是「去重后计数」：条目很少（CI 里 2 个），
+  // 而两两比较能直接报出**哪两个**撞了 —— 那个信息在排查时才有用。
+  if (expect_distinct && succeeded.size() >= 2) {
+    for (size_t i = 0; i < succeeded.size(); ++i) {
+      for (size_t j = i + 1; j < succeeded.size(); ++j) {
+        if (succeeded[i].second == succeeded[j].second) {
+          std::wprintf(
+              L"MISMATCH %s and %s produced the same icon (hash %08X)\n",
+              succeeded[i].first.c_str(), succeeded[j].first.c_str(),
+              succeeded[i].second);
+          ++failures;
+        }
+      }
     }
   }
 
