@@ -236,18 +236,15 @@ jobs:
                 build/windows/x64/runner/Release/appinfotool_thumbnail.dll
 
       - name: Self-test the thumbnail provider (no registry, no Explorer)
-        # **暂时是软门禁**（continue-on-error）：断言本身还没在 CI 上跑通，
-        # 而失败原因拿不到 —— job 日志 API 需要 admin 权限（403），
-        # check-run 的 output.summary/text 也是空的，只剩一句
-        # "Process completed with exit code 1"。
+        # **硬门禁**。
         #
-        # 已经排除了两类原因：
-        # - 不是 YAML/解析层（`::notice::script started` 出现过，脚本启动了）；
-        # - 不是 pwsh 的错误策略（改用 cmd 后仍然一样）。
+        # 这段历史上软了几天（`continue-on-error: true`）：当时断言跑不过，
+        # 而失败原因拿不到（job 日志 API 需 admin、check-run 的 output 为空）。
+        # 加静态 CRT（/MT）+ 分步输出之后它开始稳定通过 —— 见
+        # `docs/plans/V2.5.0-windows-thumbnail-implementation.md` §7。
         #
-        # 剩下的只能靠真机输出定位，所以先把这一步放软，别挡住安装包产出。
-        # 拿到 selftest 的实际输出后改回硬门禁。
-        continue-on-error: true
+        # 一旦软过一次就要记得改回硬：软门禁的价值是「不挡住产物」，
+        # 但它同时意味着「功能坏了也能发版」，长期挂着等于没有这层测试。
         # 直接 LoadLibrary 我们的 DLL 并调 GetThumbnail —— **绕过注册表**，
         # 因此能把「DLL 本身能不能出图」与「注册有没有生效」分开。
         #
