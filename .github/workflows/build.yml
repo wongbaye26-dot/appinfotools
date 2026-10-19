@@ -323,6 +323,25 @@ jobs:
 
           echo thumbnail provider self-test passed
 
+      - name: Bundle the self-test for the release
+        # artifact 有 90 天保留期、且下载要登录 GitHub；Release 资产两样都没有。
+        # 所以额外打一个带版本号的 zip，发布时一起挂上去 —— 以后想排查
+        # 「图标不出来」可以直接从 Release 页面拿工具，不必翻 Actions 历史。
+        #
+        # 这一步用 pwsh 是安全的：它只做压缩，不解析任何输出；
+        # 显式 Stop 是为了「压缩失败就整步失败」，而不是悄悄少一个资产。
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+          $src = 'build/windows/x64/selftest'
+          $dir = 'build/windows/x64/release-extra'
+          $out = "$dir/AppInfoTool-$version-Windows-x86_64-thumbnail-selftest.zip"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Compress-Archive -Path "$src\*.exe", "$src\*.dll" -DestinationPath $out -Force
+          if (-not (Test-Path $out)) { throw "zip was not created: $out" }
+          Get-Item $out | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+
       - name: Upload the self-test bundle
         # 把自检所需的三件套单独打包：用户下载解压后直接
         #   appinfotool_thumbnail_selftest.exe <某个.apk>
@@ -338,6 +357,7 @@ jobs:
             build/windows/x64/selftest/appinfotool_thumbnail_selftest.exe
             build/windows/x64/selftest/appinfotool_thumbnail.dll
             build/windows/x64/selftest/app_icon_extractor.exe
+            build/windows/x64/release-extra/*.zip
           if-no-files-found: error
 
       - name: Create Installer
@@ -752,11 +772,19 @@ jobs:
         with:
           name: Release ${{ github.ref_name }}
           body_path: ${{ steps.body.outputs.body_path }}
+          # 各目录名来自 `download-artifact@v4` 的行为：它把每个 artifact
+          # 解到**以 artifact 名命名**的目录。所以缩略图自检工具在
+          # `windows-thumbnail-selftest/`，而不是构建机上的
+          # `build/windows/x64/release-extra/`。
+          #
+          # **注释不能写进 `files: |` 里面** —— 那是块标量，`#` 会被当成
+          # 一个字面路径交给 action，然后静默少传（或报路径不存在）。
           files: |
             windows-release/*.exe
             windows-release/*.zip
             macos-dmg/*.dmg
             linux-appimage/*.AppImage
+            windows-thumbnail-selftest/*.zip
 
   publish-scoop:
     needs: [create-release]
