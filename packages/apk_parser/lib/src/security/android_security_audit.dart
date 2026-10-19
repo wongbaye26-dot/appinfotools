@@ -1257,6 +1257,8 @@ class AndroidSecurityAudit {
       specialAccessKinds: specialAccessKinds,
       webViewClues: webViewClues,
       webViewCodeRefs: webViewCodeRefs,
+      allClues: scan.clues,
+      allCodeRefs: methodScan.references,
       unusedPermissionNames: unusedPermissionNames,
       nativeHardening: [
         for (final h in hardening)

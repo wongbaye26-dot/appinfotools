@@ -148,6 +148,21 @@ const List<CodeMarker> codeMarkers = [
       'runtime DEX loading (DexClassLoader)', 'DexClassLoader'),
   CodeMarker('dynamic-loading-path', SecurityCategory.backgroundTask,
       'runtime DEX loading (PathClassLoader)', 'PathClassLoader'),
+  // ---- 恶意代码三要素：执行 / 无文件加载 / 静默安装 ----
+  //
+  // 这三个在正常应用里**很少见**（热修复用的是 DexClassLoader，不是
+  // InMemoryDexClassLoader；`Runtime.exec` 只有需要跑 shell 的工具才会用）。
+  // 反射（`Class.forName`）单列但不参与判级 —— 它几乎每个应用都有。
+  CodeMarker('runtime-exec', SecurityCategory.other,
+      'shell command execution (Runtime.exec)', 'Runtime.exec'),
+  CodeMarker('process-builder', SecurityCategory.other,
+      'process spawn (ProcessBuilder)', 'ProcessBuilder'),
+  CodeMarker('in-memory-dex', SecurityCategory.other,
+      'in-memory DEX loading (no file on disk)', 'InMemoryDexClassLoader'),
+  CodeMarker('package-installer', SecurityCategory.other,
+      'silent / session-based package install', 'PackageInstaller'),
+  CodeMarker('reflection-for-name', SecurityCategory.other,
+      'reflective class loading (Class.forName)', 'Class.forName'),
   // ---- 后台 ----
   CodeMarker('jobscheduler', SecurityCategory.backgroundTask, 'JobScheduler',
       'JobScheduler'),

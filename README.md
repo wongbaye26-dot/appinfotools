@@ -81,10 +81,11 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 链接与传输 | 可被外部唤起的 scheme 清单（排除启动页）、`<pin-set>` 证书固定声明（只记声明，不判有效性） |
 | 结构化引用 | iOS 从 `__objc_classrefs` / `__objc_selrefs` 解出**代码真正引用**的类与选择子（不是反汇编，也不是字符串搜索）；Android 调用链支持 1–4 跳 |
 | 加固识别 | 按原生库名认出 10 家商业壳（360 / 乐固 / 梆梆 / 爱加密 / 阿里 / 网易 / 百度 / 顶象 / 几维 / 娜迦）—— **只识别，不脱壳** |
+| 恶意代码排查 | 命令执行 / 不落盘 DEX / 静默安装的**组合**（强 + 中 → P2，单独出现 → P3，只有反射不报）；正文写明「这是线索不是结论」 |
 | 分析覆盖 | 逐维度给出「已覆盖 / 部分覆盖 / 未覆盖 / 本次不适用」，界面、Markdown 与 JSON 读同一份数据 |
 | 风险分级 | P0–P3 / INFO / **UNKNOWN** —— 「无法确认」与「低风险」严格分开，覆盖不足不会被显示成绿色 |
 
-Android 侧 20 条规则（其中 7 条是跨字段的组合规则）+ 28 条逐权限条目、iOS 侧 30 条；分级按**来源稀有度**而非一律高危 ——
+Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 28 条逐权限条目、iOS 侧 30 条；分级按**来源稀有度**而非一律高危 ——
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 组合规则 C 的等级**跟着证据强度走**：同一方法体内两个调用点给 P1，只有整包层面共现给 P2。
 
@@ -213,7 +214,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
 
 ### 质量与验证
 
-- **1,618 个根测试 + 377 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
+- **1,625 个根测试 + 378 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
 - **期望值一律来自独立实现**，不取自本项目解析器：
   `aapt2` 核对清单与资源、`apksigner` / `codesign` 核对签名、`assetutil` 核对 iOS 资产目录、
   `libcompression`（Apple 系统库）核对 LZFSE、`actool`（Xcode 自带）生成资产目录夹具

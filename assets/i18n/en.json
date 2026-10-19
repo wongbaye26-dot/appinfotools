@@ -715,7 +715,11 @@
       "ios_reference_tables_no_action": "No action needed: this entry exists so that other findings can say \"the code references this class\" instead of \"the string appears somewhere\".",
       "ios_reference_tables_limitation": "Only the main slice of each executable is decoded. Pointers in ARM64E binaries (PAC-authenticated formats) are not resolved — a wrong decode would look plausible but be garbage, so it is reported as unsupported instead.",
       "android_packer": "This package carries the native libraries of a known hardening packer: {names}. Packed apps load the real DEX at runtime, so the DEX- and string-based findings in this report may be incomplete — \"not found\" here means \"not visible in the file\", not \"does not exist\".",
-      "android_packer_review": "Treat DEX-based conclusions on this package as a lower bound. For a definitive answer the app has to be run and its loaded DEX dumped — outside what this tool does."
+      "android_packer_review": "Treat DEX-based conclusions on this package as a lower bound. For a definitive answer the app has to be run and its loaded DEX dumped — outside what this tool does.",
+      "android_malware_indicators": "Capabilities that malware commonly combines are present: {signals}{reflection}. Each one alone can be legitimate (hot-fix, plug-in hosts, app stores), so this is a triage lead, not a verdict.",
+      "android_malware_indicators_review": "Treat this as a lead: check what the app loads at runtime, where it comes from, and whether a shell command is reachable from external input. Dynamic analysis (running it in an isolated emulator) is the way to settle it.",
+      "android_malware_indicators_limitation": "Static evidence only: the code references these APIs, it does not follow that they run, or that what they load is malicious. Hot-fix frameworks, plug-in hosts and app stores use the same dynamic-loading APIs. The loaded code is not in the archive, so it cannot be inspected here.",
+      "android_malware_reflection_suffix": " (plus reflective class loading)"
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",

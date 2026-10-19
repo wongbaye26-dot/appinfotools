@@ -115,6 +115,8 @@ void main() {
           'ANDROID-V1-ONLY-SIGNING',
           'ANDROID-UNSIGNED',
           'ANDROID-WEBVIEW-BRIDGE',
+          // 恶意代码组合能力：证据强度高，排在清单配置类之后。
+          'ANDROID-MALWARE-INDICATORS',
           // provider 直接暴露数据，排在「声明了权限但没用」之前。
           'ANDROID-PROVIDER-EXPOSED',
           'ANDROID-PERMISSION-WITHOUT-API',
@@ -231,6 +233,11 @@ void main() {
       'ANDROID-WEBVIEW-BRIDGE': () => _audit(
             meta: _meta(targetSdk: 34),
             strings: ['addJavascriptInterface'],
+          ),
+      // 命令执行 + 动态加载：恶意代码常见组合。
+      'ANDROID-MALWARE-INDICATORS': () => _audit(
+            meta: _meta(targetSdk: 34),
+            strings: ['Runtime.exec', 'DexClassLoader'],
           ),
       // 导出组件上声明了链接 scheme。
       'ANDROID-DEEPLINK': () => _audit(

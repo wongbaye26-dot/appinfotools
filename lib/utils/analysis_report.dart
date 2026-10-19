@@ -659,6 +659,8 @@ class AnalysisReport {
     // 主动请求权限的 API 名单（`PHPhotoLibrary` 这类专有名词，不翻译）。
     final apis = _joinNames(finding.messageArgs['apis'], t);
     final capability = finding.messageArgs['capability'];
+    // 恶意代码指标的信号 id 列表。
+    final signals = finding.messageArgs['signals'];
     // ATS 例外里「真正放宽了」的域名数。
     final weakened = finding.messageArgs['weakened'];
     // 证书固定涉及的域名（`<pin-set>` 所在域）。
@@ -699,6 +701,14 @@ class AnalysisReport {
           : f.ios_nested_usage_description(bundle: bundle, key: key),
       'ios.photo_picker' => f.ios_photo_picker,
       'android.webview_bridge_unsafe' => f.android_webview_bridge_unsafe,
+      'android.malware_indicators' => signals == null
+          ? null
+          : f.android_malware_indicators(
+              signals: _joinNames(finding.messageArgs['signals'], t) ?? '—',
+              reflection: finding.messageArgs['reflection'] == true
+                  ? f.android_malware_reflection_suffix
+                  : '',
+            ),
       'android.packer' => names == null ? null : f.android_packer(names: names),
       'android.deeplink' => (count == null || schemes == null)
           ? null
@@ -943,6 +953,8 @@ class AnalysisReport {
       'android.deeplink.review' => f.android_deeplink_review,
       'android.cert_pinning.review' => f.android_cert_pinning_review,
       'android.packer.review' => f.android_packer_review,
+      'android.malware_indicators.review' =>
+        f.android_malware_indicators_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
@@ -1150,6 +1162,8 @@ class AnalysisReport {
           : f.android_rule_c_limitation_graph_truncated(hops: hops),
       'android.deeplink.limitation' => f.android_deeplink_limitation,
       'ios.reference_tables.limitation' => f.ios_reference_tables_limitation,
+      'android.malware_indicators.limitation' =>
+        f.android_malware_indicators_limitation,
       _ => null,
     };
     return localized ?? raw;

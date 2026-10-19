@@ -715,7 +715,11 @@
       "ios_reference_tables_no_action": "無需處理：這一條的作用是讓其他發現可以說「程式碼引用了這個類」，而不是「這個詞在包裏出現過」。",
       "ios_reference_tables_limitation": "只解每個可執行檔的主切片。ARM64E（帶 PAC 認證）的指標格式沒有解 —— 解錯會產出看起來合理、實際是垃圾的結果，所以寧可報「不支援」。",
       "android_packer": "這個包裏帶著已知加固殼的原生庫：{names}。加固包的真實 DEX 在執行時才載入，所以本報告裏基於 DEX 與字串的結論可能不完整 —— 「沒發現」在這裏是「檔案裏看不到」，不是「不存在」。",
-      "android_packer_review": "把這個包上基於 DEX 的結論當下限看。要得到確定答案，需要執行應用程式並 dump 已載入的 DEX —— 那超出本工具的範圍。"
+      "android_packer_review": "把這個包上基於 DEX 的結論當下限看。要得到確定答案，需要執行應用程式並 dump 已載入的 DEX —— 那超出本工具的範圍。",
+      "android_malware_indicators": "出現了惡意程式常見的組合能力：{signals}{reflection}。單獨一項都可能是正常功能（熱修復、外掛化、應用程式商店），所以這是**排查線索，不是結論**。",
+      "android_malware_indicators_review": "把它當線索：查清應用程式在執行時載入什麼、從哪載入，以及命令執行是否能被外部輸入觸達。要定論需要動態分析（在隔離的模擬器裏執行）。",
+      "android_malware_indicators_limitation": "只有靜態證據：程式碼引用了這些 API，不等於它們會執行，更不等於載入的內容是惡意的。熱修復框架、外掛化宿主、應用程式商店用的是同一批動態載入 API。被載入的程式碼不在包裏，這裏看不到。",
+      "android_malware_reflection_suffix": "（另有反射式類別載入）"
     },
     "sources": {
       "photo_library": "完整相片庫（PhotoKit）",

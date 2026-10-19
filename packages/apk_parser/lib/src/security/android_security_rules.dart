@@ -39,6 +39,8 @@ class AndroidRuleFacts {
     required this.specialAccessKinds,
     required this.webViewClues,
     required this.webViewCodeRefs,
+    required this.allClues,
+    required this.allCodeRefs,
     required this.unusedPermissionNames,
     required this.nativeHardening,
     required this.sdkInventory,
@@ -119,6 +121,18 @@ class AndroidRuleFacts {
 
   /// 同一批标记在代码引用层面的命中。
   final List<CodeReference> webViewCodeRefs;
+
+  /// **全部**字符串线索（`DexClueScanner` 的结果）。
+  ///
+  /// 与 [allCodeRefs] 是两级证据：字符串命中只能说明「这个词出现过」，
+  /// 代码引用说明「字节码引用了这个方法」。规则要分别陈述，不能混为一谈。
+  final List<CodeClue> allClues;
+
+  /// **全部**代码引用（`method_ids` / 调用点层面的命中）。
+  ///
+  /// 规则里要按标记 id 自由筛选时用它 —— 为每个新规则都加一个专用字段
+  /// 会让 facts 无限膨胀。
+  final List<CodeReference> allCodeRefs;
 
   /// 是否把 JS 桥暴露给了网页内容。
   bool get hasWebViewBridge =>
@@ -311,6 +325,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     summary: '向 WebView 暴露了 JavaScript 桥（addJavascriptInterface）。',
     matches: _matchesWebViewBridge,
     build: _buildWebViewBridge,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-MALWARE-INDICATORS',
+    summary: '命令执行 / 无文件 DEX 加载 / 静默安装等恶意代码常见能力同现。',
+    matches: _matchesMalwareIndicators,
+    build: _buildMalwareIndicators,
   ),
   AndroidSecurityRule(
     id: 'ANDROID-PROVIDER-EXPOSED',
@@ -694,6 +714,127 @@ bool _matchesUnsigned(AndroidRuleFacts f) =>
     (f.meta.signingSchemes?.v1Only ?? false) && f.meta.hasV1Signature == false;
 
 bool _matchesWebViewBridge(AndroidRuleFacts f) => f.hasWebViewBridge;
+
+/// 恶意代码常见能力的标记分组。
+///
+/// **强**：正常应用里很少见 —— `Runtime.exec` 要跑 shell，`ProcessBuilder`
+/// 要起子进程，`InMemoryDexClassLoader` 是「不落盘的 DEX」。
+/// **中**：热修复 / 插件化 / 应用市场类应用会有，单独出现不足以说明问题。
+const Set<String> _malwareStrongMarkers = {
+  'runtime-exec',
+  'process-builder',
+  'in-memory-dex',
+};
+
+const Set<String> _malwareMediumMarkers = {
+  'dynamic-loading',
+  'dynamic-loading-path',
+  'package-installer',
+};
+
+typedef _MalwareSignals = ({
+  List<String> strong,
+  List<String> medium,
+  bool reflection,
+});
+
+_MalwareSignals _malwareSignals(AndroidRuleFacts f) {
+  // 引用与字符串线索都算命中：`Runtime.exec` 出现在字符串里也可能只是日志，
+  // 但漏掉它比多报一条更糟 —— 证据行会区分两者。
+  final ids = {
+    for (final r in f.allCodeRefs) r.markerId,
+    for (final c in f.allClues) c.markerId,
+  };
+  return (
+    strong: [
+      for (final id in _malwareStrongMarkers)
+        if (ids.contains(id)) id,
+    ],
+    medium: [
+      for (final id in _malwareMediumMarkers)
+        if (ids.contains(id)) id,
+    ],
+    reflection: ids.contains('reflection-for-name'),
+  );
+}
+
+/// 判级：强 + 任意中 → P2；只有强、或两个以上中 → P3；其余不报。
+///
+/// 反射（`Class.forName`）**不参与判级** —— 几乎每个应用都有，把它算进来
+/// 等于让这条规则在所有包上出现。
+bool _matchesMalwareIndicators(AndroidRuleFacts f) {
+  final s = _malwareSignals(f);
+  if (s.strong.isNotEmpty) return true;
+  return s.medium.length >= 2;
+}
+
+/// 恶意代码常见能力的组合。
+///
+/// 这条**不是「判定为恶意」** —— 静态分析给不出那个结论。它做的是把
+/// 「执行命令 / 不落盘加载 DEX / 静默安装」这类能力摆到台面上：单独出现
+/// 都可能是正常功能（热修复、插件化、应用市场），凑在一起就值得人工核对。
+SecurityFinding _buildMalwareIndicators(AndroidRuleFacts f) {
+  final s = _malwareSignals(f);
+  final all = [...s.strong, ...s.medium];
+  final severity = s.strong.isNotEmpty && s.medium.isNotEmpty
+      ? SecuritySeverity.p2
+      : SecuritySeverity.p3;
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-MALWARE-INDICATORS',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.other,
+    severity: severity,
+    // 一律 `independentCapability`：这条规则说的是「这些能力存在」，
+    // 不是「我们怀疑它们被执行了」。用 suspected 会把「能力」说成「行为」。
+    confidence: SecurityConfidence.independentCapability,
+    finding: 'Capabilities that malware commonly combines are present: '
+        '${all.join(', ')}'
+        '${s.reflection ? ' (plus reflective class loading)' : ''}. '
+        'Each one alone can be legitimate (hot-fix, plug-in hosts, app '
+        'stores), so this is a **triage lead, not a verdict**.',
+    messageCode: 'android.malware_indicators',
+    messageArgs: {
+      'signals': all,
+      if (s.reflection) 'reflection': true,
+    },
+    evidence: [
+      for (final reference in f.allCodeRefs)
+        if (all.contains(reference.markerId))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexMethodReference,
+            location: reference.dexNames.join(', '),
+            detail: '${reference.markerId} (code reference): '
+                '${[
+              ...reference.samples,
+              ...reference.callSiteSamples
+            ].take(3).join(' | ')}',
+          ),
+      // 没有代码引用、只有字符串线索时也要给证据 —— 否则读者看到「有信号」
+      // 却找不到任何出处。
+      for (final clue in f.allClues)
+        if (all.contains(clue.markerId) &&
+            !f.allCodeRefs.any((r) => r.markerId == clue.markerId))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexString,
+            location: clue.dexNames.join(', '),
+            detail: '${clue.markerId} (string only): '
+                '${clue.samples.take(3).join(' | ')}',
+          ),
+    ],
+    limitation: 'Static evidence only: the code references these APIs, it '
+        'does not follow that they run, or that what they load is malicious. '
+        'Hot-fix frameworks, plug-in hosts and app stores use the same '
+        'dynamic-loading APIs. The loaded code is not in the archive, so it '
+        'cannot be inspected here.',
+    limitationCode: 'android.malware_indicators.limitation',
+    recommendation: 'Treat this as a lead: check what the app loads at '
+        'runtime, where it comes from, and whether a shell command is '
+        'reachable from external input. Dynamic analysis (running it in an '
+        'isolated emulator) is the way to settle it.',
+    recommendationCode: 'android.malware_indicators.review',
+  );
+}
 
 bool _matchesExportedProvider(AndroidRuleFacts f) =>
     _unprotectedProviders(f).isNotEmpty;
