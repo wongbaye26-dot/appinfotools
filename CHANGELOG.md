@@ -1,5 +1,78 @@
 # Changelog
 
+## 2.6.0 — 2026-10-19
+
+这一版只动**分析引擎**，界面版式没有变化。起点是一份独立审计
+（`docs/audit/2026-10-19-security-capability-reaudit.md`，77 分）：14 条问题
+全部修完，随后按「证据强度 → 交付完整度 → 深度」的顺序补了六批能力。
+
+### 先修的是「说得对不对」
+
+审计最重的一类问题不是漏报，而是**报告的结论与它自己的数据矛盾**：
+
+- `hasCoverageGaps` 恒为真（两个引擎都无条件追加方法论局限），于是告警永远亮着，
+  JSON 里它和结构化覆盖在每个样本上都相反。拆成 `hasActualGaps`（结构化缺口 +
+  UNKNOWN 级发现）/ `hasDeclaredLimitations`（照实列出边界）。
+- `android.nativeHardening` 的 `covered/limit` 数的是「加固得好的库 / 已解析的库」，
+  而 `status` 比的是「已解析 / 全包唯一库」—— 面板显示 `8/10` 读起来像覆盖 80%，
+  真实是 10/266。改成与 `status` 回答同一个问题。
+- 签名块读不出来时，两条签名规则都不报、覆盖表里也没有这个维度 —— 零发现、
+  零覆盖、零诊断。补了 `android.signature` 维度与限制说明。
+- 未声明 `usesCleartextTraffic` 时 `cleartextPolicy` 一律为 null，
+  于是 targetSdk < 28 的老包**漏报**明文流量。改为按 targetSdk 取平台默认值。
+- 7 个 `messageCode` 产出了但呈现层没有分支，中文界面静默显示英文。
+  补了分支，并加了结构守卫测试（扫四个字段的值表达式）。
+
+### 证据强度
+
+| 能力 | 说明 |
+|---|---|
+| iOS 选择子表 | 从 `__TEXT,__objc_methname` 读「代码真的会申请哪些权限」，比用途说明强一档 |
+| iOS 结构化引用 | 解 `LC_DYLD_CHAINED_FIXUPS`，从 `__objc_classrefs` / `__objc_selrefs` 取代码真正引用的类与选择子 |
+| Android 调用链 | 1–4 跳，逐层 BFS 保证最短；只在 OCR 与上传两组标记都命中时建图 |
+| ContentProvider 专项 | 从「导出组件」拆出，点名 authority，判 `grantUriPermissions` 与读写权限是否只护住一个方向 |
+
+### 交付完整度
+
+- JSON 新增 `platformFacts`：界面能看到的字段（组件、ABI、语言、密度、分包、
+  ICP 备案号、entitlements、URL scheme、嵌套 bundle…）此前**一个都不在导出里**。
+- 报告标签本地化（4 个英文标签 + 计数短语进 6 个语言包）。
+- 链接入口清单、`<pin-set>` 证书固定声明、SDK 版本（`pom.properties`）。
+
+### 恶意代码排查
+
+新规则 `ANDROID-MALWARE-INDICATORS`：命令执行 / 不落盘 DEX / 静默安装的
+**组合**（强 + 任意中 → P2，单独出现 → P3，只有反射不报）。正文与限制里
+写死「这是排查线索，不是结论」。
+
+### 破坏性变更
+
+- `reportSchemaVersion` **5 → 7**：`hasCoverageGaps` 改名为 `hasActualGaps`
+  （旧字段恒为真，留着会让消费者继续误判），并新增 `hasDeclaredLimitations` /
+  `coverageGapCount` / `platformFacts`。
+- `IpaInfoPlist.atsExceptionDomains`（`List<String>`）换成 `atsExceptions`
+  （逐域标志）；`AndroidComponent` 新增 `readPermission` / `writePermission` /
+  `grantUriPermissions`。
+- `ANDROID-EXPORTED-COMPONENT` 不再包含 ContentProvider（由
+  `ANDROID-PROVIDER-EXPOSED` 单独负责）。
+
+### 已知限制（写在这里而不是藏起来）
+
+- **动态分析没有做。** 实测本机无 emulator、无 AVD、无连接设备；iOS 的
+  arm64 设备切片 IPA 在普通 Mac 的模拟器里跑不了。且「在宿主机直接跑未知 APK」
+  本身是错的 —— 需要一次性隔离 VM，那不是桌面工具该内置的东西。
+- **ARM64E（PAC）的指针格式不解**，报 `unsupported`。解错会产出看起来像真的垃圾。
+- **加固壳只识别、不脱壳**（10 家商业壳的原生库名特征）。
+- **调用链 ≥3 跳需要建完整调用图**，343 MB 样本约 +3.2 秒；图在 500k 条边处截断，
+  截断时局限文案会明说。
+- **iOS 节级扫描只覆盖主切片**；`Assets.car` 的 0x02/0x03 压缩仍未实现。
+
+### 质量
+
+根测试 1,625 + 包内 378 = **2,003** 条，`flutter analyze --fatal-infos
+--fatal-warnings` 六个目标零问题，`dart format` 干净。Android 规则 21 条、
+iOS 30 条、权限目录 28 条、SDK 前缀 25 个。
+
 ## 2.5.0 — 2026-10-19
 
 ### Windows 系统文件图标（新增，**默认关闭**）
