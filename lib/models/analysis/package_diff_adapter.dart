@@ -69,6 +69,25 @@ DiffSubject diffSubjectOf(PackageAnalysisResult result) {
         if (security != null)
           'android.nativeSymbols':
               _asFieldValue(_nativeSymbols(security, 'android.native_symbols')),
+        // ---- 安全维度的版本差异（2026-10-19 审计 P3-7）----
+        //
+        // 这三条都**从安全发现推导**，而不是从解析字段取：`allowBackup` 与
+        // 明文策略在 `AndroidPackageInfo` 里没有独立字段（它们是规则判据的
+        // 输入，不是解析结果）。推导的语义要在标签上写清，不能让人以为
+        // 那是「清单里写了什么」的原始值。
+        if (security != null) ...{
+          'android.allowBackup': _asFieldValue(
+              _findingPresent(security, 'ANDROID-ALLOW-BACKUP')
+                  ? const ['true']
+                  : const []),
+          'android.cleartextPolicy': _asFieldValue(
+            _findingPresent(security, 'ANDROID-RULE-D') ||
+                    _findingPresent(security, 'ANDROID-RULE-D-ESCALATED')
+                ? const ['allows-cleartext']
+                : const [],
+          ),
+          'android.thirdPartySdk': _asFieldValue(_sdkNames(security)),
+        },
       },
       // --- iOS 集合 ---
       if (ios != null) ...{
@@ -79,6 +98,12 @@ DiffSubject diffSubjectOf(PackageAnalysisResult result) {
         if (security != null)
           'ios.nativeSymbols':
               _asFieldValue(_nativeSymbols(security, 'ios.native_symbols')),
+        // 授权项（entitlements）是「被授权什么」，与 Android 的权限语义不同，
+        // 但版本之间「多了/少了一项」是同一类差异。
+        if (ios.signatureMaterials?.profile.value case final profile?)
+          'ios.entitlements': _asFieldValue([
+            for (final e in profile.entitlements) e.key,
+          ]),
       },
       // --- 网络端点：平台中立，单列成一级字段，因此这里也单列 ---
       // `NetworkFacts` 是复合结构而不是 `FieldValue`，这里按「读到了就是
@@ -158,6 +183,20 @@ List<String> _nativeSymbols(SecurityAnalysisResult security, String code) {
     if (finding.messageCode != code) continue;
     final symbols = finding.messageArgs['symbols'];
     if (symbols is List) return [for (final s in symbols) '$s'];
+  }
+  return const [];
+}
+
+/// 某条发现是否出现。
+bool _findingPresent(SecurityAnalysisResult security, String ruleId) =>
+    security.findings.any((f) => f.ruleId == ruleId);
+
+/// 第三方服务类 SDK 的显示名清单。
+List<String> _sdkNames(SecurityAnalysisResult security) {
+  for (final finding in security.findings) {
+    if (finding.ruleId != 'ANDROID-THIRD-PARTY-SDK') continue;
+    final names = finding.messageArgs['names'];
+    if (names is List) return [for (final n in names) '$n']..sort();
   }
   return const [];
 }

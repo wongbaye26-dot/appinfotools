@@ -360,7 +360,7 @@ void main() {
       final plist = _plist(infoPlist: _usageOnlyPlist);
       final result = IosPrivacyAudit.audit(infoPlist: plist);
 
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasActualGaps, isTrue);
       expect(
         // 措辞在阶段 5b 改成「任何」—— 扫描范围不再只有主应用。
         result.limitations.any((l) => l.code == 'ios.executable.none_readable'),
@@ -690,7 +690,7 @@ void main() {
       final result = IosPrivacyAudit.audit(infoPlist: plist);
 
       expect(_byId(result, 'IOS-SCAN-COVERAGE'), isNull);
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasActualGaps, isTrue);
     });
   });
   // iOS-A：嵌套 bundle 的用途说明。

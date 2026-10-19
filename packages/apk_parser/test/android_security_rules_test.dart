@@ -379,7 +379,8 @@ void main() {
       expect(combos, [
         'ANDROID-RULE-A:p2',
         'ANDROID-RULE-B:p2',
-        'ANDROID-RULE-C:p1',
+        // 这份输入只有字符串线索、没有调用点 → C 停在整包层面 → P2。
+        'ANDROID-RULE-C:p2',
         'ANDROID-RULE-D-ESCALATED:p1',
         'ANDROID-RULE-E:p1',
       ]);

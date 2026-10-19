@@ -77,7 +77,7 @@ void main() {
         findings: [],
       );
       expect(result.hasRiskFindings, isFalse);
-      expect(result.hasCoverageGaps, isFalse);
+      expect(result.hasActualGaps, isFalse);
     });
 
     test('取最严重的风险发现（不是第一条）', () {
@@ -102,16 +102,34 @@ void main() {
       );
       expect(result.hasRiskFindings, isFalse);
       // 关键：没有风险档位，但覆盖不足必须为真 —— 否则界面会渲染成绿色。
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasActualGaps, isTrue);
     });
 
-    test('limitations 非空也算覆盖不足', () {
+    test('只有方法论声明时：hasDeclaredLimitations 真、hasActualGaps 假', () {
+      // 这两个信号必须分开：两个引擎都无条件追加至少两条方法论说明，
+      // 把它们算成「有缺口」会让告警恒亮（2026-10-19 审计 P2-3）。
       const result = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
         limitations: [AnalysisNote('test.no_dex', 'DEX 未读取')],
       );
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasDeclaredLimitations, isTrue);
+      expect(result.hasActualGaps, isFalse);
+    });
+
+    test('结构化覆盖有缺口时 hasActualGaps 为真', () {
+      final result = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        coverage: AnalysisCoverage(entries: [
+          CoverageEntry.noted(
+            id: 'android.dex.strings',
+            status: CoverageStatus.partial,
+          ),
+        ]),
+      );
+      expect(result.hasActualGaps, isTrue);
+      expect(result.coverageGapCount, 1);
     });
 
     test('按等级计数', () {

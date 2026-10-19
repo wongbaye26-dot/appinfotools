@@ -160,7 +160,13 @@ class AndroidRuleFacts {
   /// 1. NSC **已展开** → 以 NSC 的 `base-config` / `domain-config` 为准；
   /// 2. NSC **声明了但没展开**（资源表缺失、路径解不出、条目被预算拒绝）
   ///    → `null`，**不是 false** —— 「不知道」与「不允许」是两件事；
-  /// 3. 没有 NSC → 看 `usesCleartextTraffic`；未声明时为 `null`。
+  /// 3. 没有 NSC → 看 `usesCleartextTraffic`；**未声明时取平台的默认值**，
+  ///    而默认值取决于 `targetSdk`：API 28 起默认禁止，之前默认放行。
+  ///    `targetSdk` 也不知道时才是 `null`。
+  ///
+  /// 第 3 条曾写成「未声明时为 `false`」，那是**假阴性**：`targetSdk < 28`
+  /// 的应用不声明就等于允许，判成 `false` 会让规则 D 静默不报，而且覆盖表
+  /// 还会把这一维标成「已覆盖」（2026-10-19 审计 P2-10）。
   ///
   /// 实测（5 个真实包）：4 个 `usesCleartextTraffic=true`，其中 3 个同时声明了
   /// NSC。展开那 3 份 NSC 后，`base-config cleartextTrafficPermitted="true"`
@@ -177,10 +183,24 @@ class AndroidRuleFacts {
       );
     }
     if (meta.networkSecurityConfig != null) return null;
-    // 没有 NSC 时只认**显式声明**。未声明时为 `false`（不主张允许）——
-    // 平台在 targetSdk < 28 上默认放行，但把「没写」当成「应用要求明文」
-    // 会让每个老包都报一条，而且报的不是应用的选择。
-    return meta.applicationUsesCleartextTraffic ?? false;
+    final declared = meta.applicationUsesCleartextTraffic;
+    if (declared != null) return declared;
+    // 未声明 → 平台的默认值。**API 28 是分水岭**：从 28 起
+    // `usesCleartextTraffic` 的默认值才变成 false。
+    final targetSdk = meta.targetSdkVersion;
+    if (targetSdk == null) return null;
+    return targetSdk < 28;
+  }
+
+  /// 明文策略**未判定**的原因 code；`null` 表示已判定。
+  ///
+  /// 覆盖表要按原因给不同的说明 —— 此前两种原因共用一句
+  /// 「networkSecurityConfig 存在但没展开」，于是 `targetSdk` 缺失的情况
+  /// 会显示一句**与事实不符**的解释。
+  String? get cleartextPolicyUnknownReason {
+    if (cleartextPolicy != null) return null;
+    if (meta.networkSecurityConfig != null) return 'nsc_not_expanded';
+    return 'target_sdk_unknown';
   }
 
   /// 备份规则是否**彻底关闭**了自动备份。
@@ -1121,11 +1141,15 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
   // 关联说明有两种措辞（同方法体 / 整包层面），因此先把 code 与回退
   // 一起算出来 —— 引擎不能只产出一句中文再让呈现层猜。
   final note = coOccurrenceNote(f.methodScan, f.ocrCodeRefs, f.uploadCodeRefs);
+  // **等级跟着证据强度走**：同一方法体内两个调用点 → P1；只有整包层面的
+  // 共现 → P2。此前两种情况都给 P1，于是「一个应用里既有 OCR SDK 又有
+  // 上传库」这种极常见的组合也被顶到最高档，真正同方法体的样本反而淹没。
+  final sameMethod = note.caller != null;
   return SecurityFinding(
     ruleId: 'ANDROID-RULE-C',
     platform: SecurityPlatform.android,
     category: SecurityCategory.dataExfiltration,
-    severity: SecuritySeverity.p1,
+    severity: sameMethod ? SecuritySeverity.p1 : SecuritySeverity.p2,
     confidence: SecurityConfidence.suspected,
     finding: 'Image input, text recognition and upload call clues all '
         'appear together: a suspected path for sensitive data leaving '

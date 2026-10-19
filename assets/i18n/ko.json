@@ -417,7 +417,15 @@
       "wake_lock_description": "기기를 깨어 있게 유지.",
       "wake_lock_risk_note": "백그라운드 지속 실행의 단서입니다. 단독으로는 위험으로 판정하지 않습니다.",
       "write_external_storage_description": "공유 저장소 쓰기.",
-      "write_external_storage_risk_note": "공유 저장소 쓰기는 targetSdk ≥ 29부터 거의 동작하지 않습니다. 단독으로는 위험으로 판정하지 않으며, 광범위한 접근 조합에서 보강 증거일 뿐입니다."
+      "write_external_storage_risk_note": "공유 저장소 쓰기는 targetSdk ≥ 29부터 거의 동작하지 않습니다. 단독으로는 위험으로 판정하지 않으며, 광범위한 접근 조합에서 보강 증거일 뿐입니다.",
+      "system_alert_window_description": "다른 앱 위에 표시(오버레이)",
+      "system_alert_window_risk_note": "오버레이는 화면을 덮고 터치를 가로챌 수 있어 \"보이지 않는 덮개\" 악용의 전형입니다. 어디에 표시하는지와 함께 판단하세요. 플로팅 버튼이나 통화 화면은 정상적인 용도입니다.",
+      "request_install_packages_description": "다른 앱 패키지 설치 요청",
+      "request_install_packages_risk_note": "APK 를 시스템 설치 관리자에게 넘길 수 있게 합니다. 드로퍼와 \"스토어를 거치지 않는 업데이트\"의 상투적인 수단이며, 스토어로 배포되는 앱은 거의 요구하지 않습니다.",
+      "access_background_location_description": "앱이 백그라운드에 있을 때 위치 접근(Android 10 이상)",
+      "access_background_location_risk_note": "백그라운드 위치는 지속적인 추적 능력입니다. Android 11 이상에서는 별도 설정 화면에서 허용합니다. 전면 사용 사례가 이를 정당화하는지와 함께 판단하세요.",
+      "record_audio_description": "마이크로 오디오 녹음",
+      "record_audio_risk_note": "민감한 수집원입니다. 녹음 데이터의 행선지(업로드)와 눈에 보이는 녹음 기능이 있는지로 판단하세요. 녹음 + 업로드는 규칙 G 가 다룹니다."
     },
     "sources": {
       "camera": "카메라",
@@ -498,7 +506,8 @@
       "android_container_dex_in_native_library": "{name}: 내용이 DEX 바이트코드이며 네이티브 라이브러리가 아닙니다",
       "android_sdk_inventory_no_dex": "DEX 내용이 제공되지 않아 서드파티 SDK 목록을 만들지 않았습니다",
       "android_sdk_inventory_incomplete": "DEX {truncated}개가 잘렸고 {failed}개를 읽지 못했습니다. 해당 영역에만 있는 SDK 는 목록에 포함되지 않습니다",
-      "ios_executables_truncated": "{count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중). 따라서 해당 실행 파일은 API 단서 스캔도, 위의 커버리지 집계도 되지 않았습니다."
+      "ios_executables_truncated": "{count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중). 따라서 해당 실행 파일은 API 단서 스캔도, 위의 커버리지 집계도 되지 않았습니다.",
+      "android_signing_block_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}): v2+ 서명 방식을 알 수 없으므로 이번에 \"서명 블록이 없다\"고 결론 내릴 수 없습니다. 이것은 \"서명이 유효하지 않다\"는 뜻이 아닙니다."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -630,7 +639,7 @@
       "ios_rule_e_manual_review": "백그라운드에서 무엇이 업로드되고 무엇이 계기가 되는지 수동으로 검토하세요. 필요하면 격리된 환경에서 앱을 백그라운드로 둔 상태의 네트워크 동작을 관찰하세요.",
       "ios_rule_e_relationship": "백그라운드 실행 선언 → 민감한 데이터 읽기 → 네트워크 업로드: 세 단계 각각에 증거는 있지만 **어떤 도약도 증명되지 않았습니다** — 민감한 읽기가 백그라운드에서 일어나는 것도, 읽은 것이 요청 본문에 도달하는 것도 입증되지 않았습니다.",
       "ios_rule_f": "현재 분석 범위에서는 네트워크 업로드 특징을 찾지 못했습니다(NSURLSession, multipart, 일반적인 네트워킹 라이브러리 마커에 적중하지 않았습니다). 이것은 앱에 네트워크 동작이 없다는 뜻이 아닙니다 — 이 스캔에서 찾지 못했을 뿐입니다.",
-      "ios_rule_f_limitation": "스캔하는 것은 메인 실행 파일의 ASCII 문자열뿐입니다. Frameworks 내부와 공유 캐시 내부의 네트워크 구현은 커버리지 밖입니다.",
+      "ios_rule_f_limitation": "ASCII 문자열만 스캔합니다(메인 실행 파일 + 중첩 실행 파일). 공유 dyld 캐시의 코드, 런타임에 로드되는 코드, 비 ASCII 리터럴은 커버리지 밖입니다.",
       "ios_rule_f_runtime_traffic": "확인하려면 런타임 트래픽 관찰과 함께 사용하세요(이 버전에서는 제공하지 않습니다).",
       "ios_scan_coverage": "API 사용 단서 스캔은 {total}개 중 {scanned}개 실행 파일, 총 {bytes}바이트를 대상으로 했습니다. 모든 실행 파일을 대상으로 했습니다.",
       "ios_scan_coverage_gap": "API 사용 단서 스캔은 {total}개 중 {scanned}개 실행 파일, 총 {bytes}바이트를 대상으로 했습니다. 대상이 아닌 실행 파일: {uncovered}.",
@@ -735,7 +744,8 @@
       "ios_usageDescriptions": "용도 설명",
       "ios_entitlements": "권한(Entitlements)",
       "android_nativeHardening": "네이티브 라이브러리 강화",
-      "android_sdkInventory": "서드파티 SDK 목록"
+      "android_sdkInventory": "서드파티 SDK 목록",
+      "android_signature": "서명 자료"
     },
     "gap_count": "{count}개 항목에 누락이 있습니다",
     "hint": "'누락'은 결론이 모든 것을 포괄하지 못한다는 뜻입니다. 여기서 '찾을 수 없음'은 '없음'이 아닙니다.",
@@ -762,11 +772,16 @@
       "ios_native_symbols_no_symtab": "심볼 테이블을 읽을 수 있는 Mach-O 이미지가 없습니다",
       "ios_native_symbols_stripped": "일부 이미지에 LC_SYMTAB가 없습니다 (심볼 테이블이 제거됨)",
       "ios_native_symbols_unreadable": "{count}개의 이미지에서 심볼 테이블이 범위를 벗어났습니다",
-      "ios_privacy_manifest_absent": "이 번들에 PrivacyInfo.xcprivacy가 없습니다 (iOS 17 이전에는 필수가 아닙니다)",
+      "ios_privacy_manifest_absent": "이 bundle 에 PrivacyInfo.xcprivacy 가 없습니다(iOS 17 이전에는 불필요). 이번에는 커버리지 격차로 계산하지 않습니다",
       "ios_signature_separate_step": "서명 검증은 codesign으로 별도 수행합니다. 서명 카드를 참고하세요",
       "ios_usage_descriptions_not_read": "Info.plist를 해석하지 못해 용도 설명을 읽지 않았습니다",
       "android_arsc_empty": "리소스 테이블은 파싱되었지만 항목이 하나도 없습니다",
-      "ios_executables_truncated": "추가로 {count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중): 해당 실행 파일은 이번 스캔 범위에 없습니다"
+      "ios_executables_truncated": "추가로 {count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중): 해당 실행 파일은 이번 스캔 범위에 없습니다",
+      "android_signature_not_read": "APK 서명 블록을 확인하지 않아 v2+ 서명 방식은 알 수 없습니다",
+      "android_signature_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}). 서명 방식은 알 수 없습니다",
+      "android_signature_v1_undetermined": "v2+ 서명 블록은 읽었지만 v1(JAR) 서명의 존재 여부는 판정할 수 없었습니다",
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 펼치지 못했기 때문에(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음) 평문 통신 정책을 판정하지 않았습니다",
+      "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 과 targetSdkVersion 을 모두 읽을 수 없어 평문 통신의 플랫폼 기본값을 도출할 수 없습니다"
     },
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",
@@ -840,7 +855,11 @@
       "ios_requiredDeviceCapabilities": "필수 기기 기능",
       "ios_urlSchemes": "등록된 URL 스킴",
       "network_domains": "네트워크 도메인",
-      "network_ips": "네트워크 IP 주소"
+      "network_ips": "네트워크 IP 주소",
+      "android_allowBackup": "자동 백업(발견 항목에서 도출)",
+      "android_cleartextPolicy": "평문 통신 정책(규칙 D에서 도출)",
+      "android_thirdPartySdk": "서드파티 서비스 SDK",
+      "ios_entitlements": "엔타이틀먼트"
     },
     "slot_left": "왼쪽 패키지",
     "slot_right": "오른쪽 패키지",

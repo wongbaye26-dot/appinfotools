@@ -471,7 +471,12 @@
     "split_no_issues": "未发现分包与 base 不一致",
     "split_issue_count": "发现 {count} 处不一致",
     "split_note": "分包必须与 base 声明相同的包名与 versionCode；不一致说明这个包被改过或拼装过。",
-    "save_error_entitlement": "打不开保存面板：应用缺少「用户选定的读写」授权。这是打包配置问题、不是操作问题，请换用已修复的版本。"
+    "save_error_entitlement": "打不开保存面板：应用缺少「用户选定的读写」授权。这是打包配置问题、不是操作问题，请换用已修复的版本。",
+    "label_confidence": "置信度",
+    "label_evidence": "证据",
+    "label_recommendation": "建议",
+    "label_limitation": "局限",
+    "findings_count": "发现项：{count}"
   },
   "about": {
     "features": {
@@ -560,7 +565,7 @@
       "ios_rule_e_limitation": "`UIBackgroundModes` 是**声明**，不等于运行时的实际后台行为；未反汇编、未观察流量。",
       "ios_rule_d_limitation": "配置允许明文不等同于实际使用明文；例外域内的具体例外设置未展开。",
       "ios_privacy_info_limitation": "隐私清单不记录实际行为；运行时的数据访问需依赖系统的 App Privacy Report（本版本不提供）。",
-      "ios_rule_f_limitation": "只扫描主可执行文件的 ASCII 字符串；Frameworks 与共享缓存内的网络实现不在覆盖范围内。",
+      "ios_rule_f_limitation": "只扫描 ASCII 字符串（主可执行文件 + 嵌套可执行文件）。共享 dyld 缓存里的代码、运行时加载的代码以及非 ASCII 字面量都不在覆盖范围内。",
       "android_permission_uncategorized": "另有 {count} 项权限未纳入风险目录，仅作事实记录：{names}",
       "android_permission_uncategorized_manual_review": "未编目不等于无风险：如需评估这些权限，请对照 Android 权限文档人工确认。",
       "android_permission_sdk23_conditional": "{name} 声明于 <uses-permission-sdk-23>，只在设备 API < 23 时授予；设备版本无法从安装包静态判定。",
@@ -780,7 +785,15 @@
       "read_contacts_description": "读取联系人。",
       "read_contacts_risk_note": "规格 3.4 列出的敏感信息来源，关注是否与上传逻辑同现。",
       "read_clipboard_description": "读取剪贴板。",
-      "read_clipboard_risk_note": "剪贴板可能含敏感文本，规格 3.4 列为关注来源。"
+      "read_clipboard_risk_note": "剪贴板可能含敏感文本，规格 3.4 列为关注来源。",
+      "system_alert_window_description": "在其他应用上层显示（悬浮窗）。",
+      "system_alert_window_risk_note": "悬浮窗可以盖住屏幕并截获点击，是「隐形覆盖层」滥用的经典手法。要结合它显示在哪里判断：悬浮球、来电界面都是正常用途。",
+      "request_install_packages_description": "请求安装其他应用包。",
+      "request_install_packages_risk_note": "允许应用把 APK 交给系统安装器。这是投放器与「绕过应用商店更新」的常用一步；正规商店分发的应用极少需要它。",
+      "access_background_location_description": "应用在后台时获取位置（Android 10 起）。",
+      "access_background_location_risk_note": "后台定位是持续追踪能力；Android 11 起需要在单独的设置页授予。要结合「有没有前台用途能解释它」判断。",
+      "record_audio_description": "录制麦克风音频。",
+      "record_audio_risk_note": "属于敏感数据来源：要结合录音数据去向（是否上传）以及有没有可见的录音功能判断。录音 + 上传由组合规则 G 覆盖。"
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes 读不出来（{reason}）：注册的 URL scheme 未覆盖。",
@@ -842,7 +855,8 @@
       "android_container_dex_in_native_library": "{name}：内容是 DEX 字节码，不是原生库",
       "android_sdk_inventory_no_dex": "没有提供 DEX 内容，因此未建立第三方 SDK 清单",
       "android_sdk_inventory_incomplete": "{truncated} 个 DEX 被截断、{failed} 个读不出来；只出现在那些区域的 SDK 不会被列出",
-      "ios_executables_truncated": "有 {count} 个嵌套 bundle 完全没有解析（共 {total} 个含代码的 bundle），因此它们的可执行文件既没有做 API 线索扫描，也没有算进上面的覆盖率。"
+      "ios_executables_truncated": "有 {count} 个嵌套 bundle 完全没有解析（共 {total} 个含代码的 bundle），因此它们的可执行文件既没有做 API 线索扫描，也没有算进上面的覆盖率。",
+      "android_signing_block_unreadable": "APK 签名块读不出来（{reason}）：v2+ 签名方案未知，因此本次不能下「没有签名块」的结论。这不等于「签名无效」。"
     },
     "findings": "发现项",
     "sdk_categories": {
@@ -901,7 +915,8 @@
       "ios_signature": "签名",
       "ios_entitlements": "授权项",
       "android_nativeHardening": "原生库加固",
-      "android_sdkInventory": "第三方 SDK 清单"
+      "android_sdkInventory": "第三方 SDK 清单",
+      "android_signature": "签名材料"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",
@@ -918,7 +933,7 @@
       "android_arsc_missing": "资源表缺失或解析失败",
       "ios_info_plist_unparsed": "Info.plist 未能解析",
       "ios_usage_descriptions_not_read": "Info.plist 未解析，用途说明未读取",
-      "ios_privacy_manifest_absent": "本 bundle 没有 PrivacyInfo.xcprivacy（iOS 17 之前不需要）",
+      "ios_privacy_manifest_absent": "本 bundle 没有 PrivacyInfo.xcprivacy（iOS 17 之前不需要）；本次不计为覆盖缺口",
       "ios_executables_unscanned": "{count} 个可执行文件未参与扫描",
       "ios_macho_no_content": "未能读取任何 Mach-O 可执行文件的内容",
       "ios_macho_truncated": "部分可执行文件超过单文件扫描预算",
@@ -927,7 +942,12 @@
       "ios_native_symbols_stripped": "部分镜像没有 LC_SYMTAB（符号表被剥离）",
       "ios_signature_separate_step": "签名验证由 codesign 单独执行，见签名信息卡片",
       "ios_executables_truncated": "另有 {count} 个嵌套 bundle 完全未解析（共 {total} 个含代码的 bundle）：它们的可执行文件不在本次扫描范围内",
-      "android_arsc_empty": "资源表解析成功，但里面没有任何条目"
+      "android_arsc_empty": "资源表解析成功，但里面没有任何条目",
+      "android_signature_not_read": "未检查 APK 签名块，v2+ 签名方案未知",
+      "android_signature_unreadable": "APK 签名块读不出来（{reason}），签名方案未知",
+      "android_signature_v1_undetermined": "v2+ 签名块已读取，但无法判定是否存在 v1（JAR）签名",
+      "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 与 targetSdkVersion 都没读到，无法推出平台对明文流量的默认策略",
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略"
     }
   },
   "diff": {
@@ -994,7 +1014,11 @@
       "network_ips": "网络 IP",
       "android_components": "组件",
       "android_nativeSymbols": "导入的原生符号",
-      "ios_nativeSymbols": "导入的原生符号"
+      "ios_nativeSymbols": "导入的原生符号",
+      "android_allowBackup": "自动备份（按发现项推导）",
+      "android_cleartextPolicy": "明文流量策略（按规则 D 推导）",
+      "android_thirdPartySdk": "第三方服务类 SDK",
+      "ios_entitlements": "授权项"
     },
     "truncated_members": "还有 {count} 项未显示",
     "report_title": "版本差异报告",

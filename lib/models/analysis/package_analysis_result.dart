@@ -397,4 +397,150 @@ class PackageAnalysisResult {
     };
     return diagnostics.any((d) => rank[d.severity]! >= rank[severity]!);
   }
+
+  /// 平台事实的 JSON 投影（`AnalysisReport.renderJson` 的 `platformFacts` 段）。
+  ///
+  /// ## 为什么需要它
+  ///
+  /// JSON 出口此前只有 `[platform, appName, packageId, version, buildNumber,
+  /// permissions]` 六个字段 —— 界面能看到的 minSdk / 组件 / ABI / 语言 /
+  /// 密度 / 分包 / **ICP 备案号** / entitlements / URL scheme / 嵌套 bundle
+  /// 全都不在里面。依赖 JSON 做二次分析的人拿不到平台事实。
+  ///
+  /// ## 为什么每个字段是对象而不是裸值
+  ///
+  /// 顶层裸值的状态在 `fieldStatus` 里（按同名 key 对齐）。平台事实字段太多，
+  /// 再维护一张平行表迟早漂移，因此这里**就地带上状态**：
+  /// `{ "value": …, "status": "extracted", "source": "builtinParser" }`。
+  /// 两种约定并存但边界清楚：顶层裸值 + fieldStatus / 平台事实自带状态。
+  Map<String, dynamic> toJson() => {
+        'platformFacts': {
+          if (android != null) 'android': _androidFacts(android!),
+          if (ios != null) 'ios': _iosFacts(ios!),
+        },
+      };
+
+  static Map<String, dynamic> _fv<T>(FieldValue<T> field) => {
+        'value': field.value,
+        'status': field.status.name,
+        'source': field.source.name,
+      };
+
+  static Map<String, dynamic> _androidFacts(AndroidPackageInfo a) => {
+        'minSdkVersion': _fv(a.minSdkVersion),
+        'targetSdkVersion': _fv(a.targetSdkVersion),
+        'maxSdkVersion': _fv(a.maxSdkVersion),
+        'debuggable': _fv(a.debuggable),
+        'permissions': _fv(a.permissions),
+        'archiveType': _fv(a.archiveType),
+        'supportsScreens': _fv(a.supportsScreens),
+        'densities': _fv(a.densities),
+        'nativeCodes': _fv(a.nativeCodes),
+        'locales': _fv(a.locales),
+        'splitApks': _fv(a.splitApks),
+        'obbFiles': _fv(a.obbFiles),
+        'icpFiling': _fv(a.icpFiling),
+        'components': [
+          if (a.components.value case final list?)
+            for (final c in list)
+              {
+                'type': c.type.name,
+                'name': c.name,
+                'exported': c.exported,
+                'permission': c.permission,
+                'hasIntentFilter': c.hasIntentFilter,
+                'authorities': c.authorities,
+              },
+        ],
+        'hardeningHints': [
+          for (final hint in a.hardeningHints)
+            {
+              'signal': hint.signal.name,
+              'confidence': hint.confidence.name,
+              'evidence': hint.evidence,
+            },
+        ],
+        // 容器结构是复合观察，不是 `FieldValue`：没读到就是 `null`，
+        // 但**键始终在** —— 少一个键会让消费者分不清「这次没读」与
+        // 「这个版本没这个字段」。
+        'structure': switch (a.structure) {
+          null => null,
+          final s => {
+              'fileEntryCount': s.fileEntryCount,
+              'dexFiles': [for (final d in s.dexFiles) d.name],
+              'nativeLibraries': [
+                for (final lib in s.nativeLibraries) lib.name,
+              ],
+              'abis': s.abis,
+              'totalUncompressedBytes': s.totalUncompressedBytes,
+              'topLevelDirectories': {
+                for (final e in s.topLevelDirectories.entries)
+                  e.key: e.value.fileCount,
+              },
+            },
+        },
+      };
+
+  static Map<String, dynamic> _iosFacts(IosPackageInfo i) => {
+        'bundleIdentifier': _fv(i.bundleIdentifier),
+        'displayName': _fv(i.displayName),
+        'bundleName': _fv(i.bundleName),
+        'shortVersion': _fv(i.shortVersion),
+        'buildNumber': _fv(i.buildNumber),
+        'minimumOSVersion': _fv(i.minimumOSVersion),
+        'deviceFamily': _fv(i.deviceFamily),
+        'queriesSchemes': _fv(i.queriesSchemes),
+        'requiredDeviceCapabilities': _fv(i.requiredDeviceCapabilities),
+        'urlSchemes': _fv(i.urlSchemes),
+        'backgroundModes': _fv(i.backgroundModes),
+        'executableName': _fv(i.executableName),
+        'architectures': i.architectures,
+        'container': {
+          'bundleCount': i.container.bundles.length,
+          'payloadAppCount': i.container.payloadApps.length,
+          'hasPayloadDirectory': i.container.hasPayloadDirectory,
+          'fileEntryCount': i.container.fileEntryCount,
+          'totalUncompressedBytes': i.container.totalUncompressedBytes,
+          'bundles': [
+            for (final b in i.container.bundles)
+              {'path': b.path, 'kind': b.kind.name, 'fileCount': b.fileCount},
+          ],
+        },
+        'nestedBinaries': [
+          for (final n in i.nestedBinaries)
+            {
+              'path': n.path,
+              'bundlePath': n.bundlePath,
+              'kind': n.kind.name,
+              'parsed': n.macho != null,
+              'failure': n.failure,
+            },
+        ],
+        'icon': i.icon == null
+            ? null
+            : {
+                'previewableCount': i.icon!.candidates.length,
+                'unresolvedCount': i.icon!.unresolved.length,
+                'bestWidth': i.icon!.best?.pixelWidth,
+                'bestHeight': i.icon!.best?.pixelHeight,
+              },
+        'signatureMaterials': i.signatureMaterials == null
+            ? null
+            : {
+                'hasCodeSignatureDirectory':
+                    i.signatureMaterials!.hasCodeSignatureDirectory,
+                'codeSignatureEntries':
+                    i.signatureMaterials!.codeSignatureEntries,
+              },
+        'authorization': i.authorization == null
+            ? null
+            : {
+                'verdict': i.authorization!.verdict.name,
+                'appIdentifier': i.authorization!.appIdentifier,
+                'authorizedIdentifier': i.authorization!.authorizedIdentifier,
+                'note': i.authorization!.note,
+              },
+        'codeSignStatus': i.codeSign?.status.name,
+        'unavailableReason': i.unavailableReason,
+      };
 }

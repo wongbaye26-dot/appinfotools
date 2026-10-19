@@ -27,7 +27,7 @@ class PermissionCatalog {
   PermissionCatalog._();
 
   /// 规则库版本。改这张表必须升版本，否则两份报告无法对照。
-  static const String rulesVersion = 'android-permissions-2026.10.1';
+  static const String rulesVersion = 'android-permissions-2026.10.2';
 
   /// 目录里的全部规则。
   static const List<PermissionRule> rules = [
@@ -262,6 +262,49 @@ class PermissionCatalog {
       description: 'Read the clipboard.',
       riskNote: 'The clipboard may contain sensitive text; spec 3.4 lists it '
           'as a source of interest.',
+    ),
+    // ---- 2026-10-19 审计补的 4 类（此前落进 UNCATEGORIZED 汇总桶）----
+    //
+    // 选择标准是「单独声明就值得看一眼、且在国内样本里常被滥用」。
+    // 悬浮窗与「安装其他应用」此前与「读取传感器」同级 —— 都只是汇总桶里的
+    // 一个名字，没有等级、没有用途说明、没有版本条件。
+    PermissionRule(
+      name: 'SYSTEM_ALERT_WINDOW',
+      category: SecurityCategory.other,
+      baseSeverity: SecuritySeverity.p3,
+      description: 'Draw over other apps (overlay windows).',
+      riskNote: 'An overlay can cover the screen and capture taps — the '
+          'classic "invisible overlay" abuse. Judge it together with where '
+          'the overlay is shown; a floating ball or a call UI is normal.',
+    ),
+    PermissionRule(
+      name: 'REQUEST_INSTALL_PACKAGES',
+      category: SecurityCategory.other,
+      baseSeverity: SecuritySeverity.p2,
+      description: 'Request installation of other app packages.',
+      riskNote: 'Lets the app hand an APK to the system installer. This is the '
+          'usual step for droppers and "update without a store" flows; an app '
+          'distributed through a store rarely needs it.',
+    ),
+    PermissionRule(
+      name: 'ACCESS_BACKGROUND_LOCATION',
+      category: SecurityCategory.deviceData,
+      baseSeverity: SecuritySeverity.p3,
+      minApi: 29,
+      description: 'Access location while the app is in the background '
+          '(Android 10+).',
+      riskNote: 'Background location is a continuous tracking capability; on '
+          'Android 11+ it is granted from a separate settings page. Judge it '
+          'with whether a foreground use case justifies it.',
+    ),
+    PermissionRule(
+      name: 'RECORD_AUDIO',
+      category: SecurityCategory.deviceData,
+      baseSeverity: SecuritySeverity.p3,
+      description: 'Record audio from the microphone.',
+      riskNote: 'A sensitive source: judge it together with where the '
+          'recording goes (upload) and whether a visible recording feature '
+          'exists. Recording + upload is covered by rule G.',
     ),
   ];
 

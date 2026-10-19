@@ -143,6 +143,22 @@ class IosPrivacyAudit {
     ('network-upload', 'multipart form upload', 'multipart/form-data'),
     ('network-alamofire', 'Alamofire HTTP library', 'Alamofire'),
     ('network-afnetworking', 'AFNetworking HTTP library', 'AFNetworking'),
+    // ---- 2026-10-19 审计补的 4 个（iOS 侧标记数只有 Android 的一半）----
+    //
+    // 选的都是「类名本身就是能力」的条目：ATT 授权与 IDFA 是 iOS 隐私审计的
+    // 标准项，蓝牙与运动传感器是体检类 / 手环类应用的主要数据来源。
+    (
+      'tracking-auth',
+      'App Tracking Transparency (ATTrackingManager)',
+      'ATTrackingManager'
+    ),
+    (
+      'tracking-id',
+      'advertising identifier (ASIdentifierManager)',
+      'ASIdentifierManager'
+    ),
+    ('bluetooth', 'CoreBluetooth central manager', 'CBCentralManager'),
+    ('motion', 'Core Motion (accelerometer / activity)', 'CMMotionManager'),
   ];
 
   /// [executableBytes] 为主 Mach-O 的内容；`null` 表示读不到
@@ -377,7 +393,16 @@ class IosPrivacyAudit {
     final sourcesByMarker = <String, Set<String>>{};
     final scannedPaths = <String>[];
     final unscanned = <String>[];
+    // 静态提取的网络端点。与 Android 侧共用 `NetworkEndpoints` —— 两边各写
+    // 一份 TLD 规则必然漂移。此前 iOS 从不构造 `NetworkFacts`，报告的
+    // 「网络」一节在 iOS 上**永远是空的**，而「数据发到哪」正是用户最想知道的。
+    final domainSet = <String>{};
+    final ipSet = <String>{};
     var scanned = 0;
+    // 参与扫描的可执行文件**总字节数**（未被预算截断的那个数）。
+    // 用它当 `ios.macho.strings` 的 limit，读者才看得出「扫了 64 MiB 里的
+    // 多少」；此前这一格只有 covered、没有 limit，比例无从计算。
+    var attempted = 0;
     var truncated = false;
 
     for (final target in targets) {
@@ -412,12 +437,14 @@ class IosPrivacyAudit {
       }
       final limit = bytes.length < budgetBytes ? bytes.length : budgetBytes;
       scanned += limit;
+      attempted += bytes.length;
 
       for (final str in AsciiStrings.extract(
         bytes,
         limit: limit,
         minLength: _Budget.minStringLength,
       )) {
+        NetworkEndpoints.collect(str, domainSet, ipSet);
         for (final (id, _, literal) in _markers) {
           if (!str.contains(literal)) continue;
           (byMarker[id] ??= <String>[]).add(str);
@@ -1001,12 +1028,28 @@ class IosPrivacyAudit {
     final hasMicrophone = clues.containsKey('microphone') ||
         clues.containsKey('microphone-engine');
     final hasLocation = clues.containsKey('location');
-    if (hasUpload && (hasContacts || hasMicrophone || hasLocation)) {
+    final hasBluetooth = clues.containsKey('bluetooth');
+    final hasMotion = clues.containsKey('motion');
+    // 广告标识符 / ATT：与上传同现时是「数据流向广告侧」的候选。
+    final hasTracking =
+        clues.containsKey('tracking-id') || clues.containsKey('tracking-auth');
+    if (hasUpload &&
+        (hasContacts ||
+            hasMicrophone ||
+            hasLocation ||
+            hasBluetooth ||
+            hasMotion ||
+            hasTracking)) {
       final rareSources = [
         if (hasContacts) 'contacts',
         if (hasMicrophone) 'microphone',
+        if (hasBluetooth) 'bluetooth',
+        if (hasTracking) 'tracking',
       ];
-      final commonSources = [if (hasLocation) 'location'];
+      final commonSources = [
+        if (hasLocation) 'location',
+        if (hasMotion) 'motion',
+      ];
       final escalated = rareSources.isNotEmpty;
       findings.add(SecurityFinding(
         ruleId: escalated ? 'IOS-RULE-G' : 'IOS-RULE-G-COMMON',
@@ -1033,6 +1076,10 @@ class IosPrivacyAudit {
             'microphone',
             'microphone-engine',
             'location',
+            'bluetooth',
+            'motion',
+            'tracking-id',
+            'tracking-auth',
           ]),
           ..._clueEvidence(clues, const [
             'network-session',
@@ -1189,6 +1236,11 @@ class IosPrivacyAudit {
               if (info.collectedDataTypes.isNotEmpty)
                 'NSPrivacyCollectedDataTypes = '
                     '${info.collectedDataTypes.join(', ')}',
+              // 必需理由 API：iOS 17 起上架要逐条声明，缺这一节
+              // 「隐私清单审计」就没覆盖到最容易被退的那块。
+              if (info.accessedApiTypes.isNotEmpty)
+                'NSPrivacyAccessedAPITypes = '
+                    '${info.accessedApiTypes.map((a) => a.reasons.isEmpty ? a.type : '${a.type} (${a.reasons.join(', ')})').join('；')}',
             ].join('；'),
           ),
         ],
@@ -1254,10 +1306,25 @@ class IosPrivacyAudit {
             'common networking library markers). This does not mean the app '
             'has no network behaviour; it only means this scan found none.',
         messageCode: 'ios.rule_f',
-        evidence: const [],
-        limitation: 'Only ASCII strings from the main executable are '
-            'scanned; network implementations inside Frameworks and the '
-            'shared cache are outside the coverage.',
+        // 证据不能为空：模型约定每条发现都要能指回「在哪里看的」。
+        // 此前这里是 `const []`，于是「未发现上传」在报告里没有任何可核对
+        // 的范围说明 —— 读者无法判断那是在多大范围内得出的。
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.machoSymbol,
+            location: _scannedScopeLabel(
+              hasMain: scannedPaths.isNotEmpty,
+              nestedCount:
+                  scannedPaths.length > 1 ? scannedPaths.length - 1 : 0,
+            ),
+            detail:
+                'scanned $scanned byte(s) of ASCII strings; no NSURLSession '
+                '/ multipart / networking-library markers were found',
+          ),
+        ],
+        limitation: 'Only ASCII strings are scanned (main executable plus '
+            'nested executables). Code in the shared dyld cache, code loaded '
+            'at runtime, and non-ASCII literals are outside the coverage.',
         limitationCode: 'ios.rule_f.limitation',
         recommendation: 'To confirm, combine this with runtime traffic '
             'observation (not provided in this version).',
@@ -1385,6 +1452,9 @@ class IosPrivacyAudit {
             ? CoverageStatus.notCovered
             : (truncated ? CoverageStatus.partial : CoverageStatus.covered),
         covered: scanned,
+        // `limit` = 参与扫描的文件总字节（不是所有可执行文件的总字节 ——
+        // 没读到的那些算在 `ios.executables` 里，两个维度各管一段）。
+        limit: attempted == 0 ? null : attempted,
         note: scannedPaths.isEmpty
             ? (
                 'ios.macho.no_content',
@@ -1479,6 +1549,12 @@ class IosPrivacyAudit {
       rulesVersion: rulesVersion,
       findings: findings,
       limitations: limitations,
+      // 静态提取的端点。**空表示没提取到，不表示没有网络行为** ——
+      // 与 `NetworkFacts` 的文档一致。
+      network: NetworkFacts(
+        domains: domainSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
+        ips: ipSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
+      ),
       coverage: coverage,
     );
   }
@@ -1627,6 +1703,13 @@ String _sourceLabels(List<String> ids) => ids
           'photo_picker' => 'system photo picker',
           'camera' => 'camera',
           'clipboard' => 'clipboard',
+          // 这几个此前没有分支，句子会直接把 id 摆出来（`contacts, location`）。
+          'contacts' => 'contacts',
+          'microphone' => 'microphone',
+          'location' => 'location',
+          'bluetooth' => 'Bluetooth peripherals',
+          'motion' => 'motion sensors',
+          'tracking' => 'advertising identifier (IDFA)',
           _ => id,
         })
     .join(', ');

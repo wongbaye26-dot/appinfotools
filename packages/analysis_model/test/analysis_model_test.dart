@@ -215,24 +215,28 @@ void main() {
       expect(result.countBySeverity()[SecuritySeverity.info], 1);
     });
 
-    test('UNKNOWN 发现或 limitations 非空都算覆盖不足', () {
+    test('UNKNOWN 发现算「实际缺口」，limitations 只算「声明」', () {
       const noGap =
           SecurityAnalysisResult(engineVersion: 'e', rulesVersion: 'r');
-      expect(noGap.hasCoverageGaps, isFalse);
+      expect(noGap.hasActualGaps, isFalse);
+      expect(noGap.hasDeclaredLimitations, isFalse);
 
       final withUnknown = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
         findings: [finding(severity: SecuritySeverity.unknown)],
       );
-      expect(withUnknown.hasCoverageGaps, isTrue);
+      expect(withUnknown.hasActualGaps, isTrue);
 
       const withLimitation = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
         limitations: [AnalysisNote('test.base_only', '只扫了主应用')],
       );
-      expect(withLimitation.hasCoverageGaps, isTrue);
+      // 方法论声明**不是**缺口：两个引擎都会无条件追加，把它算成缺口
+      // 会让「覆盖不足」提示恒亮。
+      expect(withLimitation.hasDeclaredLimitations, isTrue);
+      expect(withLimitation.hasActualGaps, isFalse);
     });
 
     test('includesRuntimeEvidence 默认 false（本工具不做运行时分析）', () {

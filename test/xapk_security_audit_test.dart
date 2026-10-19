@@ -54,19 +54,19 @@ void main() {
           reason: 'base 不应被污染');
     });
 
-    test('追加后 hasCoverageGaps 变为 true', () {
+    test('追加限制说明只增加「声明」，不伪造「实际缺口」', () {
       const noGaps = SecurityAnalysisResult(
         engineVersion: 'e',
         rulesVersion: 'r',
       );
-      expect(noGaps.hasCoverageGaps, isFalse);
+      expect(noGaps.hasDeclaredLimitations, isFalse);
+      expect(noGaps.hasActualGaps, isFalse);
 
-      expect(
-        noGaps
-            .withLimitation(const AnalysisNote('t.gap', '覆盖不足'))
-            .hasCoverageGaps,
-        isTrue,
-      );
+      final withNote =
+          noGaps.withLimitation(const AnalysisNote('t.gap', '覆盖不足'));
+      expect(withNote.hasDeclaredLimitations, isTrue);
+      // 加一句说明不会让结构化覆盖凭空多出一个缺口。
+      expect(withNote.hasActualGaps, isFalse);
     });
   });
 

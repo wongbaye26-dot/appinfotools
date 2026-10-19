@@ -74,8 +74,9 @@ class IosIconConfiguration {
 /// 这个结构就是那句话的落地。
 /// `PrivacyInfo.xcprivacy` 隐私清单的摘要。
 ///
-/// 只取与隐私检测相关的三类内容：是否声明追踪、追踪域名、声明的收集数据类型。
-/// **不解释、不定级** —— 规格 4.4 明确它是声明性材料， interpretations 属于
+/// 只取与隐私检测相关的四类内容：是否声明追踪、追踪域名、收集的数据类型，
+/// 以及**必需理由 API**（`NSPrivacyAccessedAPITypes`）。
+/// **不解释、不定级** —— 规格 4.4 明确它是声明性材料，interpretations 属于
 /// 审计器（`ios_privacy_audit`）的职责。
 class IosPrivacyInfo {
   /// `NSPrivacyTracking`：应用是否声明自己会跟踪用户。
@@ -88,14 +89,36 @@ class IosPrivacyInfo {
   /// 例如 `NSPrivacyCollectedDataTypePhotos`。
   final List<String> collectedDataTypes;
 
+  /// `NSPrivacyAccessedAPITypes[]`：**必需理由 API** 的声明。
+  ///
+  /// iOS 17 起，用到 UserDefaults / 文件时间戳 / 磁盘空间 / 系统启动时间这几类
+  /// API 的应用必须在隐私清单里逐条声明**理由**，否则上架会被退。
+  /// 此前这一节完全没解析 —— 「隐私清单审计」缺的恰好是最容易被退的那一块。
+  final List<IosAccessedApiType> accessedApiTypes;
+
   const IosPrivacyInfo({
     this.tracking,
     this.trackingDomains = const [],
     this.collectedDataTypes = const [],
+    this.accessedApiTypes = const [],
   });
 
   bool get isEmpty =>
-      tracking == null && trackingDomains.isEmpty && collectedDataTypes.isEmpty;
+      tracking == null &&
+      trackingDomains.isEmpty &&
+      collectedDataTypes.isEmpty &&
+      accessedApiTypes.isEmpty;
+}
+
+/// 一条「必需理由 API」声明。
+class IosAccessedApiType {
+  /// 例如 `NSPrivacyAccessedAPICategoryUserDefaults`。
+  final String type;
+
+  /// 声明的理由码，例如 `CA92.1`。
+  final List<String> reasons;
+
+  const IosAccessedApiType({required this.type, this.reasons = const []});
 }
 
 class IpaInfoPlist {
@@ -584,10 +607,29 @@ class IpaInfoPlistReader {
       }
     }
 
+    // 必需理由 API：`[{ NSPrivacyAccessedAPIType, NSPrivacyAccessedAPITypeReasons }]`。
+    final accessedRaw = parsed.value['NSPrivacyAccessedAPITypes'];
+    final accessed = <IosAccessedApiType>[];
+    if (accessedRaw is PlistArray) {
+      for (final item in accessedRaw.value) {
+        if (item is! PlistDict) continue;
+        final type = item.value['NSPrivacyAccessedAPIType'].asString;
+        if (type == null) continue;
+        final reasons =
+            (item.value['NSPrivacyAccessedAPITypeReasons']).asStringList ??
+                const <String>[];
+        accessed.add(IosAccessedApiType(
+          type: type,
+          reasons: reasons.toList()..sort(),
+        ));
+      }
+    }
+
     final info = IosPrivacyInfo(
       tracking: tracking?.asBool,
       trackingDomains: trackingDomains,
       collectedDataTypes: collectedTypes.toList()..sort(),
+      accessedApiTypes: accessed..sort((a, b) => a.type.compareTo(b.type)),
     );
     if (info.isEmpty) {
       return const FieldValue<IosPrivacyInfo>.absent(source: source);

@@ -354,7 +354,8 @@ class AnalysisReport {
       sb.writeln('### ${finding.ruleId} [${finding.severity.name}]');
       sb.writeln();
       sb.writeln('- **${t.security.findings}:** ${findingText(finding, t)}');
-      sb.writeln('- **Confidence:** ${finding.confidence.name}');
+      sb.writeln(
+          '- **${t.report.label_confidence}:** ${finding.confidence.name}');
       // 数据流三段：只写有值的那几段。
       //
       // 界面（`SecurityFindingCard`）早就显示来源与去向，报告里却一直没有 ——
@@ -372,7 +373,7 @@ class AnalysisReport {
         sb.writeln('- **${t.security.data_flow}:** ${flow.join(' → ')}');
       }
       if (finding.evidence.isNotEmpty) {
-        sb.writeln('- **Evidence:**');
+        sb.writeln('- **${t.report.label_evidence}:**');
         for (final ev in finding.evidence) {
           sb.writeln('  - ${ev.source.name} (${locationText(ev, t)}): '
               '${detailText(ev, t)}');
@@ -380,16 +381,19 @@ class AnalysisReport {
       }
       final recommendation = recommendationText(finding, t);
       if (recommendation.isNotEmpty) {
-        sb.writeln('- **Recommendation:** $recommendation');
+        sb.writeln('- **${t.report.label_recommendation}:** $recommendation');
       }
       final limitation = limitationText(finding, t);
       if (limitation != null && limitation.isNotEmpty) {
-        sb.writeln('- **Limitation:** $limitation');
+        sb.writeln('- **${t.report.label_limitation}:** $limitation');
       }
       sb.writeln();
     }
 
-    if (security.hasCoverageGaps) {
+    // 方法论层面的局限**照实列出**，但不再拿它当「有缺口」的门闩：
+    // 两个引擎都无条件追加至少两条，用 `hasCoverageGaps` 当条件会让这一节
+    // 永远出现，读者很快学会跳过它。真正的缺口由上面的覆盖表回答。
+    if (security.hasDeclaredLimitations) {
       sb.writeln('### ${t.security.limitations}');
       sb.writeln();
       for (final limit in security.limitations) {
@@ -623,6 +627,7 @@ class AnalysisReport {
       'android.sdkInventory' => d.android_sdkInventory,
       'android.arsc' => d.android_arsc,
       'android.cleartextPolicy' => d.android_cleartextPolicy,
+      'android.signature' => d.android_signature,
       'ios.infoPlist' => d.ios_infoPlist,
       'ios.usageDescriptions' => d.ios_usageDescriptions,
       'ios.privacyManifest' => d.ios_privacyManifest,
@@ -891,6 +896,11 @@ class AnalysisReport {
       'android.permission_rule.risk_note' => rule == null
           ? null
           : f.android_permission_rule_risk_note(riskNote: rule.riskNote),
+      // 原生符号的「建议」与「关联说明」「局限」是一组。此前三条都产出了 code
+      // 却没有分支 —— 编译通过、中文界面静默显示英文（审计 P2-7）。
+      'ios.native_symbols.manual_review' => f.ios_native_symbols_manual_review,
+      'android.native_symbols.manual_review' =>
+        f.android_native_symbols_manual_review,
       _ => null,
     };
     return localized ?? finding.recommendation;
@@ -935,6 +945,9 @@ class AnalysisReport {
       'android.rule_c.relationship_method' => caller == null
           ? null
           : f.android_rule_c_relationship_method(caller: caller),
+      'ios.native_symbols.relationship' => f.ios_native_symbols_relationship,
+      'android.native_symbols.relationship' =>
+        f.android_native_symbols_relationship,
       _ => null,
     };
     return localized ?? raw;
@@ -1005,6 +1018,11 @@ class AnalysisReport {
           : f.android_permission_expired_limitation(targetSdk: targetSdk),
       'android.permission_rule.limitation' =>
         f.android_permission_rule_limitation,
+      'ios.native_symbols.limitation' => f.ios_native_symbols_limitation,
+      'android.native_symbols.limitation' =>
+        f.android_native_symbols_limitation,
+      'android.screen_capture.limitation' =>
+        f.android_screen_capture_limitation,
       _ => null,
     };
     return localized ?? raw;
@@ -1319,6 +1337,22 @@ class AnalysisReport {
           description: p.read_clipboard_description,
           riskNote: p.read_clipboard_risk_note,
         ),
+      'SYSTEM_ALERT_WINDOW' => (
+          description: p.system_alert_window_description,
+          riskNote: p.system_alert_window_risk_note,
+        ),
+      'REQUEST_INSTALL_PACKAGES' => (
+          description: p.request_install_packages_description,
+          riskNote: p.request_install_packages_risk_note,
+        ),
+      'ACCESS_BACKGROUND_LOCATION' => (
+          description: p.access_background_location_description,
+          riskNote: p.access_background_location_risk_note,
+        ),
+      'RECORD_AUDIO' => (
+          description: p.record_audio_description,
+          riskNote: p.record_audio_risk_note,
+        ),
       _ => null,
     };
   }
@@ -1398,7 +1432,6 @@ class AnalysisReport {
       'ios.native_symbols.stripped' => n.ios_native_symbols_stripped,
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
       'android.split_apk.base_only' => n.android_split_apk_base_only,
-      'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
       'android.sdk_inventory.no_dex' => n.android_sdk_inventory_no_dex,
       'android.sdk_inventory.incomplete' =>
         (truncated == null || failed == null)
@@ -1407,6 +1440,9 @@ class AnalysisReport {
                 truncated: truncated, failed: failed),
       'android.native_hardening.not_provided' =>
         n.android_native_hardening_not_provided,
+      'android.signing_block.unreadable' => reason == null
+          ? null
+          : n.android_signing_block_unreadable(reason: reason),
       'android.native_hardening.some_without_relro' =>
         (count == null || total == null)
             ? null
@@ -1645,6 +1681,16 @@ class AnalysisReport {
           : n.android_native_symbols_skipped_for_budget(count: count),
       'android.arsc.missing' => n.android_arsc_missing,
       'android.arsc.empty' => n.android_arsc_empty,
+      // 这两条此前在 limitationNoteText 里（那里没有对应 code 的 AnalysisNote），
+      // 覆盖说明反而查不到本地化 —— 中文界面上这一格一直是英文。
+      'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
+      'android.cleartext_policy_target_sdk_unknown' =>
+        n.android_cleartext_policy_target_sdk_unknown,
+      'android.signature.not_read' => n.android_signature_not_read,
+      'android.signature.unreadable' =>
+        reason == null ? null : n.android_signature_unreadable(reason: reason),
+      'android.signature.v1_undetermined' =>
+        n.android_signature_v1_undetermined,
       'ios.info_plist.unparsed' => n.ios_info_plist_unparsed,
       'ios.usage_descriptions.not_read' => n.ios_usage_descriptions_not_read,
       'ios.privacy_manifest.absent' => n.ios_privacy_manifest_absent,
@@ -1791,7 +1837,12 @@ class AnalysisReport {
   ///
   /// 5：新增 `fieldStatus` —— 逐字段的 status / source / diagnostic。
   /// 之前 JSON 里只有裸值，`absent` 与 `failed` 都只是 `null`，下游分不开。
-  static const int reportSchemaVersion = 5;
+  /// 6：`securitySummary.hasCoverageGaps` **改名为** `hasActualGaps`，并新增
+  ///    `hasDeclaredLimitations` 与 `coverageGapCount`。旧字段恒为 true，
+  ///    留着会让消费者继续误判；这是一次**破坏性**改名，所以必须升版本号。
+  /// 7：新增 `platformFacts` —— 平台事实（组件、ABI、语言、密度、分包、ICP、
+  ///    entitlements、URL scheme、嵌套 bundle…），每个字段自带 status / source。
+  static const int reportSchemaVersion = 7;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -1893,6 +1944,11 @@ class AnalysisReport {
 
       // 「仅安全检测」范围下，这些与安全无关的块整体不输出 ——
       // 保留了就不是「仅安全」了。
+      // 平台事实（minSdk / 组件 / ABI / 语言 / 密度 / 分包 / ICP / entitlements
+      // / URL scheme / 嵌套 bundle …）。此前 JSON 里**一个都没有** ——
+      // 界面看得到、导出看不到。每个字段就地带 status / source。
+      if (!securityOnly) 'platformFacts': result.toJson()['platformFacts'],
+
       if (!securityOnly) ...{
         'application': {
           'platform': result.platform.name,
@@ -1970,7 +2026,13 @@ class AnalysisReport {
           : {
               'engineVersion': security.engineVersion,
               'rulesVersion': security.rulesVersion,
-              'hasCoverageGaps': security.hasCoverageGaps,
+              // **两个信号分开给**。此前只有一个 `hasCoverageGaps`，它把
+              // 「引擎无条件声明的方法论局限」也算进来，于是恒为 true ——
+              // 消费者据此判断「这份结论可不可信」会永远得到「不可信」。
+              // `hasActualGaps` 只看结构化覆盖与 UNKNOWN 级发现。
+              'hasActualGaps': security.hasActualGaps,
+              'hasDeclaredLimitations': security.hasDeclaredLimitations,
+              'coverageGapCount': security.coverageGapCount,
               'includesRuntimeEvidence': security.includesRuntimeEvidence,
               'counts': counts,
               'highestRiskRuleId': worst?.ruleId,
@@ -2006,7 +2068,10 @@ class AnalysisReport {
       // `limitations` 是给人读的句子。两者都在：程序用前者，
       // 人读后者，且不必从文本里反推状态。
       'coverage': {
-        'hasGaps': security?.hasCoverageGaps ?? true,
+        // 与 `securitySummary.hasActualGaps` 同一个判据（结构化覆盖 + UNKNOWN）。
+        // `security == null` 表示**本次没做安全分析**，此时「有没有缺口」未知，
+        // 给 `true` 而不是 `false` —— 把「没查」说成「没缺口」是更危险的方向。
+        'hasGaps': security?.hasActualGaps ?? true,
         'entries': [
           for (final entry
               in security?.coverage.entries ?? const <CoverageEntry>[])

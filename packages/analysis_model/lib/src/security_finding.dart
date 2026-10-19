@@ -534,11 +534,28 @@ class SecurityAnalysisResult {
 
   bool get hasRiskFindings => highestRiskFinding != null;
 
-  /// 是否存在「无法确认」类的发现或局限。
+  /// 引擎是否**声明**了方法论层面的局限（离线静态分析、基于共现…）。
   ///
-  /// UI 据此显示「暂不能作出完整结论」而不是绿色。
-  bool get hasCoverageGaps =>
-      findings.any((f) => f.severity.isInconclusive) || limitations.isNotEmpty;
+  /// 两个引擎都**无条件**追加至少两条，因此它在本项目的实际输出里恒为真。
+  /// 这正是它不能当「有缺口」用的原因 —— 一个恒真的警告等于没有警告。
+  /// 要判断「这份结论有多可信」请用 [hasActualGaps]。
+  bool get hasDeclaredLimitations => limitations.isNotEmpty;
+
+  /// 是否**真的**存在可判定的覆盖缺口。
+  ///
+  /// 两条来源，都必须有具体指向：
+  /// 1. 结构化覆盖里某个维度是 `partial` / `notCovered`（[AnalysisCoverage.gaps]）；
+  /// 2. 有 `UNKNOWN` 档发现 —— 引擎自己说「这条我判不了」。
+  ///
+  /// 与 [hasDeclaredLimitations] 分开是 2026-10-19 审计的直接结论：此前二者
+  /// 被合成一个 `hasCoverageGaps`，于是 14/14 个样本都报「有缺口」，
+  /// 而同一份结果的结构化覆盖明明全绿。界面的「覆盖不足」卡片因此永远亮着。
+  bool get hasActualGaps =>
+      coverage.gaps.isNotEmpty ||
+      findings.any((f) => f.severity.isInconclusive);
+
+  /// 有缺口的覆盖维度数。UI 用它决定要不要在总览卡上写「N 个维度未覆盖」。
+  int get coverageGapCount => coverage.gaps.length;
 
   @override
   String toString() => 'SecurityAnalysisResult(engine: $engineVersion, '

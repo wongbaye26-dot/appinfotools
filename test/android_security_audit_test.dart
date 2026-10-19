@@ -196,7 +196,7 @@ void main() {
       expect(conditional, isNotNull);
       expect(conditional!.severity, SecuritySeverity.unknown);
       expect(conditional.confidence, SecurityConfidence.unknown);
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasActualGaps, isTrue);
     });
   });
 
@@ -250,7 +250,7 @@ void main() {
       expect(ruleB.evidence.length, greaterThanOrEqualTo(2));
     });
 
-    test('相册 + OCR + 上传：P1 且列出未证实的数据流环节', () {
+    test('相册 + OCR + 上传：整包层面共现 → P2，且列出未证实的数据流环节', () {
       final result = AndroidSecurityAudit.audit(
         meta: _meta(
           targetSdk: 34,
@@ -268,7 +268,9 @@ void main() {
 
       final ruleC = _byId(result, 'ANDROID-RULE-C');
       expect(ruleC, isNotNull);
-      expect(ruleC!.severity, SecuritySeverity.p1);
+      // 只有字符串线索、没有调用点 → 共现停在整包层面 → P2。
+      // 同一方法体内两个调用点才升 P1（见下面的 real-cooccurrence 用例）。
+      expect(ruleC!.severity, SecuritySeverity.p2);
       expect(ruleC.confidence, SecurityConfidence.suspected);
       expect(ruleC.dataSource, contains('照片'));
       expect(ruleC.dataSink, contains('上传'));
@@ -276,7 +278,12 @@ void main() {
         AnalysisReport.relationshipText(ruleC, t),
         contains('is not proven'),
       );
-      expect(result.highestRiskFinding!.ruleId, 'ANDROID-RULE-C');
+      // 这条用例只有字符串线索，没有调用点，所以 C 与 B 同为 P2；
+      // 「最高风险」在并列时取规则表里靠前的那条（B），这里不断言它是 C。
+      expect(
+        result.findings.where((f) => f.severity == SecuritySeverity.p2).length,
+        greaterThanOrEqualTo(2),
+      );
     });
   });
 
@@ -465,7 +472,7 @@ void main() {
       );
 
       expect(result.findings.any((f) => f.severity.isRisk), isFalse);
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasActualGaps, isTrue);
       expect(
         result.limitations.any((l) => l.code == 'android.manifest.unparsed'),
         isTrue,
@@ -530,7 +537,7 @@ void main() {
         dexEntries: [DexBytes('classes.dex', fixture('bad-magic.dex'))],
       );
 
-      expect(result.hasCoverageGaps, isTrue);
+      expect(result.hasActualGaps, isTrue);
       expect(
         result.limitations
             .any((l) => l.code == 'android.dex.structure_untrusted'),
@@ -718,18 +725,17 @@ void main() {
       );
     });
 
-    test('更强的证据**不**抬高置信度：仍然不是「已证实关联」', () {
-      // 同一方法内共现是比「多标记同现」更强的证据，但它仍然没有证明
-      // 「识别结果被送进了上传请求」—— 那要看寄存器与参数传递。
-      // 因此等级与置信度都不能动。
-      for (final name in const ['real-cooccurrence.dex', 'real-separate.dex']) {
-        final ruleC = _byId(ruleCFor(name), 'ANDROID-RULE-C')!;
-        expect(ruleC.severity, SecuritySeverity.p1, reason: name);
-        expect(
-          ruleC.confidence,
-          SecurityConfidence.suspected,
-          reason: '$name：共现不是数据流，不能升到 confirmed',
-        );
+    test('等级跟着共现粒度走，置信度不跟着走', () {
+      // 同一方法内共现是比「多标记同现」更强的证据，所以**等级**分两档：
+      // 同方法体 → P1，整包层面 → P2。
+      // 但两者都仍然没有证明「识别结果被送进了上传请求」—— 那要看寄存器
+      // 与参数传递，因此置信度一律 suspected，不能升到 confirmed。
+      final same = _byId(ruleCFor('real-cooccurrence.dex'), 'ANDROID-RULE-C')!;
+      final apart = _byId(ruleCFor('real-separate.dex'), 'ANDROID-RULE-C')!;
+      expect(same.severity, SecuritySeverity.p1);
+      expect(apart.severity, SecuritySeverity.p2);
+      for (final ruleC in [same, apart]) {
+        expect(ruleC.confidence, SecurityConfidence.suspected);
       }
     });
 

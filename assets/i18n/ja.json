@@ -417,7 +417,15 @@
       "wake_lock_description": "デバイスをスリープさせない。",
       "wake_lock_risk_note": "バックグラウンドで動き続けるための手がかりです。単独ではリスクとは判定しません。",
       "write_external_storage_description": "共有ストレージに書き込む。",
-      "write_external_storage_risk_note": "共有ストレージへの書き込みは targetSdk ≥ 29 以降ほぼ機能しません。単独ではリスクとは判定せず、広範なアクセスの組み合わせにおける傍証にすぎません。"
+      "write_external_storage_risk_note": "共有ストレージへの書き込みは targetSdk ≥ 29 以降ほぼ機能しません。単独ではリスクとは判定せず、広範なアクセスの組み合わせにおける傍証にすぎません。",
+      "system_alert_window_description": "他のアプリの上に重ねて表示（オーバーレイ）",
+      "system_alert_window_risk_note": "オーバーレイは画面を覆ってタップを奪えるため、「見えない覆い」悪用の定番です。どこに表示するのかと併せて判断してください。フローティングボールや着信画面は正常な用途です。",
+      "request_install_packages_description": "他のアプリのパッケージのインストールを要求",
+      "request_install_packages_risk_note": "APK をシステムのインストーラに渡せるようにします。ドロッパーや「ストアを介さない更新」の常套手段で、ストア配信のアプリが要求することはほとんどありません。",
+      "access_background_location_description": "アプリがバックグラウンドにある間の位置情報取得（Android 10 以降）",
+      "access_background_location_risk_note": "バックグラウンド位置情報は継続的な追跡能力です。Android 11 以降は専用の設定画面で許可します。前面での用途がそれを正当化するかと併せて判断してください。",
+      "record_audio_description": "マイクからの音声録音",
+      "record_audio_risk_note": "機微な取得元です。録音データの行き先（アップロード）と、目に見える録音機能があるかで判断してください。録音 + アップロードはルール G が扱います。"
     },
     "sources": {
       "camera": "カメラ",
@@ -498,7 +506,8 @@
       "android_container_dex_in_native_library": "{name}：内容は DEX バイトコードであり、ネイティブライブラリではありません",
       "android_sdk_inventory_no_dex": "DEX の内容が提供されなかったため、サードパーティ SDK の一覧を作成していません",
       "android_sdk_inventory_incomplete": "{truncated} 個の DEX が切り詰められ、{failed} 個が読み取れませんでした。それらの領域にのみ存在する SDK は一覧に含まれません",
-      "ios_executables_truncated": "{count} 個のネストしたバンドルはまったく解析していません（コードを含む全 {total} 個中）。そのためこれらの実行ファイルは API 手がかりのスキャンも、上記のカバレッジ計算も行われていません。"
+      "ios_executables_truncated": "{count} 個のネストしたバンドルはまったく解析していません（コードを含む全 {total} 個中）。そのためこれらの実行ファイルは API 手がかりのスキャンも、上記のカバレッジ計算も行われていません。",
+      "android_signing_block_unreadable": "APK 署名ブロックを読み取れません（{reason}）：v2+ 署名方式が不明なため、今回「署名ブロックがない」と結論することはできません。これは「署名が無効」という意味ではありません。"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
@@ -630,7 +639,7 @@
       "ios_rule_e_manual_review": "バックグラウンドで何がアップロードされ、何が引き金になるのかを手動で確認してください。必要なら隔離環境でアプリをバックグラウンドにした状態のネットワーク挙動を観測してください。",
       "ios_rule_e_relationship": "バックグラウンド実行の宣言 → 機微なデータの読み取り → ネットワーク送信: 三段階それぞれに証拠はありますが、**どの飛躍も証明されていません** — 機微な読み取りがバックグラウンドで起きることも、読み取ったものがリクエストボディに届くことも示されていません。",
       "ios_rule_f": "現在の分析範囲では、ネットワーク送信の特徴は見つかりませんでした（NSURLSession、multipart、一般的なネットワークライブラリのマーカーにヒットしません）。これはアプリにネットワーク挙動がないという意味ではありません — このスキャンで見つからなかっただけです。",
-      "ios_rule_f_limitation": "走査するのはメイン実行ファイルの ASCII 文字列だけです。Frameworks 内や共有キャッシュ内のネットワーク実装はカバレッジ外です。",
+      "ios_rule_f_limitation": "走査するのは ASCII 文字列のみです（メイン実行ファイル + ネストされた実行ファイル）。共有 dyld キャッシュ内のコード、実行時に読み込まれるコード、非 ASCII のリテラルはカバレッジ外です。",
       "ios_rule_f_runtime_traffic": "確認するには、実行時の通信観測と組み合わせてください（本バージョンでは提供していません）。",
       "ios_scan_coverage": "API 使用の手がかりの走査は {total} 個中 {scanned} 個の実行ファイル、合計 {bytes} バイトを対象としました。すべての実行ファイルを対象としています。",
       "ios_scan_coverage_gap": "API 使用の手がかりの走査は {total} 個中 {scanned} 個の実行ファイル、合計 {bytes} バイトを対象としました。対象外の実行ファイル: {uncovered}。",
@@ -735,7 +744,8 @@
       "ios_usageDescriptions": "用途の説明",
       "ios_entitlements": "権利（Entitlements）",
       "android_nativeHardening": "ネイティブライブラリの堅牢化",
-      "android_sdkInventory": "サードパーティ SDK 一覧"
+      "android_sdkInventory": "サードパーティ SDK 一覧",
+      "android_signature": "署名素材"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",
@@ -762,11 +772,16 @@
       "ios_native_symbols_no_symtab": "シンボルテーブルを読み取れる Mach-O イメージがありません",
       "ios_native_symbols_stripped": "一部のイメージに LC_SYMTAB がありません（シンボルテーブルが削除済み）",
       "ios_native_symbols_unreadable": "{count} 個のイメージでシンボルテーブルが範囲外でした",
-      "ios_privacy_manifest_absent": "このバンドルに PrivacyInfo.xcprivacy がありません（iOS 17 より前では必須ではありません）",
+      "ios_privacy_manifest_absent": "この bundle に PrivacyInfo.xcprivacy はありません（iOS 17 より前は不要）。今回はカバレッジのギャップとして数えません",
       "ios_signature_separate_step": "署名の検証は codesign で別途行います。署名カードを参照してください",
       "ios_usage_descriptions_not_read": "Info.plist を解析していないため、用途の説明を読み取っていません",
       "android_arsc_empty": "リソーステーブルは解析できましたが、項目が 1 つもありません",
-      "ios_executables_truncated": "さらに {count} 個のネストしたバンドルは未解析です（コードを含む全 {total} 個中）：これらの実行ファイルは本スキャンの対象外です"
+      "ios_executables_truncated": "さらに {count} 個のネストしたバンドルは未解析です（コードを含む全 {total} 個中）：これらの実行ファイルは本スキャンの対象外です",
+      "android_signature_not_read": "APK 署名ブロックを確認していないため、v2+ 署名方式は不明です",
+      "android_signature_unreadable": "APK 署名ブロックを読み取れません（{reason}）。署名方式は不明です",
+      "android_signature_v1_undetermined": "v2+ 署名ブロックは読み取りましたが、v1（JAR）署名の有無は判定できませんでした",
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できなかった（リソース、ファイルパス、XML 自体のいずれかが読めない）ため、平文通信ポリシーは判定していません",
+      "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic も targetSdkVersion も読めないため、平文通信のプラットフォーム既定値を導けません"
     },
     "partial": "一部カバー",
     "summary": "{applicable} 件中 {covered} 件の項目を完全にカバーしています",
@@ -840,7 +855,11 @@
       "ios_requiredDeviceCapabilities": "必須のデバイス機能",
       "ios_urlSchemes": "登録済み URL スキーム",
       "network_domains": "ネットワークドメイン",
-      "network_ips": "ネットワーク IP アドレス"
+      "network_ips": "ネットワーク IP アドレス",
+      "android_allowBackup": "自動バックアップ（検出項目から導出）",
+      "android_cleartextPolicy": "平文通信ポリシー（ルール D から導出）",
+      "android_thirdPartySdk": "サードパーティのサービス SDK",
+      "ios_entitlements": "エンタイトルメント"
     },
     "slot_left": "左のパッケージ",
     "slot_right": "右のパッケージ",

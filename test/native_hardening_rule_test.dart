@@ -145,13 +145,17 @@ void main() {
       expect(entry.noteCode, isNull);
     });
 
-    test('有一个缺 RELRO → covered 数少一，并带说明', () {
+    test('有一个缺 RELRO → 覆盖数仍是 2/2（问的是「读到几个」），质量进 note', () {
+      // `covered/limit` 与 `status` 必须回答同一个问题：「原生库的加固属性
+      // 读到了多少」。加固质量（缺 RELRO）是**另一个问题**，写在 note 里。
+      // 此前 `covered` 数的是「加固得好的库」，于是 266 个库只解析 10 个时
+      // 面板会显示 8/10，读起来像覆盖了 80%（2026-10-19 审计 P2-1）。
       final result = _audit([
         _lib('lib/arm64-v8a/liba.so', 'hardening-default.so'),
         _lib('lib/arm64-v8a/libapp.so', 'hardening-norelro.so'),
       ]);
       final entry = result.coverage.entry('android.nativeHardening')!;
-      expect(entry.covered, 1);
+      expect(entry.covered, 2);
       expect(entry.limit, 2);
       expect(entry.noteCode, 'android.native_hardening.some_without_relro');
     });

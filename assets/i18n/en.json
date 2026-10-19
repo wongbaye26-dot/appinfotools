@@ -471,7 +471,12 @@
     "split_no_issues": "No split disagreed with the base APK",
     "split_issue_count": "{count} disagreement(s) found",
     "split_note": "A split must declare the same package name and versionCode as the base APK; a disagreement means the archive was modified or assembled from parts.",
-    "save_error_entitlement": "The save dialog could not be opened because the app is missing the \"user-selected read-write\" permission. This is a packaging problem, not something you did wrong — install the fixed build."
+    "save_error_entitlement": "The save dialog could not be opened because the app is missing the \"user-selected read-write\" permission. This is a packaging problem, not something you did wrong — install the fixed build.",
+    "label_confidence": "Confidence",
+    "label_evidence": "Evidence",
+    "label_recommendation": "Recommendation",
+    "label_limitation": "Limitation",
+    "findings_count": "Findings: {count}"
   },
   "about": {
     "features": {
@@ -560,7 +565,7 @@
       "ios_rule_e_limitation": "`UIBackgroundModes` is a **declaration** and does not equal actual background behaviour at runtime; no disassembly and no traffic observation.",
       "ios_rule_d_limitation": "Allowing cleartext in the configuration is not the same as actually using cleartext; the per-domain exception settings are not expanded.",
       "ios_privacy_info_limitation": "The privacy manifest does not record actual behaviour; runtime data access would require the system App Privacy Report (not provided in this version).",
-      "ios_rule_f_limitation": "Only ASCII strings from the main executable are scanned; network implementations inside Frameworks and the shared cache are outside the coverage.",
+      "ios_rule_f_limitation": "Only ASCII strings are scanned (main executable plus nested executables). Code in the shared dyld cache, code loaded at runtime, and non-ASCII literals are outside the coverage.",
       "android_permission_uncategorized": "Another {count} permission(s) are not in the risk catalogue. Recorded as fact only: {names}",
       "android_permission_uncategorized_manual_review": "Not being catalogued does not mean there is no risk: to assess these permissions, check them against the Android permission documentation manually.",
       "android_permission_sdk23_conditional": "{name} is declared with <uses-permission-sdk-23>, so it is only granted on devices running API < 23; the device version cannot be determined statically from the package.",
@@ -780,7 +785,15 @@
       "read_contacts_description": "Read contacts.",
       "read_contacts_risk_note": "A sensitive information source listed in spec 3.4; watch for it co-occurring with upload logic.",
       "read_clipboard_description": "Read the clipboard.",
-      "read_clipboard_risk_note": "The clipboard may contain sensitive text; spec 3.4 lists it as a source of interest."
+      "read_clipboard_risk_note": "The clipboard may contain sensitive text; spec 3.4 lists it as a source of interest.",
+      "system_alert_window_description": "Draw over other apps (overlay windows).",
+      "system_alert_window_risk_note": "An overlay can cover the screen and capture taps — the classic \"invisible overlay\" abuse. Judge it together with where the overlay is shown; a floating ball or a call UI is normal.",
+      "request_install_packages_description": "Request installation of other app packages.",
+      "request_install_packages_risk_note": "Lets the app hand an APK to the system installer. This is the usual step for droppers and \"update without a store\" flows; an app distributed through a store rarely needs it.",
+      "access_background_location_description": "Access location while the app is in the background (Android 10+).",
+      "access_background_location_risk_note": "Background location is a continuous tracking capability; on Android 11+ it is granted from a separate settings page. Judge it with whether a foreground use case justifies it.",
+      "record_audio_description": "Record audio from the microphone.",
+      "record_audio_risk_note": "A sensitive source: judge it together with where the recording goes (upload) and whether a visible recording feature exists. Recording + upload is covered by rule G."
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes could not be read ({reason}): the registered URL schemes are not covered.",
@@ -842,7 +855,8 @@
       "android_container_dex_in_native_library": "{name}: the content is DEX bytecode, not a shared library",
       "android_sdk_inventory_no_dex": "No DEX content was provided, so the third-party SDK inventory was not built",
       "android_sdk_inventory_incomplete": "{truncated} DEX file(s) were truncated and {failed} could not be read; SDKs that only appear in those regions are not listed",
-      "ios_executables_truncated": "{count} nested bundle(s) were not parsed at all (of {total} bundles that contain code), so their executables were neither scanned for API clues nor counted in the coverage figures above."
+      "ios_executables_truncated": "{count} nested bundle(s) were not parsed at all (of {total} bundles that contain code), so their executables were neither scanned for API clues nor counted in the coverage figures above.",
+      "android_signing_block_unreadable": "The APK Signing Block could not be read ({reason}): the v2+ signature schemes are unknown, so \"no signature block found\" is not a conclusion this run can make. This is not a verdict that the signature is invalid."
     },
     "findings": "Findings",
     "sdk_categories": {
@@ -901,7 +915,8 @@
       "ios_signature": "Signature",
       "ios_entitlements": "Entitlements",
       "android_nativeHardening": "Native library hardening",
-      "android_sdkInventory": "Third-party SDK inventory"
+      "android_sdkInventory": "Third-party SDK inventory",
+      "android_signature": "Signature materials"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",
@@ -918,7 +933,7 @@
       "android_arsc_missing": "Resource table missing or unparsable",
       "ios_info_plist_unparsed": "Info.plist could not be parsed",
       "ios_usage_descriptions_not_read": "Info.plist not parsed; usage descriptions were not read",
-      "ios_privacy_manifest_absent": "No PrivacyInfo.xcprivacy in this bundle (not required before iOS 17)",
+      "ios_privacy_manifest_absent": "No PrivacyInfo.xcprivacy in this bundle (not required before iOS 17); this is not counted as a coverage gap",
       "ios_executables_unscanned": "{count} executable(s) were not scanned",
       "ios_macho_no_content": "No Mach-O executable content could be read",
       "ios_macho_truncated": "Some executables exceeded the per-file scan budget",
@@ -927,7 +942,12 @@
       "ios_native_symbols_stripped": "Some images have no LC_SYMTAB (symbol table stripped)",
       "ios_signature_separate_step": "Signature verification is performed separately by codesign; see the signature card",
       "ios_executables_truncated": "A further {count} nested bundle(s) were never parsed (of {total} with code): their executables are not covered by this scan",
-      "android_arsc_empty": "The resource table was parsed but contains no entries"
+      "android_arsc_empty": "The resource table was parsed but contains no entries",
+      "android_signature_not_read": "The APK Signing Block was not examined, so the v2+ signature schemes are unknown",
+      "android_signature_unreadable": "The APK Signing Block could not be read ({reason}): the signature schemes are unknown",
+      "android_signature_v1_undetermined": "The v2+ signing block was read, but whether a v1 (JAR) signature exists could not be determined",
+      "android_cleartext_policy_target_sdk_unknown": "Neither android:usesCleartextTraffic nor targetSdkVersion could be read, so the platform default for cleartext traffic cannot be derived",
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged"
     }
   },
   "diff": {
@@ -994,7 +1014,11 @@
       "network_ips": "Network IP addresses",
       "android_components": "Components",
       "android_nativeSymbols": "Imported native symbols",
-      "ios_nativeSymbols": "Imported native symbols"
+      "ios_nativeSymbols": "Imported native symbols",
+      "android_allowBackup": "Auto backup (derived from the finding)",
+      "android_cleartextPolicy": "Cleartext policy (derived from rule D)",
+      "android_thirdPartySdk": "Third-party service SDKs",
+      "ios_entitlements": "Entitlements"
     },
     "truncated_members": "{count} more not shown",
     "report_title": "Version comparison report",

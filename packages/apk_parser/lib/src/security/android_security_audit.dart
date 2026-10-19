@@ -156,6 +156,23 @@ class AndroidSecurityAudit {
 
     final targetSdk = meta.targetSdkVersion;
 
+    // ---- 签名块的可读性 ----
+    //
+    // 读不出签名块时**必须说出来**：此时 `v1Only` 与 `hasV1Signature` 都推不出
+    // 结论，两条签名规则都不报，覆盖表里若也没有对应维度，「我们没读到」
+    // 就变成了「没有问题」。签名块结构被破坏本身还是重打包的典型痕迹。
+    if (meta.signingSchemes case final schemes? when !schemes.parsed) {
+      limitations.add(AnalysisNote(
+        'android.signing_block.unreadable',
+        'The APK Signing Block could not be read '
+            '(${schemes.failure ?? 'reason not recorded'}): the v2+ signature '
+            'schemes are unknown, so "no signature block found" is not a '
+            'conclusion this run can make. This is **not** a verdict that the '
+            'signature is invalid.',
+        {'reason': schemes.failure ?? 'reason not recorded'},
+      ));
+    }
+
     // ---- DEX 字符串扫描（第一层取证）----
     final scan = DexClueScanner.scan(dexEntries);
     for (final skip in scan.skippedForBudget) {
@@ -1273,10 +1290,14 @@ class AndroidSecurityAudit {
                   )
                 : null),
       ),
-      // 明文流量策略：**NSC 存在时这一维不予判定**。
+      // 明文流量策略：**只有真的判不出来时才标 partial**。
       //
       // `android:usesCleartextTraffic` 只在没有 `android:networkSecurityConfig`
-      // 时生效；声明了 NSC 之后平台只看 NSC，而这个 XML 我们还没展开。
+      // 时生效；声明了 NSC 之后平台只看 NSC（那份 XML 会被展开，
+      // `NetworkSecurityConfig.resolvedAllowsCleartext` 给出结论）。
+      // 未声明该属性时取**平台默认值**（API 28 起默认禁止），
+      // 只有连 targetSdk 都不知道时才「判不了」。
+      //
       // 不写这一条的话，规则 D 在 NSC 存在时会**静默消失** ——
       // 用户看到「没有明文流量问题」，而真相是「我们没看」。
       CoverageEntry.noted(
@@ -1286,16 +1307,27 @@ class AndroidSecurityAudit {
             : CoverageStatus.covered,
         covered: facts.cleartextPolicyUnknown ? 0 : 1,
         limit: 1,
-        note: facts.cleartextPolicyUnknown
-            ? (
-                'android.cleartext_policy_unknown',
-                'android:networkSecurityConfig is present, so '
-                    'android:usesCleartextTraffic is ignored; the config '
-                    'itself was not expanded, so the cleartext policy is '
-                    'not judged',
-                const <String, Object>{},
-              )
-            : null,
+        // 两种「判不了」的原因要分开说：一个是 NSC 没展开，一个是连
+        // targetSdk 都没有、推不出平台默认值。共用一句会让后者显示一句
+        // 与事实不符的解释。
+        note: switch (facts.cleartextPolicyUnknownReason) {
+          null => null,
+          'nsc_not_expanded' => (
+              'android.cleartext_policy_unknown',
+              'android:networkSecurityConfig is present, so '
+                  'android:usesCleartextTraffic is ignored; the config '
+                  'itself could not be expanded, so the cleartext policy is '
+                  'not judged',
+              const <String, Object>{},
+            ),
+          _ => (
+              'android.cleartext_policy_target_sdk_unknown',
+              'Neither android:usesCleartextTraffic nor targetSdkVersion '
+                  'could be read, so the platform default for cleartext '
+                  'traffic cannot be derived',
+              const <String, Object>{},
+            ),
+        },
       ),
       // 原生库二进制加固：**数字比逐库列举有用**。
       //
@@ -1342,16 +1374,26 @@ class AndroidSecurityAudit {
       ),
       CoverageEntry.noted(
         id: 'android.nativeHardening',
+        // `status` 与 `covered/limit` 必须回答**同一个问题**，否则面板上那行
+        // 「部分覆盖 … 8/10」会被读成「覆盖了 80%」。
+        //
+        // 这里的问题是「原生库的加固属性读到了多少」，所以两个数字都是
+        // **库数**：已解析 / 全包唯一库。此前 `covered` 数的是「加固得好的
+        // 库」（fullRelro 且不可执行栈），`limit` 是「已解析的库」——
+        // 266 个库只解析 10 个时会显示 8/10，而真实覆盖率是 10/266。
+        // 这与已修的 `android.nativeSymbols`、`android.arsc` 是同一类错误。
+        // 加固**质量**留在 note 里（`some_without_relro`），那是另一个问题。
         status: facts.nativeHardening.isEmpty
             ? CoverageStatus.notApplicable
             : (facts.nativeHardening.length == nativeLibraryTotal ||
                     nativeLibraryTotal == null
                 ? CoverageStatus.covered
                 : CoverageStatus.partial),
-        covered: facts.nativeHardening
-            .where((h) => h.fullRelro && h.stackExecutable == false)
-            .length,
-        limit: facts.nativeHardening.length,
+        covered:
+            facts.nativeHardening.isEmpty ? null : facts.nativeHardening.length,
+        limit: facts.nativeHardening.isEmpty
+            ? null
+            : (nativeLibraryTotal ?? facts.nativeHardening.length),
         note: facts.nativeHardening.isEmpty
             ? (
                 'android.native_hardening.not_provided',
@@ -1397,6 +1439,51 @@ class AndroidSecurityAudit {
                     'The resource table was parsed but contains no entries',
                     const <String, Object>{},
                   )),
+      ),
+      // 签名材料（APK Signing Block 的结构可读性）。
+      //
+      // 这一维此前**不存在**：签名块读不出来时，`v1Only` 与 `hasV1Signature`
+      // 都推不出结论，于是 `ANDROID-V1-ONLY-SIGNING` 与 `ANDROID-UNSIGNED`
+      // 两条都不报，覆盖表里也没有任何一格提到签名 —— 「我们没读到签名块」
+      // 这件事在报告里完全不可见，只剩一行日志。而签名块结构被破坏恰恰是
+      // 重打包的典型痕迹。
+      //
+      // 它回答的是**结构能不能读**，不是「签名有没有效」—— 后者只交给
+      // apksigner（`SignatureStatus`），两者不能混为一谈。
+      CoverageEntry.noted(
+        id: 'android.signature',
+        status: meta.signingSchemes == null
+            ? CoverageStatus.notCovered
+            : (!meta.signingSchemes!.parsed
+                ? CoverageStatus.notCovered
+                : (meta.hasV1Signature == null
+                    ? CoverageStatus.partial
+                    : CoverageStatus.covered)),
+        covered: meta.signingSchemes?.parsed == true ? 1 : 0,
+        limit: 1,
+        note: switch (meta.signingSchemes) {
+          null => (
+              'android.signature.not_read',
+              'The APK Signing Block was not examined, so the v2+ signature '
+                  'schemes are unknown',
+              const <String, Object>{},
+            ),
+          final s when !s.parsed => (
+              'android.signature.unreadable',
+              'The APK Signing Block could not be read '
+                  '(${s.failure ?? 'reason not recorded'}): "no signature '
+                  'block" cannot be concluded, and the signature schemes are '
+                  'unknown',
+              <String, Object>{'reason': s.failure ?? 'reason not recorded'},
+            ),
+          _ when meta.hasV1Signature == null => (
+              'android.signature.v1_undetermined',
+              'The v2+ signing block was read, but whether a v1 (JAR) '
+                  'signature exists could not be determined',
+              const <String, Object>{},
+            ),
+          _ => null,
+        },
       ),
     ]);
 

@@ -901,12 +901,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     if (security == null) return const [];
 
     final findings = security.findings;
-    final hasCoverageGaps = security.hasCoverageGaps;
+    // **两个信号分开用**：`hasActualGaps` 决定总览卡要不要标「有缺口」，
+    // `hasDeclaredLimitations` 决定要不要列方法论局限（它恒真，列出来是
+    // 为了交代边界，不是为了报警）。混用会让警告永远亮着。
+    final hasActualGaps = security.hasActualGaps;
+    final gapCount = security.coverageGapCount;
 
     final cards = <Widget>[
       _SectionHeader(title: t.security.title, tab: DetailTab.security),
       // 总览摘要卡片
-      _buildSecurityOverviewCard(findings, hasCoverageGaps),
+      _buildSecurityOverviewCard(findings, hasActualGaps, gapCount),
     ];
 
     // 按严重程度排序的发现卡片（P0 在前，INFO 在后）
@@ -917,8 +921,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       cards.add(SecurityFindingCard(finding: finding));
     }
 
-    // 覆盖局限卡片
-    if (hasCoverageGaps) {
+    // 方法论局限卡片：**只要引擎声明了就列**。
+    //
+    // 它曾经挂在 `hasCoverageGaps` 下面 —— 那个信号恒真，所以行为上没差别；
+    // 拆开之后若继续用 `hasActualGaps`，覆盖全绿时这些「本次是离线静态分析」
+    // 的交代就会消失，反而更容易被误读成「查全了」。
+    if (security.hasDeclaredLimitations) {
       cards.add(Card(
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -979,9 +987,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   }
 
   /// 安全检测总览摘要卡片。
+  ///
+  /// [hasActualGaps] / [gapCount] 来自**结构化覆盖**（`AnalysisCoverage.gaps`），
+  /// 不是恒真的方法论声明 —— 见 `SecurityAnalysisResult.hasActualGaps`。
   Widget _buildSecurityOverviewCard(
     List<SecurityFinding> findings,
-    bool hasCoverageGaps,
+    bool hasActualGaps,
+    int gapCount,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1032,7 +1044,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '${findings.length} ${findings.length == 1 ? 'finding' : 'findings'}',
+                      t.report.findings_count(count: '${findings.length}'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.w600,
@@ -1064,6 +1076,40 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 ],
               ),
             ],
+            // 覆盖状态：**只在真有缺口时报警**。
+            //
+            // 这个参数此前一直是死参数（签名有、函数体 0 处引用），于是
+            // 总览卡从不提覆盖 —— 用户要翻到「分析覆盖」卡片才知道结论
+            // 只覆盖了一部分。现在接上结构化覆盖的真实缺口数。
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  hasActualGaps
+                      ? Icons.warning_amber_outlined
+                      : Icons.check_circle_outline,
+                  size: 14,
+                  color: hasActualGaps ? colorScheme.error : theme.hintColor,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    // 缺口可能来自「有 UNKNOWN 级发现」而不是覆盖维度 ——
+                    // 那种情况 `gapCount` 是 0，直接拼「0 个维度有缺口」会
+                    // 自相矛盾，改用「覆盖不完整」的措辞。
+                    !hasActualGaps
+                        ? t.coverage.no_gaps
+                        : (gapCount > 0
+                            ? t.coverage.gap_count(count: '$gapCount')
+                            : t.security.coverage_incomplete),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color:
+                          hasActualGaps ? colorScheme.error : theme.hintColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),

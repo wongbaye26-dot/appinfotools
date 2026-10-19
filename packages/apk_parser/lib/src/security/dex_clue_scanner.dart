@@ -160,27 +160,8 @@ class DexClueScanner {
   /// 每个标记最多保留多少条不同样本。
   static const int maxSamplesPerMarker = 5;
 
-  /// 域名 / IP 最多保留多少条。
-  static const int maxEndpoints = 50;
-
-  /// URL 主机名提取：`scheme://host[:port]/…`。
-  static final RegExp _urlPattern =
-      RegExp(r'[a-zA-Z][a-zA-Z0-9+.-]*://([a-zA-Z0-9.-]+)');
-
-  /// 裸域名（常见 TLD，避免把普通英文单词误判成域名）。
-  ///
-  /// 字符类里刻意不放引号：Dart 的原始字符串无法转义与自身相同的引号，
-  /// 而这里排除空白与尖括号已经足够截断 URL —— 引号由调用方展示时
-  /// 本就会被证据上下文包围。
-  static final RegExp _bareDomainPattern = RegExp(
-    r'\b([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+'
-    r'(com|cn|net|org|io|co|ai|dev|app|info|me|tv|xyz|top|cloud|gov|edu)'
-    r'(?::\d{2,5})?(?:/[^\s<>]*)?',
-    caseSensitive: true,
-  );
-
-  /// IPv4 字面量。
-  static final RegExp _ipPattern = RegExp(r'\b(\d{1,3}\.){3}\d{1,3}\b');
+  /// 域名 / IP 最多保留多少条（与 iOS 侧共用同一份实现）。
+  static const int maxEndpoints = NetworkEndpoints.maxEndpoints;
 
   /// [maxBytesPerDex] / [maxTotalBytes] 可覆盖（探针与测试用）。
   ///
@@ -383,18 +364,8 @@ class DexClueScanner {
   }
 
   static void _collectEndpoints(
-      String value, Set<String> domains, Set<String> ips) {
-    if (domains.length >= maxEndpoints && ips.length >= maxEndpoints) return;
-    for (final match in _urlPattern.allMatches(value)) {
-      domains.add(match.group(1)!);
-    }
-    for (final match in _bareDomainPattern.allMatches(value)) {
-      domains.add(match.group(0)!);
-    }
-    for (final match in _ipPattern.allMatches(value)) {
-      ips.add(match.group(0)!);
-    }
-  }
+          String value, Set<String> domains, Set<String> ips) =>
+      NetworkEndpoints.collect(value, domains, ips);
 }
 
 /// SDK 前缀的两段索引。
