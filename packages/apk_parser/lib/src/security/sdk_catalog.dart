@@ -96,11 +96,22 @@ class SdkHit {
   /// 命中的 DEX 文件名（最多留几个，供证据展示）。
   final List<String> dexNames;
 
+  /// 版本号；只可能来自 `META-INF/maven/**/pom.properties`。
+  ///
+  /// `null` 表示**没有找到坐标文件**，不是「这个 SDK 没有版本」——
+  /// 界面不要把它渲染成「未知版本」，而应理解为「包里没写」。
+  final String? version;
+
   const SdkHit({
     required this.descriptor,
     required this.occurrences,
     this.dexNames = const [],
+    this.version,
   });
+
+  /// 带版本号的显示名，例如 `Adjust 4.33.0`；没有版本时就是显示名。
+  String get displayNameWithVersion =>
+      version == null ? displayName : '$displayName $version';
 
   String get id => descriptor.id;
   String get displayName => descriptor.displayName;

@@ -60,6 +60,33 @@ class NscDomainRule {
 }
 
 /// `res/xml/network_security_config.xml` 的解析结果。
+/// 一条 `<pin-set>` 声明。
+class NscPinSet {
+  /// 所属 `<domain>`；`<base-config>` 里声明时为 `null`。
+  final String? domain;
+
+  /// `<pin digest="…">` 的条数。
+  final int pinCount;
+
+  /// 声明的摘要算法集合，例如 `SHA-256`。
+  final List<String> digests;
+
+  /// `expiration` 属性的原始值（`YYYY-MM-DD`）。
+  ///
+  /// 过期后系统会**忽略**这组 pin —— 也就是「声明了但已失效」。原样保留，
+  /// 不做日期比较：设备时钟与构建时间都可能不同。
+  final String? expiration;
+
+  const NscPinSet({
+    this.domain,
+    this.pinCount = 0,
+    this.digests = const [],
+    this.expiration,
+  });
+
+  String get summary => domain == null ? '<base-config>' : domain!;
+}
+
 class NetworkSecurityConfigInfo {
   /// 资源在 APK 里的路径，例如 `res/xml/network_security_config.xml`。
   final String path;
@@ -71,6 +98,14 @@ class NetworkSecurityConfigInfo {
 
   final List<NscDomainRule> domains;
 
+  /// 声明的证书固定（`<pin-set>`）。
+  ///
+  /// **只记录「声明了什么」，不判断是否有效**：pin 是否与服务端实际证书匹配、
+  /// 是否已过期，静态分析都看不出来。此前这一节被整段跳过（见文件头的说明），
+  /// 于是「这个应用有没有做证书固定」完全不可见 —— 而它是传输安全评估的
+  /// 常规一项。现在补成事实记录，判定边界不变。
+  final List<NscPinSet> pinSets;
+
   /// 解析失败的原因；`null` 表示解析成功。
   ///
   /// **失败不等于「没有明文流量」** —— 调用方必须把它当成「不知道」。
@@ -80,6 +115,7 @@ class NetworkSecurityConfigInfo {
     required this.path,
     this.baseCleartextPermitted,
     this.domains = const [],
+    this.pinSets = const [],
     this.failure,
   });
 
@@ -151,6 +187,18 @@ NetworkSecurityConfigInfo parseNetworkSecurityConfig(
     );
   }
 
+  return parseNetworkSecurityConfigDocument(doc, path: path);
+}
+
+/// 从**已解析的 XML 文档**读取网络安全配置。
+///
+/// 与 [parseNetworkSecurityConfig] 分开是为了分层：那个函数负责
+/// 「二进制 AXML → 文档」，这个负责「文档 → 事实」。有文档的调用方（以及
+/// 测试）不必再走一遍 AXML 反编译。
+NetworkSecurityConfigInfo parseNetworkSecurityConfigDocument(
+  XmlDocument doc, {
+  required String path,
+}) {
   final root = _findElement(doc, 'network-security-config');
   if (root == null) {
     return NetworkSecurityConfigInfo(
@@ -161,11 +209,14 @@ NetworkSecurityConfigInfo parseNetworkSecurityConfig(
 
   bool? basePermitted;
   final domains = <NscDomainRule>[];
+  final pinSets = <NscPinSet>[];
 
   for (final child in root.children) {
     switch (child.name) {
       case 'base-config':
         basePermitted = _bool(child.attributes['cleartextTrafficPermitted']);
+        // `<base-config>` 里通常没有 pin-set，但 schema 不禁止 —— 有就记。
+        pinSets.addAll(_pinSetsIn(child, domain: null));
       case 'domain-config':
         final permitted = _bool(child.attributes['cleartextTrafficPermitted']);
         final domainElements =
@@ -183,8 +234,29 @@ NetworkSecurityConfigInfo parseNetworkSecurityConfig(
                 _bool(d.attributes['includeSubdomains']) ?? false,
           ));
         }
+        // pin-set 挂在 domain-config 上，作用于该 config 下的全部 <domain>。
+        final names = [
+          for (final d in domainElements)
+            if (d.text.isNotEmpty) d.text,
+        ];
+        final sets = _pinSetsIn(child, domain: null);
+        for (final set in sets) {
+          if (names.isEmpty) {
+            pinSets.add(set);
+          } else {
+            for (final name in names) {
+              pinSets.add(NscPinSet(
+                domain: name,
+                pinCount: set.pinCount,
+                digests: set.digests,
+                expiration: set.expiration,
+              ));
+            }
+          }
+        }
       default:
-        // trust-anchors / pin-set / debug-overrides 与明文判定无关。
+        // trust-anchors / debug-overrides 与明文判定无关；pin-set 已在
+        // 上面按 base-config / domain-config 收集。
         break;
     }
   }
@@ -193,7 +265,30 @@ NetworkSecurityConfigInfo parseNetworkSecurityConfig(
     path: path,
     baseCleartextPermitted: basePermitted,
     domains: domains,
+    pinSets: pinSets,
   );
+}
+
+/// 取某个 config 元素下直接声明的 `<pin-set>`。
+List<NscPinSet> _pinSetsIn(XmlElement config, {required String? domain}) {
+  final result = <NscPinSet>[];
+  for (final child in config.children) {
+    if (child.name != 'pin-set') continue;
+    final pins = child.children.where((e) => e.name == 'pin').toList();
+    final digests = <String>{
+      for (final pin in pins)
+        if ((pin.attributes['digest'] ?? '').trim().isNotEmpty)
+          pin.attributes['digest']!.trim(),
+    }.toList()
+      ..sort();
+    result.add(NscPinSet(
+      domain: domain,
+      pinCount: pins.length,
+      digests: digests,
+      expiration: child.attributes['expiration'],
+    ));
+  }
+  return result;
 }
 
 XmlElement? _findElement(XmlElement node, String name) {

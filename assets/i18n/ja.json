@@ -707,7 +707,12 @@
       "android_provider_exposed_partial": "一部の provider は片方向（readPermission または writePermission）しか保護しておらず、もう片方が開いています。",
       "android_provider_exposed_weak": "一部はこのアプリ自身が normal/dangerous で宣言した権限で保護されており、どのアプリでも取得できます。",
       "android_provider_exposed_review": "signature レベルの権限で provider を保護するか、他のアプリが不要なら android:exported=\"false\" にしてください。URI 付与が必要なら grantUriPermissions を残しつつ、渡す URI を限定してください。",
-      "android_provider_exposed_limitation": "権限のない provider は端末上のどのアプリからも到達できますが、データが返るかは中身次第です。android:enabled=false の provider もここに表示されます — 証拠を確認してください。"
+      "android_provider_exposed_limitation": "権限のない provider は端末上のどのアプリからも到達できますが、データが返るかは中身次第です。android:enabled=false の provider もここに表示されます — 証拠を確認してください。",
+      "android_deeplink": "{count} 個のリンク scheme で外部からこのアプリを起動できます：{schemes}（{components} 個の公開コンポーネント）。scheme 自体は正常な設計です（ログインのコールバック、共有の戻り）。リスクは、受け取ったパラメータを対象コンポーネントがどう扱うかにあります。",
+      "android_deeplink_review": "各 scheme の処理が入力（host、path、パラメータ）を検証しているか、対象コンポーネントが意図して公開したものかを確認してください。",
+      "android_deeplink_limitation": "scheme のみを列挙しています。対象コンポーネントが host / path / パラメータを検証しているかはマニフェストからは分かりません（コードが必要です）。",
+      "android_cert_pinning": "{count} 個のドメインに証明書ピン留めを宣言しています：{domains}。これは設定上の宣言であり、ピンが実際のサーバー証明書と一致するか、有効期限が過ぎているかは静的には判断できません。",
+      "android_cert_pinning_review": "ピン集を最新に保ち（期限前にローテーション）、少なくとも 1 つのバックアップピンを用意してください。ピンが 1 つだけだと証明書ローテーションで通信が不通になります。"
     },
     "sdk_categories": {
       "analytics": "分析 / アトリビューション",

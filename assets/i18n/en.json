@@ -703,7 +703,12 @@
       "android_provider_exposed_partial": "Some providers guard only one direction (readPermission or writePermission), leaving the other open.",
       "android_provider_exposed_weak": "Some are guarded by a permission this app declares itself at normal/dangerous level, which any app can request.",
       "android_provider_exposed_review": "Guard the provider with a signature-level permission, or set android:exported=\"false\" if no other app needs it. If URI grants are required, keep grantUriPermissions but make sure the URIs handed out are scoped.",
-      "android_provider_exposed_limitation": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence."
+      "android_provider_exposed_limitation": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence.",
+      "android_deeplink": "{count} link scheme(s) can launch this app from outside: {schemes}, across {components} exported component(s). A scheme by itself is normal (login callbacks, share returns); the risk is in what the target component does with the incoming parameters.",
+      "android_deeplink_review": "Check that each scheme handler validates its input (host, path, parameters) before acting on it, and that the target component is the one you intended to expose.",
+      "android_deeplink_limitation": "Only the scheme is listed. Whether the target component validates the incoming host, path and parameters cannot be determined from the manifest — that would need the code.",
+      "android_cert_pinning": "The app declares certificate pinning for {count} domain(s): {domains}. This is what the configuration declares — whether the pins match the served certificate, and whether an expiration date has already passed, cannot be determined statically.",
+      "android_cert_pinning_review": "Keep the pin set current (rotate before the expiration date) and make sure at least one backup pin is present — a pin set with a single pin will brick networking when the certificate rotates."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",

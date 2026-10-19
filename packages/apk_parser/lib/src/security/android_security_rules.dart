@@ -368,6 +368,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
   ),
   // SDK 盘点排在**所有**风险规则之后（它在 info 级，是清单不是结论）。
   AndroidSecurityRule(
+    id: 'ANDROID-DEEPLINK',
+    summary: '声明了可被外部唤起的链接入口（scheme）。',
+    matches: _matchesDeeplink,
+    build: _buildDeeplink,
+  ),
+  AndroidSecurityRule(
     id: 'ANDROID-THIRD-PARTY-SDK',
     summary: '代码里出现第三方服务类 SDK（统计 / 推送 / 验证码 / 登录 / 地图…）。',
     matches: _matchesThirdPartySdk,
@@ -691,6 +697,101 @@ bool _matchesWebViewBridge(AndroidRuleFacts f) => f.hasWebViewBridge;
 
 bool _matchesExportedProvider(AndroidRuleFacts f) =>
     _unprotectedProviders(f).isNotEmpty;
+
+/// 一个可被外部唤起的链接入口。
+typedef _Deeplink = ({
+  AndroidComponent component,
+  List<String> schemes,
+  List<String> actions,
+});
+
+/// 导出组件上声明的 `scheme`（不含启动页的 MAIN/LAUNCHER）。
+///
+/// 启动页也带 intent-filter，但它不是「链接入口」—— 把 `MAIN` 算进来会让
+/// 每个应用都多出一条无意义的记录。
+List<_Deeplink> _deeplinks(AndroidRuleFacts f) {
+  final result = <_Deeplink>[];
+  for (final c in f.meta.components) {
+    if (!c.effectivelyExported) continue;
+    final schemes = <String>[];
+    final actions = <String>[];
+    for (final filter in c.intentFilters) {
+      final isLauncher = filter.actions.any((a) => a.endsWith('.MAIN')) &&
+          filter.categories.any((cat) => cat.endsWith('.LAUNCHER'));
+      if (isLauncher) continue;
+      schemes.addAll(filter.schemes);
+      actions.addAll(filter.actions);
+    }
+    if (schemes.isEmpty) continue;
+    result.add((
+      component: c,
+      schemes: schemes.toSet().toList()..sort(),
+      actions: actions.toSet().toList()..sort(),
+    ));
+  }
+  result.sort((a, b) {
+    final an = a.component.name ?? '';
+    final bn = b.component.name ?? '';
+    return an.compareTo(bn);
+  });
+  return result;
+}
+
+bool _matchesDeeplink(AndroidRuleFacts f) => _deeplinks(f).isNotEmpty;
+
+/// 链接入口清单（**事实**，不是风险判定）。
+///
+/// 等级 info：一个 scheme 本身不代表有问题 —— 登录回调、分享回跳都靠它。
+/// 有价值的是**清单**：这个应用能被哪些链接唤起、入口在哪个组件上。
+/// 真正的风险（导出且无权限保护）由 `ANDROID-EXPORTED-COMPONENT` 负责。
+SecurityFinding _buildDeeplink(AndroidRuleFacts f) {
+  final entries = _deeplinks(f);
+  final schemes = <String>{
+    for (final e in entries) ...e.schemes,
+  }.toList()
+    ..sort();
+  final shown = schemes.take(_kMaxNamedExportedComponents).toList();
+  final omitted = schemes.length - shown.length;
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-DEEPLINK',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.other,
+    severity: SecuritySeverity.info,
+    confidence: SecurityConfidence.confirmed,
+    finding: '${schemes.length} link scheme(s) can launch this app from '
+        'outside: ${shown.join(', ')}'
+        '${omitted > 0 ? ' and $omitted more' : ''}, across '
+        '${entries.length} exported component(s). A scheme by itself is '
+        'normal (login callbacks, share returns); the risk is in what the '
+        'target component does with the incoming parameters.',
+    messageCode: 'android.deeplink',
+    messageArgs: {
+      'count': schemes.length,
+      'schemes': shown,
+      'components': entries.length,
+      if (omitted > 0) 'more': omitted,
+    },
+    evidence: [
+      for (final e in entries.take(_kMaxExportedEvidence))
+        SecurityEvidence(
+          source: SecurityEvidenceSource.manifest,
+          location: 'AndroidManifest.xml / '
+              '${e.component.type.name}[@name="${e.component.name ?? '?'}"]',
+          detail: 'schemes=${e.schemes.join(', ')}'
+              '${e.actions.isEmpty ? '' : '; actions=${e.actions.join(', ')}'}',
+        ),
+    ],
+    limitation: 'Only the scheme is listed. Whether the target component '
+        'validates the incoming host, path and parameters cannot be '
+        'determined from the manifest — that would need the code.',
+    limitationCode: 'android.deeplink.limitation',
+    recommendation: 'Check that each scheme handler validates its input '
+        '(host, path, parameters) before acting on it, and that the target '
+        'component is the one you intended to expose.',
+    recommendationCode: 'android.deeplink.review',
+  );
+}
 
 /// 导出且无有效保护的 ContentProvider。
 ///

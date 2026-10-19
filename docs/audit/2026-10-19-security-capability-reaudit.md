@@ -916,3 +916,70 @@ OCR 的方法根本不在里面 —— 而它恰恰是最常见的起点。结�
 | `dart format --set-exit-if-changed` | 0 | 0 changed |
 
 合计 **1,979** 条（上一批 1,969）。
+
+---
+
+## 14. 能力增强记录（2026-10-19，第五批）
+
+三项，都是「数据已经解析出来了，但报告里看不到」的那一类。
+
+### 14.1 链接入口（`ANDROID-DEEPLINK`）
+
+`IntentFilterInfo.schemes` 早就解析了，但只用来判断「组件是否导出」，**从没列出过
+scheme 本身**。而「这个应用能被哪些链接唤起」是用户最常问的问题之一。
+
+新规则 `ANDROID-DEEPLINK`（info）：
+
+- 只收**导出**组件上的 scheme；启动页的 `MAIN`/`LAUNCHER` 排除 —— 它不是链接入口，
+  算进来会让每个应用都多一条无意义记录；
+- 正文给 scheme 清单与涉及的组件数，证据逐组件给 `schemes=` 与 `actions=`；
+- 等级 info：一个 scheme 本身不是风险（登录回调、分享回跳都靠它），
+  真正的风险（导出且无权限）仍由 `ANDROID-EXPORTED-COMPONENT` 负责。
+
+**没有**给 `IntentFilterInfo` 加 host / path：模型里原本写着「边际价值低、
+会显著膨胀模型」，这一批沿用该判断 —— scheme 才是「能不能被唤起」的关键。
+
+### 14.2 证书固定（`ANDROID-CERT-PINNING`）
+
+`network_security_config.dart` 的文件头明确写着「不判定 `<trust-anchors>` /
+`<pin-set>` / `<certificates>`」，于是 `pin-set` 被整段跳过 ——
+**「有没有做证书固定」完全不可见**，而它是传输安全评估的常规一项。
+
+这一批补成**事实记录，判定边界不变**：
+
+| 变更 | 说明 |
+|---|---|
+| `NscPinSet` 模型 | 域名、pin 条数、摘要算法、`expiration` 原文 |
+| 解析 | `<pin-set>` 在 `base-config` 与 `domain-config` 下都收；`domain-config` 下的会展开到它的每个 `<domain>` |
+| 新发现项 | 有 pin-set 才报（info）；**不做「未配置」的告警** —— 那会让每个应用都多一条 |
+| 限制说明 | 明确写清：pin 是否与服务端证书匹配、过期时间是否已过，静态分析都判断不了 |
+
+### 14.3 SDK 版本（`pom.properties`）
+
+DEX 里只有类名，**没有版本**。用 Maven 构建的 SDK 常把
+`META-INF/maven/**/pom.properties` 打进包里，那是唯一可靠的静态版本来源。
+
+- `ApkReader.parse()` 读这份文件（有界读取 + 200 条上限），填进 `ApkMeta.mavenArtifacts`；
+- `SdkInventoryScanner.scan` 按 **groupId 双向前缀**把版本挂到命中的 SDK 上
+  （`com/adjust/sdk` ↔ `com.adjust.sdk`）；
+- 发现项的正文与证据变成 `Adjust 4.33.0` —— 「哪个版本」往往比「有没有」更有用，
+  已知漏洞是按版本判定的。
+
+`SdkHit.version` 为 `null` 的含义写进了注释：**没有坐标文件**，不是「没有版本」。
+
+### 14.4 顺带的分层调整
+
+`parseNetworkSecurityConfig(bytes)` 拆成两层：字节 → 文档（`BinaryXmlDecompressor`）
+与文档 → 事实（`parseNetworkSecurityConfigDocument`）。后者让测试可以直接构造
+包内的 XML 模型来验证 `pin-set`，不必手拼二进制 AXML。
+
+### 14.5 门禁（实测）
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `flutter test` | 0 | **1,614 通过 / 14 跳过**（上一批 1,607） |
+| `analysis_model` / `apk_parser` / `ipa_parser` / `archive_safety` / `app_icon_extractor` | 0 | 65 / **118** / 125 / 40 / 25 |
+| 6 个 `analyze --fatal-infos --fatal-warnings` | 0 | 全部 No issues found |
+| `dart format --set-exit-if-changed` | 0 | 0 changed |
+
+合计 **1,987** 条（上一批 1,979）。

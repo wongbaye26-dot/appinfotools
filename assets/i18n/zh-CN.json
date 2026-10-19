@@ -703,7 +703,12 @@
       "android_provider_exposed_partial": "部分 provider 只护住一个方向（readPermission 或 writePermission），另一个方向仍然敞开。",
       "android_provider_exposed_weak": "部分 provider 由本应用自己声明的 normal/dangerous 级权限保护，任何应用都能申请到。",
       "android_provider_exposed_review": "用 signature 级权限保护该 provider；没有其他应用需要时直接设 android:exported=\"false\"。确实需要 URI 授权时保留 grantUriPermissions，但要确保授出的 URI 是收敛的。",
-      "android_provider_exposed_limitation": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。"
+      "android_provider_exposed_limitation": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。",
+      "android_deeplink": "{count} 个链接 scheme 可以从外部唤起本应用：{schemes}，分布在 {components} 个导出组件上。scheme 本身是正常设计（登录回调、分享回跳都靠它）；风险在于目标组件如何处理传进来的参数。",
+      "android_deeplink_review": "确认每个 scheme 的处理逻辑都校验了输入（host、path、参数），并确认目标组件正是你打算暴露的那个。",
+      "android_deeplink_limitation": "只列出 scheme。目标组件是否校验传入的 host、path 与参数，从清单里看不出来 —— 那需要看代码。",
+      "android_cert_pinning": "应用为 {count} 个域名声明了证书固定：{domains}。这只是配置里的声明 —— pin 是否与服务端证书匹配、过期时间是否已过，静态分析都判断不了。",
+      "android_cert_pinning_review": "保持 pin 集更新（在过期前轮换），并确保至少有一个备用 pin —— 只配一个 pin 时，证书轮换会直接让网络不可用。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",

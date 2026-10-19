@@ -30,6 +30,7 @@ import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 
+import '../models.dart';
 import 'sdk_catalog.dart';
 
 /// 一个 DEX 的扫描结果。
@@ -113,10 +114,17 @@ class SdkInventoryScanner {
   ///
   /// [readDex] 按条目名返回**完整字节**（由调用方决定怎么读、是否受别处预算
   /// 约束）。返回 `null` 表示读不出。
+  /// [mavenArtifacts] 可选：给了就按 `groupId` 前缀把版本号挂到命中的 SDK 上。
+  ///
+  /// 版本只可能来自这里 —— DEX 里只有类名。匹配用**双向前缀**：
+  /// 描述符前缀 `com/adjust/sdk` 与 `groupId` `com.adjust.sdk` 互为前缀，
+  /// 但 SDK 的 groupId 未必与包名前缀完全一致（`com.google.firebase` 对
+  /// `com/google/firebase`）。
   static SdkInventory scan(
     List<String> dexNames,
-    Uint8List? Function(String name) readDex,
-  ) {
+    Uint8List? Function(String name) readDex, {
+    List<MavenArtifact> mavenArtifacts = const [],
+  }) {
     final counts = <String, int>{};
     final dexes = <String, Set<String>>{};
     final truncated = <String>[];
@@ -150,6 +158,7 @@ class SdkInventoryScanner {
             descriptor: byId[entry.key]!,
             occurrences: entry.value,
             dexNames: (dexes[entry.key] ?? const <String>{}).toList()..sort(),
+            version: _versionOf(byId[entry.key]!, mavenArtifacts),
           ),
     ]..sort((a, b) => b.occurrences.compareTo(a.occurrences));
 
@@ -160,6 +169,29 @@ class SdkInventoryScanner {
       truncated: truncated,
       failures: failures,
     );
+  }
+
+  /// 从 Maven 坐标里找这个 SDK 的版本号。
+  ///
+  /// 返回 `null` 表示**没有对应坐标**（Gradle 默认不打包 pom.properties），
+  /// 不是「没有版本」。
+  static String? _versionOf(
+    SdkDescriptor descriptor,
+    List<MavenArtifact> artifacts,
+  ) {
+    if (artifacts.isEmpty) return null;
+    final prefix = descriptor.packagePrefix.replaceAll('/', '.');
+    for (final artifact in artifacts) {
+      final group = artifact.groupId;
+      final matches = group == prefix ||
+          group.startsWith('$prefix.') ||
+          prefix.startsWith('$group.');
+      if (!matches) continue;
+      if (artifact.version != null && artifact.version!.isNotEmpty) {
+        return artifact.version;
+      }
+    }
+    return null;
   }
 
   /// 扫单个 DEX。
@@ -287,7 +319,9 @@ class _SdkPrefixIndex {
 SecurityFinding buildSdkInventoryFinding(SdkInventory inventory) {
   final hits = inventory.hits;
   final grouped = groupByCategory(hits);
-  final names = [for (final hit in hits) hit.displayName];
+  // 有版本号时带上，例如 `Adjust 4.33.0` —— 「哪个版本」往往比「有没有」
+  // 更有用（已知漏洞是按版本判定的）。
+  final names = [for (final hit in hits) hit.displayNameWithVersion];
   return SecurityFinding(
     ruleId: 'ANDROID-THIRD-PARTY-SDK',
     platform: SecurityPlatform.android,
@@ -312,7 +346,8 @@ SecurityFinding buildSdkInventoryFinding(SdkInventory inventory) {
           source: SecurityEvidenceSource.dexString,
           location: 'DEX classes / ${entry.key.label}',
           detail: entry.value
-              .map((h) => '${h.displayName} (${h.occurrences} references)')
+              .map((h) => '${h.displayNameWithVersion} '
+                  '(${h.occurrences} references)')
               .join(', '),
         ),
     ],

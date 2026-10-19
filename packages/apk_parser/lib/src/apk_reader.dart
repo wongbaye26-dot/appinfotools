@@ -208,6 +208,57 @@ class ApkReader {
   ///
   /// 刻意不提供百分比：各阶段耗时分布极不均匀（`resources.arsc` 通常占绝大
   /// 部分），编一个百分比只会误导用户。阶段本身就是最细的可信粒度。
+  /// 读取 `META-INF/maven/**/pom.properties`。
+  ///
+  /// 这些文件很小（通常几十字节），但路径与数量都来自归档 —— 因此逐条走
+  /// `ZipBudget.readEntry`（有界），并给总数设上限。
+  List<MavenArtifact> _readMavenArtifacts(Archive archive) {
+    final result = <MavenArtifact>[];
+    for (final file in archive.files) {
+      if (result.length >= maxMavenArtifacts) break;
+      final name = file.name;
+      if (!name.startsWith('META-INF/maven/') ||
+          !name.endsWith('/pom.properties')) {
+        continue;
+      }
+      final read =
+          ZipBudget.readEntry(file, maxBytes: 64 * 1024, ledger: _ledger);
+      final bytes = read.bytes;
+      if (bytes == null) continue;
+      final text = String.fromCharCodes(bytes);
+      final props = <String, String>{};
+      for (final line in text.split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+        final eq = trimmed.indexOf('=');
+        if (eq <= 0) continue;
+        props[trimmed.substring(0, eq).trim()] =
+            trimmed.substring(eq + 1).trim();
+      }
+      // 路径兜底：`META-INF/maven/<groupId>/<artifactId>/pom.properties`
+      final segments = name.split('/');
+      final groupId = props['groupId'] ??
+          (segments.length >= 5 ? segments[segments.length - 3] : '');
+      final artifactId = props['artifactId'] ??
+          (segments.length >= 5 ? segments[segments.length - 2] : '');
+      if (groupId.isEmpty || artifactId.isEmpty) continue;
+      result.add(MavenArtifact(
+        groupId: groupId,
+        artifactId: artifactId,
+        version: props['version'],
+        path: name,
+      ));
+    }
+    result.sort((a, b) {
+      final byGroup = a.groupId.compareTo(b.groupId);
+      return byGroup != 0 ? byGroup : a.artifactId.compareTo(b.artifactId);
+    });
+    return result;
+  }
+
+  /// 最多读多少份 `pom.properties`。一个正常包通常是个位数；上限只防畸形归档。
+  static const int maxMavenArtifacts = 200;
+
   Future<ApkMeta?> parse({void Function(ApkParseStage stage)? onStage}) async {
     final archive = _archive;
     if (archive == null) return null;
@@ -245,6 +296,13 @@ class ApkReader {
     // 记下来供 scanHardeningSignals 使用 —— manifest 层的加固线索只能在
     // 解析之后才有，而那个方法是在 parse 之后被调用的。
     _meta = meta;
+
+    // 1.2 Maven 坐标（`META-INF/maven/**/pom.properties`）。
+    //
+    // DEX 里只有类名，**没有版本**；而用 Maven 构建的 SDK 常把这份文件打进
+    // 包里，里面是精确的 groupId / artifactId / version。它是「这个 SDK 是
+    // 哪个版本」唯一可靠的静态来源（Gradle 默认不打包，需要显式配置）。
+    meta.mavenArtifacts = _readMavenArtifacts(archive);
 
     // 1.5 APK Signing Block（v2 / v3 签名方案）。
     //

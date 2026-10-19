@@ -46,6 +46,32 @@ class AndroidPermissionRequest {
 }
 
 /// APK 解析结果数据模型
+/// 一条 Maven 坐标（来自 `META-INF/maven/**/pom.properties`）。
+class MavenArtifact {
+  final String groupId;
+  final String artifactId;
+
+  /// 版本号；`pom.properties` 里没有时为 `null`。
+  final String? version;
+
+  /// 归档内路径，供证据定位。
+  final String path;
+
+  const MavenArtifact({
+    required this.groupId,
+    required this.artifactId,
+    this.version,
+    required this.path,
+  });
+
+  /// `groupId:artifactId` —— 与 Maven 的写法一致，便于和构建脚本对照。
+  String get coordinate => '$groupId:$artifactId';
+
+  @override
+  String toString() =>
+      'MavenArtifact($coordinate${version == null ? '' : ':$version'})';
+}
+
 class ApkMeta {
   String? packageName;
   int? versionCode;
@@ -90,6 +116,16 @@ class ApkMeta {
   /// 空列表表示**没找到** —— 界面据此不显示这一行。`AndroidManifest.xml` 里
   /// 没有标准字段放它，因此只能扫字符串池，详见 `IcpFilingScanner`。
   List<String> icpFilings = [];
+
+  /// `META-INF/maven/**/pom.properties` 里声明的依赖坐标。
+  ///
+  /// **这是唯一可靠的 SDK 版本来源**：DEX 里只有类名，没有版本；而用
+  /// Maven 构建的 SDK 常把 `pom.properties` 打进包里，里面有精确的
+  /// `groupId` / `artifactId` / `version`。
+  ///
+  /// 空列表表示**没有这类文件**（Gradle 默认不打包它，需要显式配置），
+  /// 不代表「没有第三方 SDK」。
+  List<MavenArtifact> mavenArtifacts = [];
 
   /// 资源表里是否有夜间模式变体；`null` 表示**没读到资源表**（无法判断）。
   ///

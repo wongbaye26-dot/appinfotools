@@ -690,6 +690,8 @@ class AndroidSecurityAudit {
     final sdkInventory = SdkInventoryScanner.scan(
       [for (final entry in dexEntries) entry.name],
       (name) => dexByName[name],
+      // 版本号只能来自 Maven 坐标（DEX 里没有版本信息）。
+      mavenArtifacts: meta.mavenArtifacts,
     );
 
     // 资源表覆盖量由调用方给**实际读到的条目数**（`arscEntryCount`）。
@@ -1094,6 +1096,72 @@ class AndroidSecurityAudit {
             'traffic auditing; using some networking library is not a risk '
             'verdict by itself.',
         recommendationCode: 'android.network_client.manual_review',
+      ));
+    }
+
+    // ---- 证书固定（`<pin-set>`）----
+    //
+    // 此前整段跳过：`network_security_config.dart` 的文件头明确写「不判定
+    // trust-anchors / pin-set / certificates」。**判定边界不变** —— 这里只记录
+    // 「声明了哪些 pin」，不判断 pin 是否与服务端证书匹配、是否已过期。
+    // 但「有没有做证书固定」本身是传输安全评估的常规一项，完全不可见不合适。
+    final pinSets = meta.networkSecurityConfigInfo?.pinSets ?? const [];
+    if (pinSets.isNotEmpty) {
+      final domains = <String>{
+        for (final set in pinSets) set.summary,
+      }.toList()
+        ..sort();
+      final digests = <String>{
+        for (final set in pinSets) ...set.digests,
+      }.toList()
+        ..sort();
+      final expirations = <String>{
+        for (final set in pinSets)
+          if (set.expiration != null && set.expiration!.isNotEmpty)
+            set.expiration!,
+      }.toList()
+        ..sort();
+      findings.add(SecurityFinding(
+        ruleId: 'ANDROID-CERT-PINNING',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.network,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'The app declares certificate pinning for ${domains.length} '
+            'domain(s): ${domains.join(', ')}'
+            '${digests.isEmpty ? '' : ' (${digests.join(', ')})'}'
+            '${expirations.isEmpty ? '' : '; expiration ${expirations.join(', ')}'}'
+            '. This is what the configuration declares — whether the pins '
+            'match the served certificate, and whether an expiration date has '
+            'already passed, cannot be determined statically.',
+        messageCode: 'android.cert_pinning',
+        messageArgs: {
+          'count': domains.length,
+          'domains': domains,
+          if (digests.isNotEmpty) 'digests': digests,
+          if (expirations.isNotEmpty) 'expiration': expirations.join(', '),
+        },
+        evidence: [
+          SecurityEvidence(
+            source: SecurityEvidenceSource.manifest,
+            location: meta.networkSecurityConfigInfo!.path,
+            detail: [
+              for (final set in pinSets)
+                '${set.summary}: ${set.pinCount} pin(s)'
+                    '${set.digests.isEmpty ? '' : ' ${set.digests.join('/')}'}'
+                    '${set.expiration == null ? '' : ', expiration ${set.expiration}'}',
+            ].join('; '),
+          ),
+        ],
+        limitation: 'Pinning is a declaration in the network security '
+            'config. Whether it is enforced at runtime, whether the pins '
+            'still match the server certificate, and whether an expiration '
+            'date has passed cannot be checked from the archive.',
+        recommendation: 'Keep the pin set current (rotate before the '
+            'expiration date) and make sure at least one backup pin is '
+            'present — a pin set with a single pin will brick networking '
+            'when the certificate rotates.',
+        recommendationCode: 'android.cert_pinning.review',
       ));
     }
 

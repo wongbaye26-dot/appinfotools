@@ -661,6 +661,8 @@ class AnalysisReport {
     final capability = finding.messageArgs['capability'];
     // ATS 例外里「真正放宽了」的域名数。
     final weakened = finding.messageArgs['weakened'];
+    // 证书固定涉及的域名（`<pin-set>` 所在域）。
+    final domains = finding.messageArgs['domains'];
     final total = finding.messageArgs['total'];
     final scanned = finding.messageArgs['scanned'];
     final bytes = finding.messageArgs['bytes'];
@@ -694,6 +696,19 @@ class AnalysisReport {
           : f.ios_nested_usage_description(bundle: bundle, key: key),
       'ios.photo_picker' => f.ios_photo_picker,
       'android.webview_bridge_unsafe' => f.android_webview_bridge_unsafe,
+      'android.deeplink' => (count == null || schemes == null)
+          ? null
+          : f.android_deeplink(
+              count: count,
+              schemes: _joinNames(finding.messageArgs['schemes'], t) ?? '—',
+              components: finding.messageArgs['components'] ?? '—',
+            ),
+      'android.cert_pinning' => (count == null || domains == null)
+          ? null
+          : f.android_cert_pinning(
+              count: count,
+              domains: _joinNames(finding.messageArgs['domains'], t) ?? '—',
+            ),
       'android.provider_exposed' => (count == null || names == null)
           ? null
           : f.android_provider_exposed(count: count, names: names),
@@ -914,6 +929,8 @@ class AnalysisReport {
       'android.permission_not_grantable.review' =>
         f.android_permission_not_grantable_review,
       'android.provider_exposed.review' => f.android_provider_exposed_review,
+      'android.deeplink.review' => f.android_deeplink_review,
+      'android.cert_pinning.review' => f.android_cert_pinning_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
@@ -1111,6 +1128,7 @@ class AnalysisReport {
         f.android_screen_capture_limitation,
       'android.provider_exposed.limitation' =>
         f.android_provider_exposed_limitation,
+      'android.deeplink.limitation' => f.android_deeplink_limitation,
       _ => null,
     };
     return localized ?? raw;

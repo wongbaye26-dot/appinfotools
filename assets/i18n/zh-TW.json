@@ -703,7 +703,12 @@
       "android_provider_exposed_partial": "部分 provider 只護住一個方向（readPermission 或 writePermission），另一個方向仍然敞開。",
       "android_provider_exposed_weak": "部分 provider 由本應用程式自己宣告的 normal/dangerous 級權限保護，任何應用程式都能申請到。",
       "android_provider_exposed_review": "用 signature 級權限保護該 provider；沒有其他應用程式需要時直接設 android:exported=\"false\"。確實需要 URI 授權時保留 grantUriPermissions，但要確保授出的 URI 是收斂的。",
-      "android_provider_exposed_limitation": "沒有權限的 provider 對本機任何應用程式都可達，但能否取到資料取決於它存了什麼。android:enabled=false 的 provider 也會列在這裡 —— 請看證據。"
+      "android_provider_exposed_limitation": "沒有權限的 provider 對本機任何應用程式都可達，但能否取到資料取決於它存了什麼。android:enabled=false 的 provider 也會列在這裡 —— 請看證據。",
+      "android_deeplink": "{count} 個連結 scheme 可以從外部喚起本應用程式：{schemes}，分布在 {components} 個匯出元件上。scheme 本身是正常設計（登入回呼、分享回跳都靠它）；風險在於目標元件如何處理傳入的參數。",
+      "android_deeplink_review": "確認每個 scheme 的處理邏輯都校驗了輸入（host、path、參數），並確認目標元件正是你打算暴露的那個。",
+      "android_deeplink_limitation": "只列出 scheme。目標元件是否校驗傳入的 host、path 與參數，從清單裡看不出來 —— 那需要看程式碼。",
+      "android_cert_pinning": "應用程式為 {count} 個網域宣告了憑證固定：{domains}。這只是設定裡的宣告 —— pin 是否與伺服器憑證相符、到期時間是否已過，靜態分析都判斷不了。",
+      "android_cert_pinning_review": "保持 pin 集更新（在到期前輪換），並確保至少有一個備用 pin —— 只配一個 pin 時，憑證輪換會直接讓網路不可用。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",

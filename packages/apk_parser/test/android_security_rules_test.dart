@@ -125,6 +125,8 @@ void main() {
           'ANDROID-RULE-E',
           'ANDROID-RULE-G',
           'ANDROID-SPECIAL-ACCESS',
+          // 链接入口是事实清单（info），排在风险规则之后。
+          'ANDROID-DEEPLINK',
           // SDK 盘点在 info 级，排在所有风险规则之后、兜底的 F 之前。
           'ANDROID-THIRD-PARTY-SDK',
           'ANDROID-RULE-F',
@@ -229,6 +231,24 @@ void main() {
       'ANDROID-WEBVIEW-BRIDGE': () => _audit(
             meta: _meta(targetSdk: 34),
             strings: ['addJavascriptInterface'],
+          ),
+      // 导出组件上声明了链接 scheme。
+      'ANDROID-DEEPLINK': () => _audit(
+            meta: _meta(targetSdk: 34)
+              ..components = [
+                const AndroidComponent(
+                  type: ComponentType.activity,
+                  name: 'com.example.Login',
+                  exported: true,
+                  hasIntentFilter: true,
+                  intentFilters: [
+                    IntentFilterInfo(
+                      actions: ['android.intent.action.VIEW'],
+                      schemes: ['myapp'],
+                    ),
+                  ],
+                ),
+              ],
           ),
       // 导出且无权限的 ContentProvider。
       'ANDROID-PROVIDER-EXPOSED': () => _audit(

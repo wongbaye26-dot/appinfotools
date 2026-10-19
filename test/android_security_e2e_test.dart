@@ -23,6 +23,7 @@
 // 重写 ZIP 会丢掉 APK Signing Block —— 这是**预期**的：本用例只验证审计接线，
 // 签名相关断言在 `android_signature_and_cleartext_test.dart` 里单独覆盖。
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -48,6 +49,15 @@ Uint8List _buildApk() {
 
   add('classes.dex', _read('test/fixtures/dex/real-cooccurrence.dex'));
   add('classes2.dex', _read('test/fixtures/dex/real-netprobe.dex'));
+  // Maven 坐标：DEX 里没有版本号，SDK 版本只能从这里读。
+  add(
+    'META-INF/maven/com.example.sdk/demo/pom.properties',
+    Uint8List.fromList(
+      utf8.encode('groupId=com.example.sdk\n'
+          'artifactId=demo\n'
+          'version=1.2.3\n'),
+    ),
+  );
   add('lib/arm64-v8a/libnative.so',
       _read('test/fixtures/elf/arm64-v8a-libnative.so'));
   add('lib/arm64-v8a/libexecstack.so',
@@ -161,6 +171,16 @@ void main() {
 
     // `libexecstack.so` 的 PT_GNU_STACK 含 PF_X。
     expect(ids, contains('ANDROID-NATIVE-EXEC-STACK'));
+  });
+
+  test('Maven 坐标从归档里读出来（SDK 版本的唯一静态来源）', () async {
+    final result = await _auditFromDisk(apkPath);
+    final artifacts = result.meta.mavenArtifacts;
+    expect(artifacts, hasLength(1));
+    expect(artifacts.single.groupId, 'com.example.sdk');
+    expect(artifacts.single.artifactId, 'demo');
+    expect(artifacts.single.version, '1.2.3');
+    expect(artifacts.single.path, contains('META-INF/maven/'));
   });
 
   test('真实 DEX 上真的建立了调用图（不是只在单测里能建）', () {
