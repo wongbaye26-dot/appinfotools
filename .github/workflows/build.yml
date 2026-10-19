@@ -253,6 +253,20 @@ jobs:
         # 失败时一次性打进 annotation，这样不用 admin 权限也能定位。
         shell: pwsh
         run: |
+          # GitHub 的 pwsh 包装器会在脚本前**自动注入**
+          #   $ErrorActionPreference = 'stop'
+          # 所以上一轮我在脚本里不设它是无效的 —— 任何 cmdlet 的非终止错误
+          # 都会变成终止错误，脚本静默退出，连错误输出都来不及打。
+          # 这里显式改回 Continue，并关掉 StrictMode（访问未定义变量不抛）。
+          $ErrorActionPreference = 'Continue'
+          Set-StrictMode -Off
+
+          # 这条 notice 是「脚本确实启动了」的信号：
+          # 下一轮如果连它都没出现，说明问题在 YAML/解析层而不是逻辑层。
+          Write-Host "::notice::thumbnail self-test script started"
+          Write-Host "pwsh version: $($PSVersionTable.PSVersion)"
+          Write-Host "cwd: $(Get-Location)"
+
           $log = [System.Collections.ArrayList]::new()
           function Note($m) { [void]$log.Add($m); Write-Host $m }
           function Fail($m) {
