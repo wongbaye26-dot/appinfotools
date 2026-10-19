@@ -801,3 +801,62 @@ family controls），P3，一条 `IOS-ENTITLEMENT-CAPABILITY`。
 合计 **1,965** 条（上一批 1,952）。新增测试 3 个文件：
 `ios_sections_and_permission_requests_test.dart`、`call_chain_test.dart`，
 以及扩写的两个既有文件。
+
+---
+
+## 12. 能力增强记录（2026-10-19，第三批）
+
+两项：**ATS 例外逐域**（把已经解析但没人用的数据接上）与**调用链补全**
+（修掉上一批自己留下的两个缺陷）。
+
+### 12.1 ATS 例外域名：从「只有域名」到「逐域标志」
+
+`atsExceptionDomains` 此前是 `FieldValue<List<String>>`，而且**全仓 0 个消费者** ——
+解析出来就一直躺着，报告和界面都看不到。
+
+现在改成 `atsExceptions: FieldValue<List<IosAtsException>>`，每个域名带
+`NSExceptionAllowsInsecureHTTPLoads` / `NSExceptionMinimumTLSVersion` /
+`NSExceptionRequiresForwardSecrecy` / `NSExceptionIncludesSubdomains`。
+
+关键判据是 `weakensTransport`：**只声明域名、不写任何标志时不算放宽** ——
+那只是沿用默认策略。因此新发现项 `IOS-ATS-EXCEPTION` 的等级是分档的：
+
+| 情况 | 等级 |
+|---|---|
+| 有域名允许明文 / 降到 TLS 1.0-1.1 / 关掉前向保密 | P3 |
+| 只声明域名或只写 TLSv1.2 | info |
+
+证据逐域给出具体标志（`old-tls.example.com: NSExceptionMinimumTLSVersion=TLSv1.0`），
+不是一句「有例外域名」。
+
+### 12.2 调用链：修掉上一批的两个缺陷
+
+上一批（§11.2）交付的调用链有两个问题，这一批都修了：
+
+**缺陷 1：拿 `coOccurrences` 当「带某标记的方法」的索引。**
+`coOccurrences` 只收「同一个方法体里命中 **2 个以上**标记」的方法。只调用了一次
+OCR 的方法根本不在里面 —— 而它恰恰是最常见的起点。结果就是 1 跳链路几乎永远
+找不到。改成新增 `markersByCaller`（调用方 → 命中的标记 id）并用它建索引。
+
+**缺陷 2：出边记录时机。**
+原来在 `onCallSite` 里当场判断「这个调用方带不带标记」，而标记是遍历过程中
+才陆续发现的 —— 标记**之前**的调用点会被漏掉，2 跳链路因此常断。改成
+**按方法体积攒出边，方法体结束时（调用方变化 / DEX 边界）再判断**。
+代价是每个方法体一个复用的 `Set`，不随 1586 万个调用点增长。
+
+两个缺陷都由新加的用例钉住：
+`只调用一个 OCR 方法的方法也是有效起点（不能依赖 coOccurrences）`。
+
+**仍然做不到的**：跨 3 跳以上、以及经反射 / 动态代理的调用。这些不是「没优化」，
+是「不做」—— 再远的调用关系在任何正常应用里都能凑出来。
+
+### 12.3 门禁（实测）
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `flutter test` | 0 | **1,598 通过 / 14 跳过**（上一批 1,595） |
+| `analysis_model` / `apk_parser` / `ipa_parser` / `archive_safety` / `app_icon_extractor` | 0 | 65 / **116** / 125 / 40 / 25 |
+| 6 个 `analyze --fatal-infos --fatal-warnings` | 0 | 全部 No issues found |
+| `dart format --set-exit-if-changed` | 0 | 0 changed |
+
+合计 **1,969** 条（上一批 1,965）。

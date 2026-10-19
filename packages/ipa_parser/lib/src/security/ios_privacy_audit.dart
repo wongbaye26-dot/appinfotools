@@ -1323,6 +1323,55 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- ATS 例外域名 ----
+    //
+    // 此前这一节只解析了域名、**没有任何消费者**：报告里看不到，界面也看不到。
+    // 而 `NSExceptionDomains` 里两个标志的性质完全不同 ——
+    // `NSExceptionAllowsInsecureHTTPLoads` 是允许明文，
+    // `NSExceptionMinimumTLSVersion` 是降 TLS 版本；只报「有这个域名」
+    // 会让读者以为都放开了。
+    final atsExceptions = infoPlist.atsExceptions;
+    if (atsExceptions.hasValue && atsExceptions.value!.isNotEmpty) {
+      final all = atsExceptions.value!;
+      final weakened = all.where((e) => e.weakensTransport).toList();
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-ATS-EXCEPTION',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.network,
+        // 只有真的放宽了才给 P3；单纯声明域名的例外沿用默认策略，是 info。
+        severity:
+            weakened.isEmpty ? SecuritySeverity.info : SecuritySeverity.p3,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'Info.plist declares ATS exceptions for ${all.length} '
+            'domain(s), ${weakened.length} of which actually weaken transport '
+            'security. ATS exceptions are scoped to those hosts and are a '
+            'common, legitimate practice — but a host that allows insecure '
+            'HTTP is a real downgrade for that host.',
+        messageCode: 'ios.ats_exception',
+        messageArgs: {
+          'count': all.length,
+          'weakened': weakened.length,
+          'domains': [for (final e in weakened) e.domain],
+        },
+        evidence: [
+          for (final e in all)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.infoPlist,
+              location: '${infoPlist.bundle.path}/Info.plist / '
+                  'NSAppTransportSecurity / NSExceptionDomains',
+              detail: e.detail,
+            ),
+        ],
+        limitation: 'These are the flags the plist declares for those hosts. '
+            'Whether the app actually contacts them, and over which scheme, '
+            'cannot be determined statically.',
+        recommendation: 'Check that every exception is still needed, and '
+            'prefer removing NSExceptionAllowsInsecureHTTPLoads in favour of '
+            'a valid certificate for that host.',
+        recommendationCode: 'ios.ats_exception.review',
+      ));
+    }
+
     // ---- 隐私清单：声明性材料 ----
     final privacy = infoPlist.privacyInfo;
     if (privacy.hasValue) {

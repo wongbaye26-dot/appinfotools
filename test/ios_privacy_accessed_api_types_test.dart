@@ -53,14 +53,70 @@ const _privacy = '''
 </plist>
 ''';
 
-Archive _ipa({String? privacy}) {
+const _infoPlistWithAts = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.example.demo</string>
+  <key>CFBundleExecutable</key>
+  <string>Demo</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>legacy.example.com</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+        <key>NSExceptionIncludesSubdomains</key><true/>
+      </dict>
+      <key>api.example.com</key>
+      <dict>
+        <key>NSExceptionMinimumTLSVersion</key><string>TLSv1.2</string>
+      </dict>
+      <key>old-tls.example.com</key>
+      <dict>
+        <key>NSExceptionMinimumTLSVersion</key><string>TLSv1.0</string>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>
+''';
+
+const _infoPlistAtsBenign = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.example.demo</string>
+  <key>CFBundleExecutable</key>
+  <string>Demo</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>api.example.com</key>
+      <dict>
+        <key>NSExceptionMinimumTLSVersion</key><string>TLSv1.2</string>
+        <key>NSExceptionRequiresForwardSecrecy</key><true/>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>
+''';
+
+Archive _ipa({String? privacy, String infoPlist = _infoPlist}) {
   final archive = Archive();
   void add(String name, String content) {
     final bytes = utf8.encode(content);
     archive.addFile(ArchiveFile(name, bytes.length, bytes));
   }
 
-  add('Payload/Demo.app/Info.plist', _infoPlist);
+  add('Payload/Demo.app/Info.plist', infoPlist);
   if (privacy != null) add('Payload/Demo.app/PrivacyInfo.xcprivacy', privacy);
   return archive;
 }
@@ -117,6 +173,70 @@ void main() {
         capability.single.messageArgs['name'],
         isNot('keychain-access-groups'),
       );
+    });
+  });
+
+  group('ATS 例外域名', () {
+    test('逐域标志被解析出来，只有真的放宽的才算放宽', () {
+      final archive = _ipa(infoPlist: _infoPlistWithAts);
+      final container = IpaContainerReader.read(archive);
+      final plist = IpaInfoPlistReader.read(archive, container.mainApp!);
+
+      final exceptions = plist.atsExceptions;
+      expect(exceptions.hasValue, isTrue);
+      final byDomain = {
+        for (final e in exceptions.value!) e.domain: e,
+      };
+      expect(byDomain.keys,
+          ['api.example.com', 'legacy.example.com', 'old-tls.example.com']);
+
+      // 允许明文 → 放宽。
+      expect(byDomain['legacy.example.com']!.allowsInsecureHttpLoads, isTrue);
+      expect(byDomain['legacy.example.com']!.weakensTransport, isTrue);
+      // 只写 TLSv1.2 → 不放宽。
+      expect(byDomain['api.example.com']!.weakensTransport, isFalse);
+      // 降到 TLSv1.0 → 放宽。
+      expect(byDomain['old-tls.example.com']!.weakensTransport, isTrue);
+    });
+
+    test('有放宽项时报 P3，证据逐域给出具体标志', () {
+      final archive = _ipa(infoPlist: _infoPlistWithAts);
+      final container = IpaContainerReader.read(archive);
+      final plist = IpaInfoPlistReader.read(archive, container.mainApp!);
+
+      final result = IosPrivacyAudit.audit(infoPlist: plist);
+      final finding = result.findings
+          .where((f) => f.ruleId == 'IOS-ATS-EXCEPTION')
+          .toList();
+      expect(finding, hasLength(1));
+      expect(finding.single.severity, SecuritySeverity.p3);
+      expect(finding.single.messageArgs['count'], 3);
+      expect(finding.single.messageArgs['weakened'], 2);
+      expect(
+        (finding.single.messageArgs['domains'] as List).cast<String>(),
+        ['legacy.example.com', 'old-tls.example.com'],
+      );
+      expect(finding.single.evidence, hasLength(3));
+      expect(
+        finding.single.evidence.any(
+          (e) => e.detail.contains('NSExceptionMinimumTLSVersion=TLSv1.0'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('只声明域名、不放宽任何标志 → info 而不是 P3', () {
+      final archive = _ipa(infoPlist: _infoPlistAtsBenign);
+      final container = IpaContainerReader.read(archive);
+      final plist = IpaInfoPlistReader.read(archive, container.mainApp!);
+
+      final result = IosPrivacyAudit.audit(infoPlist: plist);
+      final finding =
+          result.findings.where((f) => f.ruleId == 'IOS-ATS-EXCEPTION').single;
+      // 域名例外本身是合规做法，没放宽就不该给 P3。
+      expect(finding.severity, SecuritySeverity.info);
+      expect(finding.messageArgs['count'], 1);
+      expect(finding.messageArgs['weakened'], 0);
     });
   });
 

@@ -689,7 +689,9 @@
       "android_permission_not_grantable": "{name} 是 signature 级权限：三方应用拿不到授权，这条声明在运行时没有效果。出现它通常说明代码来自系统应用，或者来自混淆/拼装产物。",
       "android_permission_not_grantable_review": "把它当「代码来源」的线索而不是能力线索：查一下这段代码是从哪来的。",
       "ios_entitlement_capability": "描述文件授予了能力授权项 {name}（{capability}）。它不像钥匙串或应用组那样普遍，普通应用里很少见，而且扩大了应用能触达的范围。",
-      "ios_entitlement_capability_review": "确认这项能力有可见功能需要，并确认这是你打算发布的那份描述文件。"
+      "ios_entitlement_capability_review": "确认这项能力有可见功能需要，并确认这是你打算发布的那份描述文件。",
+      "ios_ats_exception": "Info.plist 为 {count} 个域名声明了 ATS 例外，其中 {weakened} 个确实放宽了传输安全：{domains}。ATS 例外只作用于这些主机，本身是常见的合规做法；但允许明文 HTTP 的那几个域名确实在该主机上降级了。",
+      "ios_ats_exception_review": "核对每条例外是否仍然必要；能换用该主机的有效证书时，优先去掉 NSExceptionAllowsInsecureHTTPLoads。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",

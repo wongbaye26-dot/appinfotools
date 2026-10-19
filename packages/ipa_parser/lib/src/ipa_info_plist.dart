@@ -67,6 +67,61 @@ class IosIconConfiguration {
       'legacy: $legacyIconFiles / $legacyIconFile)';
 }
 
+/// 一条 ATS 例外（`NSExceptionDomains[domain]`）。
+///
+/// **必须逐字段取**，不能只留域名：`NSExceptionMinimumTLSVersion` 降级与
+/// `NSExceptionAllowsInsecureHTTPLoads` 是两种不同性质的放宽，只报「有这个域名」
+/// 会让读者以为都允许了明文。
+class IosAtsException {
+  /// 被例外的域名（`NSExceptionDomains` 的键）。
+  final String domain;
+
+  /// `NSExceptionAllowsInsecureHTTPLoads`：允许这个域名走明文 HTTP。
+  final bool? allowsInsecureHttpLoads;
+
+  /// `NSExceptionMinimumTLSVersion`：例如 `TLSv1.2`。低于 1.2 就是放宽。
+  final String? minimumTlsVersion;
+
+  /// `NSExceptionRequiresForwardSecrecy`：为 `false` 表示不要求前向保密。
+  final bool? requiresForwardSecrecy;
+
+  /// `NSExceptionIncludesSubdomains`。
+  final bool? includesSubdomains;
+
+  const IosAtsException({
+    required this.domain,
+    this.allowsInsecureHttpLoads,
+    this.minimumTlsVersion,
+    this.requiresForwardSecrecy,
+    this.includesSubdomains,
+  });
+
+  /// 这条例外是否**真的削弱了**传输安全。
+  ///
+  /// 只声明域名、不写任何标志时，例外沿用默认策略 —— 那不算放宽。
+  bool get weakensTransport =>
+      allowsInsecureHttpLoads == true ||
+      (minimumTlsVersion != null &&
+          minimumTlsVersion!.toUpperCase() != 'TLSV1.2') ||
+      requiresForwardSecrecy == false;
+
+  /// 给证据用的可读描述，例如
+  /// `example.com: NSExceptionAllowsInsecureHTTPLoads=true`。
+  String get detail {
+    final parts = <String>[
+      if (allowsInsecureHttpLoads != null)
+        'NSExceptionAllowsInsecureHTTPLoads=$allowsInsecureHttpLoads',
+      if (minimumTlsVersion != null)
+        'NSExceptionMinimumTLSVersion=$minimumTlsVersion',
+      if (requiresForwardSecrecy != null)
+        'NSExceptionRequiresForwardSecrecy=$requiresForwardSecrecy',
+      if (includesSubdomains != null)
+        'NSExceptionIncludesSubdomains=$includesSubdomains',
+    ];
+    return parts.isEmpty ? domain : '$domain: ${parts.join(', ')}';
+  }
+}
+
 /// 从 `Info.plist` 提取的字段。
 ///
 /// 每个字段都是 [FieldValue]：**值 + 状态 + 来源 + 诊断**。规范 5.2 要求
@@ -172,8 +227,11 @@ class IpaInfoPlist {
   /// `usesCleartextTraffic` 同一口径 —— 不把「未声明」折算成任何值。
   final FieldValue<bool> allowsArbitraryLoads;
 
-  /// ATS 例外域名（`NSExceptionDomains` 的键）。
-  final FieldValue<List<String>> atsExceptionDomains;
+  /// ATS 例外域名及其**逐域标志**。
+  ///
+  /// 此前只留域名（`List<String>`），而且**没有任何消费者** —— 解析出来就
+  /// 一直躺着。逐域标志才能回答「哪个域名允许明文 / 降了 TLS」。
+  final FieldValue<List<IosAtsException>> atsExceptions;
 
   /// `PrivacyInfo.xcprivacy` 隐私清单的摘要。
   ///
@@ -203,7 +261,7 @@ class IpaInfoPlist {
     this.privacyUsageDescriptions =
         const FieldValue<Map<String, String>>.absent(),
     this.allowsArbitraryLoads = const FieldValue<bool>.absent(),
-    this.atsExceptionDomains = const FieldValue<List<String>>.absent(),
+    this.atsExceptions = const FieldValue<List<IosAtsException>>.absent(),
     this.privacyInfo = const FieldValue<IosPrivacyInfo>.absent(),
     this.diagnostics = const [],
   });
@@ -236,7 +294,7 @@ class IpaInfoPlist {
         icons,
         privacyUsageDescriptions,
         allowsArbitraryLoads,
-        atsExceptionDomains,
+        atsExceptions,
         privacyInfo,
       ].any((f) => f.hasValue);
 }
@@ -418,7 +476,7 @@ class IpaInfoPlistReader {
       icons: _icons(root),
       privacyUsageDescriptions: _usageDescriptions(root, source),
       allowsArbitraryLoads: _atsArbitraryLoads(root, source),
-      atsExceptionDomains: _atsExceptionDomains(root, source),
+      atsExceptions: _atsExceptions(root, source),
       privacyInfo: _readPrivacyInfo(archive, bundle, diagnostics, ledger),
       diagnostics: diagnostics,
     );
@@ -511,23 +569,46 @@ class IpaInfoPlistReader {
     return FieldValue<bool>.extracted(value, source: source);
   }
 
-  /// ATS 例外域名（不展开每个域内的具体例外设置 —— 那需要继续下钻
-  /// `NSExceptionAllowsInsecureHTTPLoads` 等，规格只要求识别放行配置的存在）。
-  static FieldValue<List<String>> _atsExceptionDomains(
+  /// ATS 例外域名及逐域标志。
+  ///
+  /// 每个域名是一个字典，键是 `NSExceptionAllowsInsecureHTTPLoads` 这类。
+  /// 条目不是字典时**如实跳过**（不猜），全部读不到时返回 `absent`。
+  static FieldValue<List<IosAtsException>> _atsExceptions(
       PlistDict root, FieldSource source) {
     final ats = root.value['NSAppTransportSecurity'];
     if (ats is! PlistDict) {
-      return FieldValue<List<String>>.absent(source: source);
+      return FieldValue<List<IosAtsException>>.absent(source: source);
     }
     final domains = ats.value['NSExceptionDomains'];
     if (domains is! PlistDict) {
-      return FieldValue<List<String>>.absent(source: source);
+      return FieldValue<List<IosAtsException>>.absent(source: source);
     }
     if (domains.value.isEmpty) {
-      return FieldValue<List<String>>.absent(source: source);
+      return FieldValue<List<IosAtsException>>.absent(source: source);
     }
-    return FieldValue<List<String>>.extracted(
-      domains.value.keys.toList(),
+
+    final exceptions = <IosAtsException>[];
+    for (final entry in domains.value.entries) {
+      final config = entry.value;
+      if (config is! PlistDict) continue;
+      exceptions.add(IosAtsException(
+        domain: entry.key,
+        allowsInsecureHttpLoads:
+            config.value['NSExceptionAllowsInsecureHTTPLoads'].asBool,
+        minimumTlsVersion:
+            config.value['NSExceptionMinimumTLSVersion'].asString,
+        requiresForwardSecrecy:
+            config.value['NSExceptionRequiresForwardSecrecy'].asBool,
+        includesSubdomains:
+            config.value['NSExceptionIncludesSubdomains'].asBool,
+      ));
+    }
+    if (exceptions.isEmpty) {
+      return FieldValue<List<IosAtsException>>.absent(source: source);
+    }
+    exceptions.sort((a, b) => a.domain.compareTo(b.domain));
+    return FieldValue<List<IosAtsException>>.extracted(
+      exceptions,
       source: source,
     );
   }
@@ -772,7 +853,7 @@ class IpaInfoPlistReader {
         diagnostic: diagnostic.message,
         source: FieldSource.infoPlist,
       ),
-      atsExceptionDomains: FieldValue<List<String>>.failed(
+      atsExceptions: FieldValue<List<IosAtsException>>.failed(
         diagnostic: diagnostic.message,
         source: FieldSource.infoPlist,
       ),

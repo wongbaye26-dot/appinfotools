@@ -22,20 +22,14 @@ import 'package:apk_parser/apk_parser.dart';
 import 'package:test/test.dart';
 
 DexMethodScanResult _scan({
-  required List<CodeCoOccurrence> occurrences,
+  required Map<String, Set<String>> markers,
   Map<String, Set<String>> callers = const {},
   Map<String, Set<String>> edges = const {},
 }) =>
     DexMethodScanResult(
-      coOccurrences: occurrences,
+      markersByCaller: markers,
       callersOfMarkerMethods: callers,
       edgesFromMarkerCallers: edges,
-    );
-
-CodeCoOccurrence _occ(String caller, List<String> markers) => CodeCoOccurrence(
-      callerDisplayName: caller,
-      markerIds: markers,
-      dexNames: const ['classes.dex'],
     );
 
 const _ocr = 'ocr-recognizetext';
@@ -44,10 +38,10 @@ const _upload = 'uploadimage';
 void main() {
   test('直接调用：A(识别) → B(上传) 是 1 跳', () {
     final scan = _scan(
-      occurrences: [
-        _occ('LA;.doOcr()V', [_ocr]),
-        _occ('LB;.upload()V', [_upload]),
-      ],
+      markers: {
+        'LA;.doOcr()V': {_ocr},
+        'LB;.upload()V': {_upload},
+      },
       callers: {
         'LB;.upload()V': {'LA;.doOcr()V'},
       },
@@ -60,10 +54,10 @@ void main() {
 
   test('经由一个中间方法是 2 跳，路径里带出中间方法', () {
     final scan = _scan(
-      occurrences: [
-        _occ('LA;.doOcr()V', [_ocr]),
-        _occ('LB;.upload()V', [_upload]),
-      ],
+      markers: {
+        'LA;.doOcr()V': {_ocr},
+        'LB;.upload()V': {_upload},
+      },
       edges: {
         'LA;.doOcr()V': {'LX;.build()V'},
       },
@@ -80,11 +74,11 @@ void main() {
 
   test('1 跳优先于 2 跳（同一份输入里两条路径都在）', () {
     final scan = _scan(
-      occurrences: [
-        _occ('LA;.doOcr()V', [_ocr]),
-        _occ('LB;.upload()V', [_upload]),
-        _occ('LC;.alsoOcr()V', [_ocr]),
-      ],
+      markers: {
+        'LA;.doOcr()V': {_ocr},
+        'LB;.upload()V': {_upload},
+        'LC;.alsoOcr()V': {_ocr},
+      },
       edges: {
         'LC;.alsoOcr()V': {'LX;.build()V'},
       },
@@ -98,20 +92,20 @@ void main() {
 
   test('没有边时返回 null —— 不能说「有调用链」', () {
     final scan = _scan(
-      occurrences: [
-        _occ('LA;.doOcr()V', [_ocr]),
-        _occ('LB;.upload()V', [_upload]),
-      ],
+      markers: {
+        'LA;.doOcr()V': {_ocr},
+        'LB;.upload()V': {_upload},
+      },
     );
     expect(scan.firstChainBetween([_ocr], [_upload]), isNull);
   });
 
   test('maxHops=1 时不返回 2 跳的结果', () {
     final scan = _scan(
-      occurrences: [
-        _occ('LA;.doOcr()V', [_ocr]),
-        _occ('LB;.upload()V', [_upload]),
-      ],
+      markers: {
+        'LA;.doOcr()V': {_ocr},
+        'LB;.upload()V': {_upload},
+      },
       edges: {
         'LA;.doOcr()V': {'LX;.build()V'},
       },
@@ -122,8 +116,24 @@ void main() {
     expect(scan.firstChainBetween([_ocr], [_upload], maxHops: 1), isNull);
   });
 
+  test('只调用一个 OCR 方法的方法也是有效起点（不能依赖 coOccurrences）', () {
+    // `coOccurrences` 只收「一个方法体里 ≥2 个标记」的方法。若用它当索引，
+    // 只调用了一次 OCR 的 `LA.doOcr` 根本不在里面 —— 这条用例钉住这个坑。
+    final scan = _scan(
+      markers: {
+        'LA;.doOcr()V': {_ocr},
+        'LB;.upload()V': {_upload},
+      },
+      callers: {
+        'LB;.upload()V': {'LA;.doOcr()V'},
+      },
+    );
+    expect(scan.coOccurrences, isEmpty);
+    expect(scan.firstChainBetween([_ocr], [_upload]), isNotNull);
+  });
+
   test('空输入返回 null，不抛异常', () {
-    final scan = _scan(occurrences: const []);
+    final scan = _scan(markers: const {});
     expect(scan.firstChainBetween([_ocr], [_upload]), isNull);
     expect(scan.firstChainBetween(const [], [_upload]), isNull);
   });

@@ -692,7 +692,9 @@
       "android_permission_not_grantable": "{name} は signature レベルの権限です。サードパーティ製アプリには付与されないため、この宣言は実行時に効果がありません。通常は、コードがシステムアプリ由来か、難読化・寄せ集めの産物であることを示します。",
       "android_permission_not_grantable_review": "能力ではなく「コードの出所」の手がかりとして扱い、このコードがどこから来たかを確認してください。",
       "ios_entitlement_capability": "プロビジョニングプロファイルが能力エンタイトルメント {name}（{capability}）を付与しています。キーチェーンやアプリグループほど一般的ではなく、通常のアプリでは稀で、アプリが到達できる範囲を広げます。",
-      "ios_entitlement_capability_review": "目に見える機能がこの能力を必要としているか、これが配布予定のプロファイルかを確認してください。"
+      "ios_entitlement_capability_review": "目に見える機能がこの能力を必要としているか、これが配布予定のプロファイルかを確認してください。",
+      "ios_ats_exception": "Info.plist が {count} 個のドメインに ATS 例外を宣言しており、そのうち {weakened} 個が実際に転送セキュリティを弱めています：{domains}。ATS 例外はこれらのホストに限定され、よくある正当な運用ですが、平文 HTTP を許可したホストでは実際にダウングレードされています。",
+      "ios_ats_exception_review": "各例外が今も必要かを確認し、そのホストの有効な証明書を使えるなら NSExceptionAllowsInsecureHTTPLoads を削除することを優先してください。"
     },
     "sdk_categories": {
       "analytics": "分析 / アトリビューション",

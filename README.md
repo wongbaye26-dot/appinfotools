@@ -81,7 +81,7 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 分析覆盖 | 逐维度给出「已覆盖 / 部分覆盖 / 未覆盖 / 本次不适用」，界面、Markdown 与 JSON 读同一份数据 |
 | 风险分级 | P0–P3 / INFO / **UNKNOWN** —— 「无法确认」与「低风险」严格分开，覆盖不足不会被显示成绿色 |
 
-Android 侧 18 条规则（其中 7 条是跨字段的组合规则）+ 28 条逐权限条目、iOS 侧 28 条；分级按**来源稀有度**而非一律高危 ——
+Android 侧 18 条规则（其中 7 条是跨字段的组合规则）+ 28 条逐权限条目、iOS 侧 29 条；分级按**来源稀有度**而非一律高危 ——
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 组合规则 C 的等级**跟着证据强度走**：同一方法体内两个调用点给 P1，只有整包层面共现给 P2。
 
@@ -210,7 +210,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
 
 ### 质量与验证
 
-- **1,595 个根测试 + 370 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
+- **1,598 个根测试 + 371 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
 - **期望值一律来自独立实现**，不取自本项目解析器：
   `aapt2` 核对清单与资源、`apksigner` / `codesign` 核对签名、`assetutil` 核对 iOS 资产目录、
   `libcompression`（Apple 系统库）核对 LZFSE、`actool`（Xcode 自带）生成资产目录夹具

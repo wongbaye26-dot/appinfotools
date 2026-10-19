@@ -117,6 +117,13 @@ class DexMethodScanResult {
   /// 同一方法体内出现多个标记的位置（按调用者稳定排序）。
   final List<CodeCoOccurrence> coOccurrences;
 
+  /// 每个调用方方法体内命中的标记：调用方 → 标记 id。
+  ///
+  /// `coOccurrences` 只收「同一个方法体里命中 **2 个以上**标记」的方法，
+  /// 因此不能拿它当「带某个标记的方法」的索引 —— 只调用一个 OCR 方法的方法
+  /// 根本不在里面。调用链查找必须用这张表。
+  final Map<String, Set<String>> markersByCaller;
+
   /// 调用「带标记的方法」的那些方法：被调用方 → 调用方。
   ///
   /// 只记录**被调用方本身带标记**的边，因此规模与标记命中数同阶，
@@ -126,12 +133,14 @@ class DexMethodScanResult {
   /// 「带标记的方法」调用了谁：调用方 → 被调用方。
   ///
   /// 与 [callersOfMarkerMethods] 合起来能走两步：`A(识别) → X → B(上传)`。
-  /// **只在该调用方已经被确认带标记之后才记录** —— 同一个方法体里，
-  /// 标记出现之前的那些调用点会漏掉。这是为了不把 1586 万个调用点全部
-  /// 拼成字符串的代价，报告里如实写明。
+  ///
+  /// 出边**按方法体积攒、方法体结束时再判断**调用方是否带标记 —— 这样同一个
+  /// 方法体里「标记出现在调用之后」的情况也不会漏。代价是每个方法体一个
+  /// `Set`（复用同一个并清空），不随 1586 万个调用点增长。
   final Map<String, Set<String>> edgesFromMarkerCallers;
 
   const DexMethodScanResult({
+    this.markersByCaller = const {},
     this.callersOfMarkerMethods = const {},
     this.edgesFromMarkerCallers = const {},
     this.references = const [],
@@ -206,17 +215,20 @@ class DexMethodScanResult {
     if (a.isEmpty || b.isEmpty) return null;
 
     // 带 A / B 标记的方法。
+    //
+    // **不能拿 `coOccurrences` 当索引**：它只收「一个方法体里命中 2 个以上
+    // 标记」的方法，只调用了一个 OCR 方法的方法根本不在里面 —— 用它会让
+    // 1 跳链路几乎永远找不到。
     final from = <String>[];
     final to = <String>[];
-    for (final occurrence in coOccurrences) {
-      if (occurrence.markerIds.any(a.contains)) {
-        from.add(occurrence.callerDisplayName);
-      }
-      if (occurrence.markerIds.any(b.contains)) {
-        to.add(occurrence.callerDisplayName);
-      }
+    for (final entry in markersByCaller.entries) {
+      if (entry.value.any(a.contains)) from.add(entry.key);
+      if (entry.value.any(b.contains)) to.add(entry.key);
     }
     if (from.isEmpty || to.isEmpty) return null;
+    // 稳定顺序：报告要可复现。
+    from.sort();
+    to.sort();
 
     // 先找 1 跳：A 直接调用 B。
     for (final caller in from.take(_maxChainSeeds)) {
@@ -334,7 +346,35 @@ class DexMethodScanner {
     var callSiteCount = 0;
     var invokeCustomCount = 0;
 
+    // 当前方法体的出边缓冲。
+    //
+    // **为什么要缓冲**：调用方的标记是在遍历这个方法体的过程中才陆续发现的，
+    // 如果边一产生就判断「这个调用方带不带标记」，标记之前的那些调用点会被
+    // 漏掉 —— 那正是 2 跳链路最容易断的地方。改成「按方法体积攒，方法体结束
+    // 时再判断」，就能拿到完整的出边，而且不需要第二遍遍历。
+    String? pendingCaller;
+    final pendingCallees = <String>{};
+    void flushPendingEdges() {
+      final caller = pendingCaller;
+      if (caller == null) return;
+      if (pendingCallees.isNotEmpty &&
+          callerMarkers.containsKey(caller) &&
+          (edgesFromMarkerCallers.length < maxGraphNodes ||
+              edgesFromMarkerCallers.containsKey(caller))) {
+        final edges = edgesFromMarkerCallers[caller] ??= <String>{};
+        for (final callee in pendingCallees) {
+          if (edges.length >= maxCallersPerNode) break;
+          edges.add(callee);
+        }
+      }
+      pendingCaller = null;
+      pendingCallees.clear();
+    }
+
     for (final entry in entries) {
+      // DEX 边界也要 flush：同名调用方理论上不会跨 DEX 连续出现，但显式
+      // flush 让「缓冲一定属于同一个方法体」这条前提成立。
+      flushPendingEdges();
       final structure = DexStructure.read(entry.name, entry.bytes);
       if (!structure.isTraversable) {
         // 结构读不出来就不做引用分析 —— 段边界不合法时读到的条目没有意义。
@@ -402,13 +442,13 @@ class DexMethodScanner {
             final callers = callersOfMarkerMethods[callee] ??= <String>{};
             if (callers.length < maxCallersPerNode) callers.add(callerName);
           }
-          // 反过来：调用方已经带标记 → 记下它调用了谁（用于走第二步）。
-          if (callerMarkers.containsKey(callerName)) {
-            if (edgesFromMarkerCallers.length < maxGraphNodes ||
-                edgesFromMarkerCallers.containsKey(callerName)) {
-              final callees = edgesFromMarkerCallers[callerName] ??= <String>{};
-              if (callees.length < maxCallersPerNode) callees.add(callee);
-            }
+          // 反过来：先按方法体积攒出边，方法体结束时再判断调用方带不带标记。
+          if (pendingCaller != callerName) {
+            flushPendingEdges();
+            pendingCaller = callerName;
+          }
+          if (pendingCallees.length < maxCallersPerNode) {
+            pendingCallees.add(callee);
           }
 
           for (final marker in markers) {
@@ -439,6 +479,8 @@ class DexMethodScanner {
         desynced.add('${entry.name}:$body');
       }
     }
+
+    flushPendingEdges();
 
     final references = <CodeReference>[];
     for (final marker in codeMarkers) {
@@ -493,6 +535,7 @@ class DexMethodScanner {
       callSiteCount: callSiteCount,
       invokeCustomCount: invokeCustomCount,
       coOccurrences: coOccurrences,
+      markersByCaller: callerMarkers,
       callersOfMarkerMethods: callersOfMarkerMethods,
       edgesFromMarkerCallers: edgesFromMarkerCallers,
     );

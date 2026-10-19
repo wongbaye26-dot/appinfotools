@@ -659,6 +659,8 @@ class AnalysisReport {
     // 主动请求权限的 API 名单（`PHPhotoLibrary` 这类专有名词，不翻译）。
     final apis = _joinNames(finding.messageArgs['apis'], t);
     final capability = finding.messageArgs['capability'];
+    // ATS 例外里「真正放宽了」的域名数。
+    final weakened = finding.messageArgs['weakened'];
     final total = finding.messageArgs['total'];
     final scanned = finding.messageArgs['scanned'];
     final bytes = finding.messageArgs['bytes'];
@@ -696,6 +698,13 @@ class AnalysisReport {
       'ios.entitlement_capability' => (name == null || capability == null)
           ? null
           : f.ios_entitlement_capability(name: name, capability: capability),
+      'ios.ats_exception' => (count == null || weakened == null)
+          ? null
+          : f.ios_ats_exception(
+              count: count,
+              weakened: weakened,
+              domains: _joinNames(finding.messageArgs['domains'], t) ?? '—',
+            ),
       'ios.permission_request' => (count == null || apis == null)
           ? null
           : f.ios_permission_request(count: count, apis: apis),
@@ -847,6 +856,7 @@ class AnalysisReport {
       'ios.photo_picker.confirm_input_path' =>
         f.ios_photo_picker_confirm_input_path,
       'ios.permission_request.review' => f.ios_permission_request_review,
+      'ios.ats_exception.review' => f.ios_ats_exception_review,
       'android.permission_not_grantable.review' =>
         f.android_permission_not_grantable_review,
       'ios.entitlement_capability.review' =>

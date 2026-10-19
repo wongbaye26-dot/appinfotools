@@ -689,7 +689,9 @@
       "android_permission_not_grantable": "{name} is a signature-level permission: a third-party app cannot be granted it, so this declaration has no runtime effect. Its presence usually means the code was copied from a system app or produced by an obfuscator.",
       "android_permission_not_grantable_review": "Treat it as a code-provenance signal rather than a capability: find out where the code came from.",
       "ios_entitlement_capability": "The provisioning profile grants the capability entitlement {name} ({capability}). Unlike keychain or app groups, this one is rare in ordinary apps and widens what the app can reach.",
-      "ios_entitlement_capability_review": "Confirm the capability is required by a visible feature, and that the profile is the one you intended to ship."
+      "ios_entitlement_capability_review": "Confirm the capability is required by a visible feature, and that the profile is the one you intended to ship.",
+      "ios_ats_exception": "Info.plist declares ATS exceptions for {count} domain(s); {weakened} of them actually weaken transport security: {domains}. ATS exceptions are scoped to those hosts and are a common, legitimate practice — but a host that allows insecure HTTP is a real downgrade for that host only.",
+      "ios_ats_exception_review": "Check that every exception is still needed, and prefer removing NSExceptionAllowsInsecureHTTPLoads in favour of a valid certificate for that host."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
