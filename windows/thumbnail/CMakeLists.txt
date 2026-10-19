@@ -10,6 +10,10 @@
 add_library(appinfotool_thumbnail SHARED
   "thumbnail_provider.cpp"
   "thumbnail_provider.h"
+  # 导出表。**必须是 .def 而不是 __declspec(dllexport)**：
+  # combaseapi.h 已把这两个函数声明成 WINOLEAPI，再叠 dllexport 会报
+  # C2375「redefinition; different linkage」。详见 .def 文件顶部注释。
+  "appinfotool_thumbnail.def"
 )
 
 # 与 runner 一致的编译设置（C++17、/W4 /WX）。

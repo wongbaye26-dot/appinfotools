@@ -610,7 +610,20 @@ class ClassFactory : public IClassFactory {
 
 }  // namespace
 
-extern "C" __declspec(dllexport) HRESULT __stdcall
+// 导出方式说明（CI run #1 的教训）：
+//
+// **不能在这里写 `__declspec(dllexport)`。** `combaseapi.h` 已经把这两个函数
+// 声明为 `WINOLEAPI DllGetClassObject(...)`，而 `WINOLEAPI` 展开成
+// `EXTERN_C HRESULT __stdcall`。在同一翻译单元里再用带 `dllexport` 的写法
+// 定义同一个函数，MSVC 判定为「linkage 不同」，报：
+//
+//   error C2375: 'DllGetClassObject': redefinition; different linkage
+//   error C2375: 'DllCanUnloadNow': redefinition; different linkage
+//
+// COM server 的标准做法是**用 .def 文件导出**（见
+// `appinfotool_thumbnail.def`）。这样定义处保持 SDK 声明的原样，
+// 导出表由链接器生成。
+extern "C" HRESULT __stdcall
 DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
   if (ppv == nullptr) {
     return E_POINTER;
@@ -628,7 +641,7 @@ DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
   return hr;
 }
 
-extern "C" __declspec(dllexport) HRESULT __stdcall DllCanUnloadNow() {
+extern "C" HRESULT __stdcall DllCanUnloadNow() {
   // 始终返回 S_FALSE：本 DLL 由 Explorer 长期持有，卸载时机交给系统。
   // 在没有引用计数跟踪的情况下返回 S_OK 会让系统在请求间隙卸载 DLL，
   // 而后续请求会走一次冷加载 —— 每次都要重新初始化。

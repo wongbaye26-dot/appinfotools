@@ -1,0 +1,25 @@
+; COM 导出表。
+;
+; ## 为什么用 .def 而不是 __declspec(dllexport)
+;
+; `combaseapi.h` 已经把 `DllGetClassObject` / `DllCanUnloadNow` 声明为
+; `WINOLEAPI`（= `EXTERN_C HRESULT __stdcall`）。在同一个翻译单元里再用
+; 带 `dllexport` 的写法定义它们，MSVC 判定为 linkage 不同：
+;
+;   error C2375: 'DllGetClassObject': redefinition; different linkage
+;   error C2375: 'DllCanUnloadNow': redefinition; different linkage
+;
+; 这也是 COM in-proc server 的标准做法：定义处保持 SDK 声明原样，
+; 导出表交给链接器。
+;
+; ## PRIVATE 的作用
+;
+; 不加 `PRIVATE` 时链接器会尝试按修饰名导出，而这两个函数是 `__stdcall`
+; + `extern "C"`，x86 上会被修饰成 `_DllGetClassObject@12` 之类 ——
+; COM 按**未修饰名**查找，找不到就等于「没导出」。`PRIVATE` 明确表示
+; 「不要再修饰」。
+LIBRARY appinfotool_thumbnail
+
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE
