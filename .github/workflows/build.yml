@@ -260,65 +260,119 @@ jobs:
         # 改成两条措施：
         # 1. **断言搬进 selftest 自己**（`--expect-distinct`），脚本只查退出码；
         # 2. 用 cmd：没有隐式的错误策略、没有严格模式，行为可预测。
+        #
+        # ## 退出码就是诊断码
+        #
+        # 失败时 job 日志 API 需要 admin（403），`::error::` 又不会变成
+        # check-run 注解 —— 「失败了」可见、「哪一步失败」不可见。
+        # 但注解里那句 `Process completed with exit code N` 是**公开可读**的，
+        # 于是把失败位置编码进退出码：
+        #
+        # | 码 | 位置 |
+        # |---|---|
+        # | 11 | 自检 exe 不存在 |
+        # | 12 | 拷 DLL 失败 |
+        # | 13 | 拷 app_icon_extractor.exe 失败 |
+        # | 14 | 断言 1：两个不同 APK 必须出不同图 |
+        # | 15 | 断言 2：自适应图标必须被拒绝 |
+        # | 16 | 断言 3：无图标声明的包必须被拒绝 |
+        # | 17 | 断言 4：损坏文件必须失败 |
+        #
+        # 同时把完整输出写进 `$GITHUB_STEP_SUMMARY`（运行页面直接可见）。
         shell: cmd
         run: |
           @echo off
-          setlocal
+          setlocal enabledelayedexpansion
           set SELFTEST=build\windows\x64\selftest
           set RELEASE=build\windows\x64\runner\Release
           set FIX=test\fixtures\apk
+          rem 自检输出写两份：控制台 + Step Summary。
+          rem
+          rem **为什么要写 Summary**：失败时 job 日志 API 需要 admin 权限
+          rem （403），而 `::error::` 不会变成 check-run 的 annotation ——
+          rem 于是「失败」这件事可见，「为什么失败」不可见。Step Summary
+          rem 在运行页面上直接可见，不需要任何凭据。
+          set LOG=%TEMP%\thumb-selftest.log
+          break > "%LOG%"
+          echo GITHUB_STEP_SUMMARY=%GITHUB_STEP_SUMMARY%>> "%LOG%"
 
           if not exist "%SELFTEST%\appinfotool_thumbnail_selftest.exe" (
             echo ::error::selftest exe missing at %SELFTEST%
             dir /b "%SELFTEST%" 2>nul
-            exit /b 1
+            echo selftest exe missing at %SELFTEST%>> "%LOG%"
+            call :dump
+            exit /b 11
           )
           copy /y "%RELEASE%\appinfotool_thumbnail.dll" "%SELFTEST%\" >nul
           if errorlevel 1 (
             echo ::error::cannot copy appinfotool_thumbnail.dll from %RELEASE%
-            exit /b 1
+            exit /b 12
           )
           copy /y "%RELEASE%\app_icon_extractor.exe" "%SELFTEST%\" >nul
           if errorlevel 1 (
             echo ::error::cannot copy app_icon_extractor.exe from %RELEASE%
-            exit /b 1
+            exit /b 13
           )
           dir /b "%SELFTEST%"
 
           rem 断言 1（规格 2.4 第一条）：两个内容不同的 APK 必须出不同图。
           echo --- distinct icons
-          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" --expect-distinct "%FIX%\icon-png.apk" "%FIX%\icon-png-alt.apk"
+          call :run "%SELFTEST%\appinfotool_thumbnail_selftest.exe" --expect-distinct "%FIX%\icon-png.apk" "%FIX%\icon-png-alt.apk"
           if errorlevel 1 (
             echo ::error::two different APKs did not produce distinct icons
-            exit /b 1
+            call :dump
+            exit /b 14
           )
 
           rem 断言 2：自适应图标的包必须被拒绝（不退而取半张图）。
           echo --- adaptive icon must be rejected
-          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%FIX%\icon-adaptive.apk"
+          call :run "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%FIX%\icon-adaptive.apk"
           if not errorlevel 1 (
             echo ::error::adaptive-icon APK should fail but succeeded
-            exit /b 1
+            call :dump
+            exit /b 15
           )
 
           rem 断言 3：无图标声明的包必须被拒绝。
           echo --- no launcher icon must be rejected
-          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%FIX%\signed-v2-v3.apk"
+          call :run "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%FIX%\signed-v2-v3.apk"
           if not errorlevel 1 (
             echo ::error::APK without a launcher icon should fail
-            exit /b 1
+            call :dump
+            exit /b 16
           )
 
           rem 断言 4：损坏文件必须失败（且不崩溃 —— 崩溃会带崩 Explorer）。
           echo --- corrupt input must be rejected without crashing
           echo this is not a zip archive > "%TEMP%\not-a-zip.apk"
-          "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%TEMP%\not-a-zip.apk"
+          call :run "%SELFTEST%\appinfotool_thumbnail_selftest.exe" "%TEMP%\not-a-zip.apk"
           if not errorlevel 1 (
             echo ::error::corrupt input should fail
-            exit /b 1
+            call :dump
+            exit /b 17
           )
 
+          call :dump
           echo thumbnail provider self-test passed
+          exit /b 0
+
+          rem ---- 子程序 ----
+          :run
+          rem 跑一条命令，输出同时进日志（不进日志就看不到失败原因）。
+          %* >> "%LOG%" 2>&1
+          rem 用延迟展开：`%ERRORLEVEL%` 会在解析期展开，拿到的是上一条的值。
+          exit /b !ERRORLEVEL!
+
+          :dump
+          rem 把日志贴进 Step Summary（运行页面直接可见，无需 admin）。
+          if exist "%LOG%" (
+            echo ### Thumbnail provider self-test log>> "%GITHUB_STEP_SUMMARY%"
+            echo ```>> "%GITHUB_STEP_SUMMARY%"
+            type "%LOG%">> "%GITHUB_STEP_SUMMARY%"
+            echo ```>> "%GITHUB_STEP_SUMMARY%"
+            type "%LOG%"
+          )
+          exit /b 0
 
       - name: Bundle the self-test for the release
         # artifact 有 90 天保留期、且下载要登录 GitHub；Release 资产两样都没有。
