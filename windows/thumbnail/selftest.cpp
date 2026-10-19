@@ -275,12 +275,28 @@ int wmain(int argc, wchar_t** argv) {
 
   int failures = 0;
   for (const auto& file : files) {
+    // **转成绝对路径再传**。
+    //
+    // `SHCreateItemFromParsingName` 对相对路径的解析基准不保证是当前工作
+    // 目录（它不是 `CreateFileW`），而 helper 子进程继承的是父进程的 cwd ——
+    // 一旦两者不一致，DLL 里 `IsSupportedExtension` 通过、`CreateProcessW`
+    // 也成功，但 helper 打开文件失败，最终表现成「没产出缩略图」而没有
+    // 任何线索。在边界上消掉这类不确定性，比事后排查便宜得多。
+    wchar_t absolute[MAX_PATH * 2] = {0};
+    constexpr DWORD kAbsoluteCapacity =
+        static_cast<DWORD>(sizeof(absolute) / sizeof(absolute[0]));
+    const DWORD full =
+        ::GetFullPathNameW(file.c_str(), kAbsoluteCapacity, absolute, nullptr);
+    // `full` 返回所需长度（含结尾 0）；超过容量说明被截断，退回原值。
+    const std::wstring resolved =
+        (full > 0 && full < kAbsoluteCapacity) ? std::wstring(absolute) : file;
+
     std::wstring detail;
-    const bool ok = RunOne(factory, file, cx, &detail);
+    const bool ok = RunOne(factory, resolved, cx, &detail);
     // 只打印文件名，避免 CI 日志里出现超长路径。
-    const size_t slash = file.find_last_of(L"\\/");
+    const size_t slash = resolved.find_last_of(L"\\/");
     const std::wstring name =
-        slash == std::wstring::npos ? file : file.substr(slash + 1);
+        slash == std::wstring::npos ? resolved : resolved.substr(slash + 1);
     if (ok) {
       std::wprintf(L"OK   %s %s\n", name.c_str(), detail.c_str());
     } else {

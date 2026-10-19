@@ -272,7 +272,10 @@ jobs:
           $ok = & $exe $a 2>&1 | Out-String
           Write-Host $ok
           if ($ok -notmatch 'OK\s+icon-png\.apk\s+(\d+)x(\d+)\s+hash=([0-9A-F]{8})') {
-            Write-Host "::error::icon-png.apk did not produce a thumbnail"
+            # 把**实际输出**打进注解：否则下次还是只知道「没产出」，
+            # 而不知道是 helper 找不到、WIC 解不了，还是路径不对。
+            $flat = ($ok -replace "`r?`n", ' | ').Trim()
+            Write-Host "::error::icon-png.apk did not produce a thumbnail. selftest output: $flat"
             exit 1
           }
           $hashA = $Matches[3]

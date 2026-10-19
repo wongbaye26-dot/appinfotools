@@ -34,12 +34,43 @@ constexpr DWORD kMaxIconFileBytes = 16u * 1024u * 1024u;
 /// 按上限处理 —— 分配一个 100000×100000 的 DIB 会直接把 Explorer 拖死。
 constexpr UINT kMaxThumbnailSide = 1024;
 
+/// 取**本 DLL** 的模块句柄。
+///
+/// **不能用 `GetModuleFileNameW(nullptr, ...)`** —— 那个返回的是**宿主进程
+/// exe** 的路径。本 DLL 被 explorer.exe 加载时，`nullptr` 解析成
+/// `C:\Windows\explorer.exe`，于是「DLL 所在目录」变成 `C:\Windows\`，
+/// 永远找不到同目录下的 `app_icon_extractor.exe`。
+///
+/// 这个 bug 的现场特征是「任何包都不出图、但也没有报错」：
+/// `RunHelper` 拿到一个不存在的路径，`CreateProcessW` 失败返回 -1，
+/// 调用方按「回退文件图标」处理。**自检程序第一次跑就抓到了它** ——
+/// 因为自检也把 DLL 放在 helper 旁边、而 exe 在别处。
+///
+/// 正确做法是按「本函数所属模块的地址」反查句柄：
+/// `GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS` 把传入的地址当作
+/// 「属于哪个模块」的线索；`UNCHANGED_REFCOUNT` 避免增加引用计数
+/// （我们不需要 FreeLibrary）。
+HMODULE CurrentModule() {
+  HMODULE module = nullptr;
+  if (!::GetModuleHandleExW(
+          GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+          reinterpret_cast<LPCWSTR>(&CurrentModule), &module)) {
+    return nullptr;
+  }
+  return module;
+}
+
 /// 取本 DLL 所在目录（末尾带反斜杠）。失败返回空串。
 std::wstring ModuleDirectory() {
+  const HMODULE self = CurrentModule();
+  if (self == nullptr) {
+    return std::wstring();
+  }
   std::vector<wchar_t> buffer(MAX_PATH);
   for (int attempt = 0; attempt < 4; ++attempt) {
     DWORD written = ::GetModuleFileNameW(
-        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        self, buffer.data(), static_cast<DWORD>(buffer.size()));
     if (written == 0) {
       return std::wstring();
     }
