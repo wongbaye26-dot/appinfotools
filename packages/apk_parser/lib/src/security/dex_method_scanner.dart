@@ -117,7 +117,23 @@ class DexMethodScanResult {
   /// 同一方法体内出现多个标记的位置（按调用者稳定排序）。
   final List<CodeCoOccurrence> coOccurrences;
 
+  /// 调用「带标记的方法」的那些方法：被调用方 → 调用方。
+  ///
+  /// 只记录**被调用方本身带标记**的边，因此规模与标记命中数同阶，
+  /// 不会随 1586 万个调用点膨胀。
+  final Map<String, Set<String>> callersOfMarkerMethods;
+
+  /// 「带标记的方法」调用了谁：调用方 → 被调用方。
+  ///
+  /// 与 [callersOfMarkerMethods] 合起来能走两步：`A(识别) → X → B(上传)`。
+  /// **只在该调用方已经被确认带标记之后才记录** —— 同一个方法体里，
+  /// 标记出现之前的那些调用点会漏掉。这是为了不把 1586 万个调用点全部
+  /// 拼成字符串的代价，报告里如实写明。
+  final Map<String, Set<String>> edgesFromMarkerCallers;
+
   const DexMethodScanResult({
+    this.callersOfMarkerMethods = const {},
+    this.edgesFromMarkerCallers = const {},
     this.references = const [],
     this.scannedDexCount = 0,
     this.walkedDexCount = 0,
@@ -172,6 +188,95 @@ class DexMethodScanResult {
     }
     return null;
   }
+
+  /// 在**调用链**里找「A 组标记」与「B 组标记」的最短连接。
+  ///
+  /// 同方法体之外的证据只有两种：直接调用（1 跳）与经由一个中间方法
+  /// （2 跳）。再远就不是证据了 —— 三个方法以外的调用关系在任何一个
+  /// 正常应用里都能凑出来。
+  ///
+  /// 返回 `null` 表示只存在整包层面的共现（或调用图没覆盖到）。
+  CodeCallChain? firstChainBetween(
+    Iterable<String> groupA,
+    Iterable<String> groupB, {
+    int maxHops = 2,
+  }) {
+    final a = groupA.toSet();
+    final b = groupB.toSet();
+    if (a.isEmpty || b.isEmpty) return null;
+
+    // 带 A / B 标记的方法。
+    final from = <String>[];
+    final to = <String>[];
+    for (final occurrence in coOccurrences) {
+      if (occurrence.markerIds.any(a.contains)) {
+        from.add(occurrence.callerDisplayName);
+      }
+      if (occurrence.markerIds.any(b.contains)) {
+        to.add(occurrence.callerDisplayName);
+      }
+    }
+    if (from.isEmpty || to.isEmpty) return null;
+
+    // 先找 1 跳：A 直接调用 B。
+    for (final caller in from.take(_maxChainSeeds)) {
+      for (final callee in to.take(_maxChainSeeds)) {
+        if (caller == callee) continue;
+        if (callersOfMarkerMethods[callee]?.contains(caller) ?? false) {
+          return CodeCallChain(from: caller, to: callee, hops: 1);
+        }
+      }
+    }
+    if (maxHops < 2) return null;
+
+    // 再找 2 跳：A → X → B。
+    for (final caller in from.take(_maxChainSeeds)) {
+      final middle = edgesFromMarkerCallers[caller];
+      if (middle == null) continue;
+      for (final via in middle) {
+        for (final callee in to.take(_maxChainSeeds)) {
+          if (callee == caller || callee == via) continue;
+          if (callersOfMarkerMethods[callee]?.contains(via) ?? false) {
+            return CodeCallChain(
+              from: caller,
+              to: callee,
+              hops: 2,
+              via: via,
+            );
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// 每次查找最多看多少个起止方法 —— 防止一个畸形样本把组合数撑爆。
+  static const int _maxChainSeeds = 40;
+}
+
+/// 一条把两组标记连起来的调用链。
+class CodeCallChain {
+  /// 带 A 组标记的方法。
+  final String from;
+
+  /// 带 B 组标记的方法。
+  final String to;
+
+  /// 跳数：1 = 直接调用，2 = 经由 [via]。
+  final int hops;
+
+  /// 2 跳时的中间方法。
+  final String? via;
+
+  const CodeCallChain({
+    required this.from,
+    required this.to,
+    required this.hops,
+    this.via,
+  });
+
+  /// 给报告读的链路，例如 `A → X → B`。
+  String get path => via == null ? '$from → $to' : '$from → $via → $to';
 }
 
 /// DEX 方法引用与调用点的扫描器（安全分析的**第二、三层**）。
@@ -198,6 +303,13 @@ class DexMethodScanner {
   /// 畸形文件 —— 一个每个方法都命中标记的包不能让内存失控。
   static const int maxTrackedCallers = 2000;
 
+  /// 调用图里最多保留多少个节点（键），以及每个键最多多少条边。
+  ///
+  /// 只围绕「带标记的方法」建图，正常包里是几十到几百个节点；给到 4000
+  /// 是防一个畸形样本把内存吃光。
+  static const int maxGraphNodes = 4000;
+  static const int maxCallersPerNode = 32;
+
   /// 最多保留多少条同现记录。
   static const int maxCoOccurrences = 20;
 
@@ -209,6 +321,9 @@ class DexMethodScanner {
     // 调用者 → 该方法体内命中的标记。
     final callerMarkers = <String, Set<String>>{};
     final callerDexNames = <String, Set<String>>{};
+    // 调用图的两条边（只围绕带标记的方法，规模可控）。
+    final callersOfMarkerMethods = <String, Set<String>>{};
+    final edgesFromMarkerCallers = <String, Set<String>>{};
 
     final notTraversable = <String>[];
     final truncated = <String>[];
@@ -279,9 +394,26 @@ class DexMethodScanner {
             if (markers.isEmpty) return;
           }
 
+          // 调用图：被调用方带标记 → 记下调用方。
+          final callee = site.target.displayName;
+          final callerName = site.callerDisplayName;
+          if (callersOfMarkerMethods.length < maxGraphNodes ||
+              callersOfMarkerMethods.containsKey(callee)) {
+            final callers = callersOfMarkerMethods[callee] ??= <String>{};
+            if (callers.length < maxCallersPerNode) callers.add(callerName);
+          }
+          // 反过来：调用方已经带标记 → 记下它调用了谁（用于走第二步）。
+          if (callerMarkers.containsKey(callerName)) {
+            if (edgesFromMarkerCallers.length < maxGraphNodes ||
+                edgesFromMarkerCallers.containsKey(callerName)) {
+              final callees = edgesFromMarkerCallers[callerName] ??= <String>{};
+              if (callees.length < maxCallersPerNode) callees.add(callee);
+            }
+          }
+
           for (final marker in markers) {
             (callSiteSamples[marker.id] ??= <String>{}).add(
-              '${site.target.displayName} @ ${site.callerDisplayName} '
+              '$callee @ $callerName '
               '+0x${site.instructionOffset.toRadixString(16)}',
             );
             callSiteCounts[marker.id] = (callSiteCounts[marker.id] ?? 0) + 1;
@@ -361,6 +493,8 @@ class DexMethodScanner {
       callSiteCount: callSiteCount,
       invokeCustomCount: invokeCustomCount,
       coOccurrences: coOccurrences,
+      callersOfMarkerMethods: callersOfMarkerMethods,
+      edgesFromMarkerCallers: edgesFromMarkerCallers,
     );
   }
 }

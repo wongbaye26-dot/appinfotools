@@ -1144,12 +1144,15 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
   // **等级跟着证据强度走**：同一方法体内两个调用点 → P1；只有整包层面的
   // 共现 → P2。此前两种情况都给 P1，于是「一个应用里既有 OCR SDK 又有
   // 上传库」这种极常见的组合也被顶到最高档，真正同方法体的样本反而淹没。
-  final sameMethod = note.caller != null;
+  // 等级跟证据强度走：同方法体（0 跳）与直接调用（1 跳）都算强证据，
+  // 2 跳与整包层面降一档。**不再只看「是否同一方法体」** —— 那会把
+  // 「识别方法直接调用上传方法」这种同样具体的证据埋进 P2。
+  final strong = note.hops == 0 || note.hops == 1;
   return SecurityFinding(
     ruleId: 'ANDROID-RULE-C',
     platform: SecurityPlatform.android,
     category: SecurityCategory.dataExfiltration,
-    severity: sameMethod ? SecuritySeverity.p1 : SecuritySeverity.p2,
+    severity: strong ? SecuritySeverity.p1 : SecuritySeverity.p2,
     confidence: SecurityConfidence.suspected,
     finding: 'Image input, text recognition and upload call clues all '
         'appear together: a suspected path for sensitive data leaving '
@@ -1164,7 +1167,7 @@ SecurityFinding _buildRuleC(AndroidRuleFacts f) {
     ],
     dataSource: '照片/媒体文件与其中的识别文本',
     // 中间跳：同方法体时是那个方法；整包层面时留空（不编造）。
-    dataTransform: note.caller,
+    dataTransform: note.caller ?? note.path,
     dataSink: '上传请求（multipart / upload API）',
     relationship: note.fallback,
     relationshipCode: note.code,
@@ -1550,16 +1553,39 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
   // 中间跳的**机器可读定位**：识别与上传的调用指令都落在哪个方法里。
   // 整包层面（不在同一方法体）时为 `null` —— 不编造一个「大概是这里」。
   String? caller,
+
+  /// 证据强度：0 = 同一方法体，1 / 2 = 调用链跳数，-1 = 整包层面。
+  int hops,
+
+  /// 调用链路径（`A → X → B`），整包层面与同方法体时为 `null`。
+  String? path,
 }) coOccurrenceNote(
   DexMethodScanResult scan,
   List<CodeReference> ocrReferences,
   List<CodeReference> uploadReferences,
 ) {
-  final occurrence = scan.firstCoOccurrenceAcross(
-    ocrReferences.map((r) => r.markerId),
-    uploadReferences.map((r) => r.markerId),
-  );
+  final ocrIds = ocrReferences.map((r) => r.markerId);
+  final uploadIds = uploadReferences.map((r) => r.markerId);
+  final occurrence = scan.firstCoOccurrenceAcross(ocrIds, uploadIds);
   if (occurrence == null) {
+    // 不在同一方法体，再看调用链：1 跳 = 直接调用，2 跳 = 经由一个中间方法。
+    // 这一档比整包层面强得多 —— 至少能说「这两步在同一条调用路径上」。
+    final chain = scan.firstChainBetween(ocrIds, uploadIds);
+    if (chain != null) {
+      return (
+        code: 'android.rule_c.relationship_chain',
+        fallback: 'The call sites for text recognition and upload are in '
+            'different method bodies connected by a call chain '
+            '(${chain.path}, ${chain.hops} hop(s)). Both stages have '
+            'evidence and they lie on one call path, but "the value flows '
+            'from one to the other" is still not proven: the arguments '
+            'passed across the call are not tracked.',
+        args: {'path': chain.path, 'hops': chain.hops},
+        caller: null,
+        hops: chain.hops,
+        path: chain.path,
+      );
+    }
     return (
       code: 'android.rule_c.relationship_package',
       fallback: 'The call instructions for text recognition and upload are '
@@ -1571,6 +1597,8 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
           'the upload request.',
       args: const {},
       caller: null,
+      hops: -1,
+      path: null,
     );
   }
   return (
@@ -1585,5 +1613,7 @@ List<SecurityEvidence> referenceEvidence(List<CodeReference> references) {
         'code path" is not proven.',
     args: {'caller': occurrence.callerDisplayName},
     caller: occurrence.callerDisplayName,
+    hops: 0,
+    path: null,
   );
 }

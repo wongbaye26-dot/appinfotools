@@ -163,6 +163,26 @@ void main() {
     expect(ids, contains('ANDROID-NATIVE-EXEC-STACK'));
   });
 
+  test('真实 DEX 上真的建立了调用图（不是只在单测里能建）', () {
+    // 调用图是「1–2 跳」那一档证据的前提。它由 `DexMethodScanner` 在遍历
+    // `invoke-*` 时顺手记下 —— 这条用例确认它在**真实字节码**上确实产出了边。
+    final scan = DexMethodScanner.scan([
+      DexBytes(
+        'classes.dex',
+        _read('test/fixtures/dex/real-cooccurrence.dex'),
+      ),
+    ]);
+    expect(scan.callSiteCount, greaterThan(0));
+    expect(scan.callersOfMarkerMethods, isNotEmpty);
+    // 上传方法是被调用方，调用者是 Pipeline.run。
+    final uploadCallers = scan.callersOfMarkerMethods.entries
+        .where((e) => e.key.contains('uploadImage'))
+        .expand((e) => e.value)
+        .toList();
+    expect(uploadCallers, isNotEmpty);
+    expect(uploadCallers.any((c) => c.contains('Pipeline')), isTrue);
+  });
+
   test('有上传能力时不再输出「未发现上传」的结论', () async {
     final result = await _auditFromDisk(apkPath);
     expect(

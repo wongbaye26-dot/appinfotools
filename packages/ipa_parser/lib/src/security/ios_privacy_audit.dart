@@ -4,6 +4,7 @@ import 'package:analysis_model/analysis_model.dart';
 
 import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
+import '../macho.dart';
 import '../ios_signature.dart';
 import '../plist/plist_value.dart';
 import 'ios_native_symbol_audit.dart';
@@ -160,6 +161,40 @@ class IosPrivacyAudit {
     ('bluetooth', 'CoreBluetooth central manager', 'CBCentralManager'),
     ('motion', 'Core Motion (accelerometer / activity)', 'CMMotionManager'),
   ];
+
+  /// 「主动请求权限」的选择子。
+  ///
+  /// ## 为什么单独一张表
+  ///
+  /// `_markers` 是在整文件里搜字符串 —— 命中只能说明「这个词出现过」，
+  /// 可能是日志、注释、资源名。而**选择子表**（`__TEXT,__objc_methname`）
+  /// 是这个二进制真正引用过的方法名：`requestTrackingAuthorization...`
+  /// 出现在那里，说明代码里有 `objc_msgSend` 拿它去调用。
+  ///
+  /// 这把证据从「声明了什么」推到「会去申请什么」，比 Info.plist 的用途说明
+  /// 强一档 —— 用途说明是上架材料，请求权限是运行时行为。
+  ///
+  /// 选择子带冒号（`requestAuthorizationForAccessLevel:handler:`），因此
+  /// 匹配用**前缀**而不是相等。
+  /// 表里第二列是**框架/类名**而不是「相册」「定位」这类词：它们是专有名词，
+  /// 不需要翻译，也就不会在英文界面里出现中文、在中文界面里出现英文。
+  static const List<(String, String)> _permissionRequestSelectors = [
+    ('PHPhotoLibrary', 'requestAuthorizationForAccessLevel'),
+    ('ATTrackingManager', 'requestTrackingAuthorization'),
+    ('AVCaptureDevice', 'requestAccessForMediaType'),
+    ('CNContactStore', 'requestAccessForEntityType'),
+    ('CLLocationManager', 'requestWhenInUseAuthorization'),
+    ('CLLocationManager', 'requestAlwaysAuthorization'),
+    ('AVAudioSession', 'requestRecordPermission'),
+    ('UNUserNotificationCenter', 'requestAuthorizationWithOptions'),
+    ('HKHealthStore', 'requestAuthorizationToShareTypes'),
+  ];
+
+  /// 选择子表最多读多少字节。
+  ///
+  /// 实测 `sun_signed.ipa` 主可执行文件的 `__objc_methname` 是 120 KB；
+  /// 2 MiB 足够覆盖超大二进制，又不至于让一个畸形节把内存吃光。
+  static const int maxMethnameBytes = 2 * 1024 * 1024;
 
   /// [executableBytes] 为主 Mach-O 的内容；`null` 表示读不到
   /// （此时会在 limitations 里明确说明覆盖不足）。
@@ -398,6 +433,11 @@ class IosPrivacyAudit {
     // 「网络」一节在 iOS 上**永远是空的**，而「数据发到哪」正是用户最想知道的。
     final domainSet = <String>{};
     final ipSet = <String>{};
+    // 主动请求权限的证据：API 名 → 命中的选择子（含冒号的原样）。
+    final requestedByApi = <String, Set<String>>{};
+    final requestSources = <String, Set<String>>{};
+    // 有没有任何一个可执行文件真的读到了 `__objc_methname`。
+    var methnameReadable = false;
     var scanned = 0;
     // 参与扫描的可执行文件**总字节数**（未被预算截断的那个数）。
     // 用它当 `ios.macho.strings` 的 limit，读者才看得出「扫了 64 MiB 里的
@@ -438,6 +478,31 @@ class IosPrivacyAudit {
       final limit = bytes.length < budgetBytes ? bytes.length : budgetBytes;
       scanned += limit;
       attempted += bytes.length;
+
+      // 选择子表：按节取，而不是在整文件里搜。
+      final methname = MachOParser.parse(bytes).sectionBytes(
+        bytes,
+        segment: '__TEXT',
+        section: '__objc_methname',
+      );
+      if (methname != null && methname.isNotEmpty) {
+        methnameReadable = true;
+        final selectorLimit = methname.length < maxMethnameBytes
+            ? methname.length
+            : maxMethnameBytes;
+        final selectors = AsciiStrings.extract(
+          methname,
+          limit: selectorLimit,
+          minLength: 3,
+        );
+        for (final selector in selectors) {
+          for (final (api, prefix) in _permissionRequestSelectors) {
+            if (!selector.startsWith(prefix)) continue;
+            (requestedByApi[api] ??= <String>{}).add(selector);
+            (requestSources[api] ??= <String>{}).add(target.path);
+          }
+        }
+      }
 
       for (final str in AsciiStrings.extract(
         bytes,
@@ -564,6 +629,55 @@ class IosPrivacyAudit {
             'executables were neither scanned for API clues nor counted in the '
             'coverage figures above.',
         {'count': unparsedNested, 'total': nestedDenominator},
+      ));
+    }
+
+    // ---- 主动请求权限（选择子表）----
+    //
+    // 与「声明了用途说明」是两件事：用途说明是上架材料，选择子说明代码里
+    // 真的会去申请。这是本审计里**唯一**一处不靠字符串扫描得出的结论。
+    if (requestedByApi.isNotEmpty) {
+      final apis = requestedByApi.keys.toList()..sort();
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-PERMISSION-REQUEST',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.independentCapability,
+        finding: 'The binary actively requests ${apis.length} system '
+            'permission(s): ${apis.join(', ')}. The evidence is the '
+            '**selector table** (`__TEXT,__objc_methname`), so this is code '
+            'that will ask the user — stronger than a usage description in '
+            'Info.plist, which only says the app is allowed to ask.',
+        messageCode: 'ios.permission_request',
+        messageArgs: {'count': apis.length, 'apis': apis},
+        evidence: [
+          for (final entry in requestedByApi.entries)
+            SecurityEvidence(
+              source: SecurityEvidenceSource.machoSymbol,
+              location: '__TEXT,__objc_methname',
+              detail: '${entry.key}: ${entry.value.join(', ')}',
+            ),
+        ],
+        relationship: 'A selector in `__objc_methname` is referenced by the '
+            'binary (typically through `objc_msgSend`). It proves the call '
+            'site exists in code, not that it ran during this analysis.',
+        limitation: 'Only the selector table is checked. Permission requests '
+            'issued from Swift concurrency wrappers, from code loaded at '
+            'runtime, or from the dyld shared cache do not appear here.',
+        recommendation: 'Check when each request is triggered and whether the '
+            'user is told why. A permission the app never uses should not be '
+            'requested at all.',
+        recommendationCode: 'ios.permission_request.review',
+      ));
+    } else if (scannedPaths.isNotEmpty && !methnameReadable) {
+      // 一个选择子表都没读到：可能被 strip 掉了。**必须说出来** ——
+      // 否则「没有权限请求」会被读成结论，而实际是「没看」。
+      limitations.add(AnalysisNote(
+        'ios.permission_request.no_methname',
+        'No executable had a readable `__objc_methname` section, so active '
+            'permission requests could not be determined. This is not a '
+            'statement that the app requests no permissions.',
       ));
     }
 
@@ -1568,6 +1682,9 @@ class IosPrivacyAudit {
   /// | `get-task-allow=true` | 调试器可附加进程、读内存、替换代码 —— iOS 的 `debuggable` | P1 |
   /// | `aps-environment=development` | 推送走沙箱环境，说明是开发/企业签名的包 | P3 |
   ///
+  /// 另外收 4 个**稀有**能力授权项（见 [_capabilityEntitlements]）。判据是
+  /// 「普通应用里不常见 + 扩大可达范围」，与上面刻意排除的那三项同一个标准。
+  ///
   /// **刻意不收** `keychain-access-groups` / `application-groups` /
   /// `associated-domains`：它们在正常应用里极其常见（几乎每个带登录或
   /// 分享的应用都有），一律报会让读者学会忽略整个面板。
@@ -1641,12 +1758,55 @@ class IosPrivacyAudit {
             recommendationCode: 'ios.push_sandbox.review',
           ));
         default:
-          // 其余授权项不判 —— 见上面的说明。
-          break;
+          // 常见能力项（keychain / application-groups / associated-domains）
+          // **仍然不判** —— 见上面的说明。只收「稀有且扩大攻击面」的几项。
+          final capability = _capabilityEntitlements[e.key];
+          if (capability == null) continue;
+          findings.add(SecurityFinding(
+            ruleId: 'IOS-ENTITLEMENT-CAPABILITY',
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.p3,
+            confidence: SecurityConfidence.confirmed,
+            finding: 'The provisioning profile grants the capability '
+                'entitlement ${e.key} ($capability). Unlike keychain or app '
+                'groups, this one is rare in ordinary apps and widens what the '
+                'app can reach.',
+            messageCode: 'ios.entitlement_capability',
+            messageArgs: {'name': e.key, 'capability': capability},
+            evidence: [
+              SecurityEvidence(
+                source: SecurityEvidenceSource.provisioning,
+                location: 'embedded.mobileprovision / Entitlements',
+                detail: '${e.key} = ${e.valueText}',
+              ),
+            ],
+            limitation: 'This is what the profile authorises, not what the '
+                'app does with it; the code side would need to be checked '
+                'separately.',
+            recommendation: 'Confirm the capability is required by a visible '
+                'feature, and that the profile is the one you intended to '
+                'ship.',
+            recommendationCode: 'ios.entitlement_capability.review',
+          ));
       }
     }
     return findings;
   }
+
+  /// 稀有但扩大攻击面的能力授权项。
+  ///
+  /// 为什么不收 `keychain-access-groups` / `application-groups` /
+  /// `associated-domains`：几乎每个带登录或分享的应用都有，报了只会让
+  /// 读者学会忽略整个面板。这里收的四项在普通应用里很少见。
+  static const Map<String, String> _capabilityEntitlements = {
+    'com.apple.developer.networking.networkextension':
+        'network extension — can inspect or redirect traffic',
+    'com.apple.developer.healthkit': 'HealthKit data access',
+    'com.apple.developer.homekit': 'HomeKit accessory control',
+    'com.apple.developer.family-controls':
+        'parental control (device management)',
+  };
 
   static List<SecurityEvidence> _clueEvidence(
     Map<String, _MachOClue> clues,

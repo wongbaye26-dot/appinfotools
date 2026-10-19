@@ -656,6 +656,9 @@ class AnalysisReport {
     final bundle = finding.messageArgs['bundle'];
     final count = finding.messageArgs['count'];
     final schemes = finding.messageArgs['schemes'];
+    // 主动请求权限的 API 名单（`PHPhotoLibrary` 这类专有名词，不翻译）。
+    final apis = _joinNames(finding.messageArgs['apis'], t);
+    final capability = finding.messageArgs['capability'];
     final total = finding.messageArgs['total'];
     final scanned = finding.messageArgs['scanned'];
     final bytes = finding.messageArgs['bytes'];
@@ -688,6 +691,14 @@ class AnalysisReport {
           ? null
           : f.ios_nested_usage_description(bundle: bundle, key: key),
       'ios.photo_picker' => f.ios_photo_picker,
+      'android.permission_not_grantable' =>
+        name == null ? null : f.android_permission_not_grantable(name: name),
+      'ios.entitlement_capability' => (name == null || capability == null)
+          ? null
+          : f.ios_entitlement_capability(name: name, capability: capability),
+      'ios.permission_request' => (count == null || apis == null)
+          ? null
+          : f.ios_permission_request(count: count, apis: apis),
       'ios.rule_a' => f.ios_rule_a,
       'ios.ocr_capability' => f.ios_ocr_capability,
       'ios.rule_c' => f.ios_rule_c,
@@ -835,6 +846,11 @@ class AnalysisReport {
         f.ios_usage_description_cross_check,
       'ios.photo_picker.confirm_input_path' =>
         f.ios_photo_picker_confirm_input_path,
+      'ios.permission_request.review' => f.ios_permission_request_review,
+      'android.permission_not_grantable.review' =>
+        f.android_permission_not_grantable_review,
+      'ios.entitlement_capability.review' =>
+        f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
         f.ios_capability_no_usage_add_usage,
       'ios.usage_without_api.review' => f.ios_usage_without_api_review,
@@ -918,6 +934,8 @@ class AnalysisReport {
     // 规则 C 的关联说明要嵌「出现在哪个方法体里」—— 这是目前唯一带参数的
     // 关联说明，因此 relationshipArgs 是**有真实消费者才加**的。
     final caller = finding.relationshipArgs['caller'];
+    final path = finding.relationshipArgs['path'];
+    final hops = finding.relationshipArgs['hops'];
     final String? localized = switch (code) {
       'ios.usage_without_api.relationship' =>
         f.ios_usage_without_api_relationship,
@@ -945,6 +963,9 @@ class AnalysisReport {
       'android.rule_c.relationship_method' => caller == null
           ? null
           : f.android_rule_c_relationship_method(caller: caller),
+      'android.rule_c.relationship_chain' => (path == null || hops == null)
+          ? null
+          : f.android_rule_c_relationship_chain(path: path, hops: hops),
       'ios.native_symbols.relationship' => f.ios_native_symbols_relationship,
       'android.native_symbols.relationship' =>
         f.android_native_symbols_relationship,
@@ -1431,6 +1452,8 @@ class AnalysisReport {
           : n.ios_native_symbols_unreadable(count: count, names: names),
       'ios.native_symbols.stripped' => n.ios_native_symbols_stripped,
       'ios.native_symbols.semantics' => n.ios_native_symbols_semantics,
+      'ios.permission_request.no_methname' =>
+        n.ios_permission_request_no_methname,
       'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.sdk_inventory.no_dex' => n.android_sdk_inventory_no_dex,
       'android.sdk_inventory.incomplete' =>

@@ -107,6 +107,7 @@ class PermissionCatalog {
     PermissionRule(
       name: 'MANAGE_EXTERNAL_STORAGE',
       category: SecurityCategory.photoAccess,
+      protection: PermissionProtection.special,
       baseSeverity: SecuritySeverity.p2,
       minApi: 30,
       description:
@@ -258,10 +259,17 @@ class PermissionCatalog {
     PermissionRule(
       name: 'READ_CLIPBOARD',
       category: SecurityCategory.deviceData,
-      baseSeverity: SecuritySeverity.p3,
-      description: 'Read the clipboard.',
-      riskNote: 'The clipboard may contain sensitive text; spec 3.4 lists it '
-          'as a source of interest.',
+      // signature 级（AOSP `frameworks/base/core/res/AndroidManifest.xml`）：
+      // 三方应用声明了也**拿不到**。按 P3 报是假阳性 —— 它不可能生效。
+      // 仍然报，但改成「声明了但系统不会授予」，因为出现它本身说明代码
+      // 来自系统应用、抄来的样本，或者混淆产物。
+      protection: PermissionProtection.signature,
+      baseSeverity: SecuritySeverity.info,
+      description: 'Read the clipboard (signature-level permission).',
+      riskNote: 'Signature-level: a third-party app cannot be granted this, '
+          'so the declaration has no effect. Seeing it usually means the code '
+          'came from a system app, a copy-pasted sample, or an obfuscated '
+          'build.',
     ),
     // ---- 2026-10-19 审计补的 4 类（此前落进 UNCATEGORIZED 汇总桶）----
     //
@@ -271,6 +279,7 @@ class PermissionCatalog {
     PermissionRule(
       name: 'SYSTEM_ALERT_WINDOW',
       category: SecurityCategory.other,
+      protection: PermissionProtection.special,
       baseSeverity: SecuritySeverity.p3,
       description: 'Draw over other apps (overlay windows).',
       riskNote: 'An overlay can cover the screen and capture taps — the '
@@ -280,6 +289,7 @@ class PermissionCatalog {
     PermissionRule(
       name: 'REQUEST_INSTALL_PACKAGES',
       category: SecurityCategory.other,
+      protection: PermissionProtection.special,
       baseSeverity: SecuritySeverity.p2,
       description: 'Request installation of other app packages.',
       riskNote: 'Lets the app hand an APK to the system installer. This is the '
@@ -322,6 +332,25 @@ class PermissionCatalog {
 ///
 /// [baseSeverity] 是**单独出现时**的等级；组合规则（A/B/C/D/E）会在其上调整，
 /// 这正是规格「等级不由权限数量决定、要考虑证据强度与关联」的落地方式。
+/// 权限的保护级别。
+///
+/// 只影响**能否被授予**这一件事，不影响风险定级 —— 那是 `baseSeverity` 的事。
+/// 之所以需要它：`signature` 级的权限三方应用声明了也拿不到，按普通权限
+/// 报一条 P3 是**假阳性**（2026-10-19 审计）。
+enum PermissionProtection {
+  /// 安装即授予。
+  normal,
+
+  /// 运行时弹窗授予。
+  dangerous,
+
+  /// 需要到设置页单独授权（悬浮窗、装应用、全文件访问）。
+  special,
+
+  /// 只有同签名或系统应用能拿到 —— 三方应用声明了也无效。
+  signature,
+}
+
 class PermissionRule {
   /// 权限短名。它同时是这张表的**稳定 id**：本地化文案按它取
   /// （见 `AnalysisReport` 的 `_permissionRuleText`）。
@@ -330,6 +359,10 @@ class PermissionRule {
   final SecurityCategory category;
 
   final SecuritySeverity baseSeverity;
+
+  /// 保护级别。默认 [PermissionProtection.dangerous] 过于武断，因此显式
+  /// 写在需要的条目上；未标注的按 [PermissionProtection.normal] 处理。
+  final PermissionProtection protection;
 
   /// 该权限自哪个 API 级别引入；早于它的声明不生效。
   final int? minApi;
@@ -355,6 +388,7 @@ class PermissionRule {
     required this.name,
     required this.category,
     required this.baseSeverity,
+    this.protection = PermissionProtection.normal,
     this.minApi,
     this.maxApiEffectiveAbove,
     required this.description,

@@ -682,7 +682,14 @@
       "android_native_exec_stack_review": "去掉 -z execstack 重新編譯這個函式庫（NDK 預設就是不可執行堆疊）；如果函式庫來自第三方，向供應商索取修復後的建置。",
       "android_third_party_sdk": "程式碼裡發現了 {count} 個第三方服務類 SDK：{names}。這些函式庫會把資料送到各自的伺服器；這份清單本身是資訊，不是風險結論。",
       "android_third_party_sdk_limitation": "只按類名前綴比對，且只比對本目錄裡收錄的服務類 SDK：基礎函式庫（HTTP 客戶端、JSON、UI、動畫）刻意不收，因為幾乎每個應用程式都有。引用數是「帶該前綴的類名條數」，不是呼叫次數。混淆或重打包過的 SDK 認不出來。只涵蓋真正讀到的 DEX —— 具體條數見覆蓋率。",
-      "android_third_party_sdk_review": "逐個核對每個 SDK 與應用程式隱私政策是否一致：它收集什麼資料、送到哪裡。移除應用程式其實不需要的那些。"
+      "android_third_party_sdk_review": "逐個核對每個 SDK 與應用程式隱私政策是否一致：它收集什麼資料、送到哪裡。移除應用程式其實不需要的那些。",
+      "ios_permission_request": "程式碼裡主動請求了 {count} 項系統權限：{apis}。證據來自選擇子表（__TEXT,__objc_methname）—— 這是「會去申請」的程式碼，比 Info.plist 的用途說明強一檔：後者只說明應用程式**被允許**申請。",
+      "ios_permission_request_review": "確認每項權限的請求時機與告知方式；應用程式用不到的權限不應申請。",
+      "android_rule_c_relationship_chain": "識別與上傳的呼叫指令不在同一方法體，但由一條呼叫鏈連著（{path}，{hops} 跳）。兩個環節都有證據，而且落在同一條呼叫路徑上；但「值從前者流到後者」仍未被證明 —— 跨呼叫傳遞的參數沒有追蹤。",
+      "android_permission_not_grantable": "{name} 是 signature 級權限：三方應用程式拿不到授權，這條宣告在執行時沒有作用。出現它通常說明程式碼來自系統應用程式，或者來自混淆／拼裝產物。",
+      "android_permission_not_grantable_review": "把它當「程式碼來源」的線索而不是能力線索：查一下這段程式碼是從哪來的。",
+      "ios_entitlement_capability": "描述檔授予了能力授權項 {name}（{capability}）。它不像鑰匙圈或應用程式群組那樣普遍，普通應用程式裡很少見，而且擴大了應用程式能觸達的範圍。",
+      "ios_entitlement_capability_review": "確認這項能力有可見功能需要，並確認這是你打算發佈的那份描述檔。"
     },
     "sources": {
       "photo_library": "完整照片圖庫（PhotoKit）",
@@ -856,7 +863,8 @@
       "android_sdk_inventory_no_dex": "沒有提供 DEX 內容，因此未建立第三方 SDK 清單",
       "android_sdk_inventory_incomplete": "{truncated} 個 DEX 被截斷、{failed} 個讀不出來；只出現在那些區域的 SDK 不會被列出",
       "ios_executables_truncated": "有 {count} 個嵌套 bundle 完全沒有解析（共 {total} 個含程式碼的 bundle），因此它們的可執行檔既沒有做 API 線索掃描，也沒有算進上面的覆蓋率。",
-      "android_signing_block_unreadable": "APK 簽章區塊無法讀取（{reason}）：v2+ 簽章方案未知，因此本次不能下「沒有簽章區塊」的結論。這不等於「簽章無效」。"
+      "android_signing_block_unreadable": "APK 簽章區塊無法讀取（{reason}）：v2+ 簽章方案未知，因此本次不能下「沒有簽章區塊」的結論。這不等於「簽章無效」。",
+      "ios_permission_request_no_methname": "沒有任何可執行檔帶有可讀的 __objc_methname 節，因此無法判定是否主動請求權限。這不等於「沒有申請權限」。"
     },
     "findings": "發現項",
     "sdk_categories": {

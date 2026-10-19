@@ -41,6 +41,38 @@ enum MachOFileType {
       };
 }
 
+/// 一个 Mach-O 节（`section` / `section_64`）。
+///
+/// **为什么需要节而不是只要段**：`__TEXT` 段里既有代码也有好几张字符串表，
+/// 只看段等于把它们混成一锅。`__objc_methname`（选择子表）是「这个二进制
+/// 引用了哪些方法」的结构化证据，比在整文件里搜字符串精确得多。
+class MachOSection {
+  /// 节名，例如 `__objc_methname`。
+  final String name;
+
+  /// 所属段名，例如 `__TEXT`。
+  final String segment;
+
+  /// 节在**文件**中的偏移（fat 二进制里是相对切片起点的偏移）。
+  final int fileOffset;
+
+  /// 节的字节数。零填充节（`__bss`）为 0。
+  final int fileSize;
+
+  const MachOSection({
+    required this.name,
+    required this.segment,
+    required this.fileOffset,
+    required this.fileSize,
+  });
+
+  /// `__TEXT,__objc_methname` 这种「段,节」写法 —— 证据里直接用这个。
+  String get qualifiedName => '$segment,$name';
+
+  @override
+  String toString() => 'MachOSection($qualifiedName, $fileOffset+$fileSize)';
+}
+
 /// 一个 Mach-O 段（`LC_SEGMENT` / `LC_SEGMENT_64`）。
 class MachOSegment {
   final String name;
@@ -52,7 +84,11 @@ class MachOSegment {
   /// 段在内存中的大小。
   final int vmSize;
 
+  /// 段内声明的节数。
   final int sectionCount;
+
+  /// 段内的节。数量与 [sectionCount] 一致（命令被截断时可能少几条）。
+  final List<MachOSection> sections;
 
   const MachOSegment({
     required this.name,
@@ -60,7 +96,16 @@ class MachOSegment {
     required this.fileSize,
     required this.vmSize,
     required this.sectionCount,
+    this.sections = const [],
   });
+
+  /// 按节名取（同一段内节名唯一）。
+  MachOSection? section(String name) {
+    for (final s in sections) {
+      if (s.name == name) return s;
+    }
+    return null;
+  }
 
   @override
   String toString() =>
@@ -297,6 +342,30 @@ class MachOFile {
   });
 
   bool get isFat => container == MachOContainer.fat;
+
+  /// 取某个节的字节（自动加上切片的起始偏移）。
+  ///
+  /// 只返回**文件里真实存在**的那一段：零填充节（`__bss`）、越界偏移、
+  /// 声明长度超过切片末尾，一律返回 `null` —— 调用方据此区分「没有这个节」
+  /// 与「节存在但读不到」，不要用空列表糊过去。
+  Uint8List? sectionBytes(
+    Uint8List file, {
+    required String segment,
+    required String section,
+  }) {
+    for (final image in images) {
+      for (final seg in image.segments) {
+        if (seg.name != segment) continue;
+        final sec = seg.section(section);
+        if (sec == null || sec.fileSize <= 0) return null;
+        final start = image.offset + sec.fileOffset;
+        final end = start + sec.fileSize;
+        if (start < 0 || end > file.length || end <= start) return null;
+        return Uint8List.sublistView(file, start, end);
+      }
+    }
+    return null;
+  }
 
   /// 是否成功解析出至少一个镜像。
   bool get isMachO => images.isNotEmpty;
@@ -938,7 +1007,65 @@ class MachOParser {
       fileSize: fileSize,
       vmSize: vmSize,
       sectionCount: sectionCount ?? 0,
+      sections: _readSections(
+        data,
+        cursor: cursor,
+        cmdsize: cmdsize,
+        is64: is64,
+        order: order,
+        declared: sectionCount ?? 0,
+      ),
     );
+  }
+
+  /// 读取段命令后面的节表。
+  ///
+  /// 布局：`segment_command(_64)` 之后紧跟 `sectionCount` 条节记录。
+  /// - 64 位：`section_64` 每条 80 字节，`sectname` 在 +0、`segname` 在 +16、
+  ///   `size`（8 字节）在 +40、`offset`（4 字节）在 +48；
+  /// - 32 位：`section` 每条 68 字节，`size`（4 字节）在 +36、`offset` 在 +40。
+  ///
+  /// **逐条按 `cmdsize` 与文件长度双重限界**：`sectionCount` 来自文件，
+  /// 可以被写成任意大的数；用它做循环上限而不校验就等于让文件决定内存分配。
+  static List<MachOSection> _readSections(
+    Uint8List data, {
+    required int cursor,
+    required int cmdsize,
+    required bool is64,
+    required MachOByteOrder order,
+    required int declared,
+  }) {
+    if (declared <= 0) return const [];
+    final headerSize = is64 ? 72 : 56;
+    final entrySize = is64 ? 80 : 68;
+    final available = cmdsize - headerSize;
+    if (available < entrySize) return const [];
+    // 用「命令里真有多少字节」和「声明了多少条」的较小值当上限。
+    final maxBySize = available ~/ entrySize;
+    final count = declared < maxBySize ? declared : maxBySize;
+
+    final sections = <MachOSection>[];
+    for (var i = 0; i < count; i++) {
+      final base = cursor + headerSize + i * entrySize;
+      if (base + entrySize > data.length) break;
+      final name = _cString(data.sublist(base, base + 16));
+      final segment = _cString(data.sublist(base + 16, base + 32));
+      if (name.isEmpty) continue;
+      final size = is64
+          ? _readUint64(data, base + 40, order)
+          : _readUint32(data, base + 36, order);
+      final offset = is64
+          ? _readUint32(data, base + 48, order)
+          : _readUint32(data, base + 40, order);
+      if (size == null || offset == null) continue;
+      sections.add(MachOSection(
+        name: name,
+        segment: segment,
+        fileOffset: offset,
+        fileSize: size,
+      ));
+    }
+    return sections;
   }
 
   /// 读取 `dylib` 结构里的名字。名字偏移是**相对命令起始位置**的。

@@ -682,7 +682,14 @@
       "android_native_exec_stack_review": "Rebuild the library without -z execstack (the NDK default is a non-executable stack) and ask the vendor for a fixed build.",
       "android_third_party_sdk": "{count} third-party service SDK(s) were found in the code: {names}. These libraries send data to their own servers; the list itself is an inventory, not a risk verdict.",
       "android_third_party_sdk_limitation": "Only class-name prefixes are matched, and only for the service SDKs in this catalogue: basic libraries (HTTP client, JSON, UI, animation) are deliberately excluded because they appear in almost every app. The reference count is the number of class names with that prefix, not the number of calls. An obfuscated or repackaged SDK will not be recognised. Only the DEX files that were read are covered — see the coverage entry for how many.",
-      "android_third_party_sdk_review": "Check each SDK against the app's privacy policy: what data does it collect, and where does it send it. Remove the ones the app does not actually need."
+      "android_third_party_sdk_review": "Check each SDK against the app's privacy policy: what data does it collect, and where does it send it. Remove the ones the app does not actually need.",
+      "ios_permission_request": "The binary actively requests {count} system permission(s): {apis}. The evidence is the selector table (__TEXT,__objc_methname): this is code that will ask the user, which is stronger than a usage description in Info.plist — that only says the app is allowed to ask.",
+      "ios_permission_request_review": "Check when each request is triggered and whether the user is told why. A permission the app never uses should not be requested at all.",
+      "android_rule_c_relationship_chain": "The call sites for text recognition and upload are in different method bodies connected by a call chain ({path}, {hops} hop(s)). Both stages have evidence and they lie on one call path, but \"the value flows from one to the other\" is still not proven: the arguments passed across the call are not tracked.",
+      "android_permission_not_grantable": "{name} is a signature-level permission: a third-party app cannot be granted it, so this declaration has no runtime effect. Its presence usually means the code was copied from a system app or produced by an obfuscator.",
+      "android_permission_not_grantable_review": "Treat it as a code-provenance signal rather than a capability: find out where the code came from.",
+      "ios_entitlement_capability": "The provisioning profile grants the capability entitlement {name} ({capability}). Unlike keychain or app groups, this one is rare in ordinary apps and widens what the app can reach.",
+      "ios_entitlement_capability_review": "Confirm the capability is required by a visible feature, and that the profile is the one you intended to ship."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -856,7 +863,8 @@
       "android_sdk_inventory_no_dex": "No DEX content was provided, so the third-party SDK inventory was not built",
       "android_sdk_inventory_incomplete": "{truncated} DEX file(s) were truncated and {failed} could not be read; SDKs that only appear in those regions are not listed",
       "ios_executables_truncated": "{count} nested bundle(s) were not parsed at all (of {total} bundles that contain code), so their executables were neither scanned for API clues nor counted in the coverage figures above.",
-      "android_signing_block_unreadable": "The APK Signing Block could not be read ({reason}): the v2+ signature schemes are unknown, so \"no signature block found\" is not a conclusion this run can make. This is not a verdict that the signature is invalid."
+      "android_signing_block_unreadable": "The APK Signing Block could not be read ({reason}): the v2+ signature schemes are unknown, so \"no signature block found\" is not a conclusion this run can make. This is not a verdict that the signature is invalid.",
+      "ios_permission_request_no_methname": "No executable had a readable __objc_methname section, so active permission requests could not be determined. This is not a statement that the app requests no permissions."
     },
     "findings": "Findings",
     "sdk_categories": {

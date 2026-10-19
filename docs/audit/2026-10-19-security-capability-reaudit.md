@@ -712,3 +712,92 @@ collectedDataTypes，于是**只声明必需理由 API 的清单**（很常见�
 
 §6 的八条设计边界**一条都没变** —— 本轮改的是「分母、可见性与交付」，
 没有把静态分析包装成动态分析。
+
+---
+
+## 11. 能力增强记录（2026-10-19，第二批）
+
+§7 的 12 条修完之后，按「深度优先」又做了三项。§10 修的是**诚实性与交付**，
+这一批动的是**证据强度**本身。
+
+### 11.1 iOS 节级扫描 → 主动请求权限
+
+**先纠正一个我在提案里的判断错误**：原计划是「按 `__objc_classname` 读类名表，
+消掉『字符串里提到』的误报」。查了 Mach-O 布局后确认这条路走不通 ——
+`__objc_classname` 只放**本二进制定义**的类，框架类（`PHPhotoLibrary` 等）不会
+出现在那里，它们只在 `__objc_classrefs` 的指针里，要解析绑定信息才能拿到。
+
+真正能用的是 **`__objc_methname`（选择子表）**：那里是二进制真正引用过的方法名，
+包括 `requestTrackingAuthorizationWithCompletionHandler:` 这种。于是改成：
+
+| 变更 | 位置 |
+|---|---|
+| `MachOSection` + 节表解析（`segment_command.sections[]`，32/64 位各一套偏移，逐条按 `cmdsize` 与文件长度双重限界） | `macho.dart` |
+| `MachOFile.sectionBytes(file, segment:, section:)`：自动加切片偏移，越界返回 `null` | `macho.dart` |
+| 9 个「请求权限」选择子（相册 / ATT / 摄像头麦克风 / 通讯录 / 前台定位 / 始终定位 / 麦克风 / 通知 / 健康） | `ios_privacy_audit.dart` |
+| 新发现项 `IOS-PERMISSION-REQUEST`（info，`independentCapability`），证据定位到 `__TEXT,__objc_methname` | 同上 |
+| 选择子表读不到时追加限制说明（`ios.permission_request.no_methname`） | 同上 |
+
+**实测 `sun_signed.ipa`**：`__TEXT` 有 24 个节，`__objc_methname` 122,848 字节、
+5,286 个选择子；命中 3 个权限请求 —— `PHPhotoLibrary`、`ATTrackingManager`、
+`AVCaptureDevice`。
+
+这是 iOS 侧第一条**不靠字符串扫描**的结论：它回答的是「代码会去申请什么」，
+而用途说明只回答「应用被允许申请什么」。
+
+**踩到的坑**：选择子带冒号，第一版用 `contains(selector)` 精确比对，7 个全部
+没命中；改成前缀匹配后命中 3 个。这类「名字里带参数」的字符串，匹配方式必须
+先看真实数据。
+
+### 11.2 跨方法调用链（1–2 跳）
+
+`DexMethodScanner` 在遍历 `invoke-*` 时顺手记两条边，**只围绕带标记的方法**，
+因此规模与命中数同阶，不随 1586 万个调用点膨胀：
+
+- `callersOfMarkerMethods`：被调用方带标记 → 记下调用方；
+- `edgesFromMarkerCallers`：调用方已带标记 → 记下它调用了谁（走第二步用）。
+
+`firstChainBetween()` 先找 1 跳（A 直接调 B），再找 2 跳（A → X → B），
+`maxHops` 可关掉第二段。`coOccurrenceNote` 因此从两档变三档：
+
+| 证据 | 关系说明 code | 等级 |
+|---|---|---|
+| 同一方法体 | `android.rule_c.relationship_method` | P1 |
+| 调用链 1 跳 | `android.rule_c.relationship_chain` | P1 |
+| 调用链 2 跳 | 同上（`hops=2`） | P2 |
+| 整包层面 | `android.rule_c.relationship_package` | P2 |
+
+`dataTransform` 在调用链情形下给的是**链路**（`A → X → B`），不是猜一个方法名。
+
+**已知局限（写在代码注释与关系说明里）**：`edgesFromMarkerCallers` 只在该调用方
+**已经被确认带标记之后**才记录，同一个方法体里标记出现之前的调用点会漏掉。
+这是为了不把 1586 万个调用点全部拼成字符串的代价；要补全需要第二遍遍历，
+实测成本约 +3.2 秒（343 MB 样本），本轮没做。
+
+### 11.3 权限保护级别 + 授权项分级
+
+**Android**：`PermissionRule` 增加 `protection`（normal / dangerous / special /
+signature）。`READ_CLIPBOARD` 标为 signature —— 三方应用**拿不到**，按 P3 报是
+假阳性。现在它单独成一条 `ANDROID-PERMISSION-NOT-GRANTABLE`（info），措辞改成
+「声明了但系统不会授予，出现它通常说明代码来自系统应用或混淆产物」。
+
+**iOS**：只补 4 个**稀有**能力授权项（network extension / HealthKit / HomeKit /
+family controls），P3，一条 `IOS-ENTITLEMENT-CAPABILITY`。
+
+**没有**收 `keychain-access-groups` / `application-groups` /
+`associated-domains` —— 代码里原本就写明「刻意不收」，理由是几乎每个带登录或
+分享的应用都有，报了只会让读者学会忽略整个面板。这一批沿用同一条判据，
+没有为了「看起来更全」而推翻它。
+
+### 11.4 门禁（实测）
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `flutter test` | 0 | **1,595 通过 / 14 跳过**（上一批 1,588） |
+| `analysis_model` / `apk_parser` / `ipa_parser` / `archive_safety` / `app_icon_extractor` | 0 | 65 / **115** / 125 / 40 / 25 |
+| 6 个 `analyze --fatal-infos --fatal-warnings` | 0 | 全部 No issues found |
+| `dart format --set-exit-if-changed` | 0 | 0 changed |
+
+合计 **1,965** 条（上一批 1,952）。新增测试 3 个文件：
+`ios_sections_and_permission_requests_test.dart`、`call_chain_test.dart`，
+以及扩写的两个既有文件。

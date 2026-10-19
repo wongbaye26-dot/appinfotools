@@ -81,6 +81,45 @@ void main() {
     expect(types.last.reasons, ['CA92.1']);
   });
 
+  group('授权项分级', () {
+    test('稀有能力授权项报 P3；常见项不报', () {
+      final archive = _ipa(privacy: _privacy);
+      final container = IpaContainerReader.read(archive);
+      final plist = IpaInfoPlistReader.read(archive, container.mainApp!);
+
+      final result = IosPrivacyAudit.audit(
+        infoPlist: plist,
+        provisioningProfilePresent: true,
+        entitlements: const [
+          IosEntitlement(
+            key: 'com.apple.developer.healthkit',
+            value: PlistString('true'),
+          ),
+          // 常见项：keychain 共享。**刻意不报** —— 几乎每个带登录的应用都有。
+          IosEntitlement(
+            key: 'keychain-access-groups',
+            value: PlistString('com.example.demo'),
+          ),
+        ],
+      );
+
+      final capability = result.findings
+          .where((f) => f.ruleId == 'IOS-ENTITLEMENT-CAPABILITY')
+          .toList();
+      expect(capability, hasLength(1));
+      expect(capability.single.severity, SecuritySeverity.p3);
+      expect(
+        capability.single.messageArgs['name'],
+        'com.apple.developer.healthkit',
+      );
+      // keychain 那一项不能顺带报出来。
+      expect(
+        capability.single.messageArgs['name'],
+        isNot('keychain-access-groups'),
+      );
+    });
+  });
+
   test('没有隐私清单时仍是 absent（不伪造空清单）', () {
     final archive = _ipa();
     final container = IpaContainerReader.read(archive);

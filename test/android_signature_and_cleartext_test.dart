@@ -85,6 +85,37 @@ void main() {
     });
   });
 
+  group('权限保护级别', () {
+    test('signature 级权限单独成条：info + 「拿不到」，不按 P3 报', () {
+      final result = _audit(_meta(targetSdk: 34));
+      // 手工塞一条 READ_CLIPBOARD 声明。
+      final withClipboard = AndroidSecurityAudit.audit(
+        meta: _meta(targetSdk: 34)
+          ..permissionRequests = [
+            const AndroidPermissionRequest('android.permission.READ_CLIPBOARD'),
+          ]
+          ..permissions = ['android.permission.READ_CLIPBOARD'],
+        dexEntries: const [],
+      );
+
+      final notGrantable = result.findings
+          .where((f) => f.ruleId == 'ANDROID-PERMISSION-NOT-GRANTABLE');
+      expect(notGrantable, isEmpty, reason: '没声明就不该报');
+
+      final hit = withClipboard.findings
+          .where((f) => f.ruleId == 'ANDROID-PERMISSION-NOT-GRANTABLE')
+          .toList();
+      expect(hit, hasLength(1));
+      expect(hit.single.severity, SecuritySeverity.info);
+      // 不能再按普通权限报一条 P3 —— 那是假阳性（它不可能被授予）。
+      expect(
+        withClipboard.findings
+            .where((f) => f.ruleId == 'ANDROID-PERMISSION-READ_CLIPBOARD'),
+        isEmpty,
+      );
+    });
+  });
+
   group('签名材料：读不出来必须可见', () {
     test('签名块解析失败 → notCovered + 说明 + 限制说明，且两条签名规则都不报', () {
       final result = _audit(_meta(

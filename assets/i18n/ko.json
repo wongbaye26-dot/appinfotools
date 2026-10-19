@@ -507,7 +507,8 @@
       "android_sdk_inventory_no_dex": "DEX 내용이 제공되지 않아 서드파티 SDK 목록을 만들지 않았습니다",
       "android_sdk_inventory_incomplete": "DEX {truncated}개가 잘렸고 {failed}개를 읽지 못했습니다. 해당 영역에만 있는 SDK 는 목록에 포함되지 않습니다",
       "ios_executables_truncated": "{count}개의 중첩 번들이 전혀 파싱되지 않았습니다(코드를 포함한 총 {total}개 중). 따라서 해당 실행 파일은 API 단서 스캔도, 위의 커버리지 집계도 되지 않았습니다.",
-      "android_signing_block_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}): v2+ 서명 방식을 알 수 없으므로 이번에 \"서명 블록이 없다\"고 결론 내릴 수 없습니다. 이것은 \"서명이 유효하지 않다\"는 뜻이 아닙니다."
+      "android_signing_block_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}): v2+ 서명 방식을 알 수 없으므로 이번에 \"서명 블록이 없다\"고 결론 내릴 수 없습니다. 이것은 \"서명이 유효하지 않다\"는 뜻이 아닙니다.",
+      "ios_permission_request_no_methname": "읽을 수 있는 __objc_methname 섹션이 있는 실행 파일이 없어 권한의 능동적 요청을 판정할 수 없습니다. \"권한을 요청하지 않는다\"는 뜻이 아닙니다."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -684,7 +685,14 @@
       "android_third_party_sdk_review": "각 SDK 가 앱의 개인정보 처리방침과 일치하는지 확인하세요. 어떤 데이터를 수집하고 어디로 보내는지. 실제로 필요 없는 것은 제거하세요.",
       "android_unsigned": "이 아카이브에는 서명 자료가 전혀 없습니다. v2 이상 서명 블록도 없고, META-INF 안에 짝을 이루는 .SF와 서명 블록도 없습니다. 이 상태의 패키지는 그대로 설치할 수 없으며, 보통 빌드 산출물이거나 서명이 제거된 중간 산출물입니다.",
       "android_unsigned_limitation": "여기서는 아카이브 구조에 서명 자료가 없다는 사실만 보고합니다. 악성 여부를 판단하지 않으며 apksigner를 대체하지도 않습니다. 서명 유효성은 apksigner만 판단할 수 있습니다.",
-      "android_unsigned_review": "이 파일의 출처를 확인하십시오. 배포용이라면 설치 전에 v2/v3로 다시 서명하십시오. 서명된 패키지에서 추출한 것이라면 원래 서명은 그 과정에서 사라진 것입니다."
+      "android_unsigned_review": "이 파일의 출처를 확인하십시오. 배포용이라면 설치 전에 v2/v3로 다시 서명하십시오. 서명된 패키지에서 추출한 것이라면 원래 서명은 그 과정에서 사라진 것입니다.",
+      "ios_permission_request": "코드에서 {count}개의 시스템 권한을 능동적으로 요청합니다: {apis}. 근거는 선택자 표(__TEXT,__objc_methname)입니다. 이는 \"요청하는\" 코드이며 Info.plist의 용도 설명보다 한 단계 강한 증거입니다(후자는 요청이 **허용됨**만 나타냅니다).",
+      "ios_permission_request_review": "각 권한을 언제 요청하는지, 사용자에게 이유를 알리는지 확인하세요. 쓰지 않는 권한은 요청해서는 안 됩니다.",
+      "android_rule_c_relationship_chain": "인식과 업로드의 호출 지시는 같은 메서드 본문에 없지만 호출 체인으로 연결되어 있습니다({path}, {hops} 홉). 두 단계 모두 증거가 있고 같은 호출 경로에 있으나, \"값이 전자에서 후자로 흐른다\"는 여전히 증명되지 않았습니다(호출을 넘는 인자는 추적하지 않음).",
+      "android_permission_not_grantable": "{name}은 signature 수준 권한입니다. 서드파티 앱에는 부여되지 않으므로 이 선언은 런타임 효과가 없습니다. 보통 코드가 시스템 앱에서 왔거나 난독화·짜깁기 산출물임을 나타냅니다.",
+      "android_permission_not_grantable_review": "능력이 아니라 \"코드 출처\"의 단서로 보고, 이 코드가 어디서 왔는지 확인하세요.",
+      "ios_entitlement_capability": "프로비저닝 프로파일이 능력 엔타이틀먼트 {name}({capability})을 부여합니다. 키체인이나 앱 그룹만큼 흔하지 않고 일반 앱에서는 드물며, 앱이 접근할 수 있는 범위를 넓힙니다.",
+      "ios_entitlement_capability_review": "눈에 보이는 기능이 이 능력을 필요로 하는지, 배포하려는 프로파일이 맞는지 확인하세요."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",

@@ -482,6 +482,33 @@ class AndroidSecurityAudit {
       if (request.sdk23Only) continue;
       final rule = PermissionCatalog.lookup(request.name);
       if (rule == null) continue; // 未编目的稍后汇总
+
+      // signature 级权限：三方应用声明了也**拿不到**。按普通权限报一条 P3
+      // 是假阳性 —— 它不可能生效。仍然报，但改成「声明了但系统不会授予」，
+      // 因为出现它本身是个信号（代码来自系统应用 / 抄来的样本 / 混淆产物）。
+      if (rule.protection == PermissionProtection.signature) {
+        findings.add(SecurityFinding(
+          ruleId: 'ANDROID-PERMISSION-NOT-GRANTABLE',
+          platform: SecurityPlatform.android,
+          category: rule.category,
+          severity: SecuritySeverity.info,
+          confidence: SecurityConfidence.confirmed,
+          finding: '${request.shortName} is a signature-level permission: a '
+              'third-party app cannot be granted it, so this declaration has '
+              'no runtime effect. Its presence usually means the code was '
+              'copied from a system app or produced by an obfuscator.',
+          messageCode: 'android.permission_not_grantable',
+          messageArgs: {'name': request.shortName},
+          evidence: [manifestEvidence(request)],
+          limitation: 'The protection level comes from the AOSP framework '
+              'definition; an OEM may change it, and a preinstalled system '
+              'app can hold it legitimately.',
+          recommendation: 'Treat it as a code-provenance signal rather than a '
+              'capability: find out where the code came from.',
+          recommendationCode: 'android.permission_not_grantable.review',
+        ));
+        continue;
+      }
       if (rule.category == SecurityCategory.backgroundTask) {
         backgroundPermissions.add(request);
       }
