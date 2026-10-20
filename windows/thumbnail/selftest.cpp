@@ -1,4 +1,15 @@
-// 缩略图处理器的**自动化自检**（不进安装包）。
+// 缩略图处理器的**自检 / 注册诊断**（2.7.1 起随安装包分发）。
+//
+// ## 两种模式
+//
+//   appinfotool_thumbnail_selftest                  → 注册诊断（不需要输入文件）
+//   appinfotool_thumbnail_selftest 某个.apk [...]   → 端到端出图自检
+//
+// 注册诊断查的是「为什么资源管理器不调我们」：DLL/helper 在不在、HKCU/HKLM
+// 的 CLSID 指向哪、`.apk`/`.ipa` 的 ShellEx 挂的是不是正确的 GUID。这几件事
+// 全在注册表里，不需要用户先想清楚该传哪个文件。
+//
+// 出图自检则绕开注册表，直接 `LoadLibrary` + `DllGetClassObject`。
 //
 // ## 为什么需要它
 //
@@ -56,6 +67,10 @@
 #include <cstdlib>
 // `_isatty` / `_fileno`：判断 stdout 是不是真正的终端。
 #include <io.h>
+// `setlocale`：让 `wprintf` 能输出中文（见 wmain 开头）。
+#include <clocale>
+// `_wcsicmp`：比较注册表里的 CLSID 字符串（大小写不敏感）。
+#include <cstring>
 
 #include <string>
 // `std::pair`（--expect-distinct 收集的 (文件名, 哈希)）。
@@ -324,6 +339,162 @@ bool RunOne(IClassFactory* factory, const std::wstring& path, UINT cx,
 
 }  // namespace
 
+/// 路径是否指向一个已存在的文件（目录不算）。
+bool FileExists(const std::wstring& path) {
+  if (path.empty()) {
+    return false;
+  }
+  const DWORD attributes = ::GetFileAttributesW(path.c_str());
+  return attributes != INVALID_FILE_ATTRIBUTES &&
+         (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+/// 把一个 GUID 格式化成 `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`。
+std::wstring GuidToString(const GUID& guid) {
+  wchar_t buffer[64] = {};
+  const int written =
+      ::StringFromGUID2(guid, buffer,
+                        static_cast<int>(sizeof(buffer) / sizeof(buffer[0])));
+  if (written <= 0) {
+    return std::wstring();
+  }
+  return std::wstring(buffer);
+}
+
+/// 读某个键的默认值（`REG_SZ` / `REG_EXPAND_SZ`）。不存在时返回空串。
+///
+/// 显式用 `KEY_WOW64_64KEY`：安装器在 **64 位视图**写 HKLM，而 32 位宿主
+/// 默认读 `WOW6432Node` —— 两边看不见彼此，表现成「明明装了却说没注册」。
+std::wstring ReadDefaultString(HKEY root, const std::wstring& subkey,
+                               bool* exists) {
+  if (exists != nullptr) {
+    *exists = false;
+  }
+  HKEY key = nullptr;
+  if (::RegOpenKeyExW(root, subkey.c_str(), 0, KEY_READ | KEY_WOW64_64KEY,
+                      &key) != ERROR_SUCCESS) {
+    return std::wstring();
+  }
+  std::vector<wchar_t> buffer(512);
+  DWORD type = 0;
+  DWORD size = static_cast<DWORD>(buffer.size() * sizeof(wchar_t));
+  LONG status = ::RegQueryValueExW(key, nullptr, nullptr, &type,
+                                   reinterpret_cast<LPBYTE>(buffer.data()),
+                                   &size);
+  if (status == ERROR_MORE_DATA) {
+    buffer.resize(size / sizeof(wchar_t) + 1);
+    size = static_cast<DWORD>(buffer.size() * sizeof(wchar_t));
+    status = ::RegQueryValueExW(key, nullptr, nullptr, &type,
+                                reinterpret_cast<LPBYTE>(buffer.data()), &size);
+  }
+  ::RegCloseKey(key);
+  if (status != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) {
+    return std::wstring();
+  }
+  if (exists != nullptr) {
+    *exists = true;
+  }
+  return std::wstring(buffer.data());
+}
+
+/// 无参运行时的「注册诊断」。
+///
+/// ## 为什么要它
+///
+/// 「图标不出来」在用户机器上是最常见的问题，而**用户不知道该传哪个文件**。
+/// 绝大多数情况下问题也不在 DLL，而在注册：没写、写错 GUID、指向了旧目录。
+/// 这几件事全都能在注册表里查出来，不需要任何输入文件。
+///
+/// 逐条查四件事，最后给一句结论：
+///   1. 本目录的 DLL / helper 在不在（DLL 层能不能跑）；
+///   2. HKCU / HKLM 的 CLSID 指向哪个 DLL，那个 DLL 在不在；
+///   3. `.apk` / `.ipa` 的 ShellEx 挂的是不是 `IID_IThumbnailProvider`；
+///   4. 挂的值是不是我们的 CLSID。
+///
+/// 返回 0 = 至少有一套注册完整可用；1 = 没有。
+int DiagnoseRegistration(bool force_pause) {
+  const std::wstring directory = ModuleDirectory();
+  const std::wstring dll_path = directory + L"appinfotool_thumbnail.dll";
+  const std::wstring helper_path = directory + L"app_icon_extractor.exe";
+  const std::wstring handler_guid = GuidToString(IID_IThumbnailProvider);
+  const std::wstring clsid = GuidToString(kExpectedClsid);
+
+  std::wprintf(L"\n== 注册诊断 ==\n");
+  std::wprintf(L"本目录 : %s\n", directory.c_str());
+  std::wprintf(L"dll    : %s  %s\n", dll_path.c_str(),
+               FileExists(dll_path) ? L"[存在]" : L"[缺失]");
+  std::wprintf(L"helper : %s  %s\n", helper_path.c_str(),
+               FileExists(helper_path) ? L"[存在]" : L"[缺失]");
+  std::wprintf(L"CLSID      : %s\n", clsid.c_str());
+  std::wprintf(L"ShellEx GUID: %s\n", handler_guid.c_str());
+
+  struct Root {
+    const wchar_t* label;
+    HKEY key;
+  };
+  const Root roots[] = {{L"HKCU", HKEY_CURRENT_USER},
+                        {L"HKLM", HKEY_LOCAL_MACHINE}};
+  const wchar_t* extensions[] = {L".apk", L".ipa"};
+
+  bool usable = false;
+  for (const Root& root : roots) {
+    bool clsid_exists = false;
+    const std::wstring registered_dll = ReadDefaultString(
+        root.key,
+        std::wstring(L"Software\\Classes\\CLSID\\") + clsid +
+            L"\\InprocServer32",
+        &clsid_exists);
+    const bool dll_ok = clsid_exists && FileExists(registered_dll);
+    std::wprintf(L"\n%s\n", root.label);
+    std::wprintf(L"  CLSID   %s\n",
+                 clsid_exists ? registered_dll.c_str() : L"(未注册)");
+    if (clsid_exists) {
+      std::wprintf(L"          %s\n",
+                   dll_ok ? L"[文件存在]" : L"[文件不存在 —— 指向旧目录？]");
+    }
+
+    bool root_ok = dll_ok;
+    for (const wchar_t* extension : extensions) {
+      bool handler_exists = false;
+      const std::wstring value = ReadDefaultString(
+          root.key,
+          std::wstring(L"Software\\Classes\\") + extension + L"\\ShellEx\\" +
+              handler_guid,
+          &handler_exists);
+      const bool matches =
+          handler_exists && _wcsicmp(value.c_str(), clsid.c_str()) == 0;
+      std::wprintf(L"  %-5s   %s  %s\n", extension,
+                   handler_exists ? value.c_str() : L"(未注册)",
+                   matches ? L"[正确]" : L"[不是我们的处理器]");
+      root_ok = root_ok && matches;
+    }
+    if (root_ok) {
+      usable = true;
+    }
+  }
+
+  std::wprintf(L"\n== 结论 ==\n");
+  if (usable) {
+    std::wprintf(
+        L"注册是完整的。若资源管理器仍显示应用图标，基本就是缓存：\n"
+        L"  taskkill /f /im explorer.exe 然后 start explorer.exe\n");
+  } else if (!FileExists(dll_path)) {
+    std::wprintf(
+        L"本目录没有 appinfotool_thumbnail.dll —— 这份自检包不完整。\n"
+        L"重新解压发布页的 zip，或直接用安装目录里的那一份。\n");
+  } else {
+    std::wprintf(
+        L"没有任何一套完整注册。装安装版会自动写；\n"
+        L"便携版打开一次应用（设置页「系统文件图标 → 启用」）即可。\n");
+  }
+  std::wprintf(
+      L"\n想验证 DLL 本身能不能出图，传一个包：\n"
+      L"  appinfotool_thumbnail_selftest 某个.apk\n");
+
+  PauseIfNeeded(force_pause, false);
+  return usable ? 0 : 1;
+}
+
 int wmain(int argc, wchar_t** argv) {
   // **先关掉缓冲**，再干任何事。
   //
@@ -331,6 +502,15 @@ int wmain(int argc, wchar_t** argv) {
   // 定位问题最需要的信息。宁可多几次系统调用，也不能让它丢。
   std::setvbuf(stdout, nullptr, _IONBF, 0);
   std::setvbuf(stderr, nullptr, _IONBF, 0);
+
+  // 中文输出要能看见。
+  //
+  // `wprintf` 默认按 "C" locale 把宽字符转成多字节，**非 ASCII 会被直接丢掉** ——
+  // 用户看到的就是「打了一半就没了」（2.7.1 首次实机反馈正是这个现象：
+  // 只有 ASCII 的 step 行出来了，中文用法一个字都没有）。
+  // 两件事一起做：让 CRT 按 UTF-8 转换，并让控制台按 UTF-8 解释。
+  ::SetConsoleOutputCP(CP_UTF8);
+  std::setlocale(LC_ALL, ".UTF-8");
 
   // 装崩溃处理器。放在最前面：后面任何一步崩了都能留下异常码与模块名。
   ::SetUnhandledExceptionFilter(CrashHandler);
@@ -381,27 +561,21 @@ int wmain(int argc, wchar_t** argv) {
     if (arg == L"--help" || arg == L"-h") {
       std::wprintf(
           L"usage: appinfotool_thumbnail_selftest [--cx N] "
-          L"[--expect-distinct] [--pause] file...\n");
+          L"[--expect-distinct] [--pause] file...\n"
+          L"       appinfotool_thumbnail_selftest            (注册诊断)\n");
       ::CoUninitialize();
       return 0;
     }
     files.push_back(arg);
   }
   if (files.empty()) {
-    std::wprintf(
-        L"没有输入文件。\n\n"
-        L"用法：appinfotool_thumbnail_selftest [选项] 文件1.apk [文件2.ipa ...]\n\n"
-        L"  选项：\n"
-        L"    --cx N              请求的缩略图边长，默认 256\n"
-        L"    --expect-distinct   断言所有成功的输入产出的图标两两不同\n"
-        L"    --pause             结束时等待回车（双击运行时自动生效）\n\n"
-        L"  示例：\n"
-        L"    appinfotool_thumbnail_selftest icon-png.apk\n\n"
-        L"注意：本目录下还需要 appinfotool_thumbnail.dll 与 "
-        L"app_icon_extractor.exe。\n");
+    // 没有输入文件时做**注册诊断**，而不是只打用法。
+    //
+    // 「图标不出来」是这个工具存在的理由，而那时候用户并不知道该传哪个文件；
+    // 真正的断点九成在注册表（没写 / GUID 写错 / 指向旧目录），这些都能在
+    // 没有输入文件的情况下查清。
     ::CoUninitialize();
-    PauseIfNeeded(force_pause, files.empty());
-    return 2;
+    return DiagnoseRegistration(force_pause);
   }
 
   Step(L"locate DLL");
