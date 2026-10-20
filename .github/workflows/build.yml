@@ -436,59 +436,85 @@ jobs:
         # **不再走 `inno_bundle`**：它的脚本生成器把「安装目录页 / 语言选择 /
         # 文件关联」三件事都写死了，配置改不出来（详见 .iss 文件头）。
         #
-        # ISCC 在 windows 镜像里不一定预装；**即使预装也可能是旧版**。
-        # 仓库里的简体中文语言文件是按 Inno 6.5+ 写的，旧版会报
-        # 「Unknown message name」，那条错误看不出根因 —— 所以先查版本，
-        # 不够就用 choco 装最新（同版本时 choco 很快返回）。
+        # ## 这一段为什么写得这么啰嗦
         #
-        # 失败时把 ISCC 输出**变成 annotation 与 Step Summary**：job 日志
-        # API 需要 admin，只有这两样是匿名可读的。
+        # job 日志 API 需要 admin（匿名 403），**只有 annotation 是匿名可读的**。
+        # 而 PowerShell 的 `throw` 只写日志、不产生 annotation —— 之前两次失败
+        # 都只留下「Process completed with exit code 1」，完全看不出原因。
+        # 所以每个失败分支都必须 `Write-Host "::error::..."` 再退出，
+        # 并把 ISCC 输出的最后几行也变成 annotation。
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-          $need = [version]'6.5'
+          $log = Join-Path $env:RUNNER_TEMP 'iscc.log'
+
+          function Fail([string]$message) {
+            Write-Host "::error::$message"
+            if (Test-Path $log) {
+              Get-Content $log | Select-Object -Last 8 | ForEach-Object { Write-Host "::error::$_" }
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### ISCC 输出"
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+              Get-Content $log | Select-Object -Last 60 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+            }
+            exit 1
+          }
+
           function Get-InnoVersion([string]$path) {
             if (-not (Test-Path $path)) { return [version]'0.0' }
             $raw = (Get-Item $path).VersionInfo.ProductVersion
-            if ($raw -match '^(\d+\.\d+)') { return [version]$Matches[1] }
+            # ProductVersion 可能是空串（某些构建没有版本资源）——
+            # `[version]$null` 会抛异常，所以先判空。
+            if (-not $raw) { return [version]'0.0' }
+            if ($raw -match '(\d+)\.(\d+)') {
+              return [version]("{0}.{1}" -f $Matches[1], $Matches[2])
+            }
             return [version]'0.0'
           }
-          if ((Get-InnoVersion $iscc) -lt $need) {
-            Write-Host "Inno Setup 未安装或版本过低，安装最新版"
-            choco install innosetup --no-progress -y
+
+          try {
+            $need = [version]'6.5'
+            $candidates = @(
+              'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+              'C:\Program Files\Inno Setup 6\ISCC.exe'
+            )
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            Write-Host "preinstalled ISCC: $iscc"
+
+            if (-not $iscc -or (Get-InnoVersion $iscc) -lt $need) {
+              # 仓库里的简体中文语言文件按 Inno 6.5+ 写，旧版会报
+              # 「Unknown message name」—— 那条错误看不出根因。
+              Write-Host "Inno Setup 缺失或版本过低，用 choco 装最新版"
+              $chocoLog = Join-Path $env:RUNNER_TEMP 'choco.log'
+              choco install innosetup --no-progress -y > $chocoLog 2>&1
+              Get-Content $chocoLog | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+              Write-Host "choco exit=$LASTEXITCODE"
+              $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            }
+            if (-not $iscc) { Fail 'ISCC.exe 找不到（choco 装完仍然没有）' }
+
+            $ver = Get-InnoVersion $iscc
+            Write-Host "ISCC $ver at $iscc"
+            if ($ver -lt $need) { Fail "Inno Setup 版本 $ver 低于 $need（中文语言文件按 6.5+ 写）" }
+
+            # 版本与源码根经**环境变量**传给脚本：ISCC 的 /D 把值当表达式，
+            # `2.6.1` 会被读成 `2.6` 后跟 `.1`（详见 .iss 文件头）。
+            $env:APPINFOTOOL_VERSION = '${{ steps.version.outputs.version }}'
+            $env:APPINFOTOOL_SOURCE_ROOT = (Get-Location).Path
+            New-Item -ItemType Directory -Force -Path 'build/windows/x64/installer/Release' | Out-Null
+            Write-Host "version=$env:APPINFOTOOL_VERSION root=$env:APPINFOTOOL_SOURCE_ROOT"
+
+            & $iscc 'windows\installer\appinfotool.iss' > $log 2>&1
+            $code = $LASTEXITCODE
+            Get-Content $log | ForEach-Object { Write-Host $_ }
+            if ($code -ne 0) { Fail "ISCC 失败，退出码 $code" }
+
+            $out = "build/windows/x64/installer/Release/AppInfoTool-$($env:APPINFOTOOL_VERSION)-Windows-x86_64-Setup.exe"
+            if (-not (Test-Path $out)) { Fail "没有产出安装包：$out" }
+            Get-Item $out | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+          } catch {
+            Fail "异常：$($_.Exception.Message)"
           }
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe 不存在：$iscc" }
-          $ver = Get-InnoVersion $iscc
-          if ($ver -lt $need) { throw "Inno Setup 版本 $ver 低于 $need（中文语言文件按 6.5+ 写）" }
-
-          # 版本与源码根经**环境变量**传给脚本：ISCC 的 /D 把值当表达式，
-          # `2.6.1` 会被读成 `2.6` 后跟 `.1`（详见 .iss 文件头）。
-          $env:APPINFOTOOL_VERSION = '${{ steps.version.outputs.version }}'
-          $env:APPINFOTOOL_SOURCE_ROOT = (Get-Location).Path
-          # 输出目录先建好：不依赖「ISCC 会自己创建」这个行为。
-          New-Item -ItemType Directory -Force -Path 'build/windows/x64/installer/Release' | Out-Null
-          Write-Host "ISCC $ver / version $env:APPINFOTOOL_VERSION / root $env:APPINFOTOOL_SOURCE_ROOT"
-
-          $log = Join-Path $env:RUNNER_TEMP 'iscc.log'
-          & $iscc 'windows\installer\appinfotool.iss' > $log 2>&1
-          $code = $LASTEXITCODE
-          Get-Content $log | Write-Host
-          if ($code -ne 0) {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### ISCC 输出（退出码 $code）"
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
-            Get-Content $log | Select-Object -Last 80 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
-            Get-Content $log |
-              Where-Object { $_ -match 'rror|arning|iscc' } |
-              Select-Object -First 15 |
-              ForEach-Object { Write-Host "::error::$_" }
-            throw "ISCC 失败，退出码 $code"
-          }
-
-          $out = "build/windows/x64/installer/Release/AppInfoTool-$($env:APPINFOTOOL_VERSION)-Windows-x86_64-Setup.exe"
-          if (-not (Test-Path $out)) { throw "没有产出安装包：$out" }
-          Get-Item $out | Select-Object Name, Length | Format-Table | Out-String | Write-Host
 
       - name: Create ZIP Package
         shell: bash
