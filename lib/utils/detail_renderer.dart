@@ -696,10 +696,17 @@ class DetailRenderer {
     //   - 其它（资源封印不符等）→ 包内文件被增删。
     if (codeSign.status == SignatureStatus.verificationFailed) {
       sb.writeln('');
+      // 三档，按**证据强度**排：能读到 cryptid 就直接下结论（砸壳包），
+      // 读不到才退回到「按 codesign 的措辞推测」。
       sb.writeln(
-        codeSign.rawOutput.contains('code or signature have been modified')
-            ? t.signature.failed_code_modified_hint
-            : t.signature.failed_generic_hint,
+        switch (codeSign.mainBinaryDecrypted) {
+          true => t.signature.failed_decrypted_hint,
+          false => t.signature.failed_code_modified_hint,
+          null =>
+            codeSign.rawOutput.contains('code or signature have been modified')
+                ? t.signature.failed_code_modified_hint
+                : t.signature.failed_generic_hint,
+        },
       );
     }
 

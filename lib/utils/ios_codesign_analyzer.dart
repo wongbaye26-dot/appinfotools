@@ -95,6 +95,13 @@ class IosCodeSignResult {
   /// 描述性信息。**只用于展示，不作为验证结论。**
   final IosCodeSignInfo? info;
 
+  /// 主可执行文件是否**已解密**（`LC_ENCRYPTION_INFO.cryptid == 0`）。
+  ///
+  /// `codesign` 说「签名无效」时，「砸壳」与「有人打了补丁」从输出上看不出
+  /// 区别；`cryptid` 能把它们分开。`null` 表示**没查出来**（没有可执行文件、
+  /// 不是 Mach-O、读不动）—— 绝不能当成「已解密」。
+  final bool? mainBinaryDecrypted;
+
   const IosCodeSignResult({
     required this.status,
     this.toolExecuted = false,
@@ -103,6 +110,7 @@ class IosCodeSignResult {
     this.stderr = '',
     this.error,
     this.info,
+    this.mainBinaryDecrypted,
   });
 
   /// 工具不可用。**不是**「签名无效」。
@@ -113,6 +121,19 @@ class IosCodeSignResult {
         );
 
   bool get hasConclusiveResult => status.hasConclusiveResult;
+
+  /// 复制一份并带上「主二进制是否已解密」的结论。
+  IosCodeSignResult withMainBinaryDecrypted(bool? decrypted) =>
+      IosCodeSignResult(
+        status: status,
+        toolExecuted: toolExecuted,
+        exitCode: exitCode,
+        stdout: stdout,
+        stderr: stderr,
+        error: error,
+        info: info,
+        mainBinaryDecrypted: decrypted,
+      );
 
   /// 供 UI 展示的原始输出（失败时含具体原因）。
   String get rawOutput {

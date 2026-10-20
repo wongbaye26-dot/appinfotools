@@ -182,7 +182,8 @@
     "validity": "有効期間",
     "diagnostics": "診断情報",
     "failed_code_modified_hint": "codesign が報告しているのは「コードハッシュが署名と一致しない」であり、「バンドル内のリソースが変更された」ではありません。最も多い原因は、このバンドルが復号（ダンプ）または再パッケージされたことです。バイナリが復号・改変されると元の署名は必ず無効になりますが、アプリ自体は動作することがあります。独立して確認するには、IPA を unzip して同じ .app に対して `codesign --verify --strict` を実行してください。",
-    "failed_generic_hint": "署名の検証に合格しませんでした。下の生出力で判断してください。`a sealed resource is missing or invalid` はバンドル内のファイルが増減された場合、`code or signature have been modified` はバイナリが改変された場合に多いです。"
+    "failed_generic_hint": "署名の検証に合格しませんでした。下の生出力で判断してください。`a sealed resource is missing or invalid` はバンドル内のファイルが増減された場合、`code or signature have been modified` はバイナリが改変された場合に多いです。",
+    "failed_decrypted_hint": "メイン実行ファイルが復号されています（cryptid=0）。これはダンプ（脱獄）されたビルドの典型で、コードセクションが復号されると元の署名が対象としていたバイト列が変わるため、署名は必ず無効になります。アプリ自体は動作することがありますが、「署名が有効」という保証は失われます。"
   },
   "parse": {
     "signature_verify_failed": "署名検証失敗",

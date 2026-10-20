@@ -205,7 +205,8 @@
     "diagnostics": "诊断信息",
     "status_not_checked": "未执行（设置中已关闭）",
     "failed_code_modified_hint": "codesign 报的是「代码哈希与签名不符」，不是「包内资源被改」。最常见的原因是这个包被砸壳或重打包过 —— 二进制一旦被解密或改写，原签名必然失效，而应用本身仍可能正常运行。要独立复核：用 unzip 解出 Payload，对同一个 .app 再跑一次 `codesign --verify --strict`。",
-    "failed_generic_hint": "签名校验未通过。请对照下面的原始输出判断：`a sealed resource is missing or invalid` 通常是包内文件被增删；`code or signature have been modified` 通常是二进制被改动。"
+    "failed_generic_hint": "签名校验未通过。请对照下面的原始输出判断：`a sealed resource is missing or invalid` 通常是包内文件被增删；`code or signature have been modified` 通常是二进制被改动。",
+    "failed_decrypted_hint": "主可执行文件已解密（cryptid=0）—— 这是砸壳包的典型特征：代码段被解密后，原始签名覆盖的字节已经改变，签名必然失效。应用仍可能正常运行，但「签名有效」这条保证不再成立。"
   },
   "parse": {
     "signature_verify_failed": "签名验证失败",

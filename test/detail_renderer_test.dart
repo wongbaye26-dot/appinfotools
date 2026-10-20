@@ -667,6 +667,37 @@ void main() {
       expect(text, contains('code or signature have been modified'));
     });
 
+    test('主二进制已解密（cryptid=0）→ 直接下「砸壳包」的结论', () {
+      // 有 cryptid 就不该再猜：这是证据，不是推测。
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verificationFailed,
+        toolExecuted: true,
+        exitCode: 1,
+        stderr: 'Madrid.app: invalid signature '
+            '(code or signature have been modified)',
+        mainBinaryDecrypted: true,
+      );
+
+      final text = DetailRenderer.iosCodeSign(result, t);
+      expect(text, contains(t.signature.failed_decrypted_hint));
+      expect(text, isNot(contains(t.signature.failed_code_modified_hint)));
+    });
+
+    test('cryptid=1（仍是加密态）→ 不能说是砸壳', () {
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verificationFailed,
+        toolExecuted: true,
+        exitCode: 1,
+        stderr: 'X.app: invalid signature '
+            '(code or signature have been modified)',
+        mainBinaryDecrypted: false,
+      );
+
+      final text = DetailRenderer.iosCodeSign(result, t);
+      expect(text, contains(t.signature.failed_code_modified_hint));
+      expect(text, isNot(contains(t.signature.failed_decrypted_hint)));
+    });
+
     test('资源封印不符 → 用通用解释，别把「文件被增删」说成「二进制被改」', () {
       const result = IosCodeSignResult(
         status: SignatureStatus.verificationFailed,

@@ -205,7 +205,8 @@
     "diagnostics": "診斷資訊",
     "status_not_checked": "未執行（設定中已關閉）",
     "failed_code_modified_hint": "codesign 報的是「程式碼雜湊與簽章不符」，不是「包內資源被改」。最常見的原因是這個包被砸殼或重打包過 —— 二進位檔一旦被解密或改寫，原簽章必然失效，而應用程式本身仍可能正常執行。要獨立覆核：用 unzip 解出 Payload，對同一個 .app 再跑一次 `codesign --verify --strict`。",
-    "failed_generic_hint": "簽章校驗未通過。請對照下面的原始輸出判斷：`a sealed resource is missing or invalid` 通常是包內檔案被增刪；`code or signature have been modified` 通常是二進位檔被改動。"
+    "failed_generic_hint": "簽章校驗未通過。請對照下面的原始輸出判斷：`a sealed resource is missing or invalid` 通常是包內檔案被增刪；`code or signature have been modified` 通常是二進位檔被改動。",
+    "failed_decrypted_hint": "主可執行檔已解密（cryptid=0）—— 這是砸殼包的典型特徵：程式碼段被解密後，原始簽章涵蓋的位元組已經改變，簽章必然失效。應用程式仍可能正常執行，但「簽章有效」這項保證不再成立。"
   },
   "parse": {
     "signature_verify_failed": "簽名驗證失敗",
