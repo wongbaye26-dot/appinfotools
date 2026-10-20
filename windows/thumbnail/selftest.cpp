@@ -69,6 +69,8 @@
 #include <io.h>
 // `setlocale`：让 `wprintf` 能输出中文（见 wmain 开头）。
 #include <clocale>
+// `_O_U8TEXT`：`_setmode` 的标志位，定义在 fcntl.h。
+#include <fcntl.h>
 // `_wcsicmp`：比较注册表里的 CLSID 字符串（大小写不敏感）。
 #include <cstring>
 
@@ -419,7 +421,10 @@ int DiagnoseRegistration(bool force_pause) {
   const std::wstring handler_guid = GuidToString(IID_IThumbnailProvider);
   const std::wstring clsid = GuidToString(kExpectedClsid);
 
-  std::wprintf(L"\n== 注册诊断 ==\n");
+  // ASCII 标题在前：控制台代码页把中文吃掉时，这一行仍然能看见，
+  // 用户至少知道工具跑到了这一步（CI 也用它做与编码无关的断言）。
+  std::wprintf(L"\n== registration diagnostics ==\n");
+  std::wprintf(L"== 注册诊断 ==\n");
   std::wprintf(L"本目录 : %s\n", directory.c_str());
   std::wprintf(L"dll    : %s  %s\n", dll_path.c_str(),
                FileExists(dll_path) ? L"[存在]" : L"[缺失]");
@@ -507,8 +512,15 @@ int wmain(int argc, wchar_t** argv) {
   //
   // `wprintf` 默认按 "C" locale 把宽字符转成多字节，**非 ASCII 会被直接丢掉** ——
   // 用户看到的就是「打了一半就没了」（2.7.1 首次实机反馈正是这个现象：
-  // 只有 ASCII 的 step 行出来了，中文用法一个字都没有）。
-  // 两件事一起做：让 CRT 按 UTF-8 转换，并让控制台按 UTF-8 解释。
+  // 只有 ASCII 的 step 行出来了，中文一个字都没有）。
+  //
+  // 三层一起上，任何一层失效都还有下一层：
+  //   1. `_O_U8TEXT`：让 CRT 直接按 UTF-8 写（控制台与管道都对，
+  //      不依赖代码页；本文件只用宽字符输出，不受窄 `printf` 的限制）；
+  //   2. `SetConsoleOutputCP(CP_UTF8)`：控制台按 UTF-8 解释；
+  //   3. `setlocale(".UTF-8")`：`wprintf` 的宽 → 多字节转换。
+  ::_setmode(::_fileno(stdout), _O_U8TEXT);
+  ::_setmode(::_fileno(stderr), _O_U8TEXT);
   ::SetConsoleOutputCP(CP_UTF8);
   std::setlocale(LC_ALL, ".UTF-8");
 
