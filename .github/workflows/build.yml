@@ -380,38 +380,49 @@ jobs:
         #
         # CI runner 上什么都没注册，所以期望退出码 1。
         #
-        # **断言只用 ASCII**（`registration diagnostics` / `CLSID` / `HKCU` /
-        # `HKLM`）：中文能不能显示取决于控制台代码页，那是**用户机器**上的
-        # 问题，不该让 CI 用一个跨不过编码的断言去卡构建。中文标题缺失时
-        # 只发 warning，并把真实输出整段贴成 notice —— 我据此判断编码有没有
-        # 生效（第一次就是这么发现「中文一个字都没出来」的）。
+        # ## 为什么用 Start-Process 重定向到文件
+        #
+        # 直接用 `& $exe | Out-String` 时，PowerShell 用 `[Console]::OutputEncoding`
+        # 解码子进程输出；runner 上这个值不可靠（实测按 CP1252 解，UTF-8 的中文
+        # 变成 `æ³¨å†Œ`）。`Start-Process -RedirectStandardOutput` 写的是**原始
+        # 字节**，再用 `Get-Content -Encoding UTF8` 读，才拿得到真字符。
+        #
+        # ## 为什么只发一条 notice
+        #
+        # GitHub 每个 step 只保留约 10 条 annotation。上次我一次发 12 条 notice，
+        # 配额被占满，真正的 `::error::` 反而没显示出来 —— 白跑一轮。
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          [Console]::OutputEncoding = [Text.Encoding]::UTF8
           $exe = 'build/windows/x64/selftest/appinfotool_thumbnail_selftest.exe'
           if (-not (Test-Path $exe)) { throw "selftest exe missing: $exe" }
-          $out = & $exe 2>&1 | Out-String
-          $code = $LASTEXITCODE
+
+          $outFile = Join-Path $env:RUNNER_TEMP 'diag-out.log'
+          $errFile = Join-Path $env:RUNNER_TEMP 'diag-err.log'
+          $proc = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+          $code = $proc.ExitCode
+          $out = Get-Content $outFile -Raw -Encoding UTF8
+          if ($null -eq $out) { $out = '' }
           $lines = @($out -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
 
-          # 把真实输出贴成 notice：绿构建也能读到，用来核对中文有没有乱码。
-          $lines | Select-Object -First 12 | ForEach-Object { Write-Host "::notice::$_" }
-          Write-Host "exit code: $code"
+          $hasAscii = $out -match 'registration diagnostics'
+          $hasCn = $out -match '注册诊断'
+          $hasClsid = $out -match 'CLSID'
+          $hasRoots = ($out -match 'HKCU') -and ($out -match 'HKLM')
+          Write-Host "::notice::code=$code lines=$($lines.Count) asciiHeader=$hasAscii chinese=$hasCn clsid=$hasClsid roots=$hasRoots"
 
-          if ($code -ne 1) {
-            Write-Host "::error::未注册时应当返回 1，实际 $code"
-            exit 1
-          }
-          foreach ($marker in 'registration diagnostics', 'CLSID', 'HKCU', 'HKLM') {
-            if ($out -notmatch [regex]::Escape($marker)) {
-              Write-Host "::error::诊断输出里缺少 '$marker'"
-              exit 1
-            }
-          }
-          if ($out -notmatch '注册诊断') {
-            Write-Host "::warning::中文标题没有出现在输出里 —— 控制台编码没生效（上面 12 行是原始输出）"
-          }
+          # 原文也写进 step summary（不受 annotation 配额限制）。
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '### Registration diagnostics'
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+          Get-Content $outFile | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+          Write-Host $out
+
+          if ($code -ne 1) { Write-Host "::error::expected exit code 1 (nothing registered), got $code"; exit 1 }
+          if (-not $hasAscii) { Write-Host "::error::missing ASCII header 'registration diagnostics'"; exit 1 }
+          if (-not $hasClsid -or -not $hasRoots) { Write-Host "::error::missing CLSID / HKCU / HKLM lines"; exit 1 }
+          if (-not $hasCn) { Write-Host "::error::chinese text lost in output (encoding)"; exit 1 }
           Write-Host "registration diagnostics ok"
 
       - name: Bundle the self-test for the release
