@@ -30,57 +30,104 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
- 	<key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-                <string>apk</string>
-                <string>xapk</string>
-                <string>apkm</string>
-                <string>apks</string>
-            </array>
-            <key>CFBundleTypeName</key>
-            <string>APK File</string>
-            <key>LSHandlerRank</key>
-            <string>Default</string>
-            <key>LSItemContentTypes</key>
-            <array>
-                <string>to.feng.app.apkinfotool.apkInfoTool</string>
-            </array>
+	<!-- 文件关联：双击 .apk / .ipa 用本程序打开。
+	     ## 为什么必须同时写 UTExportedTypeDeclarations
+	     macOS 按 **UTI** 匹配「打开方式」，不是按扩展名。只写
+	     CFBundleDocumentTypes + LSItemContentTypes、却不**导出**那个 UTI 时，
+	     LaunchServices 里这个 UTI 没有标签映射，扩展名就挂不上去 ——
+	     表现正是「打开方式里找不到本程序」。
+	     用 `UTExportedTypeDeclarations`（自己定义的类型）而不是
+	     `UTImportedTypeDeclarations`（别人定义、我只是用）。
+	     ## 为什么不写 NSDocumentClass
+	     `NSDocumentClass` 指向 `$(PRODUCT_MODULE_NAME).Document`，而本工程
+	     没有这个类 —— 声明一个不存在的文档类只会让 AppKit 在打开文件时
+	     多走一条注定失败的路径。本程序用 `AppDelegate.application(_:openFile:)`
+	     接文件，不需要文档架构。
+	     ## 为什么 conform 只到 public.data / public.content
+	     加上 `public.archive` 会让「归档实用工具」也来抢 .apk —— 我们不希望
+	     双击 apk 弹出解压。 -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Android Package</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>to.feng.app.apkinfotool.apkInfoTool.android-package</string>
+			</array>
+			<!-- 旧式扩展名声明：新系统按 UTI 匹配，这条只对老系统有用，
+			     留着无副作用。 -->
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>apk</string>
+				<string>xapk</string>
+				<string>apkm</string>
+				<string>apks</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>iOS App Package</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>to.feng.app.apkinfotool.apkInfoTool.ios-package</string>
+			</array>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>ipa</string>
+			</array>
+		</dict>
+	</array>
 
-            <!-- 新增以下两个键 -->
-            <key>NSDocumentClass</key>
-            <string>$(PRODUCT_MODULE_NAME).Document</string>
-            <key>CFBundleTypeRole</key>
-            <string>Viewer</string>
-        </dict>
-    </array>
-
-    <!-- UTI 定义 -->
-    <key>UTImportedTypeDeclarations</key>
-    <array>
-        <dict>
-            <key>UTTypeIdentifier</key>
-            <string>to.feng.app.apkinfotool.apkInfoTool</string>
-            <key>UTTypeDescription</key>
-            <string>APK File</string>
-            <key>UTTypeConformsTo</key>
-            <array>
-                <string>public.data</string>
-                <string>public.content</string>
-            </array>
-            <key>UTTypeTagSpecification</key>
-            <dict>
-                <key>public.filename-extension</key>
-                <array>
-                    <string>apk</string>
-                    <string>xapk</string>
-                    <string>apkm</string>
-                    <string>apks</string>
-                </array>
-            </dict>
-        </dict>
-    </array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>to.feng.app.apkinfotool.apkInfoTool.android-package</string>
+			<key>UTTypeDescription</key>
+			<string>Android Package</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>apk</string>
+					<string>xapk</string>
+					<string>apkm</string>
+					<string>apks</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>to.feng.app.apkinfotool.apkInfoTool.ios-package</string>
+			<key>UTTypeDescription</key>
+			<string>iOS App Package</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ipa</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>
