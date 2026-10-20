@@ -436,21 +436,33 @@ jobs:
         # **不再走 `inno_bundle`**：它的脚本生成器把「安装目录页 / 语言选择 /
         # 文件关联」三件事都写死了，配置改不出来（详见 .iss 文件头）。
         #
-        # ISCC 在 windows 镜像里不一定预装；choco 装的是最新 6.x，
-        # 而仓库里的简体中文语言文件是按 6.5+ 写的。
+        # ISCC 在 windows 镜像里不一定预装；**即使预装也可能是旧版**。
+        # 仓库里的简体中文语言文件是按 Inno 6.5+ 写的，旧版会报
+        # 「Unknown message name」，那条错误看不出根因 —— 所以先查版本，
+        # 不够就用 choco 装最新（同版本时 choco 很快返回）。
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-          if (-not (Test-Path $iscc)) {
+          $need = [version]'6.5'
+          function Get-InnoVersion([string]$path) {
+            if (-not (Test-Path $path)) { return [version]'0.0' }
+            $raw = (Get-Item $path).VersionInfo.ProductVersion
+            if ($raw -match '^(\d+\.\d+)') { return [version]$Matches[1] }
+            return [version]'0.0'
+          }
+          if ((Get-InnoVersion $iscc) -lt $need) {
+            Write-Host "Inno Setup 未安装或版本过低，安装最新版"
             choco install innosetup --no-progress -y
           }
           if (-not (Test-Path $iscc)) { throw "ISCC.exe 不存在：$iscc" }
+          $ver = Get-InnoVersion $iscc
+          if ($ver -lt $need) { throw "Inno Setup 版本 $ver 低于 $need（中文语言文件按 6.5+ 写）" }
           $version = '${{ steps.version.outputs.version }}'
           $root = (Get-Location).Path
           # 输出目录先建好：不依赖「ISCC 会自己创建」这个行为。
           New-Item -ItemType Directory -Force -Path 'build/windows/x64/installer/Release' | Out-Null
-          Write-Host "ISCC version: $((Get-Item $iscc).VersionInfo.ProductVersion)"
+          Write-Host "ISCC version: $ver"
           & $iscc "/DAppVersion=$version" "/DSourceRoot=$root" 'windows\installer\appinfotool.iss'
           if ($LASTEXITCODE -ne 0) { throw "ISCC 失败，退出码 $LASTEXITCODE" }
           $out = "build/windows/x64/installer/Release/AppInfoTool-$version-Windows-x86_64-Setup.exe"

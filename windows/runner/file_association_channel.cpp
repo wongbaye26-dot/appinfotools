@@ -8,9 +8,10 @@
 #include <shlobj.h>
 
 #include <flutter/standard_method_codec.h>
-#include <flutter/method_result_functions.h>
 
+#include <functional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -23,6 +24,33 @@ namespace {
 /// 会出现「关联了但拒收」这种最难查的现象。
 const wchar_t* kSupportedExtensions[] = {
     L".apk", L".ipa", L".xapk", L".apks", L".apkm",
+};
+
+/// 「推送 fileOpened」的结果回调。
+///
+/// **为什么自己写一个**：引擎头文件里没有 `flutter::MethodResultFunctor`
+/// （这个 Flutter 版本只带 `MethodResultFunctions`），用它编译不过
+/// —— CI 报的是 `'MethodResultFunctor': is not a member of 'flutter'`。
+/// 继承 `MethodResult` 是稳定接口，版本之间不会变。
+class FileOpenedResult : public flutter::MethodResult<flutter::EncodableValue> {
+ public:
+  explicit FileOpenedResult(std::function<void()> on_delivered)
+      : on_delivered_(std::move(on_delivered)) {}
+
+ private:
+  void SuccessInternal(const flutter::EncodableValue* result) override {
+    if (on_delivered_) {
+      on_delivered_();
+    }
+  }
+  // 失败（含 NotImplemented：Dart 侧还没设 handler）什么都不做 ——
+  // 待取路径要留着，由 `getInitialFilePath` 取走。
+  void ErrorInternal(const std::string& code,
+                     const std::string& message,
+                     const flutter::EncodableValue* details) override {}
+  void NotImplementedInternal() override {}
+
+  std::function<void()> on_delivered_;
 };
 
 /// 进程内唯一的通道实例。
@@ -287,11 +315,10 @@ void FileAssociationChannel::DeliverFile(
   self->pending_file_path_ = path;
   self->channel_->InvokeMethod(
       "fileOpened", std::make_unique<flutter::EncodableValue>(path),
-      std::make_unique<flutter::MethodResultFunctor>(
-          [self](const flutter::EncodableValue* result) {
-            // 送达了：清掉待取路径，免得页面重建时再打开一次。
-            self->pending_file_path_.clear();
-          }));
+      std::make_unique<FileOpenedResult>([self]() {
+        // 送达了：清掉待取路径，免得页面重建时再打开一次。
+        self->pending_file_path_.clear();
+      }));
 }
 
 std::string FileAssociationChannel::PickInitialFilePath(
