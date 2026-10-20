@@ -440,6 +440,9 @@ jobs:
         # 仓库里的简体中文语言文件是按 Inno 6.5+ 写的，旧版会报
         # 「Unknown message name」，那条错误看不出根因 —— 所以先查版本，
         # 不够就用 choco 装最新（同版本时 choco 很快返回）。
+        #
+        # 失败时把 ISCC 输出**变成 annotation 与 Step Summary**：job 日志
+        # API 需要 admin，只有这两样是匿名可读的。
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -458,14 +461,32 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "ISCC.exe 不存在：$iscc" }
           $ver = Get-InnoVersion $iscc
           if ($ver -lt $need) { throw "Inno Setup 版本 $ver 低于 $need（中文语言文件按 6.5+ 写）" }
-          $version = '${{ steps.version.outputs.version }}'
-          $root = (Get-Location).Path
+
+          # 版本与源码根经**环境变量**传给脚本：ISCC 的 /D 把值当表达式，
+          # `2.6.1` 会被读成 `2.6` 后跟 `.1`（详见 .iss 文件头）。
+          $env:APPINFOTOOL_VERSION = '${{ steps.version.outputs.version }}'
+          $env:APPINFOTOOL_SOURCE_ROOT = (Get-Location).Path
           # 输出目录先建好：不依赖「ISCC 会自己创建」这个行为。
           New-Item -ItemType Directory -Force -Path 'build/windows/x64/installer/Release' | Out-Null
-          Write-Host "ISCC version: $ver"
-          & $iscc "/DAppVersion=$version" "/DSourceRoot=$root" 'windows\installer\appinfotool.iss'
-          if ($LASTEXITCODE -ne 0) { throw "ISCC 失败，退出码 $LASTEXITCODE" }
-          $out = "build/windows/x64/installer/Release/AppInfoTool-$version-Windows-x86_64-Setup.exe"
+          Write-Host "ISCC $ver / version $env:APPINFOTOOL_VERSION / root $env:APPINFOTOOL_SOURCE_ROOT"
+
+          $log = Join-Path $env:RUNNER_TEMP 'iscc.log'
+          & $iscc 'windows\installer\appinfotool.iss' > $log 2>&1
+          $code = $LASTEXITCODE
+          Get-Content $log | Write-Host
+          if ($code -ne 0) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### ISCC 输出（退出码 $code）"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+            Get-Content $log | Select-Object -Last 80 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+            Get-Content $log |
+              Where-Object { $_ -match 'rror|arning|iscc' } |
+              Select-Object -First 15 |
+              ForEach-Object { Write-Host "::error::$_" }
+            throw "ISCC 失败，退出码 $code"
+          }
+
+          $out = "build/windows/x64/installer/Release/AppInfoTool-$($env:APPINFOTOOL_VERSION)-Windows-x86_64-Setup.exe"
           if (-not (Test-Path $out)) { throw "没有产出安装包：$out" }
           Get-Item $out | Select-Object Name, Length | Format-Table | Out-String | Write-Host
 

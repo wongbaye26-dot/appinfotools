@@ -16,11 +16,17 @@
 ; ## 编译方式
 ;
 ; ```
-; ISCC.exe /DAppVersion=2.7.0 /DSourceRoot=C:\path\to\repo windows\installer\appinfotool.iss
+; set APPINFOTOOL_VERSION=2.7.0
+; set APPINFOTOOL_SOURCE_ROOT=C:\path\to\repo
+; ISCC.exe windows\installer\appinfotool.iss
 ; ```
 ;
-; 两个宏都必须传（下面有 `#error` 兜着）。CI 见 `.github/workflows/build.yml`
-; 的 "Create Installer" 一步。
+; **为什么用环境变量而不是 `ISCC /Dname=value`**：`/D` 把值当成 `#define` 的
+; 表达式，`/DAppVersion=2.6.1` 会被读成 `2.6` 后面跟 `.1` —— 语法错误。
+; 环境变量经 `GetEnv()` 取到的就是字符串，没有这层解析。
+;
+; 两个变量都必须设置（下面有 `#error` 兜着）。CI 见
+; `.github/workflows/build.yml` 的 "Create Installer" 一步。
 ;
 ; ## 语言文件
 ;
@@ -42,11 +48,16 @@
 ; 「应用与功能」里也会出现两条。
 #define AppId "8cdac933-dde4-5d06-985d-4c99f7247903"
 
-#ifndef AppVersion
-  #error 必须用 /DAppVersion=<版本号> 传入版本（CI 从 pubspec.yaml 取）
+#define AppVersion GetEnv("APPINFOTOOL_VERSION")
+#define SourceRoot GetEnv("APPINFOTOOL_SOURCE_ROOT")
+
+; 编译期错误信息用 ASCII：ISCC 的输出编码跟着控制台代码页走，
+; 中文在这条路径上会变成乱码，反而看不出问题。
+#if AppVersion == ""
+  #error APPINFOTOOL_VERSION is not set (CI reads it from pubspec.yaml)
 #endif
-#ifndef SourceRoot
-  #error 必须用 /DSourceRoot=<仓库根目录> 传入源码根（CI 传 (Get-Location).Path）
+#if SourceRoot == ""
+  #error APPINFOTOOL_SOURCE_ROOT is not set (CI passes the repo root)
 #endif
 
 #define InstallerDir SourceRoot + "\windows\installer"
