@@ -436,13 +436,18 @@ jobs:
         # **不再走 `inno_bundle`**：它的脚本生成器把「安装目录页 / 语言选择 /
         # 文件关联」三件事都写死了，配置改不出来（详见 .iss 文件头）。
         #
-        # ## 这一段为什么写得这么啰嗦
+        # ## 为什么每次都跑 choco
         #
-        # job 日志 API 需要 admin（匿名 403），**只有 annotation 是匿名可读的**。
-        # 而 PowerShell 的 `throw` 只写日志、不产生 annotation —— 之前两次失败
-        # 都只留下「Process completed with exit code 1」，完全看不出原因。
-        # 所以每个失败分支都必须 `Write-Host "::error::..."` 再退出，
-        # 并把 ISCC 输出的最后几行也变成 annotation。
+        # 镜像里不一定预装 Inno Setup，**预装了也可能是旧版**；而仓库里的
+        # 简体中文语言文件按 6.5+ 写，旧版会报「Unknown message name」。
+        # 与其自己解析版本号（试过一次，`ProductVersion` 读不出来就误判成
+        # 0.0，反而挡住了构建），不如直接让 choco 保证最新 —— 已是最新时
+        # 它几秒就返回。
+        #
+        # ## 为什么失败分支都要 `::error::`
+        #
+        # job 日志 API 需要 admin（匿名 403），**只有 annotation 匿名可读**；
+        # PowerShell 的 `throw` 只写日志、不产生 annotation。
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -460,42 +465,25 @@ jobs:
             exit 1
           }
 
-          function Get-InnoVersion([string]$path) {
-            if (-not (Test-Path $path)) { return [version]'0.0' }
-            $raw = (Get-Item $path).VersionInfo.ProductVersion
-            # ProductVersion 可能是空串（某些构建没有版本资源）——
-            # `[version]$null` 会抛异常，所以先判空。
-            if (-not $raw) { return [version]'0.0' }
-            if ($raw -match '(\d+)\.(\d+)') {
-              return [version]("{0}.{1}" -f $Matches[1], $Matches[2])
-            }
-            return [version]'0.0'
-          }
-
           try {
-            $need = [version]'6.5'
             $candidates = @(
               'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
               'C:\Program Files\Inno Setup 6\ISCC.exe'
             )
+            $preinstalled = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            Write-Host "::notice::preinstalled ISCC: $preinstalled"
+
+            # choco 装/升级到最新 6.x。失败不在这里判死 —— 只要 ISCC 在，
+            # 后面照样能试；真失败时 ISCC 自己的报错会变成 annotation。
+            $chocoLog = Join-Path $env:RUNNER_TEMP 'choco.log'
+            choco install innosetup --no-progress -y > $chocoLog 2>&1
+            Write-Host "::notice::choco exit=$LASTEXITCODE"
+            Get-Content $chocoLog | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
+
             $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-            Write-Host "preinstalled ISCC: $iscc"
-
-            if (-not $iscc -or (Get-InnoVersion $iscc) -lt $need) {
-              # 仓库里的简体中文语言文件按 Inno 6.5+ 写，旧版会报
-              # 「Unknown message name」—— 那条错误看不出根因。
-              Write-Host "Inno Setup 缺失或版本过低，用 choco 装最新版"
-              $chocoLog = Join-Path $env:RUNNER_TEMP 'choco.log'
-              choco install innosetup --no-progress -y > $chocoLog 2>&1
-              Get-Content $chocoLog | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
-              Write-Host "choco exit=$LASTEXITCODE"
-              $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-            }
-            if (-not $iscc) { Fail 'ISCC.exe 找不到（choco 装完仍然没有）' }
-
-            $ver = Get-InnoVersion $iscc
-            Write-Host "ISCC $ver at $iscc"
-            if ($ver -lt $need) { Fail "Inno Setup 版本 $ver 低于 $need（中文语言文件按 6.5+ 写）" }
+            if (-not $iscc) { Fail 'ISCC.exe 找不到：choco 装完两个候选路径都没有' }
+            $rawVersion = (Get-Item $iscc).VersionInfo.ProductVersion
+            Write-Host "::notice::ISCC at $iscc (ProductVersion=$rawVersion)"
 
             # 版本与源码根经**环境变量**传给脚本：ISCC 的 /D 把值当表达式，
             # `2.6.1` 会被读成 `2.6` 后跟 `.1`（详见 .iss 文件头）。
