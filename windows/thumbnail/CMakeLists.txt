@@ -117,10 +117,17 @@ target_link_libraries(appinfotool_thumbnail_selftest PRIVATE
   "shlwapi.lib"
   "uuid.lib"
 )
-# **输出到独立目录**，不能和 DLL 同一目录：
+# **输出到独立目录**，不和 DLL 混在 `runner/Release` 里：
 #
-# `inno_bundle` 打包的是整个 `runner/Release` 目录 —— 自检 exe 放在那里
-# 就会被一起打进用户安装包。它是测试工具，不该出现在用户机器上。
+# 那里是「应用本体」的产物目录，安装包整目录打包。自检 exe 混进去会让
+# 「应用目录里哪些是运行时需要的」变得不清楚。
+#
+# 它**确实会进安装包**，但由安装脚本单独、显式地放进去（见
+# `windows/installer/appinfotool.iss` 的 `[Files]`），落点是 `{app}` 而不是
+# 子目录 —— 自检按 exe 所在目录找 DLL，换目录就加载不到。
+#
+# 为什么要进安装包：「图标不出来」这类问题在用户机器上没有别的自证手段，
+# 自检能把「DLL 层坏了」与「注册/缓存没生效」分开。
 #
 # 三个配置分别指定，因为多配置生成器（VS）会忽略不带后缀的
 # `RUNTIME_OUTPUT_DIRECTORY` —— 只写那一个时 Release 产物仍会落在

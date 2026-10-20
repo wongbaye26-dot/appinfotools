@@ -134,6 +134,22 @@ Type: filesandordirs; Name: "{app}\*"
 ; app_icon_extractor.exe，以及 CI 补进来的 VC 运行库。
 Source: "{#SourceRoot}\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; 缩略图自检工具。
+;
+; **必须和 `appinfotool_thumbnail.dll` 同一个目录**：它按自己的目录找
+; `appinfotool_thumbnail.dll`（`selftest.cpp` 的 `ModuleDirectory()`），
+; 放到 `{app}\tools\` 就加载不到 DLL，工具直接报「cannot load」。
+;
+; 它本来被刻意排除在安装包之外（见 `windows/thumbnail/CMakeLists.txt` 的注释：
+; 「测试工具不该出现在用户机器上」）。现在放进来，是因为「图标不出来」这类
+; 问题在用户机器上**没有别的办法自证**：
+;
+;     appinfotool_thumbnail_selftest.exe 某个.apk
+;
+; 会依次打印 LoadLibrary / DllGetClassObject / GetThumbnail 每一步的结果，
+; 从而把「DLL 层坏了」和「注册/缓存没生效」分开。
+Source: "{#SourceRoot}\build\windows\x64\selftest\appinfotool_thumbnail_selftest.exe"; DestDir: "{app}"; Flags: ignoreversion
+
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon

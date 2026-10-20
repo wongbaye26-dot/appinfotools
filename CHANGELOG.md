@@ -1,5 +1,79 @@
 # Changelog
 
+## 2.7.1 — 2026-10-20
+
+修 2.7.0 的一个功能缺陷：**资源管理器里所有 `.apk` / `.ipa` 都显示 AppInfoTool
+自己的图标**，看不到包自己的图标。另外把缩略图自检工具装进了安装目录。
+
+### 根因：ShellEx 的处理程序 GUID 抄错了
+
+`windows/runner/thumbnail_channel.cpp` 里手写的 `IThumbnailProvider`
+处理程序 GUID 是
+
+```
+{e357fccd-a995-4576-b01f-ace3639130c9}   ← 2.7.0 里写的
+{e357fccd-a995-4576-b01f-234630154e96}   ← 正确
+```
+
+后两段完全错。这个错误极其隐蔽：注册表**写入全部成功**、`getStatus` 报
+「已注册」、设置页显示「已启用」——但那个 GUID 系统根本不认识，Explorer
+从来不会调用我们的处理器，于是回落到 ProgID 的 `DefaultIcon`（应用图标）。
+**没有任何报错可查。**
+
+为什么一直没被发现：CI 的自检是直接 `LoadLibrary` 调 `GetThumbnail`，
+**绕过注册表**；而真机行为在
+`docs/plans/V2.5.0-windows-thumbnail-implementation.md` 里一直标着「未验证」。
+
+修法：不再手写 GUID，改成 `StringFromGUID2(IID_IThumbnailProvider, …)`，
+从 SDK 取，抄不错。注册/注销时顺手删掉旧版写错的那条键。
+
+### 另外两处「不点设置就不生效」
+
+即使 GUID 对了，2.7.0 也要用户自己去设置页点「启用」才写注册表：
+
+- **安装器现在直接注册**（`HKLM`，64 位视图）：装完就有图标，不必先打开
+  应用、也不必去设置页。卸载时连 `CLSID` 与 `ShellEx` 一起清掉。
+- **启动时自动注册**（`SystemThumbnailManager.ensureRegistered`）：便携 ZIP
+  没有安装器，靠这条。判据是纯函数 `needsRegistration` —— 已经指向当前 DLL
+  就不写，DLL / helper 缺失也不写（写了只会让 Explorer 每次请求都失败）。
+  设置页的「停用」会写 `Config.systemIconEnabled = false`，**下次启动不会
+  再偷偷打开**。
+
+### 安装包内置缩略图自检工具
+
+`AppInfoTool-<版本>-Windows-x86_64-thumbnail-selftest.zip` 里的三件套，
+安装包本来就装了 `appinfotool_thumbnail.dll` 与 `app_icon_extractor.exe`，
+缺的只是 `appinfotool_thumbnail_selftest.exe` —— 现在把它装进 `{app}`。
+
+放 `{app}` 而不是子目录，是因为它按**自己所在目录**找 DLL；换目录会直接
+报「cannot load」。
+
+用法（图标不出来时先跑它）：
+
+```bat
+"C:\Program Files\AppInfoTool\appinfotool_thumbnail_selftest.exe" 某个.apk
+```
+
+它会依次打印 LoadLibrary / DllGetClassObject / GetThumbnail 每一步的结果，
+把「DLL 层坏了」和「注册或缓存没生效」分开。**发布页那个 zip 仍然保留**，
+给没装应用的人用。
+
+### 升级后图标还是旧的？
+
+缩略图/图标有系统缓存，已经看过的文件可能还显示旧图标。按顺序试：
+
+1. 重启资源管理器：`taskkill /f /im explorer.exe` 然后 `start explorer.exe`；
+2. 仍不变就换一个从没打开过的目录看新文件；
+3. 想确认注册对不对：
+   `reg query "HKLM\Software\Classes\.apk\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}"`
+   应指向 `{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}`。
+
+### 质量
+
+根测试 1,630 + 包内 378 = **2,008** 条（新增 5 条 `needsRegistration` 的
+状态机用例），`flutter analyze --fatal-infos --fatal-warnings` 六个目标零问题，
+`dart format` 干净。
+
 ## 2.7.0 — 2026-10-20
 
 这一版只动 **Windows 打包与启动行为**：安装包换成仓库自维护的 Inno Setup
