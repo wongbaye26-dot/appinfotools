@@ -45,12 +45,16 @@ enum FileAssociationOutcome {
 ///
 /// ## Windows 为什么必须注册注册表
 ///
-/// Windows 的 `.apk` 双击由注册表决定。安装器（`inno_bundle`）生成的
-/// Inno Setup 脚本**没有 `[Registry]` 段**，所以此前装完根本没有任何关联；
-/// 而且 runner 里也**没有 `file_association` 通道的 Windows 实现**
-/// （只有 macOS 有），于是即使手工关联上，双击也只会打开一个空窗口。
+/// Windows 的 `.apk` 双击由注册表决定。此前两处都缺：安装器（当时是
+/// `inno_bundle` 生成的 Inno Setup 脚本）**没有 `[Registry]` 段**，
+/// 装完根本没有任何关联；runner 里也**没有 `file_association` 通道的
+/// Windows 实现**（只有 macOS 有），于是即使手工关联上，双击也只会打开
+/// 一个空窗口。
 ///
-/// 两处都已补齐（`windows/runner/file_association_channel.cpp`）。
+/// 现在两条路都有：安装包由 `windows/installer/appinfotool.iss` 写一份
+/// 机器级关联（HKLM），应用自己在启动时再补一份用户级关联（HKCU，
+/// 便携版与「关联被别的程序抢走」都靠它）。两边用的 ProgID 完全相同
+/// （`AppInfoTool.<ext>`），不会出现两套互相看不见的关联。
 ///
 /// 关于「设为默认」：Windows 10/11 的默认程序写在
 /// `HKCU\...\Explorer\FileExts\<ext>\UserChoice`，那个键带哈希校验，

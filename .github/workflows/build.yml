@@ -221,7 +221,7 @@ jobs:
         # `docs/plans/V2.5.0-system-icon-feasibility.md`）。
         #
         # 必须在 `flutter build windows` **之后**跑：产物要放进
-        # runner/Release 目录，inno_bundle 才会把它一起打进安装包。
+        # runner/Release 目录，安装脚本才会把它一起打进安装包。
         shell: bash
         run: |
           set -euo pipefail
@@ -411,26 +411,51 @@ jobs:
             build/windows/x64/release-extra/*.zip
           if-no-files-found: error
 
-      - name: Create Installer
-        run: dart run inno_bundle:build --release
-
-      # inno_bundle 的输出名写死在它自己的 script_builder 里
-      # （OutputBaseFilename=<name>-<arch>-<version>-Installer.exe），改不掉。
-      # 这里统一改成与另外三个平台一致的命名，免得三平台三个样。
-      - name: Normalize installer name
-        shell: bash
+      - name: Bundle the MSVC runtime
+        # `flutter build windows` 的产物依赖这三个动态 CRT。干净机器上没装
+        # VC++ 运行库时，双击 exe 会直接报「找不到 VCRUNTIME140.dll」——
+        # 安装包与免安装 ZIP 都必须带上它们。
+        #
+        # 只补**缺失**的：有的 Flutter 版本会自己产出，覆盖成 System32 里
+        # 的版本没有意义。
+        shell: pwsh
         run: |
-          set -euo pipefail
-          V="${{ steps.version.outputs.version }}"
-          cd build/windows/x64/installer/Release
-          SRC=$(ls *-Installer.exe 2>/dev/null | head -n 1 || true)
-          if [ -z "$SRC" ]; then
-            echo "::error::在 installer/Release 下没找到 *-Installer.exe"
-            exit 1
-          fi
-          DST="AppInfoTool-${V}-Windows-x86_64-Setup.exe"
-          mv "$SRC" "$DST"
-          echo "安装包改名：$SRC -> $DST"
+          $ErrorActionPreference = 'Stop'
+          $dest = 'build/windows/x64/runner/Release'
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            $target = Join-Path $dest $dll
+            if (Test-Path $target) { continue }
+            Copy-Item "C:\Windows\System32\$dll" $target -Force
+            Write-Host "bundled $dll"
+          }
+          Get-ChildItem $dest -Filter '*140*.dll' |
+            Select-Object Name, Length | Format-Table | Out-String | Write-Host
+
+      - name: Create Installer
+        # 安装包由仓库里的 `windows/installer/appinfotool.iss` 生成，
+        # **不再走 `inno_bundle`**：它的脚本生成器把「安装目录页 / 语言选择 /
+        # 文件关联」三件事都写死了，配置改不出来（详见 .iss 文件头）。
+        #
+        # ISCC 在 windows 镜像里不一定预装；choco 装的是最新 6.x，
+        # 而仓库里的简体中文语言文件是按 6.5+ 写的。
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe 不存在：$iscc" }
+          $version = '${{ steps.version.outputs.version }}'
+          $root = (Get-Location).Path
+          # 输出目录先建好：不依赖「ISCC 会自己创建」这个行为。
+          New-Item -ItemType Directory -Force -Path 'build/windows/x64/installer/Release' | Out-Null
+          Write-Host "ISCC version: $((Get-Item $iscc).VersionInfo.ProductVersion)"
+          & $iscc "/DAppVersion=$version" "/DSourceRoot=$root" 'windows\installer\appinfotool.iss'
+          if ($LASTEXITCODE -ne 0) { throw "ISCC 失败，退出码 $LASTEXITCODE" }
+          $out = "build/windows/x64/installer/Release/AppInfoTool-$version-Windows-x86_64-Setup.exe"
+          if (-not (Test-Path $out)) { throw "没有产出安装包：$out" }
+          Get-Item $out | Select-Object Name, Length | Format-Table | Out-String | Write-Host
 
       - name: Create ZIP Package
         shell: bash

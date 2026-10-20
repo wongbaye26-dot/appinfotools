@@ -70,6 +70,15 @@ class FileAssociationChannel {
   static std::string PickInitialFilePath(
       const std::vector<std::string>& startup_arguments);
 
+  /// 把「另一个实例转发过来的命令行」推给 Dart（`fileOpened`）。
+  ///
+  /// 参数格式与启动参数相同；挑不出文件就什么都不做。
+  ///
+  /// **推成功才清掉待取路径**：Dart 侧如果还没设 handler（启动最初一瞬），
+  /// 这次推送会以 `NotImplemented` 失败，路径必须留着，等
+  /// `getInitialFilePath` 取走 —— 否则那次双击就丢了。
+  static void DeliverFile(const std::vector<std::string>& arguments);
+
  private:
   FileAssociationChannel(flutter::FlutterEngine* engine,
                          const std::vector<std::string>& startup_arguments);

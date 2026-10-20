@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "flutter_window.h"
+#include "single_instance.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -21,6 +22,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
+
+  // 单实例：第二次双击 .apk / .ipa 时，参数交给已经在跑的那个窗口，
+  // 本进程直接退出 —— 否则每双击一次就多一个窗口。
+  //
+  // **必须在 `std::move` 之前**：转发要用到参数，移动之后就只剩空壳。
+  if (!single_instance::Acquire(command_line_arguments)) {
+    ::CoUninitialize();
+    return EXIT_SUCCESS;
+  }
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

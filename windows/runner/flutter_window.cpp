@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "file_association_channel.h"
+#include "single_instance.h"
 #include "thumbnail_channel.h"
 #include "flutter/generated_plugin_registrant.h"
 #include "utils.h"
@@ -43,6 +44,25 @@ bool FlutterWindow::OnCreate() {
   // 「系统文件图标」通道：与文件关联**分开**（登记的是不同的东西）。
   // 它只被设置页调用，没有启动时序要求，但放在同一处便于对照。
   ThumbnailChannel::Register(flutter_controller_->engine());
+
+  // 单实例：把「第二个进程转发过来的文件」交给 Dart，并把窗口提到前面。
+  //
+  // 登记时机与文件关联通道一致 —— 回调里要往 `file_association` 通道推
+  // `fileOpened`，通道没注册就推等于丢。启动瞬间收到的转发会先在 native
+  // 侧缓存，这里一登记就补发。
+  single_instance::SetMainWindow(GetHandle());
+  single_instance::SetForwardHandler(
+      [this](const std::vector<std::string>& arguments) {
+        FileAssociationChannel::DeliverFile(arguments);
+        // 窗口可能在最小化或躲在别的窗口后面：恢复并抢一次前台，
+        // 否则用户双击文件后只看到任务栏闪一下，以为没反应。
+        if (::IsIconic(GetHandle())) {
+          ::ShowWindow(GetHandle(), SW_RESTORE);
+        } else {
+          Show();
+        }
+        ::SetForegroundWindow(GetHandle());
+      });
 
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 

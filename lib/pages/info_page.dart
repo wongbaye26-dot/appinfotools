@@ -15,6 +15,7 @@ import 'package:apk_info_tool/pages/install_dialog.dart';
 import 'package:apk_info_tool/pages/pages.dart';
 import 'package:apk_info_tool/pages/text_info.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
+import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/providers/home_page_provider.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
@@ -1136,7 +1137,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     );
   }
 
-  Future<void> _initPlatformState() async {
+  /// 取「启动时要打开的文件」。
+  ///
+  /// 平台通道优先：Windows / macOS 的 native 侧都会把双击进来的路径解析好
+  /// （Windows 还会在**第二个实例**被唤起时通过同一个通道推 `fileOpened`）。
+  /// [fallbackPath] 是没有这个通道时（Linux）的退路 —— 来自 `main()` 的
+  /// 命令行参数。
+  Future<void> _initPlatformState({String fallbackPath = ''}) async {
     log.info("_initPlatformState: start");
     String? initialFilePath;
     try {
@@ -1146,12 +1153,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     } on PlatformException catch (e) {
       log.info("PlatformException: $e");
       initialFilePath = null;
+    } on MissingPluginException catch (e) {
+      // 没有这个通道的平台（Linux）走兜底路径，不该在这里断掉。
+      log.info("MissingPluginException: $e");
+      initialFilePath = null;
+    }
+
+    if (initialFilePath == null || initialFilePath.isEmpty) {
+      initialFilePath = fallbackPath;
     }
 
     log.info("_initPlatformState: initialFilePath=$initialFilePath");
     if (!mounted) return;
 
-    if (initialFilePath != null && initialFilePath.isNotEmpty) {
+    // 到这里一定非空：要么通道给了路径，要么已经换成 fallbackPath。
+    if (initialFilePath.isNotEmpty) {
       openApk(initialFilePath);
     }
   }
@@ -1160,7 +1176,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     const MethodChannel('file_association').setMethodCallHandler((call) async {
       log.info("_setupFileAssociationHandler: call.method=${call.method}");
       if (call.method == 'fileOpened') {
-        openApk(call.arguments);
+        final path = call.arguments;
+        if (path is String && path.isNotEmpty) {
+          // 第二个实例转发进来的文件（Windows 单实例）—— 窗口已经存在，
+          // 用户可能停在设置页或概览页。不切页的话，界面上看不出任何变化，
+          // 用户会以为双击没生效。这里主动跳到分析页。
+          ref.read(shellNavigationProvider.notifier).navigate('analysis');
+          openApk(path);
+        }
       }
       return null;
     });
@@ -1174,8 +1197,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       if (mounted) updateActions();
     });
     log.info("initState apkByArgs=$apkByArgs");
-    if (Platform.isMacOS) {
-      _initPlatformState();
+    // Windows 与 macOS 都走平台通道：native 侧解析好启动文件，Windows 还会在
+    // **第二个实例**被唤起时通过同一个通道推 `fileOpened`（见
+    // `windows/runner/single_instance.cpp`）—— 于是双击第二个包不会开新窗口，
+    // 而是在这个窗口里直接换文件。
+    //
+    // Linux 没有这个通道，退回 `main()` 里的命令行参数。
+    if (Platform.isMacOS || Platform.isWindows) {
+      _initPlatformState(fallbackPath: apkByArgs);
       _setupFileAssociationHandler();
     } else if (apkByArgs.isNotEmpty) {
       openApk(apkByArgs);

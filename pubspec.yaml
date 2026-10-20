@@ -61,7 +61,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  inno_bundle: ^0.11.2
   slang_build_runner: ^4.3.0
   riverpod_lint: ^3.0.3
   riverpod_generator: ^4.0.0+1
@@ -75,15 +74,6 @@ flutter:
   assets:
     - assets/image/icon.png
 
-inno_bundle:
-  id: 8cdac933-dde4-5d06-985d-4c99f7247903
-  publisher: Feng
-  # 同时决定：安装包文件名（<name>-<arch>-<version>-Installer.exe）、
-  # 安装目录、开始菜单快捷方式名，以及「应用与功能」里的显示名。
-  # 与应用显示名保持一致（都是 AppInfoTool）：名字全 ASCII，文件名和
-  # 下载链接里不会出现 % 转义，命令行下载才好用。
-  # 应用内的显示名来自 assets/i18n 的 title，两处需要同步改。
-  name: AppInfoTool
-  languages:
-    - english
-#    - chinesesimplified
+# 安装包不再由 `inno_bundle` 生成，脚本在 `windows/installer/appinfotool.iss`
+# 自己维护（CI 直接调 ISCC）。原因见那份文件头：它的生成器把「安装目录页 /
+# 语言选择 / 文件关联」都写死了，配置改不出来。

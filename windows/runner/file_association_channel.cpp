@@ -8,6 +8,7 @@
 #include <shlobj.h>
 
 #include <flutter/standard_method_codec.h>
+#include <flutter/method_result_functions.h>
 
 #include <string>
 #include <variant>
@@ -23,6 +24,16 @@ namespace {
 const wchar_t* kSupportedExtensions[] = {
     L".apk", L".ipa", L".xapk", L".apks", L".apkm",
 };
+
+/// 进程内唯一的通道实例。
+///
+/// 用 static 持有是为了让方法通道的处理函数在引擎存活期间一直有效 ——
+/// 裸 `new` 之后没人释放，而 Flutter 侧可能在任意时刻回调进来，
+/// 悬垂指针会直接崩。
+///
+/// **放在文件作用域而不是 `Register` 的局部 static 里**：单实例转发
+/// （`DeliverFile`）也要拿到它，而局部 static 只有那个函数能看见。
+std::unique_ptr<FileAssociationChannel> g_instance;
 
 /// 把 UTF-8 转成宽字符。失败时返回空串。
 std::wstring WideFromUtf8(const std::string& utf8_string) {
@@ -189,19 +200,14 @@ void FileAssociationChannel::Register(
   if (engine == nullptr) {
     return;
   }
-  // 进程内只注册一次。用 static 持有是为了让方法通道的处理函数在
-  // 引擎存活期间一直有效 —— 裸 `new` 之后没人释放，而 Flutter 侧
-  // 可能在任意时刻回调进来，悬垂指针会直接崩。
-  //
+  if (g_instance != nullptr) {
+    return;  // 重复注册会让旧实例被销毁，而通道的回调仍指向它。
+  }
   // **不能用 `std::make_unique`**：它在 `<memory>` 内部实例化，
   // 不在本类作用域里，因此访问不到 private 构造函数 —— MSVC 会报
   // `error C2248: cannot access private member`（CI run #95 就是）。
   // `new` 表达式则写在 `Register` 这个成员函数体内，可以访问。
-  static std::unique_ptr<FileAssociationChannel> instance;
-  if (instance != nullptr) {
-    return;  // 重复注册会让旧实例被销毁，而通道的回调仍指向它。
-  }
-  instance.reset(new FileAssociationChannel(engine, startup_arguments));
+  g_instance.reset(new FileAssociationChannel(engine, startup_arguments));
 }
 
 FileAssociationChannel::FileAssociationChannel(
@@ -264,6 +270,28 @@ void FileAssociationChannel::HandleMethodCall(
   }
 
   result->NotImplemented();
+}
+
+void FileAssociationChannel::DeliverFile(
+    const std::vector<std::string>& arguments) {
+  if (g_instance == nullptr || g_instance->channel_ == nullptr) {
+    return;
+  }
+  const std::string path = PickInitialFilePath(arguments);
+  if (path.empty()) {
+    return;
+  }
+  FileAssociationChannel* self = g_instance.get();
+  // 先记下再推：Dart 侧可能还没设 handler，那次推送会失败，
+  // 但路径不能丢 —— `getInitialFilePath` 会把它取走。
+  self->pending_file_path_ = path;
+  self->channel_->InvokeMethod(
+      "fileOpened", std::make_unique<flutter::EncodableValue>(path),
+      std::make_unique<flutter::MethodResultFunctor>(
+          [self](const flutter::EncodableValue* result) {
+            // 送达了：清掉待取路径，免得页面重建时再打开一次。
+            self->pending_file_path_.clear();
+          }));
 }
 
 std::string FileAssociationChannel::PickInitialFilePath(
