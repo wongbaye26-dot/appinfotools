@@ -196,7 +196,9 @@
     "key_size_bits": "{bits} bits",
     "validity": "Validity",
     "diagnostics": "Diagnostics",
-    "status_not_checked": "not run (disabled in settings)"
+    "status_not_checked": "not run (disabled in settings)",
+    "failed_code_modified_hint": "codesign reports a code-hash mismatch (not a resource-seal mismatch). The usual cause is that this bundle was decrypted or repackaged: once the binary is decrypted or patched, the original signature cannot validate, while the app may still run. To double-check independently, unzip the IPA and run `codesign --verify --strict` on the same .app.",
+    "failed_generic_hint": "Signature verification did not pass. Read the raw output below: 'a sealed resource is missing or invalid' usually means files were added or removed; 'code or signature have been modified' means the binary was modified."
   },
   "parse": {
     "signature_verify_failed": "Signature verification failed",

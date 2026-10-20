@@ -180,7 +180,9 @@
     "key_algorithm": "키 알고리즘",
     "key_size_bits": "{bits}비트",
     "validity": "유효 기간",
-    "diagnostics": "진단 정보"
+    "diagnostics": "진단 정보",
+    "failed_code_modified_hint": "codesign이 보고하는 것은 \"코드 해시가 서명과 일치하지 않는다\"이며, \"번들 리소스가 변경되었다\"가 아닙니다. 가장 흔한 원인은 이 번들이 복호화(덤프) 또는 재패키징된 것입니다. 바이너리가 복호화·수정되면 원래 서명은 반드시 무효가 되지만 앱 자체는 실행될 수 있습니다. 독립적으로 확인하려면 IPA를 unzip한 뒤 같은 .app에 대해 `codesign --verify --strict`를 실행하세요.",
+    "failed_generic_hint": "서명 검증을 통과하지 못했습니다. 아래 원본 출력으로 판단하세요. `a sealed resource is missing or invalid`는 번들 내 파일이 추가/삭제된 경우, `code or signature have been modified`는 바이너리가 수정된 경우에 흔합니다."
   },
   "parse": {
     "signature_verify_failed": "서명 확인 실패",

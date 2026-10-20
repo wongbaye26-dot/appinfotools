@@ -648,6 +648,39 @@ void main() {
       expect(text, contains(t.signature.diagnostics));
     });
 
+    test('代码哈希不符 → 解释「砸壳 / 重打包」，而不是只丢一句英文', () {
+      // 实机反馈：codesign 只说 `invalid signature (code or signature have
+      // been modified)`，用户既不知道该怀疑什么，也怀疑是不是工具的误判。
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verificationFailed,
+        toolExecuted: true,
+        exitCode: 1,
+        stderr: 'Madrid.app: invalid signature '
+            '(code or signature have been modified)',
+        error: 'codesign reported that the signature is not valid',
+      );
+
+      final text = DetailRenderer.iosCodeSign(result, t);
+      expect(text, contains(t.signature.failed_code_modified_hint));
+      expect(text, isNot(contains(t.signature.failed_generic_hint)));
+      // 原始输出仍然要在（用户可能想自己核对）。
+      expect(text, contains('code or signature have been modified'));
+    });
+
+    test('资源封印不符 → 用通用解释，别把「文件被增删」说成「二进制被改」', () {
+      const result = IosCodeSignResult(
+        status: SignatureStatus.verificationFailed,
+        toolExecuted: true,
+        exitCode: 1,
+        stderr: 'Example.app: a sealed resource is missing or invalid',
+        error: 'codesign reported that the signature is not valid',
+      );
+
+      final text = DetailRenderer.iosCodeSign(result, t);
+      expect(text, contains(t.signature.failed_generic_hint));
+      expect(text, isNot(contains(t.signature.failed_code_modified_hint)));
+    });
+
     test('codesign 通过时给出证书链', () {
       const result = IosCodeSignResult(
         status: SignatureStatus.verified,

@@ -687,6 +687,22 @@ class DetailRenderer {
       }
     }
 
+    // 验证失败时先说**这意味着什么**，再给原始输出。
+    //
+    // 只有原始输出的话，用户看到的是一句英文（`invalid signature (code or
+    // signature have been modified)`），既不知道该怀疑什么，也不知道这是不是
+    // 工具的误判。两句话按 codesign 的措辞分岔：
+    //   - 代码哈希不符 → 二进制被改（砸壳 / 重打包最常见，签名失效是必然）；
+    //   - 其它（资源封印不符等）→ 包内文件被增删。
+    if (codeSign.status == SignatureStatus.verificationFailed) {
+      sb.writeln('');
+      sb.writeln(
+        codeSign.rawOutput.contains('code or signature have been modified')
+            ? t.signature.failed_code_modified_hint
+            : t.signature.failed_generic_hint,
+      );
+    }
+
     // 没有验证通过时把工具的原始输出一并给出。
     //
     // 判据是「不是 verified」而不是「没有明确结论」：验证**失败**时用户最
