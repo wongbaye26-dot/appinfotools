@@ -1,5 +1,99 @@
 # Changelog
 
+## 2.7.0 — 2026-10-20
+
+这一版只动 **Windows 打包与启动行为**：安装包换成仓库自维护的 Inno Setup
+脚本，于是向导能选安装语言、选安装目录，装完双击 `.apk` 就能打开；再加了
+单实例，双击第二个包不再开新窗口。分析引擎与界面版式**没有变化**。
+
+### 安装向导
+
+安装包此前由 `inno_bundle` 生成，它的脚本生成器把三件事写死了，配置改不出来：
+
+- `DisableDirPage=auto` —— 安装目录页在多数情况下**不显示**；
+- `[Languages]` 只有它自己枚举的那几个，**没有简体中文**；
+- **不生成 `[Registry]` 段** —— 装完没有任何文件关联。
+
+现在脚本在 `windows/installer/appinfotool.iss`，CI 直接调 ISCC：
+
+| 项 | 做法 |
+|---|---|
+| 语言选择 | `ShowLanguageDialog=yes`，简体中文 / English / 日本語 / 한국어，默认按系统语言预选 |
+| 安装目录 | `DisableDirPage=no`，目录页总是显示；升级时预填上次的位置 |
+| 文件关联 | `[Registry]` 写 `.apk` / `.ipa` / `.xapk` / `.apks` / `.apkm` 的 ProgID 与关联，`ChangesAssociations=yes` 让资源管理器立刻刷新 |
+| 默认勾选 | 「关联到本程序」是一个可取消的任务，默认勾选 |
+| 安全 | `AppMutex` 与应用的互斥体同名：应用在跑时安装/卸载会先要求关闭 |
+
+两个必须记住的细节（都写在脚本头里）：
+
+- **中文语言文件必须保持 UTF-8 with BOM**。Inno 6 靠 BOM 判断 Unicode，
+  去掉就按代码页 936 读 —— 中文全乱码，而且**编译不报错**。`.iss` 自身同理。
+- **`AppId` 必须与旧版逐字符一致**（`8cdac933-…`，不带花括号），否则老用户
+  升级会被当成另一个产品，装出第二份。
+
+### 单实例：双击第二个包不再开新窗口
+
+文件关联的打开命令是 `"apk_info_tool.exe" "%1"`，资源管理器每双击一次就起一个
+新进程 —— 连开三个包会得到三个窗口，每个只认识自己那一个文件。
+
+`windows/runner/single_instance.cpp` 用命名互斥体
+（`Local\AppInfoTool.SingleInstance`）+ 一个隐藏的消息专用窗口实现：
+第二个进程找到那个窗口，`WM_COPYDATA` 把命令行送过去后**自己退出**；
+接收方经 `file_association` 通道推 `fileOpened`，恢复窗口、抢一次前台
+（发送方先 `AllowSetForegroundWindow` 让出资格），界面切到分析页。
+
+三个边界：
+
+- Dart 侧还没设 handler 时推送会失败，路径留在 `pending_file_path_`，
+  由 `getInitialFilePath` 取走 —— 启动瞬间的转发不会丢；
+- 点快捷方式（没有参数）也算一次「提到前面」，不会多开窗口；
+- **找不到接收窗口时退化成新实例** —— 宁可多开一个窗口，也不能把用户要
+  打开的文件吞掉。
+
+### 免安装包补上 VC 运行库
+
+`flutter build windows` 的动态 CRT 依赖 `msvcp140.dll` / `vcruntime140.dll` /
+`vcruntime140_1.dll`。此前只有安装器里有（`inno_bundle` 自动加的），
+**免安装 ZIP 缺**，干净机器上双击会报「找不到 VCRUNTIME140.dll」。
+现在 CI 把缺失的补进 `runner/Release`，安装包与 ZIP 都带上。
+
+### 行为变更
+
+- 安装包不再由 `inno_bundle` 生成，该依赖已移除；产物名仍是
+  `AppInfoTool-<版本>-Windows-x86_64-Setup.exe`（由脚本的
+  `OutputBaseFilename` 直接给出，不再需要改名步骤）。
+- 安装时写的是**机器级**关联（`HKLM`，需要管理员）；应用启动时仍会补一份
+  用户级关联（`HKCU`，便携版与「关联被别的程序抢走」靠它）。两边 ProgID
+  相同，不会出现两套互相看不见的关联。
+- 升级安装会先清空安装目录（`[InstallDelete]`），避免新旧 DLL 混装。
+
+### 已知限制（写在这里而不是藏起来）
+
+- **向导页面与单实例转发没有在 Windows 实机上跑过。** CI 能证明的是
+  「C++ 编得过、ISCC 接受这份脚本、安装包产得出来」；「语言页真的出现」
+  「第二个包真的复用窗口」需要一台 Windows 机器点一遍。
+- **繁体中文不在安装语言里**：Inno 官方不带中文，简体那份用的是社区翻译
+  （按 6.5+ 写）；没有找到可靠的繁体 `.isl`，宁可只给简体，也不塞一份
+  半成品。
+- 免安装 ZIP 版没有安装器，关联仍靠程序每次启动自己登记；Windows 10/11 的
+  默认程序由带哈希校验的 `UserChoice` 决定，程序只能「登记为候选」。
+
+### 关于 CI 可观测性
+
+这一版在 Windows 上连红了 5 次，每次只暴露一个问题（引擎里没有
+`MethodResultFunctor`；`ISCC /D` 把 `2.6.1` 当表达式解析；自己写的版本
+检查把 `ProductVersion=0.0.0.0` 误判成「低于 6.5」；漏了 `[Registry]` 段头）。
+
+前两次失败**只留下一句 `Process completed with exit code 1`** ——
+job 日志 API 需要 admin（匿名 403），而 PowerShell 的 `throw` 不产生
+check-run 注解。改成「每个失败分支先 `::error::` 再退出，并把 ISCC 输出
+末尾 8 行也变成注解」之后，后两次都能一眼看到原因。**先修可观测性，再修 bug。**
+
+### 质量
+
+根测试 1,625 + 包内 378 = **2,003** 条，`flutter analyze --fatal-infos
+--fatal-warnings` 六个目标零问题，`dart format` 干净。
+
 ## 2.6.1 — 2026-10-19
 
 功能与 2.6.0 **完全相同**，只推进版本号并补上 CI 的诊断能力。
