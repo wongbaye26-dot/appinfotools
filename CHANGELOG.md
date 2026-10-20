@@ -1,5 +1,69 @@
 # Changelog
 
+## 2.7.2 — 2026-10-20
+
+只动**缩略图自检工具**，应用本身与 2.7.1 完全相同（图标修复不变）。
+上一版这个工具在中文 Windows 上「只打出几行 ASCII 就没了」，等于没法用来
+排查问题 —— 这一版把它修到能读、能直接回答「为什么图标不出来」。
+
+### 中文输出：不再走 `wprintf`
+
+现象（实机反馈）：双击 `appinfotool_thumbnail_selftest.exe`，只看到
+`[step] started` / `exe` / `argc` / `console` 四行 ASCII，后面的中文一个字都没有，
+窗口停在「按回车键关闭」，看起来像卡死。
+
+原因：`wprintf` 把宽字符转多字节时依赖当前 locale，默认 "C" locale 下
+**非 ASCII 直接丢掉**。试过 `setlocale(".UTF-8")`、`SetConsoleOutputCP(CP_UTF8)`、
+`_setmode(_O_U8TEXT)` 三层，在不同宿主（控制台 / 管道 / 服务）下表现并不一致
+—— CI 上的结果甚至是「ASCII 全在、中文全丢」。
+
+现在改成两条固定路径，都不依赖任何全局状态：
+
+| 场景 | 写法 |
+|---|---|
+| 控制台 | `WriteConsoleW` 直接写 UTF-16，系统自己转，任何代码页都对 |
+| 重定向到管道 / 文件 | `WideCharToMultiByte(CP_UTF8)` + `fwrite` |
+
+### 无参数时 = 注册诊断（新）
+
+以前无参只打用法 —— 可「图标不出来」的时候用户并不知道该传哪个文件。
+现在无参直接查注册，**不需要任何输入**：
+
+- 本目录的 `appinfotool_thumbnail.dll` / `app_icon_extractor.exe` 在不在；
+- `HKCU` / `HKLM` 的 CLSID 指向哪个 DLL，那个文件在不在（指向旧目录会单独标出）；
+- `.apk` / `.ipa` 的 `ShellEx\{E357FCCD-…}` 挂的是不是我们的 CLSID；
+- 最后给一句结论，包括「注册是完整的 → 那就是缓存，重启资源管理器」这条分支。
+
+退出码：`0` = 至少一套注册完整可用，`1` = 没有。
+
+```
+== registration diagnostics ==
+== 注册诊断 ==
+...
+== 结论 ==
+注册是完整的。若资源管理器仍显示应用图标，基本就是缓存：
+  taskkill /f /im explorer.exe 然后 start explorer.exe
+```
+
+带参数时行为不变（端到端出图自检），CI 仍然跑那四条断言。
+
+### 顺带修掉一个更根本的坑
+
+MSVC **没有 BOM 就按系统 ANSI 代码页读源文件**。`selftest.cpp` 是 UTF-8 无 BOM，
+在英文 CI runner（CP1252）或中文 Windows（CP936）上编译出来的中文字面量都是错的。
+给这个目标加了 `/utf-8`，编译结果不再依赖构建机的区域设置。
+
+### CI
+
+新增一步跑无参诊断，断言**退出码 1**（干净 runner 上什么都没注册）+
+ASCII 标题 + `CLSID`/`HKCU`/`HKLM` + **中文标题确实出现**。这一条同时守住
+「诊断能跑通」与「编码没退化」——上一版的中文丢失就是靠它暴露的。
+
+### 质量
+
+根测试 1,630 + 包内 378 = **2,008** 条，六个 `analyze` 目标零问题，
+`dart format` 干净。
+
 ## 2.7.1 — 2026-10-20
 
 修 2.7.0 的一个功能缺陷：**资源管理器里所有 `.apk` / `.ipa` 都显示 AppInfoTool
