@@ -249,6 +249,64 @@ bool IsRedirected() {
 ///   1. 显式 `--pause`；
 ///   2. 没有任何参数（双击的最典型形态：程序本来就该给人看用法）；
 ///   3. 独占控制台 **且** stdout 是终端（用户在资源管理器里双击了带参数的场景）。
+/// 往控制台/管道写一段宽字符文本 —— **不经过 locale**。
+///
+/// ## 为什么不用 `wprintf`
+///
+/// `wprintf` 把宽字符转多字节时依赖当前 locale：默认 "C" locale 下非 ASCII
+/// **直接丢掉**（2.7.1 实机反馈：中文一个字都没出来，只剩 ASCII 的 step 行）。
+/// 而 `setlocale(".UTF-8")` / `_setmode(_O_U8TEXT)` / `SetConsoleOutputCP`
+/// 这三层在不同 Windows 版本、不同宿主（控制台 / 管道 / 服务）下表现并不一致，
+/// 试了两轮都没稳住。
+///
+/// 这里改成两条固定路径，都不依赖任何全局状态：
+///   - **控制台**：`WriteConsoleW` 直接写 UTF-16（系统自己转，任何代码页都对）；
+///   - **重定向**：自己转 UTF-8 再 `fwrite`（管道 / 文件都读得到）。
+void WriteWide(HANDLE handle, FILE* stream, const std::wstring& text) {
+  DWORD mode = 0;
+  if (::GetConsoleMode(handle, &mode) != 0) {
+    DWORD written = 0;
+    ::WriteConsoleW(handle, text.data(), static_cast<DWORD>(text.size()),
+                    &written, nullptr);
+    return;
+  }
+  const int bytes = ::WideCharToMultiByte(CP_UTF8, 0, text.data(),
+                                          static_cast<int>(text.size()),
+                                          nullptr, 0, nullptr, nullptr);
+  if (bytes <= 0) {
+    return;
+  }
+  std::string utf8(static_cast<size_t>(bytes), '\0');
+  ::WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                        &utf8[0], bytes, nullptr, nullptr);
+  std::fwrite(utf8.data(), 1, utf8.size(), stream);
+  std::fflush(stream);
+}
+
+/// 往 stdout 写一行。
+void WriteLine(const std::wstring& text) {
+  std::wstring line = text;
+  line.push_back(L'\n');
+  WriteWide(::GetStdHandle(STD_OUTPUT_HANDLE), stdout, line);
+}
+
+/// 往 stderr 写一行。
+void WriteErrLine(const std::wstring& text) {
+  std::wstring line = text;
+  line.push_back(L'\n');
+  WriteWide(::GetStdHandle(STD_ERROR_HANDLE), stderr, line);
+}
+
+/// `WriteLine` 的格式化版本（`_vsnwprintf_s`，超长截断而不是崩）。
+void WriteLineF(const wchar_t* format, ...) {
+  wchar_t buffer[1024] = {};
+  va_list args;
+  va_start(args, format);
+  ::_vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, args);
+  va_end(args);
+  WriteLine(buffer);
+}
+
 void PauseIfNeeded(bool force, bool no_arguments) {
   if (!force && !no_arguments) {
     if (!OwnsConsole() || IsRedirected()) {
@@ -337,64 +395,6 @@ bool RunOne(IClassFactory* factory, const std::wstring& path, UINT cx,
 }
 
 }  // namespace
-
-/// 往控制台/管道写一段宽字符文本 —— **不经过 locale**。
-///
-/// ## 为什么不用 `wprintf`
-///
-/// `wprintf` 把宽字符转多字节时依赖当前 locale：默认 "C" locale 下非 ASCII
-/// **直接丢掉**（2.7.1 实机反馈：中文一个字都没出来，只剩 ASCII 的 step 行）。
-/// 而 `setlocale(".UTF-8")` / `_setmode(_O_U8TEXT)` / `SetConsoleOutputCP`
-/// 这三层在不同 Windows 版本、不同宿主（控制台 / 管道 / 服务）下表现并不一致，
-/// 试了两轮都没稳住。
-///
-/// 这里改成两条固定路径，都不依赖任何全局状态：
-///   - **控制台**：`WriteConsoleW` 直接写 UTF-16（系统自己转，任何代码页都对）；
-///   - **重定向**：自己转 UTF-8 再 `fwrite`（管道 / 文件都读得到）。
-void WriteWide(HANDLE handle, FILE* stream, const std::wstring& text) {
-  DWORD mode = 0;
-  if (::GetConsoleMode(handle, &mode) != 0) {
-    DWORD written = 0;
-    ::WriteConsoleW(handle, text.data(), static_cast<DWORD>(text.size()),
-                    &written, nullptr);
-    return;
-  }
-  const int bytes = ::WideCharToMultiByte(CP_UTF8, 0, text.data(),
-                                          static_cast<int>(text.size()),
-                                          nullptr, 0, nullptr, nullptr);
-  if (bytes <= 0) {
-    return;
-  }
-  std::string utf8(static_cast<size_t>(bytes), '\0');
-  ::WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
-                        &utf8[0], bytes, nullptr, nullptr);
-  std::fwrite(utf8.data(), 1, utf8.size(), stream);
-  std::fflush(stream);
-}
-
-/// 往 stdout 写一行。
-void WriteLine(const std::wstring& text) {
-  std::wstring line = text;
-  line.push_back(L'\n');
-  WriteWide(::GetStdHandle(STD_OUTPUT_HANDLE), stdout, line);
-}
-
-/// 往 stderr 写一行。
-void WriteErrLine(const std::wstring& text) {
-  std::wstring line = text;
-  line.push_back(L'\n');
-  WriteWide(::GetStdHandle(STD_ERROR_HANDLE), stderr, line);
-}
-
-/// `WriteLine` 的格式化版本（`_vsnwprintf_s`，超长截断而不是崩）。
-void WriteLineF(const wchar_t* format, ...) {
-  wchar_t buffer[1024] = {};
-  va_list args;
-  va_start(args, format);
-  ::_vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, args);
-  va_end(args);
-  WriteLine(buffer);
-}
 
 /// 路径是否指向一个已存在的文件（目录不算）。
 bool FileExists(const std::wstring& path) {
