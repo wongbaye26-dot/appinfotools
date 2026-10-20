@@ -473,10 +473,12 @@ jobs:
             $preinstalled = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
             Write-Host "::notice::preinstalled ISCC: $preinstalled"
 
-            # choco 装/升级到最新 6.x。失败不在这里判死 —— 只要 ISCC 在，
-            # 后面照样能试；真失败时 ISCC 自己的报错会变成 annotation。
+            # `upgrade` 而不是 `install`：`install` 对「已装但版本旧」的包
+            # 什么都不做，而 `upgrade` 在缺包时会装、版本旧时会升。
+            # 失败不在这里判死 —— 只要 ISCC 在，后面照样能试；
+            # 真失败时 ISCC 自己的报错会变成 annotation。
             $chocoLog = Join-Path $env:RUNNER_TEMP 'choco.log'
-            choco install innosetup --no-progress -y > $chocoLog 2>&1
+            choco upgrade innosetup --no-progress -y > $chocoLog 2>&1
             Write-Host "::notice::choco exit=$LASTEXITCODE"
             Get-Content $chocoLog | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
 

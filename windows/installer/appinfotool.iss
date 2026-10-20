@@ -145,6 +145,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 ; 的关联，用户看到的「默认程序」会莫名其妙地变。
 ;
 ; `HKA` = 管理员安装时写 HKLM（对所有用户生效），非管理员写 HKCU。
+[Registry]
 Root: HKA; Subkey: "Software\Classes\AppInfoTool.apk"; ValueType: string; ValueName: ""; ValueData: "Android Package"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\AppInfoTool.apk\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExeName},0"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\AppInfoTool.apk\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"" ""%1"""; Flags: uninsdeletekey
