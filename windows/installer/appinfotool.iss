@@ -176,5 +176,21 @@ Root: HKA; Subkey: "Software\Classes\AppInfoTool.apkm\shell\open\command"; Value
 Root: HKA; Subkey: "Software\Classes\.apkm\OpenWithProgids"; ValueType: string; ValueName: "AppInfoTool.apkm"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\.apkm"; ValueType: string; ValueName: ""; ValueData: "AppInfoTool.apkm"; Flags: uninsdeletevalue; Tasks: associate
 
+; 缩略图处理器（`IThumbnailProvider`）。
+;
+; **没有这一段，资源管理器只会用上面写的 `DefaultIcon`** —— 也就是应用自己的
+; 图标，于是所有 .apk / .ipa 长得一模一样。注册了处理器，Explorer 才会去问
+; `appinfotool_thumbnail.dll` 要「这个包自己的图标」。
+;
+; CLSID 必须与 `windows/thumbnail/thumbnail_provider.cpp` 的
+; `kThumbnailProviderClsid` 一致；ShellEx 下的那个 GUID 是
+; `IID_IThumbnailProvider`（`{E357FCCD-…-234630154E96}`）。
+; 应用自己也会在启动时写一份 HKCU（便携版靠它），两边指向同一个 DLL。
+Root: HKA; Subkey: "Software\Classes\CLSID\{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; ValueType: string; ValueName: ""; ValueData: "AppInfoTool thumbnail provider"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\CLSID\{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\appinfotool_thumbnail.dll"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\CLSID\{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.apk\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.ipa\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
+
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

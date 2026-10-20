@@ -6,6 +6,7 @@ import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/ui/shell/app_shell.dart';
 import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
+import 'package:apk_info_tool/utils/system_thumbnail.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -92,6 +93,25 @@ void main(List<String> arguments) async {
         log.info('main: registerAssociations -> $registered');
       }),
     );
+  }
+
+  // Windows：「系统文件图标」—— 把缩略图处理器登记进注册表。
+  //
+  // **不登记就只有一个图标**：资源管理器会退回到 ProgID 的 `DefaultIcon`
+  // （也就是应用自己的图标），于是所有 .apk / .ipa 长得一模一样。登记之后
+  // Explorer 才会去问 `appinfotool_thumbnail.dll` 要「这个包自己的图标」。
+  //
+  // 与文件关联一样：不阻塞启动、失败不弹窗。默认开，但**尊重用户在设置页
+  // 里的停用** —— 那个开关会写 `Config.systemIconEnabled`。
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    if (Config.systemIconEnabled.value) {
+      unawaited(
+        SystemThumbnailManager.ensureRegistered().then((status) {
+          log.info('main: ensureRegistered -> usable=${status.usable} '
+              'registered=${status.registered}');
+        }),
+      );
+    }
   }
 
   if (isDesktop) {

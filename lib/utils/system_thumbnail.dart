@@ -145,6 +145,25 @@ class SystemThumbnailManager {
     }
   }
 
+  /// 启动时调用：只在**确实需要**时写注册表。
+  ///
+  /// 不无脑 [register]：每次启动重写一遍没必要，也会把「用户已停用」这件事
+  /// 搅浑 —— 那个状态由 `Config.systemIconEnabled` 在调用方判断。
+  static Future<SystemThumbnailStatus> ensureRegistered() async {
+    final status = await getStatus();
+    if (!needsRegistration(status)) return status;
+    return register();
+  }
+
+  /// 是否需要写注册表（纯函数，便于单测）。
+  ///
+  /// 三条判据缺一不可：
+  /// - `usable == false`：已经指向当前 DLL 就别再写；
+  /// - `dllPresent` / `helperPresent`：文件不在时写注册表只会让 Explorer
+  ///   每次请求都失败，用户看到的是「设置里说已启用、图标却出不来」。
+  static bool needsRegistration(SystemThumbnailStatus status) =>
+      !status.usable && status.dllPresent && status.helperPresent;
+
   /// 注销：只删本项目写的那两个注册键。
   static Future<SystemThumbnailStatus> unregister() async {
     if (!isSupported) return const SystemThumbnailStatus.unknown();

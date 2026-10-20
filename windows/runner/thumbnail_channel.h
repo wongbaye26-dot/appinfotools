@@ -27,9 +27,13 @@
 /// HKCU\Software\Classes\CLSID\{9C4A7E52-…}\InprocServer32
 ///     (Default) = <安装目录>\appinfotool_thumbnail.dll
 ///     ThreadingModel = Apartment
-/// HKCU\Software\Classes\.apk\ShellEx\{e357fccd-a995-4576-b01f-ace3639130c9}
+/// HKCU\Software\Classes\.apk\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}
 ///     (Default) = {9C4A7E52-…}
 /// ```
+///
+/// ShellEx 那个 GUID 是 **`IID_IThumbnailProvider`**，代码里从 SDK 直接取
+/// （`ThumbnailHandlerGuid()`）—— 早先手抄过一份，抄错了两位，于是注册
+/// 「成功」但 Explorer 永远不调用，见 `thumbnail_channel.cpp` 的注释。
 ///
 /// 只写**我们自己**的键，不碰 `UserChoice`、不碰其它应用的处理器。
 class ThumbnailChannel {

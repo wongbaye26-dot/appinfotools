@@ -6,6 +6,13 @@
 
 #include <flutter/standard_method_codec.h>
 #include <shlobj.h>
+// `propsys.h` 必须在 `thumbcache.h` 之前：后者用到 `PROPVARIANT`
+// （`IInitializeWithItem` 那一族接口的参数类型）。`thumbnail_provider.cpp`
+// 里是同样的顺序。
+#include <propsys.h>
+// `IID_IThumbnailProvider` —— 缩略图处理程序在 ShellEx 下的 GUID。
+// 用它而不是手写字符串：见 ThumbnailHandlerGuid() 的注释。
+#include <thumbcache.h>
 // `StrCmpIW` 来自 shlwapi.h，实现在 shlwapi.lib（见 runner/CMakeLists.txt）。
 #include <shlwapi.h>
 
@@ -25,11 +32,33 @@ namespace {
 /// 表现是「注册成功、图标不出来」—— 最难查的那种。
 const wchar_t* kClsidString = L"{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}";
 
-/// 缩略图处理器的 ShellEx 键名。
+/// 缩略图处理器的 ShellEx 键名（`IThumbnailProvider` 的处理程序 GUID）。
 ///
-/// 这是 Windows 固定定义的 GUID（`IThumbnailProvider` 的处理程序 ID），
-/// 不是我们自己编的。
-const wchar_t* kThumbnailHandlerGuid =
+/// ## 为什么不再写字符串字面量
+///
+/// 这里原本手抄的是 `{e357fccd-a995-4576-b01f-ace3639130c9}` —— 后两段抄错了
+/// （正确的是 `234630154e96`）。后果非常隐蔽：注册表写入**全部成功**，
+/// `getStatus` 也报「已注册」，但那个 GUID 系统根本不认识，Explorer 从来不会
+/// 调用我们的处理器 —— 用户看到的是「设置里说已启用，图标永远不出来」，
+/// 而且没有任何报错可查。
+///
+/// 现在从 SDK 的 `IID_IThumbnailProvider` 取字符串，**抄不错**。
+std::wstring ThumbnailHandlerGuid() {
+  wchar_t buffer[64] = {};
+  const int written =
+      ::StringFromGUID2(IID_IThumbnailProvider, buffer,
+                        static_cast<int>(sizeof(buffer) / sizeof(buffer[0])));
+  if (written <= 0) {
+    return std::wstring();
+  }
+  return std::wstring(buffer);
+}
+
+/// 早期版本手抄错的 ShellEx GUID（`…-ace3639130c9`）。
+///
+/// 那个 GUID 系统不认识，Explorer 从来没用过它。注册/注销时顺手删掉，
+/// 免得在 ShellExView 这类工具里留下一条永远无效的处理器。
+const wchar_t* kLegacyHandlerGuid =
     L"{e357fccd-a995-4576-b01f-ace3639130c9}";
 
 /// 本处理器声明的扩展名（小写，含点）。
@@ -266,13 +295,21 @@ std::string ThumbnailChannel::RegisterProvider() {
     return "cannot write ThreadingModel";
   }
 
+  const std::wstring handler_guid = ThumbnailHandlerGuid();
+  if (handler_guid.empty()) {
+    return "cannot resolve the thumbnail handler GUID";
+  }
   for (const wchar_t* ext : kSupportedExtensions) {
     const std::wstring shell_ex =
         std::wstring(L"Software\\Classes\\") + ext + L"\\ShellEx\\" +
-        kThumbnailHandlerGuid;
+        handler_guid;
     if (!WriteStringValue(HKEY_CURRENT_USER, shell_ex, nullptr, kClsidString)) {
       return "cannot write the ShellEx entry for " + Utf8FromWide(ext);
     }
+    // 顺手清掉早期版本写错的那条（见 kLegacyHandlerGuid）。
+    DeleteKeyTree(HKEY_CURRENT_USER,
+                  std::wstring(L"Software\\Classes\\") + ext +
+                      L"\\ShellEx\\" + kLegacyHandlerGuid);
   }
 
   ::SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
@@ -282,11 +319,17 @@ std::string ThumbnailChannel::RegisterProvider() {
 std::string ThumbnailChannel::UnregisterProvider() {
   // 只删我们自己的两个键。**不碰** `ShellEx` 下其它 GUID，
   // 也不碰 `UserChoice` 与默认程序。
-  for (const wchar_t* ext : kSupportedExtensions) {
-    const std::wstring shell_ex =
-        std::wstring(L"Software\\Classes\\") + ext + L"\\ShellEx\\" +
-        kThumbnailHandlerGuid;
-    DeleteKeyTree(HKEY_CURRENT_USER, shell_ex);
+  const std::wstring handler_guid = ThumbnailHandlerGuid();
+  if (!handler_guid.empty()) {
+    for (const wchar_t* ext : kSupportedExtensions) {
+      const std::wstring shell_ex =
+          std::wstring(L"Software\\Classes\\") + ext + L"\\ShellEx\\" +
+          handler_guid;
+      DeleteKeyTree(HKEY_CURRENT_USER, shell_ex);
+      DeleteKeyTree(HKEY_CURRENT_USER,
+                    std::wstring(L"Software\\Classes\\") + ext +
+                        L"\\ShellEx\\" + kLegacyHandlerGuid);
+    }
   }
   DeleteKeyTree(HKEY_CURRENT_USER,
                 std::wstring(L"Software\\Classes\\CLSID\\") + kClsidString);
@@ -327,10 +370,11 @@ flutter::EncodableMap ThumbnailChannel::CurrentStatus() {
   // 逐扩展名报告，而不是一个布尔：`.apk` 挂上了、`.ipa` 没挂上，
   // 用「已启用」概括会掩盖一半的问题。
   flutter::EncodableList extensions;
+  const std::wstring handler_guid = ThumbnailHandlerGuid();
   for (const wchar_t* ext : kSupportedExtensions) {
     const std::wstring shell_ex =
         std::wstring(L"Software\\Classes\\") + ext + L"\\ShellEx\\" +
-        kThumbnailHandlerGuid;
+        handler_guid;
     const std::wstring value = ReadStringValue(HKEY_CURRENT_USER, shell_ex,
                                                nullptr);
     flutter::EncodableMap entry;

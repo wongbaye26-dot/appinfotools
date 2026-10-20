@@ -673,6 +673,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     final next = wasUsable
         ? await SystemThumbnailManager.unregister()
         : await SystemThumbnailManager.register();
+    // 记住的是**意图**（用户点了哪一边），不是结果：注册失败（DLL 缺失）时
+    // 用户想要的仍是「开」，存成 false 会让下次启动静默放弃。
+    await Config.systemIconEnabled.updateValue(!wasUsable);
     if (!mounted) return;
     setState(() {
       _thumbnailStatus = next;

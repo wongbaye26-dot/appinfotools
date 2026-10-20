@@ -289,4 +289,46 @@ void main() {
       );
     });
   });
+  group('启动时是否要写注册表', () {
+    // 判据在 `SystemThumbnailManager.needsRegistration`，是纯函数 —— 这里直接
+    // 断言规则本身，不依赖 Windows 平台（`isSupported` 在 macOS 上是 false，
+    // 走通道的路径在这台机器上根本跑不到）。
+    test('已注册且指向当前 DLL → 不写', () {
+      expect(
+        SystemThumbnailManager.needsRegistration(_status(registered: true)),
+        isFalse,
+      );
+    });
+
+    test('未注册、DLL 与 helper 都在 → 写', () {
+      expect(
+        SystemThumbnailManager.needsRegistration(_status()),
+        isTrue,
+      );
+    });
+
+    test('DLL 缺失 → 不写（写了只会让 Explorer 每次请求都失败）', () {
+      expect(
+        SystemThumbnailManager.needsRegistration(_status(dllPresent: false)),
+        isFalse,
+      );
+    });
+
+    test('helper 缺失 → 不写（缩略图永远出不来，别假装已启用）', () {
+      expect(
+        SystemThumbnailManager.needsRegistration(_status(helperPresent: false)),
+        isFalse,
+      );
+    });
+
+    test('注册指向旧目录（安装目录被移动过）→ 重新写', () {
+      expect(
+        SystemThumbnailManager.needsRegistration(_status(
+          registeredPath: r'C:\Old\appinfotool_thumbnail.dll',
+        )),
+        isTrue,
+        reason: '键还在但指向旧路径时，Explorer 会静默失败',
+      );
+    });
+  });
 }

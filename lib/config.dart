@@ -98,6 +98,13 @@ class Config {
   static final enableSecurityAudit = ConfigItem("enable_security_audit", true);
   static final enableDebug = ConfigItem("enable_debug", false);
 
+  /// 是否在启动时自动注册「系统文件图标」（Windows Shell 缩略图处理器）。
+  ///
+  /// 默认**开**：装完就该看到每个包自己的图标，而不是所有 `.apk` 长一个样。
+  /// 设置页的「停用」会把它写成 false —— 下次启动不会再自动打开，
+  /// 否则那个开关等于没关。
+  static final systemIconEnabled = ConfigItem("system_icon_enabled", true);
+
   static const kParserBuiltin = "builtin";
   static const kParserAapt2 = "aapt2";
   static final parserEngine = ConfigItem("parser_engine", kParserBuiltin);
@@ -129,6 +136,7 @@ class Config {
     enableHash,
     enableSecurityAudit,
     enableDebug,
+    systemIconEnabled,
     maxLines,
     themeColor,
     titleWidth,
