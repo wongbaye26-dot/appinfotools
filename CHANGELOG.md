@@ -1,5 +1,58 @@
 # Changelog
 
+## 2.7.3 — 2026-10-20
+
+两件事：**macOS 的「打开方式」终于能找到本程序**，以及 iOS 签名失败时给出
+**有证据的**结论（不再是「可能是砸壳」）。
+
+### macOS 文件关联：UTI 写错了地方，`.ipa` 也没声明
+
+反馈：Finder 里右键 →「打开方式」找不到 AppInfoTool（`.ipa` / `.apk` 都不行）。
+
+`Info.plist` 里那份声明有两个问题：
+
+1. **UTI 写在 `UTImportedTypeDeclarations` 里**。那个键的意思是「别人定义了这个
+   类型，我只是用它」；而 LaunchServices 要按扩展名匹配，需要**本应用导出**
+   那个类型的标签映射。写在 Imported 里，`.apk` 就挂不上去 —— 正是「打开方式里
+   没有本程序」。
+2. **`.ipa` 根本没声明**（既不在 `CFBundleTypeExtensions`，也不在 UTI 的
+   `UTTypeTagSpecification` 里）。所以即使 `.apk` 生效，`.ipa` 也不会出现。
+
+顺带删掉了 `NSDocumentClass` —— 它指向 `$(PRODUCT_MODULE_NAME).Document`，
+而本工程没有这个类，声明一个不存在的文档类只会让 AppKit 打开文件时多走一条
+注定失败的路径（本程序用 `AppDelegate.application(_:openFile:)` 接文件）。
+
+现在导出两个 UTI（Android 包 / iOS 包），`CFBundleDocumentTypes` 各引用一个，
+`LSHandlerRank=Default`。`UTTypeConformsTo` 只到 `public.data` / `public.content`
+—— 加上 `public.archive` 会让「归档实用工具」也来抢 `.apk`，双击弹出解压。
+
+> **装完新版本先启动一次应用**：LaunchServices 在应用启动时重读 `Info.plist`，
+> 之后「打开方式」里才会出现。之前装过的版本留着旧类型表，不启动一次不会刷新。
+
+### iOS 签名失败：从「可能是砸壳」到「这是砸壳包」
+
+2.7.2 会在签名失败时解释「这意味着什么」，但只能说**可能**是砸壳。这一版补上
+证据：读主可执行文件的 `LC_ENCRYPTION_INFO(_64).cryptid`。
+
+| `cryptid` | 含义 | 报告怎么说 |
+|---|---|---|
+| `0` | 二进制已解密 | 砸壳包的典型特征：代码段被解密后，原签名覆盖的字节已改变，**签名失效是必然** |
+| `1` | 仍是加密态 | 那「签名无效」只能是别的原因（打了补丁 / 资源被改） |
+| 读不出来 | fat 二进制、没有这条命令、读不动 | 退回按 codesign 的措辞推测；**绝不显示成「已解密」** |
+
+只读文件**开头 1 MiB**：加载命令在头部，而主二进制常有几百 MB，整读进内存
+只为取一个 u32 不值得。`readMachOCryptId` 只认单切片（32/64 位、两种字节序），
+fat 直接返回 `null`。
+
+**为什么这条重要**：`codesign` 的 `invalid signature (code or signature have been
+modified)` 对「砸壳」和「有人打补丁」说的是同一句话，用户没法判断该信谁。
+`cryptid` 把这两件事分开，而且它是**文件里的事实**，不是推测。
+
+### 质量
+
+根测试 1,645 + 包内 378 = **2,023** 条（新增 11 条 `cryptid` 解析用例 + 2 条
+渲染用例），六个 `analyze` 目标零问题，`dart format` 干净。
+
 ## 2.7.2 — 2026-10-20
 
 只动**缩略图自检工具**，应用本身与 2.7.1 完全相同（图标修复不变）。
