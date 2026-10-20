@@ -100,7 +100,10 @@ add_executable(appinfotool_thumbnail_selftest
   "selftest.cpp"
 )
 target_compile_features(appinfotool_thumbnail_selftest PUBLIC cxx_std_17)
-target_compile_options(appinfotool_thumbnail_selftest PRIVATE /W4 /WX /EHsc)
+# `/utf-8`：源码里有中文字面量，而 MSVC **没有 BOM 就按系统 ANSI 代码页读源文件**
+# —— 在中文 Windows（CP936）上编译出来是乱码，在英文 runner（CP1252）上也是。
+# 显式指定源与执行字符集都是 UTF-8，编译结果不再依赖构建机的区域设置。
+target_compile_options(appinfotool_thumbnail_selftest PRIVATE /W4 /WX /EHsc /utf-8)
 # 静态 CRT：诊断工具不该要求目标机器先装 VC++ 运行库。
 # 「双击就消失」最常见的原因就是这个 —— 进程根本没起来。
 set_target_properties(appinfotool_thumbnail_selftest PROPERTIES

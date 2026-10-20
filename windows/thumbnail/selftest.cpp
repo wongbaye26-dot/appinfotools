@@ -67,12 +67,10 @@
 #include <cstdlib>
 // `_isatty` / `_fileno`：判断 stdout 是不是真正的终端。
 #include <io.h>
-// `setlocale`：让 `wprintf` 能输出中文（见 wmain 开头）。
-#include <clocale>
-// `_O_U8TEXT`：`_setmode` 的标志位，定义在 fcntl.h。
-#include <fcntl.h>
 // `_wcsicmp`：比较注册表里的 CLSID 字符串（大小写不敏感）。
 #include <cstring>
+// `va_list` / `_vsnwprintf_s`：WriteLineF。
+#include <cstdarg>
 
 #include <string>
 // `std::pair`（--expect-distinct 收集的 (文件名, 哈希)）。
@@ -257,8 +255,7 @@ void PauseIfNeeded(bool force, bool no_arguments) {
       return;
     }
   }
-  std::fwprintf(stderr, L"\n按回车键关闭...\n");
-  std::fflush(stderr);
+  WriteErrLine(L"\n按回车键关闭...");
   std::getchar();
 }
 
@@ -341,6 +338,64 @@ bool RunOne(IClassFactory* factory, const std::wstring& path, UINT cx,
 
 }  // namespace
 
+/// 往控制台/管道写一段宽字符文本 —— **不经过 locale**。
+///
+/// ## 为什么不用 `wprintf`
+///
+/// `wprintf` 把宽字符转多字节时依赖当前 locale：默认 "C" locale 下非 ASCII
+/// **直接丢掉**（2.7.1 实机反馈：中文一个字都没出来，只剩 ASCII 的 step 行）。
+/// 而 `setlocale(".UTF-8")` / `_setmode(_O_U8TEXT)` / `SetConsoleOutputCP`
+/// 这三层在不同 Windows 版本、不同宿主（控制台 / 管道 / 服务）下表现并不一致，
+/// 试了两轮都没稳住。
+///
+/// 这里改成两条固定路径，都不依赖任何全局状态：
+///   - **控制台**：`WriteConsoleW` 直接写 UTF-16（系统自己转，任何代码页都对）；
+///   - **重定向**：自己转 UTF-8 再 `fwrite`（管道 / 文件都读得到）。
+void WriteWide(HANDLE handle, FILE* stream, const std::wstring& text) {
+  DWORD mode = 0;
+  if (::GetConsoleMode(handle, &mode) != 0) {
+    DWORD written = 0;
+    ::WriteConsoleW(handle, text.data(), static_cast<DWORD>(text.size()),
+                    &written, nullptr);
+    return;
+  }
+  const int bytes = ::WideCharToMultiByte(CP_UTF8, 0, text.data(),
+                                          static_cast<int>(text.size()),
+                                          nullptr, 0, nullptr, nullptr);
+  if (bytes <= 0) {
+    return;
+  }
+  std::string utf8(static_cast<size_t>(bytes), '\0');
+  ::WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                        &utf8[0], bytes, nullptr, nullptr);
+  std::fwrite(utf8.data(), 1, utf8.size(), stream);
+  std::fflush(stream);
+}
+
+/// 往 stdout 写一行。
+void WriteLine(const std::wstring& text) {
+  std::wstring line = text;
+  line.push_back(L'\n');
+  WriteWide(::GetStdHandle(STD_OUTPUT_HANDLE), stdout, line);
+}
+
+/// 往 stderr 写一行。
+void WriteErrLine(const std::wstring& text) {
+  std::wstring line = text;
+  line.push_back(L'\n');
+  WriteWide(::GetStdHandle(STD_ERROR_HANDLE), stderr, line);
+}
+
+/// `WriteLine` 的格式化版本（`_vsnwprintf_s`，超长截断而不是崩）。
+void WriteLineF(const wchar_t* format, ...) {
+  wchar_t buffer[1024] = {};
+  va_list args;
+  va_start(args, format);
+  ::_vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, args);
+  va_end(args);
+  WriteLine(buffer);
+}
+
 /// 路径是否指向一个已存在的文件（目录不算）。
 bool FileExists(const std::wstring& path) {
   if (path.empty()) {
@@ -421,17 +476,18 @@ int DiagnoseRegistration(bool force_pause) {
   const std::wstring handler_guid = GuidToString(IID_IThumbnailProvider);
   const std::wstring clsid = GuidToString(kExpectedClsid);
 
-  // ASCII 标题在前：控制台代码页把中文吃掉时，这一行仍然能看见，
-  // 用户至少知道工具跑到了这一步（CI 也用它做与编码无关的断言）。
-  std::wprintf(L"\n== registration diagnostics ==\n");
-  std::wprintf(L"== 注册诊断 ==\n");
-  std::wprintf(L"本目录 : %s\n", directory.c_str());
-  std::wprintf(L"dll    : %s  %s\n", dll_path.c_str(),
-               FileExists(dll_path) ? L"[存在]" : L"[缺失]");
-  std::wprintf(L"helper : %s  %s\n", helper_path.c_str(),
-               FileExists(helper_path) ? L"[存在]" : L"[缺失]");
-  std::wprintf(L"CLSID      : %s\n", clsid.c_str());
-  std::wprintf(L"ShellEx GUID: %s\n", handler_guid.c_str());
+  // ASCII 标题在前：控制台连 UTF-8 都显示不了时（极老的 conhost），
+  // 用户至少还能看到结构；CI 也用它做与编码无关的断言。
+  WriteLine(L"");
+  WriteLine(L"== registration diagnostics ==");
+  WriteLine(L"== 注册诊断 ==");
+  WriteLineF(L"本目录 : %s", directory.c_str());
+  WriteLineF(L"dll    : %s  %s", dll_path.c_str(),
+             FileExists(dll_path) ? L"[存在]" : L"[缺失]");
+  WriteLineF(L"helper : %s  %s", helper_path.c_str(),
+             FileExists(helper_path) ? L"[存在]" : L"[缺失]");
+  WriteLineF(L"CLSID       : %s", clsid.c_str());
+  WriteLineF(L"ShellEx GUID: %s", handler_guid.c_str());
 
   struct Root {
     const wchar_t* label;
@@ -450,12 +506,13 @@ int DiagnoseRegistration(bool force_pause) {
             L"\\InprocServer32",
         &clsid_exists);
     const bool dll_ok = clsid_exists && FileExists(registered_dll);
-    std::wprintf(L"\n%s\n", root.label);
-    std::wprintf(L"  CLSID   %s\n",
-                 clsid_exists ? registered_dll.c_str() : L"(未注册)");
+    WriteLine(L"");
+    WriteLine(root.label);
+    WriteLineF(L"  CLSID   %s",
+               clsid_exists ? registered_dll.c_str() : L"(未注册)");
     if (clsid_exists) {
-      std::wprintf(L"          %s\n",
-                   dll_ok ? L"[文件存在]" : L"[文件不存在 —— 指向旧目录？]");
+      WriteLineF(L"          %s",
+                 dll_ok ? L"[文件存在]" : L"[文件不存在 —— 指向旧目录？]");
     }
 
     bool root_ok = dll_ok;
@@ -468,9 +525,9 @@ int DiagnoseRegistration(bool force_pause) {
           &handler_exists);
       const bool matches =
           handler_exists && _wcsicmp(value.c_str(), clsid.c_str()) == 0;
-      std::wprintf(L"  %-5s   %s  %s\n", extension,
-                   handler_exists ? value.c_str() : L"(未注册)",
-                   matches ? L"[正确]" : L"[不是我们的处理器]");
+      WriteLineF(L"  %-5s   %s  %s", extension,
+                 handler_exists ? value.c_str() : L"(未注册)",
+                 matches ? L"[正确]" : L"[不是我们的处理器]");
       root_ok = root_ok && matches;
     }
     if (root_ok) {
@@ -478,23 +535,21 @@ int DiagnoseRegistration(bool force_pause) {
     }
   }
 
-  std::wprintf(L"\n== 结论 ==\n");
+  WriteLine(L"");
+  WriteLine(L"== 结论 ==");
   if (usable) {
-    std::wprintf(
-        L"注册是完整的。若资源管理器仍显示应用图标，基本就是缓存：\n"
-        L"  taskkill /f /im explorer.exe 然后 start explorer.exe\n");
+    WriteLine(L"注册是完整的。若资源管理器仍显示应用图标，基本就是缓存：");
+    WriteLine(L"  taskkill /f /im explorer.exe 然后 start explorer.exe");
   } else if (!FileExists(dll_path)) {
-    std::wprintf(
-        L"本目录没有 appinfotool_thumbnail.dll —— 这份自检包不完整。\n"
-        L"重新解压发布页的 zip，或直接用安装目录里的那一份。\n");
+    WriteLine(L"本目录没有 appinfotool_thumbnail.dll —— 这份自检包不完整。");
+    WriteLine(L"重新解压发布页的 zip，或直接用安装目录里的那一份。");
   } else {
-    std::wprintf(
-        L"没有任何一套完整注册。装安装版会自动写；\n"
-        L"便携版打开一次应用（设置页「系统文件图标 → 启用」）即可。\n");
+    WriteLine(L"没有任何一套完整注册。装安装版会自动写；");
+    WriteLine(L"便携版打开一次应用（设置页「系统文件图标 → 启用」）即可。");
   }
-  std::wprintf(
-      L"\n想验证 DLL 本身能不能出图，传一个包：\n"
-      L"  appinfotool_thumbnail_selftest 某个.apk\n");
+  WriteLine(L"");
+  WriteLine(L"想验证 DLL 本身能不能出图，传一个包：");
+  WriteLine(L"  appinfotool_thumbnail_selftest 某个.apk");
 
   PauseIfNeeded(force_pause, false);
   return usable ? 0 : 1;
@@ -508,21 +563,9 @@ int wmain(int argc, wchar_t** argv) {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
   std::setvbuf(stderr, nullptr, _IONBF, 0);
 
-  // 中文输出要能看见。
-  //
-  // `wprintf` 默认按 "C" locale 把宽字符转成多字节，**非 ASCII 会被直接丢掉** ——
-  // 用户看到的就是「打了一半就没了」（2.7.1 首次实机反馈正是这个现象：
-  // 只有 ASCII 的 step 行出来了，中文一个字都没有）。
-  //
-  // 三层一起上，任何一层失效都还有下一层：
-  //   1. `_O_U8TEXT`：让 CRT 直接按 UTF-8 写（控制台与管道都对，
-  //      不依赖代码页；本文件只用宽字符输出，不受窄 `printf` 的限制）；
-  //   2. `SetConsoleOutputCP(CP_UTF8)`：控制台按 UTF-8 解释；
-  //   3. `setlocale(".UTF-8")`：`wprintf` 的宽 → 多字节转换。
-  ::_setmode(::_fileno(stdout), _O_U8TEXT);
-  ::_setmode(::_fileno(stderr), _O_U8TEXT);
-  ::SetConsoleOutputCP(CP_UTF8);
-  std::setlocale(LC_ALL, ".UTF-8");
+  // 中文输出**不走 `wprintf`**：它按 locale 转多字节，非 ASCII 会被丢掉。
+  // 所有非 ASCII 文本都用 `WriteLine` / `WriteLineF`（控制台走 WriteConsoleW，
+  // 重定向走 UTF-8），见那个函数的注释。剩下的 `wprintf` 只打 ASCII。
 
   // 装崩溃处理器。放在最前面：后面任何一步崩了都能留下异常码与模块名。
   ::SetUnhandledExceptionFilter(CrashHandler);
@@ -571,10 +614,10 @@ int wmain(int argc, wchar_t** argv) {
       continue;
     }
     if (arg == L"--help" || arg == L"-h") {
-      std::wprintf(
+      WriteLine(
           L"usage: appinfotool_thumbnail_selftest [--cx N] "
-          L"[--expect-distinct] [--pause] file...\n"
-          L"       appinfotool_thumbnail_selftest            (注册诊断)\n");
+          L"[--expect-distinct] [--pause] file...");
+      WriteLine(L"       appinfotool_thumbnail_selftest            (注册诊断)");
       ::CoUninitialize();
       return 0;
     }
