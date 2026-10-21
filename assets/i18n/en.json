@@ -795,7 +795,8 @@
       "ios_repackaged_review": "If you did not inject this library yourself, treat it as untrusted code running inside the app's sandbox: it can read everything the app can read (including credentials and clipboard contents) and talk to the network on its own. Cross-check with the signature verdict — a re-signed or decrypted bundle usually fails verification as well.",
       "ios_repackaged_limitation": "Only dylibs sitting directly at the .app root are counted. A repack that merely renames the bundle, or one that patches the main binary in place, leaves no extra file and is not visible here — for those, the signature verdict is the only signal. Nor can static analysis tell what the injected library does.",
       "ios_upload_api": "Upload-related code found: the multipart/form-data construction used to attach files or binary payloads. This only proves the upload capability exists; it does not prove sensitive data was uploaded.",
-      "ios_upload_api_confirm_sink": "Confirm what is uploaded and what triggers it. A multipart body is also how crash reports, log bundles and avatar uploads are sent, so the capability alone is not a finding."
+      "ios_upload_api_confirm_sink": "Confirm what is uploaded and what triggers it. A multipart body is also how crash reports, log bundles and avatar uploads are sent, so the capability alone is not a finding.",
+      "verify_suspected_hint": "How to verify: static analysis stops here. To confirm on a real device, install it and watch `adb logcat` (or the system log in Xcode's Devices panel on iOS) while triggering the feature in question, and check whether the matching network request or file read actually happens. This finding says the capabilities coexist - not that they were used."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -999,7 +1000,24 @@
       "state_none": "not found",
       "state_found": "found",
       "not_found": "No jailbreak, kernel-exploit or code-signing-bypass component was found."
-    }
+    },
+    "categories": {
+      "photoAccess": "Photo / media access",
+      "ocrImage": "Imaging and OCR",
+      "dataExfiltration": "Data leaving the app",
+      "network": "Network",
+      "thirdPartySdk": "Third-party SDKs",
+      "backgroundTask": "Background and dynamic loading",
+      "deviceData": "Device data",
+      "configuration": "Configuration",
+      "cryptoAsset": "On-chain assets",
+      "other": "Other"
+    },
+    "capability_overview": "Capability overview",
+    "capability_theme": "Theme",
+    "capability_count": "Findings",
+    "capability_rules": "Rules",
+    "capability_hint": "Grouped by detection theme (the `category` the engine assigns to each finding). A theme with more findings is not automatically worse - severity still decides that; this table answers \"in which directions is this app called out most\"."
   },
   "detail_tab": {
     "overview": "Overview",

@@ -333,6 +333,86 @@ class AnalysisReport {
   }
 
   /// 安全检测章节。
+  /// **能力视图**：按检测主题聚合发现项。
+  ///
+  /// 一条真实包上，`ANDROID-SPECIAL-ACCESS`、`ANDROID-RULE-A`、
+  /// `ANDROID-CRYPTO-THEFT-RISK` 可能同时在说「无障碍能力」，但它们在报告里
+  /// 是并列的三条 —— 读者要自己串。这里按**主题**（`SecurityCategory`，
+  /// 引擎自带的字段）聚合一次，回答的是「这个应用在哪些方向上被点名最多」。
+  ///
+  /// 刻意只做聚合、不做加权：给主题打分等于把「P2 + P3 + info」折算成一个
+  /// 分数，而那个折算规则没法解释给用户听。
+  static void _capabilityOverview(
+    StringBuffer sb,
+    List<SecurityFinding> findings,
+    Translations t,
+  ) {
+    if (findings.isEmpty) return;
+
+    final groups = <SecurityCategory, List<SecurityFinding>>{};
+    for (final finding in findings) {
+      (groups[finding.category] ??= []).add(finding);
+    }
+    if (groups.length < 2) return; // 只有一个主题时，聚合没有信息量
+
+    // 按「最高等级 → 条数」排序：先看最严重的。
+    int rank(SecuritySeverity s) => switch (s) {
+          SecuritySeverity.p0 => 0,
+          SecuritySeverity.p1 => 1,
+          SecuritySeverity.p2 => 2,
+          SecuritySeverity.p3 => 3,
+          SecuritySeverity.info => 4,
+          // 「无法判定」排最后：它不是「不严重」，而是「不知道」——
+          // 放在最前面会让加固包的整张表都被 unknown 占据。
+          SecuritySeverity.unknown => 5,
+        };
+    final ordered = groups.entries.toList()
+      ..sort((a, b) {
+        final ra = a.value.map((f) => rank(f.severity)).reduce(
+              (x, y) => x < y ? x : y,
+            );
+        final rb = b.value.map((f) => rank(f.severity)).reduce(
+              (x, y) => x < y ? x : y,
+            );
+        if (ra != rb) return ra.compareTo(rb);
+        return b.value.length.compareTo(a.value.length);
+      });
+
+    sb
+      ..writeln('### ${t.security.capability_overview}')
+      ..writeln()
+      ..writeln(
+          '| ${t.security.capability_theme} | ${t.security.capability_count} | '
+          '${t.security.capability_rules} |')
+      ..writeln('|---|---|---|');
+    for (final entry in ordered) {
+      final rules = entry.value.map((f) => f.ruleId).toSet().toList()..sort();
+      sb.writeln('| ${_categoryLabel(entry.key, t)} | ${entry.value.length} | '
+          '${rules.join(', ')} |');
+    }
+    sb
+      ..writeln()
+      ..writeln(t.security.capability_hint)
+      ..writeln();
+  }
+
+  /// 主题名的本地化。
+  static String _categoryLabel(SecurityCategory category, Translations t) {
+    final c = t.security.categories;
+    return switch (category) {
+      SecurityCategory.photoAccess => c.photoAccess,
+      SecurityCategory.ocrImage => c.ocrImage,
+      SecurityCategory.dataExfiltration => c.dataExfiltration,
+      SecurityCategory.network => c.network,
+      SecurityCategory.thirdPartySdk => c.thirdPartySdk,
+      SecurityCategory.backgroundTask => c.backgroundTask,
+      SecurityCategory.deviceData => c.deviceData,
+      SecurityCategory.configuration => c.configuration,
+      SecurityCategory.cryptoAsset => c.cryptoAsset,
+      SecurityCategory.other => c.other,
+    };
+  }
+
   static void _securitySection(
     StringBuffer sb,
     PackageAnalysisResult result,
@@ -349,6 +429,8 @@ class AnalysisReport {
       sb.writeln(t.security.no_findings);
       sb.writeln();
     }
+
+    _capabilityOverview(sb, security.findings, t);
 
     for (final finding in security.findings) {
       sb.writeln('### ${finding.ruleId} [${finding.severity.name}]');
@@ -1061,7 +1143,14 @@ class AnalysisReport {
         f.android_native_symbols_manual_review,
       _ => null,
     };
-    return localized ?? finding.recommendation;
+    final text = localized ?? finding.recommendation;
+    // `suspected` 级结论说的是「这些能力同时存在」，用户拿到之后最常问的是
+    // 「那我怎么确认」。统一在建议后面补一段**动态验证的做法** ——
+    // 逐条改写 14 条建议既贵又容易漏，而验证手段本来就与规则无关。
+    if (finding.confidence == SecurityConfidence.suspected && text.isNotEmpty) {
+      return '$text\n\n${f.verify_suspected_hint}';
+    }
+    return text;
   }
 
   /// 发现项**关联说明**的本地化正文，语义同 [findingText]。

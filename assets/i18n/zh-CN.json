@@ -795,7 +795,8 @@
       "ios_repackaged_review": "如果不是你自己注入的这个库，请把它当成运行在应用沙箱内的不可信代码：它能读到应用能读到的一切（包括凭据与剪贴板内容），也能自行联网。请与签名结论对照看 —— 重签或砸壳过的包通常验证也通不过。",
       "ios_repackaged_limitation": "只统计直接位于 .app 根目录的 dylib。只改 bundle 名、或就地修改主二进制的重打包不会多出文件，这里看不到 —— 那种情况只能靠签名结论。静态分析也无法判断注入的库具体做了什么。",
       "ios_upload_api": "代码里有上传相关的实现：用于附带文件或二进制数据的 multipart/form-data 构造。这只证明「具备上传能力」，不证明上传了敏感数据。",
-      "ios_upload_api_confirm_sink": "确认上传的是什么、由什么触发。崩溃日志、日志包、头像上传同样走 multipart，单凭这项能力不构成发现。"
+      "ios_upload_api_confirm_sink": "确认上传的是什么、由什么触发。崩溃日志、日志包、头像上传同样走 multipart，单凭这项能力不构成发现。",
+      "verify_suspected_hint": "怎么验证：静态分析到此为止。要在真机上确认，装上之后触发对应功能，同时用 `adb logcat`（iOS 用 Xcode 的 Devices 面板看系统日志）观察是否真的出现相应的网络请求或文件读取。这条结论说的是「这些能力同时存在」，不是「已经这样用了」。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -999,7 +1000,24 @@
       "state_none": "未发现",
       "state_found": "已发现",
       "not_found": "没有发现越狱、内核漏洞利用或签名绕过组件。"
-    }
+    },
+    "categories": {
+      "photoAccess": "照片 / 媒体访问",
+      "ocrImage": "图像与 OCR",
+      "dataExfiltration": "数据外发",
+      "network": "网络",
+      "thirdPartySdk": "第三方 SDK",
+      "backgroundTask": "后台与动态加载",
+      "deviceData": "设备数据",
+      "configuration": "配置",
+      "cryptoAsset": "链上资产",
+      "other": "其它"
+    },
+    "capability_overview": "能力视图",
+    "capability_theme": "主题",
+    "capability_count": "条数",
+    "capability_rules": "涉及规则",
+    "capability_hint": "按**检测主题**（引擎给每条发现项打的 `category`）聚合。条数多不等于更严重 —— 严重程度仍看等级；这张表回答的是「这个应用在哪些方向上被点名最多」。"
   },
   "detail_tab": {
     "overview": "概览",
