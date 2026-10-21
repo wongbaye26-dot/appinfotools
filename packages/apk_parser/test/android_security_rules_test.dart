@@ -247,7 +247,7 @@ void main() {
             strings: [
               'Lorg/web3j/crypto/ECKeyPair;',
               'getPrimaryClip',
-              'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+              'TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt',
             ],
           ),
       // 导出组件上声明了链接 scheme。

@@ -75,6 +75,63 @@ final RegExp _tron =
 final RegExp _bitcoinBech32 =
     RegExp(r'(?<![0-9A-Za-z])bc1[02-9ac-hj-np-z]{25,62}');
 
+/// 公开的合约 / 路由 / 销毁地址 —— **它们不是收款地址**。
+///
+/// ## 为什么必须过滤
+///
+/// USDT-TRC20 的合约地址 `TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t` 是公开常量：
+/// 正规 TRON 钱包、DApp 浏览器、甚至收款页都会把它写死在代码里。不过滤的话，
+/// 「钱包 + 剪贴板 + 写死地址」这条判据在**每一个正规钱包**上都会命中 ——
+/// 那就不是「线索」而是噪音。
+///
+/// ## 收录标准
+///
+/// 只收**官方公开、且能在链上或官方文档核对**的地址：
+/// 主流稳定币合约、主流 DEX 路由、多签/批量调用合约、销毁地址、零地址。
+/// 拿不准的一律不收 —— 漏收只是少降一点噪音，**错收会掩盖真实线索**。
+///
+/// 匹配时 EVM 地址转小写比较（十六进制大小写不敏感），TRON / bech32 原样比较
+/// （base58 / bech32 区分大小写）。
+const Set<String> knownContractAddresses = {
+  // ---- TRON ----
+  // USDT-TRC20
+  'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+  // USDC-TRC20
+  'TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8',
+  // ---- EVM（以太坊主网）----
+  // USDT
+  '0xdac17f958d2ee523a2206206994597c13d831ec7',
+  // USDC
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  // DAI
+  '0x6b175474e89094c44da98b954eedeac495271d0f',
+  // WETH
+  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+  // Uniswap V2 Router02
+  '0x7a250d5630b4cf539739df2c5dacb4c659f2488d',
+  // Uniswap V3 SwapRouter
+  '0xe592427a0aece92de3edee1f18e0157c05861564',
+  // PancakeSwap V2 Router（BSC）
+  '0x10ed43c718714eb63d5aa57b78b54704e256024e',
+  // USDT（BSC）
+  '0x55d398326f99059ff775485246999027b3197955',
+  // Multicall3（部署在同地址的批量调用合约）
+  '0xca11bde05977b3631167028862be2a173976ca11',
+  // 零地址 / 销毁地址
+  '0x0000000000000000000000000000000000000000',
+  '0x000000000000000000000000000000000000dead',
+};
+
+/// 这条地址是不是公开常量（合约 / 路由 / 销毁）。
+bool isKnownContractAddress(CryptoAddressHit hit) => switch (hit.format) {
+      CryptoAddressFormat.evm =>
+        knownContractAddresses.contains(hit.address.toLowerCase()),
+      // TRON 的 base58 与 bech32 都区分大小写，原样比。
+      CryptoAddressFormat.tron ||
+      CryptoAddressFormat.bitcoin =>
+        knownContractAddresses.contains(hit.address),
+    };
+
 /// 从一条字符串里挑出所有地址字面量。
 ///
 /// 结果**按出现顺序**去重；调用方自己决定保留多少条。
@@ -108,14 +165,20 @@ List<CryptoAddressHit> findCryptoAddresses(String value) {
 ///
 /// **上限是必须的**：一个内置了「常见地址黑名单」的应用会有成百上千条字面量，
 /// 全存进结果会让报告变成一份地址列表。超限只记「还有更多」，不静默截断。
+/// [includeKnown] 为 `true` 时连公开合约地址一起收（诊断用）。
+///
+/// 默认**跳过** [knownContractAddresses]：那些不是收款地址，收进来只会让
+/// 「写死地址」这条判据在正规钱包上稳定误报。
 void collectCryptoAddresses(
   String value,
   Set<CryptoAddressHit> out, {
   int max = 32,
+  bool includeKnown = false,
 }) {
   if (out.length >= max) return;
   for (final hit in findCryptoAddresses(value)) {
     if (out.length >= max) return;
+    if (!includeKnown && isKnownContractAddress(hit)) continue;
     out.add(hit);
   }
 }

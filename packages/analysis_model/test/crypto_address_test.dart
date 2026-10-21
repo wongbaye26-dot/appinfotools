@@ -91,6 +91,59 @@ void main() {
     expect(hits, hasLength(1));
   });
 
+  group('公开合约地址不算「写死的收款地址」', () {
+    test('USDT-TRC20 合约地址被过滤', () {
+      // 正规 TRON 钱包都会写死这个常量。不过滤的话，「钱包 + 剪贴板 + 写死
+      // 地址」会在每个正规钱包上命中。
+      const usdt = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+      expect(findCryptoAddresses(usdt), hasLength(1), reason: '识别本身不受影响');
+      final out = <CryptoAddressHit>{};
+      collectCryptoAddresses(usdt, out);
+      expect(out, isEmpty);
+    });
+
+    test('EVM 合约地址按小写比较（大小写不敏感）', () {
+      final out = <CryptoAddressHit>{};
+      collectCryptoAddresses(
+        '0xDAC17F958D2ee523a2206206994597C13D831ec7',
+        out,
+      );
+      expect(out, isEmpty);
+    });
+
+    test('零地址与销毁地址被过滤', () {
+      final out = <CryptoAddressHit>{};
+      collectCryptoAddresses(
+        '0x0000000000000000000000000000000000000000',
+        out,
+      );
+      collectCryptoAddresses(
+        '0x000000000000000000000000000000000000dEaD',
+        out,
+      );
+      expect(out, isEmpty);
+    });
+
+    test('普通收款地址仍然保留', () {
+      final out = <CryptoAddressHit>{};
+      collectCryptoAddresses(
+        'TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt',
+        out,
+      );
+      expect(out, hasLength(1));
+    });
+
+    test('includeKnown 时连常量一起收（诊断用）', () {
+      final out = <CryptoAddressHit>{};
+      collectCryptoAddresses(
+        'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+        out,
+        includeKnown: true,
+      );
+      expect(out, hasLength(1));
+    });
+  });
+
   test('collectCryptoAddresses 遵守上限', () {
     final out = <CryptoAddressHit>{};
     for (var i = 0; i < 10; i++) {

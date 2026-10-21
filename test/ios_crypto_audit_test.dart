@@ -112,10 +112,10 @@ void main() {
     });
 
     test('地址原文进证据（用户要能拿去链上查）', () {
-      final signals = _signals(['TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t']);
+      final signals = _signals(['TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt']);
       final finding = buildIosCryptoFindings(signals).single;
       expect(
-        finding.evidence.any((e) => e.detail.contains('TR7NHqjeKQxGTCi8q8')),
+        finding.evidence.any((e) => e.detail.contains('TXk9W1FpvF9PCw8c5')),
         isTrue,
       );
       expect(finding.messageArgs['addressCount'], 1);
