@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 
 import 'ios_crypto_audit.dart';
+import 'ios_jailbreak_audit.dart';
 
 import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
@@ -566,6 +567,15 @@ class IosPrivacyAudit {
     }
 
     findings.addAll(buildIosCryptoFindings(cryptoSignals));
+
+    // 越狱 / 内核漏洞利用组件：只按组件名识别，与内容分析无关。
+    findings.addAll(IosJailbreakAudit.audit(
+      executablePaths: [
+        if (executablePath != null) executablePath,
+        for (final nested in nestedExecutables) nested.path,
+      ],
+      executableBytes: executableBytes,
+    ));
 
     for (final (id, description, literal) in _markers) {
       final samples = byMarker[id];

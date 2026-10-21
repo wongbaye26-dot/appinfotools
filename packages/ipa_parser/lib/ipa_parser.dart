@@ -36,6 +36,7 @@ export 'src/ios_reference_tables.dart';
 // 安全检测引擎（V1.1）：iOS 侧隐私审计。
 export 'src/security/ios_privacy_audit.dart';
 export 'src/security/ios_crypto_audit.dart';
+export 'src/security/ios_jailbreak_audit.dart';
 export 'src/security/ios_native_symbol_audit.dart';
 export 'src/plist/binary_plist_parser.dart';
 export 'src/plist/plist_fields.dart';

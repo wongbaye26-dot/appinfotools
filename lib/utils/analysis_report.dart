@@ -713,6 +713,16 @@ class AnalysisReport {
                   ? f.android_malware_reflection_suffix
                   : '',
             ),
+      'ios.jailbreak_toolkit' => (() {
+          final components = _joinNames(finding.messageArgs['components'], t);
+          if (components == null) return null;
+          return f.ios_jailbreak_toolkit(
+            components: components,
+            kernel: finding.messageArgs['kernelExploit'] == true
+                ? f.ios_jailbreak_kernel_suffix
+                : '',
+          );
+        })(),
       'crypto.theft_risk' => signals == null
           ? null
           : '${f.crypto_theft_risk(
@@ -976,6 +986,7 @@ class AnalysisReport {
       'ios.capability_no_usage.add_usage' =>
         f.ios_capability_no_usage_add_usage,
       'ios.usage_without_api.review' => f.ios_usage_without_api_review,
+      'ios.jailbreak_toolkit.review' => f.ios_jailbreak_toolkit_review,
       'ios.rule_a.manual_review' => f.ios_rule_a_manual_review,
       'ios.ocr_capability.confirm_input_and_sink' =>
         f.ios_ocr_capability_confirm_input_and_sink,
@@ -1178,6 +1189,7 @@ class AnalysisReport {
           : f.android_rule_c_limitation_graph_truncated(hops: hops),
       'android.deeplink.limitation' => f.android_deeplink_limitation,
       'ios.reference_tables.limitation' => f.ios_reference_tables_limitation,
+      'ios.jailbreak_toolkit.limitation' => f.ios_jailbreak_toolkit_limitation,
       'android.malware_indicators.limitation' =>
         f.android_malware_indicators_limitation,
       'crypto.theft_risk.limitation' => f.crypto_theft_risk_limitation,
