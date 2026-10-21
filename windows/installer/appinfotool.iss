@@ -40,7 +40,7 @@
 
 #define AppName "AppInfoTool"
 #define AppExeName "apk_info_tool.exe"
-#define AppPublisher "Feng"
+#define AppPublisher "WONG"
 #define AppUrl "https://github.com/wongbaye26-dot/appinfotools"
 
 ; **必须与 inno_bundle 时期写进注册表的 AppId 逐字符一致**（不带花括号）。
