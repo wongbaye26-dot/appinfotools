@@ -146,7 +146,12 @@ class IosPrivacyAudit {
       'PHPickerViewController (system photo picker)',
       'PHPickerViewController'
     ),
-    ('photos-ui', 'PhotosUI framework reference', 'PhotosUI'),
+    // **刻意不收 `PhotosUI`**（V2.8.7）：它作为字面量出现在每个链接了
+    // PhotosUI 的二进制的 `LC_LOAD_DYLIB` 里（
+    // `/System/Library/Frameworks/PhotosUI.framework/PhotosUI`），
+    // 于是「链接了 PhotosUI」被当成「用了照片选择器」——任何带相册功能的
+    // 应用都会命中。精确的标记是 `PHPickerViewController`（上面那条）。
+    // 这与项目里「判谁提供了某能力用声明式证据，不要子串匹配类名」同一条原则。
     ('camera', 'AVCapture camera API', 'AVCapture'),
     // ---- 通讯录 / 定位 / 麦克风（审计 §10 的广度缺口）----
     //
@@ -306,7 +311,9 @@ class IosPrivacyAudit {
           evidence: [
             SecurityEvidence(
               source: SecurityEvidenceSource.infoPlist,
-              location: '${infoPlist.bundle.path}/Info.plist / $entry.key',
+              // **必须写 ${entry.key}**：'$entry.key' 在 Dart 里只插值 `entry`，
+              // `.key` 是字面量，会印成 `MapEntry(...).key`。
+              location: '${infoPlist.bundle.path}/Info.plist / ${entry.key}',
               detail: entry.value.isEmpty ? '(value is empty)' : entry.value,
             ),
           ],
@@ -693,6 +700,7 @@ class IosPrivacyAudit {
       findings.add(SecurityFinding(
         ruleId: 'IOS-SCAN-COVERAGE',
         platform: SecurityPlatform.ios,
+        isMeta: true,
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
@@ -879,8 +887,8 @@ class IosPrivacyAudit {
 
     final hasPhotoLibrary = clues.containsKey('photo-full-library') ||
         clues.containsKey('photo-asset');
-    final hasPhotoPicker =
-        clues.containsKey('photo-picker') || clues.containsKey('photos-ui');
+    // 只认 `PHPickerViewController`；不再把 PhotosUI 框架引用算进来（理由见标记表）。
+    final hasPhotoPicker = clues.containsKey('photo-picker');
     final hasCamera = clues.containsKey('camera');
     final hasOcr =
         clues.containsKey('ocr') || clues.containsKey('ocr-image-request');
@@ -914,10 +922,7 @@ class IosPrivacyAudit {
             'full photo library authorization, which is a different access '
             'method from using PhotoKit directly.',
         messageCode: 'ios.photo_picker',
-        evidence: _clueEvidence(clues, const [
-          'photo-picker',
-          'photos-ui',
-        ]),
+        evidence: _clueEvidence(clues, const ['photo-picker']),
         recommendation: 'Confirm the actual input path: whether the user '
             'picks photos one by one, or whether full library access also '
             'exists.',

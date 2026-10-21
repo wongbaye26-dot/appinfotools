@@ -292,7 +292,8 @@
     "structure_native_libs": "原生庫",
     "structure_directories": "頂層目錄",
     "structure_file_count": "{count} 個檔案",
-    "text_info": "文本資訊"
+    "text_info": "文本資訊",
+    "component_count": "{count} 個（見下方列表）"
   },
   "icon": {
     "switch_icon": "切換圖標",
@@ -543,7 +544,12 @@
     "label_evidence": "證據",
     "label_recommendation": "建議",
     "label_limitation": "限制",
-    "findings_count": "發現項：{count}"
+    "findings_count": "發現項：{count}",
+    "conclusion_authorization_mismatch": "描述文件授權的是**另一個**應用標識",
+    "conclusion_app_id": "應用聲明",
+    "conclusion_profile_id": "描述文件授權",
+    "conclusion_top_findings": "按等級排序的主要發現",
+    "conclusion_more_findings": "另有 {count} 條發現，見下文"
   },
   "about": {
     "features": {
@@ -824,7 +830,8 @@
       "native_symbol_imported": "{symbol}（匯入）: {description}",
       "native_symbol_imported_raw": "{symbol}（匯入）: {description} ｜ 符號：{rawNames}",
       "dex_strings_location": "{count} 個 DEX 的字串",
-      "android_rule_f_scope": "這條否定結論的範圍：掃描了 {dex} 個 DEX、{callSites} 個呼叫點，未命中任何上傳標記。"
+      "android_rule_f_scope": "這條否定結論的範圍：掃描了 {dex} 個 DEX、{callSites} 個呼叫點，未命中任何上傳標記。",
+      "permission_declared_without_api": "已聲明，但掃描到的 DEX 裡沒有對應的 API 標記"
     },
     "native_symbols": {
       "line": "{text}（{symbol}）",
@@ -912,7 +919,9 @@
       "access_background_location_description": "應用程式在背景時取得位置（Android 10 起）。",
       "access_background_location_risk_note": "背景定位是持續追蹤能力；Android 11 起需要在獨立的設定頁授予。要結合「有沒有前景用途能解釋它」判斷。",
       "record_audio_description": "錄製麥克風音訊。",
-      "record_audio_risk_note": "屬於敏感資料來源：要結合錄音資料去向（是否上傳）以及有沒有可見的錄音功能判斷。錄音 + 上傳由組合規則 G 覆蓋。"
+      "record_audio_risk_note": "屬於敏感資料來源：要結合錄音資料去向（是否上傳）以及有沒有可見的錄音功能判斷。錄音 + 上傳由組合規則 G 覆蓋。",
+      "read_privileged_phone_state_description": "讀取特權電話狀態（signature 級權限）。",
+      "read_privileged_phone_state_risk_note": "signature 級：第三方應用拿不到這個授權，因此這條聲明**不會生效**。出現它通常說明代碼來自系統應用、抄來的樣本，或混淆產物。"
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes 讀不出來（{reason}）：註冊的 URL scheme 未覆蓋。",
@@ -1101,7 +1110,7 @@
       "android_signature_v1_undetermined": "v2+ 簽章區塊已讀取，但無法判定是否存在 v1（JAR）簽章",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 與 targetSdkVersion 都讀不到，無法推出平台對明文流量的預設策略",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略",
-      "ios_macho_call_sites": "在 {total} 條選擇子 / 類引用中，{attributed} 條成功歸屬到函數（二進制共 {functions} 個函數）。「被引用」仍不等於「被調用」：ADRP+ADD 只是把地址裝進寄存器，之後傳給誰靜態看不到。 另外，類引用表（`__objc_classrefs`）主要覆蓋**應用自己的類**；系統框架類（`AVCaptureDevice`、`CNContactStore`）通常通過 `objc_msgSend` 直接調用或 `NSClassFromString` 取得，不在這一維的覆蓋範圍內。",
+      "ios_macho_call_sites": "在 {total} 條選擇子 / 類引用中，{attributed} 條成功歸屬到函數（二進制共 {functions} 個函數）。「被引用」仍不等於「被調用」：ADRP+ADD 只是把地址裝進寄存器，之後傳給誰靜態看不到。 另外，類引用表（`__objc_classrefs`）主要覆蓋**應用自己的類**；系統框架類（`AVCaptureDevice`、`CNContactStore`）通常通過 `objc_msgSend` 直接調用或 `NSClassFromString` 取得，不在這一維的覆蓋範圍內。 這一維只覆蓋**實際掃描過的**可執行文件（見「可執行文件」那一維）—— 未掃描的二進制裡的引用不在分母內。",
       "ios_macho_call_sites_unavailable": "沒有任何選擇子引用能歸屬到函數（沒有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令對，或缺少 LC_FUNCTION_STARTS）。線索只報「被引用」，不報「被調用」。"
     }
   },

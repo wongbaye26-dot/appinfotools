@@ -7,6 +7,7 @@ import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
+import 'package:ipa_parser/ipa_parser.dart' show IosAuthorizationVerdict;
 import 'package:path/path.dart' as path;
 
 /// 把统一分析结果渲染成一份可读、可归档的报告。
@@ -145,6 +146,45 @@ class AnalysisReport {
       ..writeln('- ${t.apk_info.signature_info}: '
           '${DetailRenderer.signatureVerdictLabel(result.signatureVerdict, t)}');
 
+    // ---- 授权比对：只在「不匹配」时进结论 ----
+    //
+    // 「描述文件授权的是**另一个**应用」比签名失败更硬 —— 它说明这个包
+    // 挂着别人的描述文件，重签/重打包已经是结论而不是线索。这条此前只出现在
+    // 「签名与授权」章节中部，读者要翻很久。
+    final auth = result.ios?.authorization;
+    if (auth != null && auth.verdict == IosAuthorizationVerdict.mismatch) {
+      sb.writeln('- ${t.report.conclusion_authorization_mismatch}');
+      sb.writeln('  - ${t.report.conclusion_app_id}: '
+          '${auth.appIdentifier ?? '—'}');
+      sb.writeln('  - ${t.report.conclusion_profile_id}: '
+          '${auth.authorizedIdentifier ?? '—'}');
+    }
+
+    // ---- 最高等级的发现（按等级取前 N 条）----
+    //
+    // 之前这里只有「签名 + Android 加固」两行，**完全没有 iOS 分支** ——
+    // 一个被注入 dylib、还挂着别人描述文件的包，结论段一个字都不提。
+    // 结论段应该是「按严重程度取前几条」，不是「固定两行」。
+    final findings = result.security?.findings ?? const <SecurityFinding>[];
+    final ranked = findings.where((f) => !f.isMeta).toList()
+      ..sort((a, b) =>
+          _severityRank(a.severity).compareTo(_severityRank(b.severity)));
+    if (ranked.isNotEmpty) {
+      sb.writeln('- ${t.report.conclusion_top_findings}:');
+      for (final finding in ranked.take(_maxConclusionFindings)) {
+        final text = findingText(finding, t);
+        // 发现项正文可能很长，结论段只取第一句 —— 完整内容在下文。
+        final firstLine = text.split('\n').first;
+        sb.writeln('  - `${finding.ruleId}` '
+            '[${finding.severity.name}] $firstLine');
+      }
+      if (ranked.length > _maxConclusionFindings) {
+        sb.writeln('  - ${t.report.conclusion_more_findings(
+          count: ranked.length - _maxConclusionFindings,
+        )}');
+      }
+    }
+
     final android = result.android;
     if (android != null && android.mayBeHardened) {
       sb.writeln('- ${t.apk_info.hardening_summary}:');
@@ -158,6 +198,22 @@ class AnalysisReport {
 
     sb.writeln();
   }
+
+  /// 结论段最多列几条发现。
+  ///
+  /// 3 条：一屏之内能看完，又不至于把「最严重的那件」埋在列表中部。
+  static const int _maxConclusionFindings = 3;
+
+  /// 等级排序：（最严重 → 最轻）。`unknown` 排在 `info` 之后。
+  static int _severityRank(SecuritySeverity s) => switch (s) {
+        SecuritySeverity.p0 => 0,
+        SecuritySeverity.p1 => 1,
+        SecuritySeverity.p2 => 2,
+        SecuritySeverity.p3 => 3,
+        SecuritySeverity.info => 4,
+        // 「无法判定」不是「不严重」，但结论段先列确凿的。
+        SecuritySeverity.unknown => 5,
+      };
 
   static void _androidSection(
     StringBuffer sb,
@@ -179,14 +235,15 @@ class AnalysisReport {
     _row(sb, t.apk_info.target_sdk, android.targetSdkVersion);
     _row(sb, t.apk_info.max_sdk, android.maxSdkVersion);
     _row(sb, t.apk_info.debuggable, android.debuggable);
-    // 组件用 DetailRenderer 渲染，而不是把对象丢给 `toString()` ——
-    // 报告是给人看的，`AndroidComponent{activity, name: ..., permission: null}`
-    // 这种 Dart 对象转储不该出现在里面。
+    // 组件在表格里**只写数量**：下面有「### 组件 (N)」把每一条完整列出。
+    //
+    // 此前这里用 `<br>` 把 18 个组件拼进单元格，紧接着又列一遍 —— 一份 274 行的
+    // 报告里约 40 行是纯重复，而且表格那一行会把整张表的宽度撑爆。
     _row(sb, t.apk_info.components, android.components,
         displayValue: android.components.hasValue
-            ? android.components.value!
-                .map((c) => DetailRenderer.componentLine(c, t))
-                .join('<br>')
+            ? t.apk_info.component_count(
+                count: android.components.value!.length,
+              )
             : null);
 
     // 权限现在是 `FieldValue`：只有**确实读到**才列清单。
@@ -347,10 +404,14 @@ class AnalysisReport {
     List<SecurityFinding> findings,
     Translations t,
   ) {
-    if (findings.isEmpty) return;
+    // **排除元信息与否定结论。** `ANDROID-RULE-F`（「本次没找到上传特征」）
+    // 与 `IOS-SCAN-COVERAGE` 都带 category，但它们不是发现；让它们参与聚合，
+    // 「未发现上传」会在表里显示成「数据外发 1 条」——否定结论被读成风险。
+    final real = findings.where((f) => !f.isMeta).toList();
+    if (real.isEmpty) return;
 
     final groups = <SecurityCategory, List<SecurityFinding>>{};
-    for (final finding in findings) {
+    for (final finding in real) {
       (groups[finding.category] ??= []).add(finding);
     }
     if (groups.length < 2) return; // 只有一个主题时，聚合没有信息量
@@ -1387,6 +1448,7 @@ class AnalysisReport {
       'rule_f.scope' => (dex == null || callSites == null)
           ? null
           : e.android_rule_f_scope(dex: dex, callSites: callSites),
+      'permission.declared_without_api' => e.permission_declared_without_api,
       'code.call_site' => (marker == null || samples == null)
           ? null
           : e.code_call_site(marker: marker, samples: samples),
@@ -1601,6 +1663,10 @@ class AnalysisReport {
       'READ_CONTACTS' => (
           description: p.read_contacts_description,
           riskNote: p.read_contacts_risk_note,
+        ),
+      'READ_PRIVILEGED_PHONE_STATE' => (
+          description: p.read_privileged_phone_state_description,
+          riskNote: p.read_privileged_phone_state_risk_note,
         ),
       'READ_CLIPBOARD' => (
           description: p.read_clipboard_description,

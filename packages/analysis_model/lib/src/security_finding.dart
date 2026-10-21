@@ -358,6 +358,22 @@ class SecurityFinding {
   final String? limitationCode;
   final Map<String, Object> limitationArgs;
 
+  /// 这条发现**不是「风险」**，而是元信息或**否定结论**。
+  ///
+  /// 两类：
+  /// - **否定结论**：`ANDROID-RULE-F` / `IOS-RULE-F` 说的是「本次没找到上传特征」，
+  ///   它属于「我们查了什么」，不是「发现了什么」；
+  /// - **元信息**：`IOS-SCAN-COVERAGE`、`IOS-SENTINEL`… 描述的是覆盖率本身。
+  ///
+  /// 为什么需要这个标记：报告里的「能力视图」按 [category] 聚合，而上面两类
+  /// 也带着 category（RULE-F 是 `dataExfiltration`），于是**「未发现上传」会
+  /// 在能力视图里显示成「数据外发 1 条」** —— 否定结论被读成了风险，
+  /// 与整个项目「不让否定结论读成风险」的原则直接冲突。
+  ///
+  /// 默认 `false`：绝大多数发现项都是真发现，标记只用在少数元信息上。
+  /// **不要用它来隐藏风险**，只用来区分「发现」与「我们查了什么」。
+  final bool isMeta;
+
   const SecurityFinding({
     required this.ruleId,
     required this.platform,
@@ -380,6 +396,7 @@ class SecurityFinding {
     this.relationshipArgs = const {},
     this.limitationCode,
     this.limitationArgs = const {},
+    this.isMeta = false,
   });
 
   /// 去掉**本 finding 内**完全相同的证据条目，返回新的 finding。

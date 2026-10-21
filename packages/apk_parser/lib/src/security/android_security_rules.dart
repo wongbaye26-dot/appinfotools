@@ -1609,6 +1609,7 @@ SecurityFinding _buildUnusedPermission(AndroidRuleFacts f) {
           source: SecurityEvidenceSource.manifest,
           location: 'AndroidManifest.xml / uses-permission[@name="$name"]',
           detail: 'declared; no matching API marker found in the scanned DEX',
+          detailCode: 'permission.declared_without_api',
         ),
     ],
     limitation: 'Only the code that was actually scanned counts: native '
@@ -2104,6 +2105,9 @@ SecurityFinding _buildRuleF(AndroidRuleFacts f) {
     ruleId: 'ANDROID-RULE-F',
     platform: SecurityPlatform.android,
     category: SecurityCategory.dataExfiltration,
+    // 这是**否定结论**（「本次没找到上传特征」），不是发现。标记成 meta
+    // 才不会被「能力视图」算成「数据外发 1 条」。
+    isMeta: true,
     severity: SecuritySeverity.info,
     confidence:
         noDex ? SecurityConfidence.unknown : SecurityConfidence.confirmed,

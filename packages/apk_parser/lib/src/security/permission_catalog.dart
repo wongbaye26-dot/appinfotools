@@ -27,7 +27,7 @@ class PermissionCatalog {
   PermissionCatalog._();
 
   /// 规则库版本。改这张表必须升版本，否则两份报告无法对照。
-  static const String rulesVersion = 'android-permissions-2026.10.2';
+  static const String rulesVersion = 'android-permissions-2026.10.3';
 
   /// 目录里的全部规则。
   static const List<PermissionRule> rules = [
@@ -255,6 +255,20 @@ class PermissionCatalog {
       description: 'Read contacts.',
       riskNote: 'A sensitive information source listed in spec 3.4; watch for '
           'it co-occurring with upload logic.',
+    ),
+    // `READ_PRIVILEGED_PHONE_STATE` 与 `READ_CLIPBOARD` 同类：signature 级，
+    // 三方应用声明了也拿不到。此前它落进「未编目」的汇总桶，报告里只写
+    // 「另有 3 项权限未纳入风险目录」—— 读者会以为它可能有实际能力。
+    PermissionRule(
+      name: 'READ_PRIVILEGED_PHONE_STATE',
+      category: SecurityCategory.deviceData,
+      protection: PermissionProtection.signature,
+      baseSeverity: SecuritySeverity.info,
+      description: 'Read privileged phone state (signature-level permission).',
+      riskNote: 'Signature-level: a third-party app cannot be granted this, '
+          'so the declaration has no effect. Seeing it usually means the code '
+          'came from a system app, a copy-pasted sample, or an obfuscated '
+          'build.',
     ),
     PermissionRule(
       name: 'READ_CLIPBOARD',

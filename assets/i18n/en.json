@@ -292,7 +292,8 @@
     "structure_native_libs": "Native libraries",
     "structure_directories": "Top-level directories",
     "structure_file_count": "{count} files",
-    "text_info": "Text Info"
+    "text_info": "Text Info",
+    "component_count": "{count} (listed below)"
   },
   "icon": {
     "switch_icon": "Switch Icon",
@@ -543,7 +544,12 @@
     "label_evidence": "Evidence",
     "label_recommendation": "Recommendation",
     "label_limitation": "Limitation",
-    "findings_count": "Findings: {count}"
+    "findings_count": "Findings: {count}",
+    "conclusion_authorization_mismatch": "The provisioning profile grants a **different** app identifier",
+    "conclusion_app_id": "app declares",
+    "conclusion_profile_id": "profile grants",
+    "conclusion_top_findings": "Top findings by severity",
+    "conclusion_more_findings": "{count} more finding(s) below"
   },
   "about": {
     "features": {
@@ -824,7 +830,8 @@
       "native_symbol_imported": "{symbol} (imported): {description}",
       "native_symbol_imported_raw": "{symbol} (imported): {description} | raw symbol: {rawNames}",
       "dex_strings_location": "strings of {count} DEX file(s)",
-      "android_rule_f_scope": "Scope of this negative result: {dex} DEX file(s) and {callSites} call site(s) were scanned; no upload marker matched."
+      "android_rule_f_scope": "Scope of this negative result: {dex} DEX file(s) and {callSites} call site(s) were scanned; no upload marker matched.",
+      "permission_declared_without_api": "declared, but no matching API marker was found in the scanned DEX"
     },
     "native_symbols": {
       "line": "{text} ({symbol})",
@@ -912,7 +919,9 @@
       "access_background_location_description": "Access location while the app is in the background (Android 10+).",
       "access_background_location_risk_note": "Background location is a continuous tracking capability; on Android 11+ it is granted from a separate settings page. Judge it with whether a foreground use case justifies it.",
       "record_audio_description": "Record audio from the microphone.",
-      "record_audio_risk_note": "A sensitive source: judge it together with where the recording goes (upload) and whether a visible recording feature exists. Recording + upload is covered by rule G."
+      "record_audio_risk_note": "A sensitive source: judge it together with where the recording goes (upload) and whether a visible recording feature exists. Recording + upload is covered by rule G.",
+      "read_privileged_phone_state_description": "Read privileged phone state (signature-level permission).",
+      "read_privileged_phone_state_risk_note": "Signature-level: a third-party app cannot be granted this, so the declaration has no effect. Seeing it usually means the code came from a system app, a copy-pasted sample, or an obfuscated build."
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes could not be read ({reason}): the registered URL schemes are not covered.",
@@ -1101,7 +1110,7 @@
       "android_signature_v1_undetermined": "The v2+ signing block was read, but whether a v1 (JAR) signature exists could not be determined",
       "android_cleartext_policy_target_sdk_unknown": "Neither android:usesCleartextTraffic nor targetSdkVersion could be read, so the platform default for cleartext traffic cannot be derived",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged",
-      "ios_macho_call_sites": "Attributed {attributed} of {total} selector / class references to functions ({functions} functions in the binary). \"Referenced\" still does not mean \"called\": ADRP+ADD only loads the address, and what it is passed to is not visible statically. Note that `__objc_classrefs` mainly covers the app's **own** classes; system framework classes (`AVCaptureDevice`, `CNContactStore`) are usually reached through a direct `objc_msgSend` or `NSClassFromString`, so they are outside this dimension.",
+      "ios_macho_call_sites": "Attributed {attributed} of {total} selector / class references to functions ({functions} functions in the binary). \"Referenced\" still does not mean \"called\": ADRP+ADD only loads the address, and what it is passed to is not visible statically. Note that `__objc_classrefs` mainly covers the app's **own** classes; system framework classes (`AVCaptureDevice`, `CNContactStore`) are usually reached through a direct `objc_msgSend` or `NSClassFromString`, so they are outside this dimension. This dimension only covers the executables that were scanned (see the \"executables\" dimension) - references inside unscanned binaries are not in the denominator.",
       "ios_macho_call_sites_unavailable": "No selector reference could be attributed to a function (no ADRP+ADD/LDR pair targeted __objc_selrefs, or no LC_FUNCTION_STARTS). Clues are reported as \"referenced\", not \"called\"."
     }
   },

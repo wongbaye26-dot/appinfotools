@@ -46,7 +46,7 @@ void main() {
 
     test('随机英文串不是域名', () {
       final facts = NetworkEndpoints.fromStrings(['abcdefghij', 'hello world']);
-      expect(facts.domains, isEmpty);
+      expect(facts.domains, const <String>[]);
     });
   });
 
@@ -54,7 +54,7 @@ void main() {
     test('IPv4 进 ips，不进 domains', () {
       final facts = NetworkEndpoints.fromStrings(['http://10.0.0.7:8080/cb']);
       expect(facts.ips, contains('10.0.0.7'));
-      expect(facts.domains, isEmpty);
+      expect(facts.domains, const <String>[]);
     });
 
     test('超过上限就停，不无限增长', () {
@@ -69,6 +69,44 @@ void main() {
     test('空输入返回空事实，不抛异常', () {
       final facts = NetworkEndpoints.fromStrings(const []);
       expect(facts.isEmpty, isTrue);
+    });
+  });
+
+  // 短 TLD（co / me / io / app / dev）会在长标签里提前收工，把域名切成碎片。
+  // 实测一个真实 IPA 的域名清单里约 1/4 是这种假域名：
+  //   com.apple.coremedia -> com.apple.co
+  //   io.agora.media      -> io.agora.me
+  group('短 TLD 不得截断长标签', () {
+    void expectDomains(String input, List<String> expected) {
+      final facts = NetworkEndpoints.fromStrings([input]);
+      expect(facts.domains, expected, reason: 'input: $input');
+    }
+
+    test('com.apple.coremedia 不产出 com.apple.co', () {
+      expectDomains('com.apple.coremedia', const <String>[]);
+    });
+
+    test('io.agora.media 不产出 io.agora.me', () {
+      expectDomains('io.agora.media', const <String>[]);
+    });
+
+    test('dump.system.core 不产出 dump.system.co', () {
+      expectDomains('dump.system.core', const <String>[]);
+    });
+
+    test('CFNetwork 这类以 TLD 开头的词不产出域名', () {
+      expectDomains('com.apple.CFNetwork', const <String>[]);
+    });
+
+    test('真正的域名照常提取', () {
+      expectDomains('https://edge.agora.io/v1', ['edge.agora.io']);
+      expectDomains('rtc.metering.com.cn', ['rtc.metering.com.cn']);
+      expectDomains('connection.com', ['connection.com']);
+      expectDomains('a.b.co', ['a.b.co']);
+    });
+
+    test('端口与路径不影响主机名提取', () {
+      expectDomains('www.example.com:8080/x', ['www.example.com']);
     });
   });
 }

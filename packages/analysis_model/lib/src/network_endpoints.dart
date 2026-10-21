@@ -34,6 +34,13 @@ class NetworkEndpoints {
   static final RegExp _bareDomainPattern = RegExp(
     r'\b([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+'
     r'(com|cn|net|org|io|co|ai|dev|app|info|me|tv|xyz|top|cloud|gov|edu)'
+    // **`(?![a-z0-9])` 不可省**：没有它，短 TLD 会在长标签里提前收工。
+    // `com.apple.coremedia` 会被切成 `com.apple.co`（`co` 命中后丢弃
+    // `remedia`），`io.agora.media` 被切成 `io.agora.me`。实测一个真实
+    // IPA 的域名清单里约 1/4 是这种碎片 —— 一条「域名清单」里混着假域名，
+    // 比没有清单更糟。要求 TLD 后面必须是一个标签边界（结尾、端口、路径、
+    // 非字母数字）。
+    r'(?![a-z0-9])'
     r'(?::\d{2,5})?(?:/[^\s<>]*)?',
     caseSensitive: true,
   );

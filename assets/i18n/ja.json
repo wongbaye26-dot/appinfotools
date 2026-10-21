@@ -264,7 +264,8 @@
     "structure_native_libs": "ネイティブライブラリ",
     "structure_directories": "トップレベルディレクトリ",
     "structure_file_count": "{count} ファイル",
-    "text_info": "テキスト情報"
+    "text_info": "テキスト情報",
+    "component_count": "{count} 件（下の一覧を参照）"
   },
   "icon": {
     "switch_icon": "アイコン切替",
@@ -408,7 +409,8 @@
       "dex_strings_location": "{count} 個の DEX ファイルの文字列",
       "native_symbol_imported": "{symbol}（インポート）: {description}",
       "native_symbol_imported_raw": "{symbol}（インポート）: {description} | 生のシンボル: {rawNames}",
-      "android_rule_f_scope": "この否定結論の範囲：{dex} 個の DEX と {callSites} 個の呼び出し箇所をスキャンし、アップロードのマーカーは見つかりませんでした。"
+      "android_rule_f_scope": "この否定結論の範囲：{dex} 個の DEX と {callSites} 個の呼び出し箇所をスキャンし、アップロードのマーカーは見つかりませんでした。",
+      "permission_declared_without_api": "宣言されていますが、スキャンした DEX に対応する API マーカーが見つかりません"
     },
     "list_join": "、",
     "native_symbols": {
@@ -492,7 +494,9 @@
       "access_background_location_description": "アプリがバックグラウンドにある間の位置情報取得（Android 10 以降）",
       "access_background_location_risk_note": "バックグラウンド位置情報は継続的な追跡能力です。Android 11 以降は専用の設定画面で許可します。前面での用途がそれを正当化するかと併せて判断してください。",
       "record_audio_description": "マイクからの音声録音",
-      "record_audio_risk_note": "機微な取得元です。録音データの行き先（アップロード）と、目に見える録音機能があるかで判断してください。録音 + アップロードはルール G が扱います。"
+      "record_audio_risk_note": "機微な取得元です。録音データの行き先（アップロード）と、目に見える録音機能があるかで判断してください。録音 + アップロードはルール G が扱います。",
+      "read_privileged_phone_state_description": "特権的な電話状態の読み取り（signature レベルの権限）。",
+      "read_privileged_phone_state_risk_note": "signature レベル：サードパーティアプリには付与されないため、この宣言は**効果がありません**。含まれている場合は、システムアプリ由来のコード、コピーされたサンプル、または難読化されたビルドであることを示します。"
     },
     "sources": {
       "camera": "カメラ",
@@ -860,7 +864,12 @@
     "exporting": "エクスポート中…",
     "file_name": "ファイル名",
     "security_not_performed": "このファイルではセキュリティ監査は実行されませんでした。",
-    "limitation_security": "このパッケージではセキュリティ監査は実行されませんでした。"
+    "limitation_security": "このパッケージではセキュリティ監査は実行されませんでした。",
+    "conclusion_authorization_mismatch": "プロビジョニングプロファイルが**別の**アプリケーション識別子を許可しています",
+    "conclusion_app_id": "アプリの宣言",
+    "conclusion_profile_id": "プロファイルの許可",
+    "conclusion_top_findings": "重大度順の主な検出項目",
+    "conclusion_more_findings": "他 {count} 件の検出項目は本文を参照"
   },
   "detail_tab": {
     "overview": "概要",
@@ -935,7 +944,7 @@
       "android_signature_v1_undetermined": "v2+ 署名ブロックは読み取りましたが、v1（JAR）署名の有無は判定できませんでした",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できなかった（リソース、ファイルパス、XML 自体のいずれかが読めない）ため、平文通信ポリシーは判定していません",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic も targetSdkVersion も読めないため、平文通信のプラットフォーム既定値を導けません",
-      "ios_macho_call_sites": "{total} 件のセレクタ / クラス参照のうち {attributed} 件を関数に帰属できました（バイナリ内の関数は {functions} 個）。「参照されている」は「呼ばれている」とは異なります：ADRP+ADD はアドレスをレジスタに入れるだけで、その後の渡し先は静的に見えません。 なお、`__objc_classrefs` が主に覆うのは**アプリ自身のクラス**です。システムフレームワークのクラス（`AVCaptureDevice`、`CNContactStore`）は通常 `objc_msgSend` の直接呼び出しや `NSClassFromString` で取得されるため、この次元の対象外です。",
+      "ios_macho_call_sites": "{total} 件のセレクタ / クラス参照のうち {attributed} 件を関数に帰属できました（バイナリ内の関数は {functions} 個）。「参照されている」は「呼ばれている」とは異なります：ADRP+ADD はアドレスをレジスタに入れるだけで、その後の渡し先は静的に見えません。 なお、`__objc_classrefs` が主に覆うのは**アプリ自身のクラス**です。システムフレームワークのクラス（`AVCaptureDevice`、`CNContactStore`）は通常 `objc_msgSend` の直接呼び出しや `NSClassFromString` で取得されるため、この次元の対象外です。 この次元は**実際にスキャンした**実行ファイルのみを対象とします（「実行ファイル」の次元を参照）——未スキャンのバイナリ内の参照は分母に含まれません。",
       "ios_macho_call_sites_unavailable": "__objc_selrefs を指す ADRP+ADD/LDR の命令対がないか、LC_FUNCTION_STARTS がないため、セレクタ参照を関数に帰属できませんでした。手がかりは「参照されている」として報告されます。"
     },
     "partial": "一部カバー",
