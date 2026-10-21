@@ -1327,7 +1327,11 @@ class _WirelessPairDialogState extends State<_WirelessPairDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+          // **必须 `pop()` 不带值**：外层是 `showDialog<String>`，路由的类型
+          // 参数是 `String`。`pop(false)` 会在 `didPop` 里做 `result as String?`，
+          // 直接抛 TypeError —— 对话框**关不掉**，界面卡在「对话框还在、下层
+          // 不重绘」的状态（用户看到的就是黑屏）。
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
           child: Text(t.base.cancel),
         ),
         FilledButton(

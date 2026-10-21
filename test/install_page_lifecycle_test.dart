@@ -197,4 +197,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // 用户报：点「无线配对」的「取消」之后整窗黑屏（连左侧导航都没了）。
+  // 这个用例先排除「widget 层把页面弄没了」—— 如果它能过，问题就在别处
+  // （主题 / 平台渲染 / 对话框 barrier）。
+  for (final label in ['无线配对', '无线连接']) {
+    testWidgets('打开并关闭「$label」后页面内容仍在', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        _host(InstallPage(deviceLoader: () async => [])),
+      );
+      await tester.pumpAndSettle();
+
+      final opener = label == '无线配对'
+          ? t.install.wireless_pair
+          : t.install.wireless_connect;
+      await tester.tap(find.text(opener));
+      await tester.pumpAndSettle();
+
+      // 对话框确实开了
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      await tester.tap(find.text(t.base.cancel));
+      await tester.pumpAndSettle();
+
+      // 关掉之后：对话框消失、页面标题还在、没有异常
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text(t.install.file_section), findsOneWidget);
+      expect(find.text(t.install.device_section), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
