@@ -8,6 +8,8 @@
 // 4. 地址补全：`connect` 省略端口补 5555，**配对端口不能补** ——
 //    它是设备随机生成的，补一个默认值只会连到不存在的端口。
 
+import 'dart:io';
+
 import 'package:apk_info_tool/utils/adb_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -166,6 +168,42 @@ List of devices attached
 
     test('主机名与 .local 也可以', () {
       expect(AdbService.normalizeAddress('pixel.local'), 'pixel.local:5555');
+    });
+  });
+
+  // `connect` 失败时会用 TCP 探测把「端口不通」和「adb 后台进程坏了」分开 ——
+  // 后者也报 `No route to host`，但要做的事完全相反。实测：`nc` 能连上
+  // 192.168.1.35:43931，`adb connect` 却报 no route，kill-server 后立刻成功。
+  group('probeTcp', () {
+    test('有人在监听 → true', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      expect(await AdbService.probeTcp('127.0.0.1', server.port), isTrue);
+    });
+
+    test('端口没人监听 → false（而不是抛异常）', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = server.port;
+      await server.close();
+      expect(
+        await AdbService.probeTcp(
+          '127.0.0.1',
+          port,
+          timeout: const Duration(seconds: 1),
+        ),
+        isFalse,
+      );
+    });
+
+    test('主机不可解析 → false', () async {
+      expect(
+        await AdbService.probeTcp(
+          'this-host-does-not-exist.invalid',
+          5555,
+          timeout: const Duration(seconds: 1),
+        ),
+        isFalse,
+      );
     });
   });
 }

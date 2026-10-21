@@ -1377,7 +1377,11 @@ class _WirelessConnectDialogState extends State<_WirelessConnectDialog> {
     }
     setState(() {
       _busy = false;
-      _error = _describeError(result.output);
+      // 重启过后台进程仍然失败，说明不是 adb 的问题 —— 文案要跟着换，
+      // 否则用户会照着「端口不对」的提示反复改端口。
+      _error = result.serverRestarted
+          ? t.install.connect_error_after_restart
+          : _describeError(result.output);
     });
   }
 

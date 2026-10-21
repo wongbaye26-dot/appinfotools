@@ -393,7 +393,8 @@
     "connect_error_auth": "配對信息已失效，請重新配對。",
     "pair_done_no_connection": "已配對，但還沒連上",
     "pair_done_no_connection_hint": "回到手機的「無線偵錯」頁面，抄下那裡顯示的「IP 地址和端口」，再點「連接」填進去。配對彈窗裡那個端口只用於配對。",
-    "pair_done_go_connect": "去連接"
+    "pair_done_go_connect": "去連接",
+    "connect_error_after_restart": "這台電腦能連上那個端口，但 adb 仍然連不上（已自動重啟過後台進程）。這種情況通常是配對失效了 —— 重新配對一次，再連接。"
   },
   "ios_info": {
     "architectures": "架構",

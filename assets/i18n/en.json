@@ -393,7 +393,8 @@
     "connect_error_auth": "The pairing is no longer valid. Pair the device again.",
     "pair_done_no_connection": "Paired, but not connected yet",
     "pair_done_no_connection_hint": "Go back to the phone's \"Wireless debugging\" screen and copy the \"IP address & port\" shown there, then use Connect with it. The port in the pairing dialog is only for pairing.",
-    "pair_done_go_connect": "Connect now"
+    "pair_done_go_connect": "Connect now",
+    "connect_error_after_restart": "The port is reachable from this computer, but adb still cannot connect (the adb background process was already restarted). This usually means the pairing is no longer valid - pair the device again, then connect."
   },
   "ios_info": {
     "architectures": "Architectures",

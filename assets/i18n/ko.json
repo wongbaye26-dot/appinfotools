@@ -365,7 +365,8 @@
     "connect_error_auth": "페어링 정보가 만료되었습니다. 다시 페어링하세요.",
     "pair_done_no_connection": "페어링되었지만 아직 연결되지 않았습니다",
     "pair_done_no_connection_hint": "기기의 \"무선 디버깅\" 화면으로 돌아가 표시된 \"IP 주소 및 포트\"를 적은 뒤 \"연결\"에 입력하세요. 페어링 대화상자의 포트는 페어링 전용입니다.",
-    "pair_done_go_connect": "연결하기"
+    "pair_done_go_connect": "연결하기",
+    "connect_error_after_restart": "이 PC에서 해당 포트에 도달할 수 있지만 adb가 여전히 연결하지 못합니다(백그라운드 프로세스는 이미 재시작함). 보통 페어링이 만료된 경우이므로 다시 페어링한 뒤 연결하세요."
   },
   "about": {
     "features": {

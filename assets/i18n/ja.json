@@ -365,7 +365,8 @@
     "connect_error_auth": "ペア設定の情報が無効になりました。もう一度ペア設定してください。",
     "pair_done_no_connection": "ペア設定は完了しましたが、未接続です",
     "pair_done_no_connection_hint": "端末の「ワイヤレス デバッグ」画面に戻り、表示されている「IP アドレスとポート」を控えて「接続」で入力してください。ペア設定ダイアログのポートはペア設定専用です。",
-    "pair_done_go_connect": "接続する"
+    "pair_done_go_connect": "接続する",
+    "connect_error_after_restart": "この PC からそのポートには到達できますが、adb は接続できません（バックグラウンドプロセスは再起動済み）。多くの場合ペア設定が無効になっています。もう一度ペア設定してから接続してください。"
   },
   "about": {
     "features": {

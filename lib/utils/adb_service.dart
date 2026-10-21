@@ -134,7 +134,16 @@ class AdbCommandResult {
   final bool ok;
   final String output;
 
-  const AdbCommandResult({required this.ok, required this.output});
+  /// 这次调用**重启过 adb 后台进程**才成功。
+  ///
+  /// 界面据此说清楚「我们做了什么」—— 否则用户会以为第一次失败是自己填错了。
+  final bool serverRestarted;
+
+  const AdbCommandResult({
+    required this.ok,
+    required this.output,
+    this.serverRestarted = false,
+  });
 
   /// adb 可执行文件找不到 —— 与「命令执行失败」是两件事。
   static const AdbCommandResult adbMissing =
@@ -399,12 +408,79 @@ class AdbService {
     );
   }
 
-  static Future<AdbCommandResult> connect(String address, {Duration? timeout}) {
-    return _run(
+  /// 连接一台无线设备。
+  ///
+  /// ## 为什么失败后要自己判一次
+  ///
+  /// **adb 后台进程（server）状态坏掉时，`adb connect` 会报
+  /// `No route to host`** —— 和「端口不对 / 不在同一网络」是同一句话，
+  /// 但两者要做的事完全相反。实测：`nc -vz 192.168.1.35 43931` 明明能连上，
+  /// `adb connect` 却报 no route，`adb kill-server` 之后立刻成功。
+  ///
+  /// 所以失败时**用一次 TCP 探测把两者分开**：
+  /// - 端口连不上 → 原文就是对的（端口/网络问题），不改；
+  /// - 端口能连上 → 是 adb 后台的问题，**重启 server 重试一次**。
+  ///
+  /// 重启是无损的（只影响 adb 自己的后台进程，1–2 秒），所以值得自动做。
+  static Future<AdbCommandResult> connect(
+    String address, {
+    Duration? timeout,
+  }) async {
+    final first = await _run(
       ['connect', address],
       timeout: timeout ?? defaultTimeout,
       parse: parseConnectResult,
     );
+    if (first.ok) return first;
+
+    final parts = _splitHostPort(address);
+    if (parts == null) return first;
+    if (!await probeTcp(parts.$1, parts.$2)) return first;
+
+    // 端口可达，但 adb 说连不上 —— 重启后台进程再试一次。
+    log.warning('AdbService: $address 端口可达但 adb 报错，重启 server 重试');
+    await _run(['kill-server'], timeout: const Duration(seconds: 10));
+    await _run(['start-server'], timeout: const Duration(seconds: 20));
+    final retry = await _run(
+      ['connect', address],
+      timeout: timeout ?? defaultTimeout,
+      parse: parseConnectResult,
+    );
+    return AdbCommandResult(
+      ok: retry.ok,
+      output: retry.output,
+      serverRestarted: true,
+    );
+  }
+
+  /// 探测目标 TCP 端口能不能连上。
+  ///
+  /// 只用来**区分原因**，不参与结论：连得上不代表能装（还要配对、要授权），
+  /// 但连不上就一定不是 adb 的问题。
+  static Future<bool> probeTcp(
+    String host,
+    int port, {
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(host, port, timeout: timeout);
+      return true;
+    } catch (e) {
+      log.info('AdbService: 探测 $host:$port 失败: $e');
+      return false;
+    } finally {
+      socket?.destroy();
+    }
+  }
+
+  /// 把 `host:port` 拆开；格式不对返回 `null`。
+  static (String, int)? _splitHostPort(String address) {
+    final colon = address.lastIndexOf(':');
+    if (colon <= 0) return null;
+    final port = int.tryParse(address.substring(colon + 1));
+    if (port == null) return null;
+    return (address.substring(0, colon), port);
   }
 
   static Future<AdbCommandResult> disconnect(String address,
