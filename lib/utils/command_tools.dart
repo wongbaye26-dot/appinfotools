@@ -87,7 +87,10 @@ class CommandTools {
     String? downloadedPath,
     String? bundledPath,
   ) {
-    final envPath = ToolPaths.findInPath(toolName);
+    // 只查 `PATH` 会漏掉「装了 Android Studio 但没配 PATH」的机器 ——
+    // `findSystemTool` 会继续在 Android SDK 的 build-tools / platform-tools
+    // 里找。设置页用的是同一个入口，两处结论因此始终一致。
+    final envPath = ToolPaths.findSystemTool(toolName);
     final builtinPath = downloadedPath ?? bundledPath;
     switch (source) {
       case Config.kToolSourceBuiltin:

@@ -141,6 +141,101 @@ class ToolPaths {
     return null;
   }
 
+  /// 本机已安装的 Android SDK 根目录候选（按优先级）。
+  ///
+  /// `aapt2` / `apksigner` / `adb` 通常随 Android Studio 一起装好，但**不会**
+  /// 自动进入 `PATH`。只看 `PATH` 的话，用户明明装了 SDK，设置页却显示
+  /// 「未找到」—— 这是本机（aapt2 在 `~/Library/Android/sdk/build-tools/`）
+  /// 实际遇到的情况。
+  ///
+  /// 顺序：`ANDROID_HOME` → `ANDROID_SDK_ROOT` → 各平台默认安装位置。
+  /// 环境变量优先是因为它代表用户的显式选择。
+  ///
+  /// [environment] 只为测试注入，生产路径一律读进程环境。`Platform.environment`
+  /// 是只读的，没有这个缝就没法验证「变量优先、重复去掉」这两条约定。
+  static List<String> androidSdkRoots({Map<String, String>? environment}) {
+    final env = environment ?? Platform.environment;
+    final roots = <String>[];
+    void add(String? value) {
+      if (value == null) return;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || roots.contains(trimmed)) return;
+      roots.add(trimmed);
+    }
+
+    add(env['ANDROID_HOME']);
+    add(env['ANDROID_SDK_ROOT']);
+
+    final home = env['HOME'] ?? env['USERPROFILE'];
+    if (Platform.isMacOS) {
+      if (home != null) add(path.join(home, 'Library', 'Android', 'sdk'));
+    } else if (Platform.isWindows) {
+      final localAppData = env['LOCALAPPDATA'];
+      if (localAppData != null) add(path.join(localAppData, 'Android', 'Sdk'));
+    } else if (Platform.isLinux) {
+      if (home != null) {
+        add(path.join(home, 'Android', 'Sdk'));
+        add(path.join(home, 'android-sdk'));
+      }
+    }
+    return roots;
+  }
+
+  /// 在 Android SDK 的 `build-tools/<最新版本>/` 下找可执行文件。
+  ///
+  /// [roots] 同样只为测试注入。
+  static String? findInAndroidBuildTools(String name, {List<String>? roots}) {
+    for (final root in roots ?? androidSdkRoots()) {
+      final dir = _latestBuildToolsDir(path.join(root, 'build-tools'));
+      if (dir == null) continue;
+      final candidate = path.join(dir, name);
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return null;
+  }
+
+  /// 在 Android SDK 的 `platform-tools/` 下找可执行文件。
+  static String? findInAndroidPlatformTools(String name,
+      {List<String>? roots}) {
+    for (final root in roots ?? androidSdkRoots()) {
+      final candidate = path.join(root, 'platform-tools', name);
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return null;
+  }
+
+  /// 已知 Android 工具在 SDK 里的文件名（Windows 带扩展名）。
+  ///
+  /// 只认这三个：它们就是本项目实际会执行的外部工具。未知命令返回 `null`，
+  /// 免得把任意命令名拼进 SDK 路径去探测。
+  static String? androidToolFileName(String command) {
+    switch (command) {
+      case 'aapt2':
+        return Platform.isWindows ? 'aapt2.exe' : 'aapt2';
+      case 'apksigner':
+        return Platform.isWindows ? 'apksigner.bat' : 'apksigner';
+      case 'adb':
+        return Platform.isWindows ? 'adb.exe' : 'adb';
+    }
+    return null;
+  }
+
+  /// 在 Android SDK 里找已知工具（`PATH` 之外的常见位置）。
+  static String? findInAndroidSdk(String command) {
+    final name = androidToolFileName(command);
+    if (name == null) return null;
+    if (command == 'adb') return findInAndroidPlatformTools(name);
+    return findInAndroidBuildTools(name);
+  }
+
+  /// 「系统环境」的完整查找顺序：先 `PATH`，再 Android SDK。
+  ///
+  /// 设置页的「系统环境」选项和 [findInPath] 的调用方都应该走这个入口，
+  /// 否则两处结论会不一致（设置页显示找到、实际解析却找不到）。
+  static String? findSystemTool(String command) {
+    return findInPath(command) ?? findInAndroidSdk(command);
+  }
+
   static String? getDownloadedAdbPath({String? baseDir}) {
     final name = Platform.isWindows ? 'adb.exe' : 'adb';
     final root = baseDir ?? installBinDir;
@@ -187,7 +282,14 @@ class ToolPaths {
 
   static String? _getLatestBuildToolsDir({String? baseDir}) {
     final root = baseDir ?? installBinDir;
-    final buildToolsRoot = path.join(root, 'build-tools');
+    return _latestBuildToolsDir(path.join(root, 'build-tools'));
+  }
+
+  /// 在给定的 `build-tools` 目录里挑版本号最大的那个子目录。
+  ///
+  /// 抽出来是为了让「应用下载的 build-tools」与「系统 Android SDK 的
+  /// build-tools」共用同一套版本比较 —— 两处各写一份排序迟早会不一致。
+  static String? _latestBuildToolsDir(String buildToolsRoot) {
     final dir = Directory(buildToolsRoot);
     if (!dir.existsSync()) {
       return null;
