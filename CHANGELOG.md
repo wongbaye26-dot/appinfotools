@@ -1,5 +1,74 @@
 # Changelog
 
+## 2.8.1 — 2026-10-21
+
+三件事：iOS 新增**重打包 / 注入**识别；设置里的「环境」补上两处缺失的依赖；
+以及一轮真实样本暴露出来的误报修复。
+
+### 新增：iOS 重打包 / 注入识别（`IOS-REPACKAGED`）
+
+签名验证能说「这个包的签名对不上」，但说不清**为什么** —— 砸壳、改二进制、
+被注入，在 `codesign` 的输出上是同一句话。而注入有一个静态可见的痕迹：
+**多出来一个文件**。
+
+判据只有一条：**直接躺在 `.app` 根目录下的 `.dylib`**。正常应用把动态库放在
+`Frameworks/`（`Frameworks/libswift_Concurrency.dylib`、
+`Frameworks/Foo.framework/Foo`），而注入工具把 tweak 直接扔进 bundle 根。
+
+12 个真实 IPA 跑过，分离度是干净的：
+
+| 结果 | 样本 |
+|---|---|
+| 命中（7） | `Ptv_signed`（`axexUb.dylib`）、`Ptv_signed_v3`（`kKipwwl.dylib`）、`jincaizb_signed`、`sun_signed`、`wnsr_signed`、`月光_signed_v3`、`77-v8.5.5`（`libQuannengLock.dylib`） |
+| 未命中（5） | `33-v8.5.5`、`Ptv_nosignet`、`hongjun_2mfffq`、`sun_nosigned`、`皇冠-v6.9.63` |
+
+**一条被数据否掉的判据**：「bundle 目录名与 `CFBundleName` 不一致」在**全部**
+样本上都成立，包括干净的（`33-v8.5.5.ipa` 目录是 `Runner.app`、`CFBundleName`
+是 `33`）。用它等于 100% 误报，已弃用，并在测试里钉住了这个事实。
+
+代价写在局限里：只改 bundle 名、或就地改主二进制的重打包**看不到**
+（`皇冠-v6.9.63.ipa` 正是这种），那种情况只能靠签名结论。
+
+### 设置 → 环境：补上两处缺失的依赖
+
+**Android SDK 自动探测。** 此前「系统环境」只查 `PATH`。`aapt2` / `apksigner` /
+`adb` 随 Android Studio 装好但**不会**自动进 `PATH` —— 于是明明装了 SDK，
+设置页照样显示「未找到」，aapt2 解析引擎也用不上。现在顺序是
+`ANDROID_HOME` → `ANDROID_SDK_ROOT` → 平台默认路径。
+
+**Java 运行时。** `apksigner` 在 macOS / Linux 上是一段 shell 脚本，末尾是
+`exec java -jar apksigner.jar` —— Java 是它的**隐含依赖**，界面上一直看不见。
+
+这里有个必须堵的误报：macOS 的 `/usr/bin/java` 是**桩**，没装 JDK 时它存在、
+能执行，打印 `Unable to locate a Java Runtime` 后以 **1** 退出 —— 而 1 正是
+apksigner「验证未通过」的退出码。**不先拦下来，缺 JDK 的机器上每个包都会被判成
+「签名被篡改」。** 现在先判「启动器起不来」（127 / 桩措辞 / shell 措辞），
+命中即「工具不可用」。
+
+设置页因此多了两行只读状态：`Java 运行时`、`codesign 路径`（非 macOS 显示
+「仅 macOS 可用」）。两项都不给配置入口 —— 换一个 java 路径不会改变
+「装没装 JDK」，`codesign` 在 macOS 上固定 `/usr/bin/codesign`。
+
+### 真实样本暴露的误报（两个 iOS 包）
+
+- **`privateKey` 命中 OpenSSL**：`SSL_CTX_use_PrivateKey`、`d2i_PrivateKey`、
+  `privateKeyUsagePeriod` 让「密钥材料」几乎恒亮。`privateKey` 已移出判级 ——
+  密钥材料必须落在**钱包语境**里。
+- **`mobilesubstrate` 是越狱检测路径**：正常应用会主动探测它来判断设备是否
+  越狱。把它当「自带越狱组件」等于把「防越狱」说成「越狱」。已从字符串标记里
+  移除，只保留路径 / 组件名判据。
+- **Swift 符号名被当成 TRON 地址**：`TaskModifier2VAA12ViewModifierAAMc`
+  恰好满足「T + 33 位 base58」，把一条 P3 顶成了 P2。链上地址改为**校验和
+  验证**（TRON base58check、Bitcoin bech32），不再靠「长得像」。
+
+### 修复
+
+- **Android「安全 未检测」**：aapt2 解析引擎的分支直接 `return`，从不跑安全
+  审计 —— 只有关掉 aapt2 才有结果。已补上。
+- **关掉的功能显示成「未检测」**：签名 / 安全在设置里关掉后，概览页仍显示
+  「未检测 / 未验证」，像是没跑。现在明确写「已在设置中关闭」。
+- 越狱组件在安全页里也单独成项，与「盗 U 风险」并列，不再混在通用列表里。
+
 ## 2.8.0 — 2026-10-21
 
 安全分析新增一类风险：**链上资产被盗（「盗 U」）**，Android 与 iOS 都有；
