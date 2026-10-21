@@ -16,6 +16,7 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/pages/home_page.dart';
 import 'package:apk_info_tool/pages/info_page.dart';
+import 'package:apk_info_tool/pages/install_page.dart';
 import 'package:apk_info_tool/pages/setting_page.dart';
 import 'package:apk_info_tool/ui/overview/overview_page.dart';
 import 'package:apk_info_tool/ui/shell/app_shell.dart';
@@ -88,6 +89,17 @@ void main() {
         _enabledOf(tester, APKInfoPage),
         isFalse,
         reason: '分析页被概览页盖住，必须关掉它的 target —— 否则一次拖放会被解析两遍',
+      );
+      // 安装页也有拖放区（拖入 APK 直接装）。它同样必须默认关着。
+      //
+      // 这里**不切到安装页**去断言「开着」：切过去会触发一次真实的
+      // `adb devices`，而 `Process.start` 在 widget 测试的 fake-async 区里
+      // 会留下永不完成的 Timer（详见 install_page 的 `didChangeDependencies`）。
+      // 「可见时开着」由 `install_page_lifecycle_test.dart` 单独覆盖。
+      expect(
+        _enabledOf(tester, InstallPage),
+        isFalse,
+        reason: '安装页被概览页盖住，同样必须关掉 target',
       );
     });
 

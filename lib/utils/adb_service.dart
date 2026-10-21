@@ -1,0 +1,326 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:apk_info_tool/utils/command_tools.dart';
+import 'package:apk_info_tool/utils/logger.dart';
+
+/// 一台通过 adb 可见的设备。
+///
+/// [status] 直接取 `adb devices -l` 的第二列，**不做归一化** ——
+/// `device` / `offline` / `unauthorized` / `bootloader` 等取值本身就有意义，
+/// 折成 bool 会把「没授权」和「离线」混成同一句话，而这两种的用户动作
+/// 完全不同（一个要在手机上点允许，一个要重插线）。
+class AdbDevice {
+  final String id;
+  final String status;
+  final String? product;
+  final String? model;
+  final String? device;
+
+  /// 本次会话里最后一次操作的提示（安装结果、连接结果）。
+  String? note;
+
+  AdbDevice({
+    required this.id,
+    required this.status,
+    this.product,
+    this.model,
+    this.device,
+    this.note,
+  });
+
+  /// `offline`：设备在列表里但连不上（线松了、无线信号断了）。
+  bool get isOffline => status == 'offline';
+
+  /// `unauthorized`：设备没信任这台电脑。**必须在手机上点「允许调试」。**
+  bool get isUnauthorized => status == 'unauthorized';
+
+  /// 只有 `device` 状态能装东西。
+  bool get isUsable => status == 'device';
+
+  /// 无线设备的 id 形如 `192.168.1.5:5555`；USB 设备是序列号。
+  bool get isWireless => id.contains(':');
+
+  String get displayName {
+    final parts = <String>[
+      if (model != null && model!.isNotEmpty) model!,
+      if (device != null && device!.isNotEmpty) device!,
+    ];
+    return parts.isEmpty ? id : parts.join(' ');
+  }
+
+  @override
+  String toString() => 'AdbDevice($id, $status)';
+}
+
+/// 一次 adb 命令的结果。
+///
+/// 刻意不抛异常：adb 的失败绝大多数是**可预期的环境问题**（没授权、端口错、
+/// 设备离线），调用方要的是「拿一句话展示给用户」，而不是 catch 一堆分支。
+class AdbCommandResult {
+  final bool ok;
+  final String output;
+
+  const AdbCommandResult({required this.ok, required this.output});
+
+  /// adb 可执行文件找不到 —— 与「命令执行失败」是两件事。
+  static const AdbCommandResult adbMissing =
+      AdbCommandResult(ok: false, output: 'adb not found');
+
+  @override
+  String toString() => 'AdbCommandResult(ok: $ok, output: $output)';
+}
+
+/// adb 的薄封装：设备枚举、无线配对/连接/断开。
+///
+/// ## 为什么单独一层
+///
+/// 早先这些逻辑长在安装对话框里，于是「无线调试」想加也没地方放 ——
+/// 对话框只关心「选一台已连上的设备」。抽出来之后，[parseDevices] /
+/// [parsePairResult] / [parseConnectResult] 都是**纯函数**，可以拿真实输出
+/// 样本做单元测试，不必本机插着手机。
+class AdbService {
+  AdbService._();
+
+  /// 设备枚举 / 连接的默认超时。
+  ///
+  /// `adb connect` 在地址不可达时会**卡满超时**才返回（实测 20–60 秒），
+  /// 因此必须有上限，否则界面会一直转圈。
+  static const Duration defaultTimeout = Duration(seconds: 30);
+
+  /// 无线调试的默认端口。
+  ///
+  /// `adb connect` 不写端口时用 5555（Android 11 之前的无线调试）。
+  /// **配对端口不是它** —— 配对端口由设备随机生成，必须照抄手机屏幕上那个。
+  static const int defaultConnectPort = 5555;
+
+  static bool get isAvailable => CommandTools.findAdbPath() != null;
+
+  /// 解析到的 adb 可执行文件路径；找不到时为 `null`。
+  ///
+  /// 调用方需要**自己启动进程**时（例如要边读输出边支持中断的安装），
+  /// 拿这个路径，而不是再走一遍 `CommandTools`。
+  static String? get adbExecutable => CommandTools.findAdbPath();
+
+  /// 解析 `adb devices -l`。
+  ///
+  /// 真实输出：
+  /// ```
+  /// List of devices attached
+  /// R58M12ABCDE            device product:beyond1q model:SM_G9730 device:beyond1q
+  /// 192.168.1.5:5555       device product:beyond1q model:SM_G9730 device:beyond1q
+  /// R58M99ZZZZZ            unauthorized usb:1-1
+  /// ```
+  static List<AdbDevice> parseDevices(String output) {
+    final devices = <AdbDevice>[];
+    for (final line in const LineSplitter().convert(output)) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      // 首行是 `List of devices attached`；`adb` 自己的错误信息也会混进来
+      // （daemon 启动提示），因此只认「至少两列且第二列是已知状态」的行。
+      final parts = trimmed.split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      final status = parts[1];
+      if (!_knownStates.contains(status)) continue;
+
+      String? product;
+      String? model;
+      String? device;
+      for (final info in parts.skip(2)) {
+        if (info.startsWith('product:')) {
+          product = info.substring('product:'.length);
+        } else if (info.startsWith('model:')) {
+          model = info.substring('model:'.length);
+        } else if (info.startsWith('device:')) {
+          device = info.substring('device:'.length);
+        }
+      }
+      devices.add(AdbDevice(
+        id: parts[0],
+        status: status,
+        product: product,
+        model: model,
+        device: device,
+      ));
+    }
+    return devices;
+  }
+
+  static const Set<String> _knownStates = {
+    'device',
+    'offline',
+    'unauthorized',
+    'recovery',
+    'sideload',
+    'bootloader',
+    'no',
+  };
+
+  /// 解析 `adb pair <addr> <code>`。
+  ///
+  /// 成功输出：`Successfully paired to 192.168.1.5:37123 [guid=adb-…]`
+  /// 失败常见两种：
+  /// - `Failed to pair to …: Invalid code`（配对码错了）
+  /// - `Failed: unable to connect to …`（端口不对 / 不在同一网络）
+  static AdbCommandResult parsePairResult(int exitCode, String output) {
+    final text = output.trim();
+    if (exitCode == 0 && text.toLowerCase().contains('successfully paired')) {
+      return AdbCommandResult(ok: true, output: text);
+    }
+    return AdbCommandResult(
+        ok: false,
+        output: text.isEmpty ? 'adb pair exited with $exitCode' : text);
+  }
+
+  /// 解析 `adb connect <addr>`。
+  ///
+  /// 注意：**`adb connect` 对「已连接」也会返回 0**，且部分版本在失败时
+  /// 同样返回 0（只把原因写进 stdout）。因此判据以文本为准，不看退出码。
+  static AdbCommandResult parseConnectResult(int exitCode, String output) {
+    final text = output.trim();
+    final lower = text.toLowerCase();
+    if (lower.contains('connected to')) {
+      return AdbCommandResult(ok: true, output: text);
+    }
+    if (lower.contains('failed') ||
+        lower.contains('cannot') ||
+        lower.contains('unable')) {
+      return AdbCommandResult(ok: false, output: text);
+    }
+    return AdbCommandResult(
+      ok: false,
+      output: text.isEmpty ? 'adb connect exited with $exitCode' : text,
+    );
+  }
+
+  /// 解析 `adb disconnect <addr>`。
+  static AdbCommandResult parseDisconnectResult(int exitCode, String output) {
+    final text = output.trim();
+    if (text.toLowerCase().contains('disconnected')) {
+      return AdbCommandResult(ok: true, output: text);
+    }
+    return AdbCommandResult(
+      ok: false,
+      output: text.isEmpty ? 'adb disconnect exited with $exitCode' : text,
+    );
+  }
+
+  /// 把用户输入的地址补成 `host:port`。
+  ///
+  /// [defaultPort] 为 `null` 时**必须**显式给出端口，否则返回 `null` ——
+  /// 无线**配对**端口是设备随机生成的（手机屏幕上那个），补一个默认值只会
+  /// 连到不存在的端口上，换回一句误导人的报错。
+  ///
+  /// 返回 `null` 表示输入不合法，调用方据此提示，而不是把 `192.168.1.5:`
+  /// 这样的东西直接丢给 adb。
+  static String? normalizeAddress(String raw, {int? defaultPort = 5555}) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+
+    // 去掉可能被一起粘进来的 `adb connect ` 前缀。
+    var address = value;
+    const prefix = 'adb connect ';
+    if (address.toLowerCase().startsWith(prefix)) {
+      address = address.substring(prefix.length).trim();
+    }
+
+    final colon = address.lastIndexOf(':');
+    if (colon < 0) {
+      final host = address;
+      if (!_isValidHost(host)) return null;
+      if (defaultPort == null) return null;
+      return '$host:$defaultPort';
+    }
+
+    final host = address.substring(0, colon);
+    final portText = address.substring(colon + 1);
+    if (!_isValidHost(host)) return null;
+    final port = int.tryParse(portText);
+    if (port == null || port < 1 || port > 65535) return null;
+    return '$host:$port';
+  }
+
+  static bool _isValidHost(String host) {
+    if (host.isEmpty || host.contains(' ')) return false;
+    // IPv4 或主机名（Android 无线调试也允许 `.local`）。不做严格校验：
+    // 真正的判定交给 adb，这里只挡明显的手误。
+    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(host);
+  }
+
+  static Future<List<AdbDevice>> listDevices({Duration? timeout}) async {
+    final result = await _run(
+      ['devices', '-l'],
+      timeout: timeout ?? defaultTimeout,
+    );
+    if (!result.ok) return const [];
+    return parseDevices(result.output);
+  }
+
+  static Future<AdbCommandResult> pair({
+    required String address,
+    required String code,
+    Duration? timeout,
+  }) async {
+    return _run(
+      ['pair', address, code],
+      timeout: timeout ?? const Duration(seconds: 60),
+      parse: parsePairResult,
+    );
+  }
+
+  static Future<AdbCommandResult> connect(String address, {Duration? timeout}) {
+    return _run(
+      ['connect', address],
+      timeout: timeout ?? defaultTimeout,
+      parse: parseConnectResult,
+    );
+  }
+
+  static Future<AdbCommandResult> disconnect(String address,
+      {Duration? timeout}) {
+    return _run(
+      ['disconnect', address],
+      timeout: timeout ?? const Duration(seconds: 10),
+      parse: parseDisconnectResult,
+    );
+  }
+
+  /// 执行一条 adb 命令并交给 [parse] 解释。
+  ///
+  /// 参数以数组传入，**不经过任何 shell** —— 设备 id 里可能带 `:`，
+  /// 用户输入的地址里也可能带空格，拼字符串迟早出事。
+  static Future<AdbCommandResult> _run(
+    List<String> args, {
+    required Duration timeout,
+    AdbCommandResult Function(int exitCode, String output)? parse,
+  }) async {
+    final executable = CommandTools.findAdbPath();
+    if (executable == null) {
+      log.warning('AdbService: 找不到 adb');
+      return AdbCommandResult.adbMissing;
+    }
+
+    try {
+      final result = await Process.run(executable, args).timeout(timeout);
+      // adb 把结果写在 stdout，把 `daemon started successfully` 之类的
+      // 噪音写在 stderr；两者都要看，否则「Successfully paired」在
+      // 某些版本里会落在 stderr 上。
+      final output = '${result.stdout}\n${result.stderr}'.trim();
+      if (parse != null) return parse(result.exitCode, output);
+      return AdbCommandResult(ok: result.exitCode == 0, output: output);
+    } on TimeoutException {
+      log.warning('AdbService: adb ${args.first} 超时（${timeout.inSeconds}s）');
+      return AdbCommandResult(
+        ok: false,
+        output: 'adb ${args.first} timed out after ${timeout.inSeconds}s',
+      );
+    } on ProcessException catch (e) {
+      log.warning('AdbService: adb 无法执行: $e');
+      return AdbCommandResult(ok: false, output: e.message);
+    } catch (e) {
+      log.warning('AdbService: adb ${args.first} 失败: $e');
+      return AdbCommandResult(ok: false, output: '$e');
+    }
+  }
+}

@@ -12,6 +12,7 @@
   "nav": {
     "overview": "Overview",
     "analysis": "Analysis",
+    "install": "Install",
     "settings": "Settings",
     "diff": "Compare"
   },
@@ -314,7 +315,6 @@
     "not_ready": "Wait for the analysis to finish before renaming"
   },
   "install": {
-    "apk": "Install",
     "refresh_devices": "Refresh Devices",
     "installing": "Installing...",
     "success": "Installation Successful",
@@ -325,8 +325,6 @@
     "allow_test": "Allow Test (-t)",
     "force_install": "Force Install (-r)",
     "advanced_options": "Advanced Options",
-    "title": "Install",
-    "select_device": "Select Device",
     "split_options": "Split Options",
     "select_all": "Select All",
     "base_only": "Base Only",
@@ -340,7 +338,32 @@
       "abi": "CPU Architecture",
       "density": "Screen Density",
       "unknown": "Others"
-    }
+    },
+    "subtitle": "Install to connected Android devices over adb",
+    "file_section": "Package",
+    "pick_file": "Choose package",
+    "drop_hint": "Drop an APK / XAPK here, or click to choose",
+    "change_file": "Change",
+    "clear_file": "Remove",
+    "unsupported_file": "Only .apk / .xapk / .apks files are supported",
+    "device_section": "Devices",
+    "no_devices_hint": "Connect over USB and enable \"USB debugging\" on the phone. For wireless, use \"Pair over Wi-Fi\" first.",
+    "status_unauthorized": "unauthorized",
+    "status_offline": "offline",
+    "wireless_pair": "Pair over Wi-Fi",
+    "wireless_connect": "Connect over Wi-Fi",
+    "wireless_disconnect": "Disconnect wireless device",
+    "wireless_disconnect_failed": "Disconnect failed",
+    "pair_hint": "On the phone: Settings - Developer options - Wireless debugging - Pair device with pairing code. The port is the one shown on screen, not 5555.",
+    "pair_address": "Pairing address (IP:port)",
+    "pair_code": "Six-digit pairing code",
+    "pair_invalid_address": "Invalid address; expected IP:port",
+    "pair_invalid_code": "The pairing code cannot be empty",
+    "connect_hint": "Enter IP:port (5555 is used when the port is omitted). After pairing, the device is usually connected already.",
+    "working": "Working...",
+    "start": "Install",
+    "reason_no_file": "Choose a package first",
+    "reason_no_device": "Select at least one device"
   },
   "ios_info": {
     "architectures": "Architectures",

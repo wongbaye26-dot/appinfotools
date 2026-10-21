@@ -12,6 +12,7 @@
   "nav": {
     "overview": "概览",
     "analysis": "分析",
+    "install": "安装",
     "settings": "设置",
     "diff": "对比"
   },
@@ -314,9 +315,6 @@
     "not_ready": "请等待解析完成后再重命名"
   },
   "install": {
-    "apk": "安装",
-    "title": "安装",
-    "select_device": "请选择设备",
     "refresh_devices": "刷新设备列表",
     "installing": "正在安装...",
     "success": "安装成功",
@@ -340,7 +338,32 @@
       "abi": "处理器架构",
       "density": "屏幕密度",
       "unknown": "其他"
-    }
+    },
+    "subtitle": "通过 adb 安装到已连接的 Android 设备",
+    "file_section": "安装包",
+    "pick_file": "选择安装包",
+    "drop_hint": "拖入 APK / XAPK，或点击选择",
+    "change_file": "更换",
+    "clear_file": "移除",
+    "unsupported_file": "只支持 .apk / .xapk / .apks 文件",
+    "device_section": "设备",
+    "no_devices_hint": "用 USB 连接，并在手机上开启「USB 调试」；无线调试请先点「无线配对」。",
+    "status_unauthorized": "未授权",
+    "status_offline": "离线",
+    "wireless_pair": "无线配对",
+    "wireless_connect": "无线连接",
+    "wireless_disconnect": "断开无线连接",
+    "wireless_disconnect_failed": "断开失败",
+    "pair_hint": "手机上：设置 → 开发者选项 → 无线调试 → 使用配对码配对设备。端口是屏幕上那个，不是 5555。",
+    "pair_address": "配对地址（IP:端口）",
+    "pair_code": "六位配对码",
+    "pair_invalid_address": "地址格式不对，应为 IP:端口",
+    "pair_invalid_code": "配对码不能为空",
+    "connect_hint": "输入 IP:端口（省略端口时用 5555）。配对成功后通常已经自动连上。",
+    "working": "处理中...",
+    "start": "开始安装",
+    "reason_no_file": "先选一个安装包",
+    "reason_no_device": "至少选中一台设备"
   },
   "ios_info": {
     "architectures": "架构",

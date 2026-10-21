@@ -42,6 +42,21 @@ class AppNavigation {
         selectedIcon: Icons.analytics,
       );
 
+  /// 安装页。
+  ///
+  /// 排在「分析」之后、「对比」之前：它和分析一样是「拿到一个包之后的下一步」，
+  /// 而且比版本对比更常用。
+  ///
+  /// 这个导航项**曾经被删掉过**（当时对应的 `APKInstallPage` 只是个「开发中」
+  /// 占位，点进去什么也做不了）。现在它是真的能装 —— 选包、USB/无线连设备、
+  /// 安装都在这一页完成。
+  static NavigationItem install() => NavigationItem(
+        id: 'install',
+        label: t.nav.install,
+        icon: Icons.install_mobile_outlined,
+        selectedIcon: Icons.install_mobile,
+      );
+
   /// 版本差异页。
   ///
   /// 排在「分析」之后、「设置」之前：它是分析的下游动作（先解析两个包，
@@ -63,6 +78,7 @@ class AppNavigation {
   static List<NavigationItem> items() => [
         overview(),
         analysis(),
+        install(),
         diff(),
         settings(),
       ];

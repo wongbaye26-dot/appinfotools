@@ -12,6 +12,7 @@
   "nav": {
     "overview": "概覽",
     "analysis": "分析",
+    "install": "安裝",
     "settings": "設定",
     "diff": "對比"
   },
@@ -314,9 +315,6 @@
     "not_ready": "請等待解析完成後再重新命名"
   },
   "install": {
-    "apk": "安裝",
-    "title": "安裝",
-    "select_device": "請選擇裝置",
     "refresh_devices": "重新整理裝置列表",
     "installing": "正在安裝...",
     "success": "安裝成功",
@@ -340,7 +338,32 @@
       "abi": "處理器架構",
       "density": "螢幕密度",
       "unknown": "其他"
-    }
+    },
+    "subtitle": "透過 adb 安裝到已連線的 Android 裝置",
+    "file_section": "安裝包",
+    "pick_file": "選擇安裝包",
+    "drop_hint": "拖入 APK / XAPK，或點擊選擇",
+    "change_file": "更換",
+    "clear_file": "移除",
+    "unsupported_file": "只支援 .apk / .xapk / .apks 檔案",
+    "device_section": "裝置",
+    "no_devices_hint": "用 USB 連線，並在手機上開啟「USB 偵錯」；無線偵錯請先點「無線配對」。",
+    "status_unauthorized": "未授權",
+    "status_offline": "離線",
+    "wireless_pair": "無線配對",
+    "wireless_connect": "無線連線",
+    "wireless_disconnect": "中斷無線連線",
+    "wireless_disconnect_failed": "中斷失敗",
+    "pair_hint": "手機上：設定 → 開發人員選項 → 無線偵錯 → 使用配對碼配對裝置。連接埠是螢幕上那個，不是 5555。",
+    "pair_address": "配對位址（IP:連接埠）",
+    "pair_code": "六位配對碼",
+    "pair_invalid_address": "位址格式不對，應為 IP:連接埠",
+    "pair_invalid_code": "配對碼不能為空",
+    "connect_hint": "輸入 IP:連接埠（省略連接埠時用 5555）。配對成功後通常已經自動連上。",
+    "working": "處理中...",
+    "start": "開始安裝",
+    "reason_no_file": "先選一個安裝包",
+    "reason_no_device": "至少選中一台裝置"
   },
   "ios_info": {
     "architectures": "架構",

@@ -12,6 +12,7 @@
   "nav": {
     "overview": "概要",
     "analysis": "分析",
+    "install": "インストール",
     "settings": "設定",
     "diff": "比較"
   },
@@ -286,9 +287,6 @@
     "not_ready": "解析が完了してから名前を変更してください"
   },
   "install": {
-    "apk": "インストール",
-    "title": "インストール",
-    "select_device": "デバイスを選択してください",
     "refresh_devices": "デバイスリストを更新",
     "installing": "インストール中...",
     "success": "インストール成功",
@@ -312,7 +310,32 @@
       "abi": "CPUアーキテクチャ",
       "density": "画面密度",
       "unknown": "その他"
-    }
+    },
+    "subtitle": "adb 経由で接続済みの Android 端末にインストールします",
+    "file_section": "パッケージ",
+    "pick_file": "パッケージを選択",
+    "drop_hint": "APK / XAPK をドロップ、またはクリックして選択",
+    "change_file": "変更",
+    "clear_file": "削除",
+    "unsupported_file": ".apk / .xapk / .apks のみ対応しています",
+    "device_section": "端末",
+    "no_devices_hint": "USB で接続し、端末側で「USB デバッグ」を有効にしてください。ワイヤレスは先に「Wi-Fi でペア設定」を実行します。",
+    "status_unauthorized": "未許可",
+    "status_offline": "オフライン",
+    "wireless_pair": "Wi-Fi でペア設定",
+    "wireless_connect": "Wi-Fi で接続",
+    "wireless_disconnect": "ワイヤレス接続を切断",
+    "wireless_disconnect_failed": "切断に失敗しました",
+    "pair_hint": "端末側：設定 → 開発者向けオプション → ワイヤレス デバッグ → ペア設定コードでペア設定。ポートは画面に出ている番号で、5555 ではありません。",
+    "pair_address": "ペア設定アドレス（IP:ポート）",
+    "pair_code": "6 桁のペア設定コード",
+    "pair_invalid_address": "アドレスの形式が正しくありません（IP:ポート）",
+    "pair_invalid_code": "ペア設定コードを入力してください",
+    "connect_hint": "IP:ポートを入力（ポート省略時は 5555）。ペア設定後は通常すでに接続されています。",
+    "working": "処理中...",
+    "start": "インストール開始",
+    "reason_no_file": "先にパッケージを選択してください",
+    "reason_no_device": "端末を 1 台以上選択してください"
   },
   "about": {
     "features": {

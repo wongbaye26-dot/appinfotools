@@ -11,7 +11,6 @@ import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
-import 'package:apk_info_tool/pages/install_dialog.dart';
 import 'package:apk_info_tool/pages/pages.dart';
 import 'package:apk_info_tool/pages/text_info.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
@@ -1392,20 +1391,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
               : () {
                   openApk(fileState.filePath ?? '');
                 }),
-      IconButton(
-          icon: const Icon(Icons.install_mobile),
-          tooltip: t.install.apk,
-          onPressed: fileState.filePath == null
-              ? null
-              : () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => InstallDialog(
-                      apkPath: fileState.filePath!,
-                      isXapk: fileState.apkInfo?.isXapk ?? false,
-                    ),
-                  );
-                }),
+      // 安装入口**不在这里**：左侧导航有独立的「安装」页，选包、USB/无线
+      // 连设备、安装都在那一页。同一件事两个入口，用户每次都要先判断
+      // 「该点哪个」；而且这个按钮对 `.ipa` 也显示（`_buildActions` 不分
+      // 平台），点下去执行的是 `adb install xxx.ipa`，必然失败。
       _buildMoreMenuButton(context),
     ];
   }

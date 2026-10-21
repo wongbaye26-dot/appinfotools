@@ -12,6 +12,7 @@
   "nav": {
     "overview": "개요",
     "analysis": "분석",
+    "install": "설치",
     "settings": "설정",
     "diff": "비교"
   },
@@ -286,9 +287,6 @@
     "not_ready": "분석이 끝난 후에 이름을 바꿔 주세요"
   },
   "install": {
-    "apk": "설치",
-    "title": "설치",
-    "select_device": "기기를 선택하세요",
     "refresh_devices": "기기 목록 새로 고침",
     "installing": "설치 중...",
     "success": "설치 성공",
@@ -312,7 +310,32 @@
       "abi": "CPU 아키텍처",
       "density": "화면 밀도",
       "unknown": "기타"
-    }
+    },
+    "subtitle": "adb로 연결된 Android 기기에 설치합니다",
+    "file_section": "패키지",
+    "pick_file": "패키지 선택",
+    "drop_hint": "APK / XAPK를 끌어다 놓거나 클릭하여 선택",
+    "change_file": "변경",
+    "clear_file": "제거",
+    "unsupported_file": ".apk / .xapk / .apks 파일만 지원합니다",
+    "device_section": "기기",
+    "no_devices_hint": "USB로 연결하고 기기에서 \"USB 디버깅\"을 켜세요. 무선은 먼저 \"Wi-Fi 페어링\"을 실행합니다.",
+    "status_unauthorized": "미승인",
+    "status_offline": "오프라인",
+    "wireless_pair": "Wi-Fi 페어링",
+    "wireless_connect": "Wi-Fi 연결",
+    "wireless_disconnect": "무선 연결 해제",
+    "wireless_disconnect_failed": "연결 해제 실패",
+    "pair_hint": "기기에서: 설정 → 개발자 옵션 → 무선 디버깅 → 페어링 코드로 기기 페어링. 포트는 화면에 표시된 번호이며 5555가 아닙니다.",
+    "pair_address": "페어링 주소 (IP:포트)",
+    "pair_code": "6자리 페어링 코드",
+    "pair_invalid_address": "주소 형식이 올바르지 않습니다 (IP:포트)",
+    "pair_invalid_code": "페어링 코드를 입력하세요",
+    "connect_hint": "IP:포트를 입력하세요(포트 생략 시 5555). 페어링 후에는 보통 이미 연결되어 있습니다.",
+    "working": "처리 중...",
+    "start": "설치 시작",
+    "reason_no_file": "먼저 패키지를 선택하세요",
+    "reason_no_device": "기기를 하나 이상 선택하세요"
   },
   "about": {
     "features": {

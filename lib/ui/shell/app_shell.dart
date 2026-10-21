@@ -1,4 +1,5 @@
 import 'package:apk_info_tool/pages/home_page.dart';
+import 'package:apk_info_tool/pages/install_page.dart';
 import 'package:apk_info_tool/pages/setting_page.dart';
 import 'package:apk_info_tool/providers/parsed_file_cache.dart';
 import 'package:apk_info_tool/ui/diff/diff_page.dart';
@@ -33,10 +34,16 @@ class _AppShellState extends ConsumerState<AppShell> {
   // 最近文件）。早先默认停在「分析」页，用户打开应用看到的是一张空表格。
   String _selectedNavId = 'overview';
 
-  // 「安装」原先在这里占了一个导航项，但对应的 `APKInstallPage` 只是一个
-  // 「开发中」占位，点进去什么也做不了 —— 用户要求把没有的功能去掉，
-  // 因此连同页面一起移除。真正的安装入口在分析页顶栏（`InstallDialog`）。
-  static const _pageKeys = ['overview', 'analysis', 'diff', 'settings'];
+  // 「安装」导航项一度被移除（当时的页面只是个「开发中」占位，点进去什么也
+  // 做不了）。现在安装是真的能用了 —— 选包、USB/无线连设备、安装都在这一页
+  // 完成 —— 于是它回到导航里，分析页顶栏那个重复入口同时删掉。
+  static const _pageKeys = [
+    'overview',
+    'analysis',
+    'install',
+    'diff',
+    'settings'
+  ];
 
   late final List<Widget> _pages;
 
@@ -46,6 +53,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     _pages = [
       const OverviewPage(),
       const HomePage(),
+      const InstallPage(),
       const DiffPage(),
       const SettingPage(),
     ];
