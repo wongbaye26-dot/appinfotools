@@ -175,6 +175,51 @@ const List<CodeMarker> codeMarkers = [
       'com.umeng'),
   CodeMarker('sdk-bugly', SecurityCategory.thirdPartySdk,
       'Bugly crash reporting SDK', 'com.tencent.bugly'),
+  // ---- 加密资产 / 钱包（「盗 U」风险分析的输入）----
+  //
+  // 分三组，含义不同，规则里按组使用：
+  //   * 钱包 SDK / 接口：说明这个应用**碰得到**链上资产；
+  //   * 助记词 / 私钥：直接触及「能签走资产」的材料；
+  //   * 剪贴板：地址替换型盗 U 的必经之路（读别人复制的地址、写自己的）。
+  //
+  // 单看任何一组都不构成风险 —— 正规钱包三组都有。规则只在**组合**上判级。
+  //
+  // 一律用小写字面量：匹配是**区分大小写**的子串比较，而包名都是小写
+  // （`io.metamask`、`com.trustwallet`）。写 `MetaMask` 反而一个都命中不了。
+  CodeMarker('wallet-web3j', SecurityCategory.cryptoAsset, 'web3j (EVM) SDK',
+      'org.web3j'),
+  CodeMarker('wallet-bitcoinj', SecurityCategory.cryptoAsset, 'bitcoinj SDK',
+      'org.bitcoinj'),
+  CodeMarker('wallet-walletconnect', SecurityCategory.cryptoAsset,
+      'WalletConnect', 'walletconnect'),
+  CodeMarker('wallet-tronweb', SecurityCategory.cryptoAsset,
+      'TronWeb / TRON SDK', 'tronweb'),
+  CodeMarker(
+      'wallet-metamask', SecurityCategory.cryptoAsset, 'MetaMask', 'metamask'),
+  CodeMarker('wallet-tokenpocket', SecurityCategory.cryptoAsset, 'TokenPocket',
+      'tokenpocket'),
+  CodeMarker(
+      'wallet-imtoken', SecurityCategory.cryptoAsset, 'imToken', 'imtoken'),
+  CodeMarker('wallet-trust', SecurityCategory.cryptoAsset, 'Trust Wallet',
+      'trustwallet'),
+  CodeMarker(
+      'wallet-okx', SecurityCategory.cryptoAsset, 'OKX wallet', 'com.okinc'),
+  CodeMarker('wallet-binance', SecurityCategory.cryptoAsset, 'Binance wallet',
+      'binance'),
+  CodeMarker('wallet-coinbase', SecurityCategory.cryptoAsset, 'Coinbase wallet',
+      'coinbase'),
+  // 只放 ASCII 字面量：字符串扫描器提取的是 **ASCII 可打印串**，DEX 里的中文
+  // 界面文案是 MUTF-8 字节，根本不会被当成字符串取出来 —— 写 `助记词` 这类
+  // 中文标记只会是一条永远不命中的死规则（`dex_method_scanner_test` 的漂移
+  // 守卫会当场报出来）。
+  CodeMarker('wallet-mnemonic', SecurityCategory.cryptoAsset,
+      'mnemonic / seed phrase handling', 'mnemonic'),
+  CodeMarker('wallet-private-key', SecurityCategory.cryptoAsset,
+      'private key handling', 'privateKey'),
+  CodeMarker('clipboard-read', SecurityCategory.cryptoAsset, 'clipboard read',
+      'getPrimaryClip'),
+  CodeMarker('clipboard-write', SecurityCategory.cryptoAsset, 'clipboard write',
+      'setPrimaryClip'),
 ];
 
 /// 每个标记是否**必须**同时比「原文」与「归一化文本」，下标与 [codeMarkers]

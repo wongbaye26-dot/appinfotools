@@ -120,6 +120,9 @@ enum SecurityCategory {
   /// 配置类问题（明文流量、危险开关）。
   configuration,
 
+  /// 加密资产相关：钱包 SDK、助记词/私钥处理、链上地址字面量、剪贴板替换。
+  cryptoAsset,
+
   /// 未归类。
   other;
 
@@ -132,6 +135,7 @@ enum SecurityCategory {
         SecurityCategory.backgroundTask => 'background tasks',
         SecurityCategory.deviceData => 'device data',
         SecurityCategory.configuration => 'configuration',
+        SecurityCategory.cryptoAsset => 'crypto assets',
         SecurityCategory.other => 'other',
       };
 }

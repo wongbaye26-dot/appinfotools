@@ -722,7 +722,11 @@
       "android_malware_indicators": "Capabilities that malware commonly combines are present: {signals}{reflection}. Each one alone can be legitimate (hot-fix, plug-in hosts, app stores), so this is a triage lead, not a verdict.",
       "android_malware_indicators_review": "Treat this as a lead: check what the app loads at runtime, where it comes from, and whether a shell command is reachable from external input. Dynamic analysis (running it in an isolated emulator) is the way to settle it.",
       "android_malware_indicators_limitation": "Static evidence only: the code references these APIs, it does not follow that they run, or that what they load is malicious. Hot-fix frameworks, plug-in hosts and app stores use the same dynamic-loading APIs. The loaded code is not in the archive, so it cannot be inspected here.",
-      "android_malware_reflection_suffix": " (plus reflective class loading)"
+      "android_malware_reflection_suffix": " (plus reflective class loading)",
+      "android_crypto_theft_risk": "This package combines the capabilities needed to steal on-chain assets (USDT and others): {signals}. {addresses}A legitimate wallet has the same capabilities, so this is a **triage lead, not a verdict**.",
+      "android_crypto_theft_risk_addresses": "In addition, {count} on-chain address literal(s) are hard-coded in the code — a common trace of clipboard address-swapping theft.",
+      "android_crypto_theft_risk_review": "Walk the wallet flow by hand: does the app ever replace an address in the clipboard, does it ask for the seed phrase outside its own wallet UI, and where do the address literals come from? Dynamic analysis on an isolated device settles it.",
+      "android_crypto_theft_risk_limitation": "Static evidence only: these APIs and literals are in the archive, but that does not mean they run, or what they are used for. Legitimate wallets contain the same wallet SDKs, clipboard calls and address literals (merchant or contract addresses), so **presence is not theft**. Strings beyond the per-DEX scan budget were not examined."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",

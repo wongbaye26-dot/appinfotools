@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 
 import 'code_markers.dart';
+import 'crypto_address.dart';
 import 'sdk_catalog.dart';
 
 /// 一个待扫描的 DEX 文件：名字 + 字节。
@@ -97,6 +98,12 @@ class DexScanResult {
   /// 为了这一步再解码一遍不划算。
   final List<SdkHit> sdkHits;
 
+  /// DEX 字符串里出现的链上地址字面量（去重、限量）。
+  ///
+  /// 「盗 U」类恶意代码的地址替换手法必然在包里写死一个收款地址；正常应用
+  /// 极少在代码里放链上地址。见 `crypto_address.dart` 的判据与边界。
+  final List<CryptoAddressHit> cryptoAddresses;
+
   /// 因预算被跳过的 DEX。**必须**出现在报告的未覆盖范围里。
   ///
   /// 是结构化记录而不是一句英文 —— 界面上要按语言拼出「只扫了前 8 MiB（共
@@ -111,6 +118,7 @@ class DexScanResult {
     required this.scannedBytes,
     required this.skippedForBudget,
     this.sdkHits = const [],
+    this.cryptoAddresses = const [],
   });
 
   bool hasClue(String markerId) => clues.any((c) => c.markerId == markerId);
@@ -162,6 +170,11 @@ class DexClueScanner {
 
   /// 域名 / IP 最多保留多少条（与 iOS 侧共用同一份实现）。
   static const int maxEndpoints = NetworkEndpoints.maxEndpoints;
+
+  /// 地址字面量最多保留多少条。
+  ///
+  /// 内置「地址黑名单」的应用会有成百上千条，全存会把报告变成地址列表。
+  static const int maxCryptoAddresses = 32;
 
   /// [maxBytesPerDex] / [maxTotalBytes] 可覆盖（探针与测试用）。
   ///
@@ -241,6 +254,7 @@ class DexClueScanner {
   }) {
     final domains = <String>{};
     final ips = <String>{};
+    final addresses = <CryptoAddressHit>{};
     final markerSamples = <String, Set<String>>{};
     final markerDexes = <String, Set<String>>{};
     final skipped = <DexBudgetSkip>[];
@@ -286,6 +300,7 @@ class DexClueScanner {
       for (final str in _extractStrings(entry.bytes, limit)) {
         _markString(str, entry.name, markerSamples, markerDexes);
         _collectEndpoints(str, domains, ips);
+        collectCryptoAddresses(str, addresses, max: maxCryptoAddresses);
         _markSdk(str, entry.name, sdkIndex, sdkCounts, sdkDexes);
       }
     }
@@ -325,6 +340,7 @@ class DexClueScanner {
       clues: clues,
       domains: domains.take(maxEndpoints).toList()..sort(),
       ips: ips.take(maxEndpoints).toList()..sort(),
+      cryptoAddresses: addresses.toList(growable: false),
       scannedDexCount: scannedDexCount,
       scannedBytes: scannedBytes,
       skippedForBudget: skipped,

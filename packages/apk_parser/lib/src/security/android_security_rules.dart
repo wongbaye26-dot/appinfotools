@@ -6,6 +6,7 @@ import 'sdk_inventory_scanner.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
+import 'crypto_address.dart';
 
 /// 组合规则用到的**事实**：扫描结果的一次性归纳。
 ///
@@ -331,6 +332,12 @@ const List<AndroidSecurityRule> androidSecurityRules = [
     summary: '命令执行 / 无文件 DEX 加载 / 静默安装等恶意代码常见能力同现。',
     matches: _matchesMalwareIndicators,
     build: _buildMalwareIndicators,
+  ),
+  AndroidSecurityRule(
+    id: 'ANDROID-CRYPTO-THEFT-RISK',
+    summary: '钱包能力（助记词/私钥、剪贴板、链上地址字面量）与高危通道同现。',
+    matches: _matchesCryptoTheftRisk,
+    build: _buildCryptoTheftRisk,
   ),
   AndroidSecurityRule(
     id: 'ANDROID-PROVIDER-EXPOSED',
@@ -833,6 +840,192 @@ SecurityFinding _buildMalwareIndicators(AndroidRuleFacts f) {
         'reachable from external input. Dynamic analysis (running it in an '
         'isolated emulator) is the way to settle it.',
     recommendationCode: 'android.malware_indicators.review',
+  );
+}
+
+/// 加密资产（钱包）相关标记分组。
+///
+/// 三组的含义不同：
+/// - **钱包 SDK**：这个应用碰得到链上资产；
+/// - **密钥材料**：代码里出现了助记词 / 私钥的处理；
+/// - **剪贴板**：地址替换型盗 U 的必经之路。
+///
+/// 单看任何一组都不构成风险 —— 正规钱包三组都有。判级只看**组合**。
+const Set<String> _walletSdkMarkers = {
+  'wallet-web3j',
+  'wallet-bitcoinj',
+  'wallet-walletconnect',
+  'wallet-tronweb',
+  'wallet-metamask',
+  'wallet-tokenpocket',
+  'wallet-imtoken',
+  'wallet-trust',
+  'wallet-okx',
+  'wallet-binance',
+  'wallet-coinbase',
+};
+
+const Set<String> _keyMaterialMarkers = {
+  'wallet-mnemonic',
+  'wallet-private-key',
+};
+
+const Set<String> _clipboardMarkers = {
+  'clipboard-read',
+  'clipboard-write',
+};
+
+/// 短信权限：盗 U 样本常用它截获验证码，把「绑定手机号」这一步也拿下来。
+const Set<String> _smsPermissions = {
+  'android.permission.READ_SMS',
+  'android.permission.RECEIVE_SMS',
+};
+
+typedef _CryptoTheftSignals = ({
+  List<String> walletSdk,
+  List<String> keyMaterial,
+  List<String> clipboard,
+  List<CryptoAddressHit> addresses,
+  bool specialAccess,
+  bool smsAccess,
+  bool upload,
+});
+
+_CryptoTheftSignals _cryptoTheftSignals(AndroidRuleFacts f) {
+  final ids = {
+    for (final r in f.allCodeRefs) r.markerId,
+    for (final c in f.allClues) c.markerId,
+  };
+  List<String> pick(Set<String> group) => [
+        for (final id in group)
+          if (ids.contains(id)) id,
+      ];
+  return (
+    walletSdk: pick(_walletSdkMarkers),
+    keyMaterial: pick(_keyMaterialMarkers),
+    clipboard: pick(_clipboardMarkers),
+    addresses: f.scan.cryptoAddresses,
+    specialAccess: f.specialAccessKinds.isNotEmpty,
+    smsAccess: f.meta.permissions.any(_smsPermissions.contains),
+    upload: f.hasUploadCapability,
+  );
+}
+
+/// 是否报「盗 U 风险」。
+///
+/// 两条**组合**判据，任一成立即报：
+///
+/// 1. **密钥材料 + 高危通道**：代码里出现助记词/私钥处理，同时具备无障碍/短信
+///    这类能拿到用户输入或验证码的能力，**或**具备上传能力 —— 这是「拿到
+///    密钥材料并送出去」的形态。
+/// 2. **钱包 + 剪贴板 + 写死的地址**：地址替换型盗 U 的完整三件套。
+///
+/// 其余情况（只有钱包 SDK、只有地址字面量）只给 P3 —— 正规钱包与交易所都有
+/// 这些，单独出现说明不了任何问题。
+bool _matchesCryptoTheftRisk(AndroidRuleFacts f) {
+  final s = _cryptoTheftSignals(f);
+  final keyWithChannel =
+      s.keyMaterial.isNotEmpty && (s.specialAccess || s.smsAccess || s.upload);
+  final addressSwap = s.walletSdk.isNotEmpty &&
+      s.clipboard.isNotEmpty &&
+      s.addresses.isNotEmpty;
+  if (keyWithChannel || addressSwap) return true;
+  // P3 档：至少出现了「与资产相关」的东西，值得在报告里点名。
+  return s.walletSdk.isNotEmpty ||
+      s.keyMaterial.isNotEmpty ||
+      s.addresses.isNotEmpty;
+}
+
+/// 「盗 U」风险：链上资产被窃取的可能性。
+///
+/// **这不是「判定为盗 U 木马」** —— 静态分析给不出那个结论，正规钱包应用同样
+/// 具备这里列出的每一项能力。它做的是把「能签走资产的材料」与「能把它送出去
+/// 的通道」摆在一起，让人工核对有落点。
+SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
+  final s = _cryptoTheftSignals(f);
+  final keyWithChannel =
+      s.keyMaterial.isNotEmpty && (s.specialAccess || s.smsAccess || s.upload);
+  final addressSwap = s.walletSdk.isNotEmpty &&
+      s.clipboard.isNotEmpty &&
+      s.addresses.isNotEmpty;
+  final severity =
+      keyWithChannel || addressSwap ? SecuritySeverity.p2 : SecuritySeverity.p3;
+
+  final signals = <String>[
+    ...s.walletSdk,
+    ...s.keyMaterial,
+    if (s.clipboard.isNotEmpty) ...s.clipboard,
+    if (s.specialAccess) 'special-access',
+    if (s.smsAccess) 'sms',
+    if (s.upload) 'upload',
+  ];
+
+  return SecurityFinding(
+    ruleId: 'ANDROID-CRYPTO-THEFT-RISK',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.cryptoAsset,
+    severity: severity,
+    // 说的是「这些能力同现」，不是「我们看见它偷了」。用 suspected 会把
+    // 能力说成行为 —— 正规钱包应用会被一并指认为窃贼。
+    confidence: SecurityConfidence.independentCapability,
+    finding: 'Crypto-wallet capabilities that theft samples combine are '
+        'present: ${signals.join(', ')}'
+        '${s.addresses.isNotEmpty ? ' (plus ${s.addresses.length} '
+            'on-chain address literal${s.addresses.length == 1 ? '' : 's'})' : ''}. '
+        'A legitimate wallet has the same capabilities, so this is a '
+        '**triage lead, not a verdict**.',
+    messageCode: 'android.crypto_theft_risk',
+    messageArgs: {
+      'signals': signals,
+      'addresses': [
+        for (final hit in s.addresses.take(8))
+          '${hit.format.label}: ${hit.address}',
+      ],
+      'addressCount': s.addresses.length,
+      if (addressSwap) 'addressSwap': true,
+      if (keyWithChannel) 'keyWithChannel': true,
+    },
+    evidence: [
+      for (final reference in f.allCodeRefs)
+        if (signals.contains(reference.markerId))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexMethodReference,
+            location: reference.dexNames.join(', '),
+            detail: '${reference.markerId} (code reference): '
+                '${[
+              ...reference.samples,
+              ...reference.callSiteSamples
+            ].take(3).join(' | ')}',
+          ),
+      for (final clue in f.allClues)
+        if (signals.contains(clue.markerId) &&
+            !f.allCodeRefs.any((r) => r.markerId == clue.markerId))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexString,
+            location: clue.dexNames.join(', '),
+            detail: '${clue.markerId} (string only): '
+                '${clue.samples.take(3).join(' | ')}',
+          ),
+      // 地址字面量单独给证据：用户要能把它拿去链上查。
+      for (final hit in s.addresses.take(8))
+        SecurityEvidence(
+          source: SecurityEvidenceSource.dexString,
+          location: 'DEX string',
+          detail: '${hit.format.label} address literal: ${hit.address}',
+        ),
+    ],
+    limitation: 'Static evidence only: these APIs and literals exist in the '
+        'archive. Whether they run, and what they do with the data, is not '
+        'visible here. Legitimate wallets contain the same wallet SDKs, the '
+        'same clipboard calls and the same address literals (merchant or '
+        'contract addresses), so **presence is not theft**. Strings beyond the '
+        'per-DEX scan budget were not examined.',
+    limitationCode: 'android.crypto_theft_risk.limitation',
+    recommendation: 'Check the wallet flow by hand: does the app ever replace '
+        'a clipboard address, does it ask for the seed phrase outside its own '
+        'wallet UI, and where do the address literals come from? Dynamic '
+        'analysis in an isolated device settles it.',
+    recommendationCode: 'android.crypto_theft_risk.review',
   );
 }
 

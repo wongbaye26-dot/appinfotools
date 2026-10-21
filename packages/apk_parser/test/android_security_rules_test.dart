@@ -117,6 +117,8 @@ void main() {
           'ANDROID-WEBVIEW-BRIDGE',
           // 恶意代码组合能力：证据强度高，排在清单配置类之后。
           'ANDROID-MALWARE-INDICATORS',
+          // 盗 U 风险：同样是「能力组合」，与恶意指标并列。
+          'ANDROID-CRYPTO-THEFT-RISK',
           // provider 直接暴露数据，排在「声明了权限但没用」之前。
           'ANDROID-PROVIDER-EXPOSED',
           'ANDROID-PERMISSION-WITHOUT-API',
@@ -239,6 +241,15 @@ void main() {
             meta: _meta(targetSdk: 34),
             strings: ['Runtime.exec', 'DexClassLoader'],
           ),
+      // 钱包三件套：钱包 SDK + 剪贴板 + 写死的链上地址（地址替换型）。
+      'ANDROID-CRYPTO-THEFT-RISK': () => _audit(
+            meta: _meta(targetSdk: 34),
+            strings: [
+              'Lorg/web3j/crypto/ECKeyPair;',
+              'getPrimaryClip',
+              'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            ],
+          ),
       // 导出组件上声明了链接 scheme。
       'ANDROID-DEEPLINK': () => _audit(
             meta: _meta(targetSdk: 34)
@@ -346,6 +357,70 @@ void main() {
             .severity,
         SecuritySeverity.p1,
       );
+    });
+  });
+
+  group('盗 U 风险：只在组合上判级', () {
+    SecurityAnalysisResult audit(
+      List<String> strings, {
+      List<AndroidPermissionRequest> permissions = const [],
+    }) =>
+        _audit(
+          meta: _meta(targetSdk: 34, permissions: permissions),
+          strings: strings,
+        );
+
+    SecurityFinding? cryptoFinding(SecurityAnalysisResult result) {
+      for (final f in result.findings) {
+        if (f.ruleId == 'ANDROID-CRYPTO-THEFT-RISK') return f;
+      }
+      return null;
+    }
+
+    test('只有钱包 SDK → P3：正规钱包也有，不能当风险', () {
+      final finding = cryptoFinding(audit(['Lorg/web3j/crypto/ECKeyPair;']));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p3);
+    });
+
+    test('助记词 + 上传 → P2：能拿到密钥材料，也有送出去的通道', () {
+      final finding = cryptoFinding(audit(['mnemonic', 'multipart/form-data']));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p2);
+    });
+
+    test('钱包 + 剪贴板 + 写死的地址 → P2：地址替换型的三件套', () {
+      final finding = cryptoFinding(audit([
+        'Lorg/web3j/crypto/ECKeyPair;',
+        'setPrimaryClip',
+        '0x52908400098527886E0F7030069857D2E4169EE7',
+      ]));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p2);
+      expect(finding.messageArgs['addressCount'], 1);
+      expect(finding.messageArgs['addressSwap'], isTrue);
+    });
+
+    test('只有地址字面量 → P3，且证据里给出地址原文', () {
+      final finding = cryptoFinding(audit([
+        '0x52908400098527886E0F7030069857D2E4169EE7',
+      ]));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p3);
+      expect(
+        finding.evidence.any((e) => e.detail.contains('0x5290840')),
+        isTrue,
+        reason: '地址必须能被用户拿去链上查',
+      );
+    });
+
+    test('剪贴板单独出现不报 —— 复制按钮到处都是', () {
+      expect(
+          cryptoFinding(audit(['getPrimaryClip', 'setPrimaryClip'])), isNull);
+    });
+
+    test('与钱包无关的包不报', () {
+      expect(cryptoFinding(audit(['unrelated'])), isNull);
     });
   });
 
