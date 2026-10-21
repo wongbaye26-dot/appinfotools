@@ -1930,6 +1930,7 @@ class AnalysisReport {
     // 「N 个里有多少没覆盖」这类说明要用总数。
     final total = entry.noteArgs['total'];
     final functions = entry.noteArgs['functions'];
+    final attributed = entry.noteArgs['attributed'];
 
     final String? localized = switch (code) {
       'android.manifest.unparsed' =>
@@ -1955,9 +1956,15 @@ class AnalysisReport {
       'android.native_symbols.skipped_for_budget' => count == null
           ? null
           : n.android_native_symbols_skipped_for_budget(count: count),
-      'ios.macho.call_sites' =>
-        functions == null ? null : n.ios_macho_call_sites(functions: functions),
-      'ios.macho.call_sites_unknown' => n.ios_macho_call_sites_unknown,
+      'ios.macho.call_sites' => (attributed == null || total == null)
+          ? null
+          : n.ios_macho_call_sites(
+              attributed: attributed,
+              total: total,
+              functions: functions ?? '?',
+            ),
+      'ios.macho.call_sites_unavailable' =>
+        n.ios_macho_call_sites_unavailable,
       'android.arsc.missing' => n.android_arsc_missing,
       'android.arsc.empty' => n.android_arsc_empty,
       // 这两条此前在 limitationNoteText 里（那里没有对应 code 的 AnalysisNote），

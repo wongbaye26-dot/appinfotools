@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 
+import 'ios_call_sites.dart';
 import 'ios_crypto_audit.dart';
 import 'ios_jailbreak_audit.dart';
 import 'ios_repackaging_audit.dart';
@@ -55,7 +56,13 @@ class _MachOClue {
   /// 比「整文件里搜到这个词」强一档 —— 后者可能只是注释、日志或资源名。
   final bool classReference;
 
-  const _MachOClue(
+  /// 这个字面量在**代码里的调用点**（`ADRP+ADD/LDR` 引用 + 函数归属）。
+  ///
+  /// 只有字面量本身就是选择子（`viewDidLoad`、`requestAccessForMediaType:`）
+  /// 时才可能非空 —— `multipart/form-data` 这类不是选择子，永远是 `null`。
+  IosSelectorCallSite? callSites;
+
+  _MachOClue(
     this.markerId,
     this.description,
     this.literal,
@@ -606,6 +613,61 @@ class IosPrivacyAudit {
       ).withClassReference(referencedClasses.contains(literal));
     }
 
+    // ---- 调用点归属 ----
+    //
+    // 这一层是 iOS 侧**最接近「调用点」**的证据：`__objc_selrefs` 里的选择子
+    // 被 `ADRP+ADD/LDR` 引用了几次、落在哪个函数里。比「字符串出现在二进制里」
+    // 强一档，但仍然不等于「被调用」—— 取地址 ≠ 调用。
+    var callSiteAttributed = 0;
+    var callSiteTotal = 0;
+    var callSiteTruncated = false;
+    String? callSiteFailure;
+    final selectorCallSites = <String, IosSelectorCallSite>{};
+    for (final target in targets) {
+      final bytes = target.bytes;
+      if (bytes == null || bytes.isEmpty) continue;
+      final parsed = MachOParser.parse(bytes);
+      if (parsed.images.isEmpty) continue;
+      // **只扫 `__objc_selrefs`。** `__objc_classrefs` 结构相同，但它的槽位
+      // 指向的是 **class 对象**（`__objc_data` 里的 `class_t`），不是
+      // `__objc_classname` 里的名字字符串 —— 要拿到类名还得再解一层
+      // `class_ro_t.name`，而 arm64e 的指针认证会让这条路更脆。实测扫类引用
+      // 表命中 0 条（指针不落进 `__objc_classname`），所以不做。
+      final reports = [IosCallSiteScanner.scan(bytes, parsed.images.first)];
+      var anyOk = false;
+      for (final report in reports) {
+        if (!report.ok) {
+          callSiteFailure ??= report.failure;
+          continue;
+        }
+        anyOk = true;
+        callSiteAttributed += report.attributedCallSites;
+        callSiteTotal += report.totalReferences;
+        callSiteTruncated = callSiteTruncated || report.truncated;
+        for (final entry in report.bySelector.entries) {
+          final existing = selectorCallSites[entry.key];
+          selectorCallSites[entry.key] = existing == null
+              ? entry.value
+              : IosSelectorCallSite(
+                  selector: entry.key,
+                  callSites: existing.callSites + entry.value.callSites,
+                  functions: {...existing.functions, ...entry.value.functions},
+                  samples: [
+                    ...existing.samples,
+                    ...entry.value.samples,
+                  ].take(IosCallSiteScanner.maxSamplesPerSelector).toList(),
+                );
+        }
+      }
+      if (!anyOk) continue;
+    }
+
+    // 把调用点挂到对应的线索上（按选择子名精确匹配）。
+    for (final clue in clues.values) {
+      final hit = selectorCallSites[clue.literal];
+      if (hit != null) clue.callSites = hit;
+    }
+
     // ---- 覆盖范围：按可执行文件统计 ----
     //
     // 审计报告明确要求覆盖率本身进报告：「本次覆盖了 N 个可执行文件中的 M 个」。
@@ -732,7 +794,8 @@ class IosPrivacyAudit {
             SecurityEvidence(
               source: SecurityEvidenceSource.machoSymbol,
               location: '__TEXT,__objc_methname',
-              detail: '${entry.key}: ${entry.value.join(', ')}',
+              detail: '${entry.key}: ${entry.value.join(', ')}'
+                  '${_callSiteSuffix(selectorCallSites, entry.value)}',
             ),
         ],
         relationship: 'A selector in `__objc_methname` is referenced by the '
@@ -1803,29 +1866,38 @@ class IosPrivacyAudit {
                 : null),
       ),
       CoverageEntry.noted(
-        // 这一维**恒为 notCovered**：iOS 侧不做反汇编，拿不到调用点。
-        // 显式列出来，而不是让它不存在 —— 不存在会被读成「没问题」。
+        // 调用点归属的覆盖：分子是「成功归属到函数的指令数」，分母是
+        // 「命中已知选择子的指令数」。两者之差就是「看到了引用但说不清在
+        // 哪个函数」—— 通常是没有 `LC_FUNCTION_STARTS`。
         id: 'ios.machoSites',
-        status: CoverageStatus.notCovered,
-        covered: 0,
-        limit: functionsKnown ? totalFunctions : null,
-        // 读不到函数表时**不给数字** —— 写「有 0 个函数」是把「不知道」
-        // 说成了一个具体的错误结论。
-        note: functionsKnown
+        status: callSiteFailure != null && callSiteAttributed == 0
+            ? CoverageStatus.notCovered
+            : (callSiteTruncated || callSiteAttributed < callSiteTotal)
+                ? CoverageStatus.partial
+                : CoverageStatus.covered,
+        covered: callSiteAttributed,
+        limit: callSiteTotal == 0 ? null : callSiteTotal,
+        note: callSiteAttributed > 0
             ? (
                 'ios.macho.call_sites',
-                'This binary has $totalFunctions functions, but none of them '
-                    'were attributed: iOS analysis has no instruction-level '
-                    'disassembly, so "which function calls this selector" '
-                    'cannot be answered. Clues are reported as "referenced", '
-                    'not "called".',
-                {'functions': totalFunctions},
+                'Attributed $callSiteAttributed of $callSiteTotal selector '
+                    'references to functions'
+                    '${functionsKnown ? ' ($totalFunctions functions in the binary)' : ''}. '
+                    '"Referenced" still does not mean "called": ADRP+ADD only '
+                    'loads the selector address, and what it is passed to is '
+                    'not visible statically.',
+                {
+                  'attributed': callSiteAttributed,
+                  'total': callSiteTotal,
+                  'functions': totalFunctions,
+                },
               )
             : (
-                'ios.macho.call_sites_unknown',
-                'iOS analysis has no instruction-level disassembly, so '
-                    '"which function calls this selector" cannot be answered. '
-                    'Clues are reported as "referenced", not "called".',
+                'ios.macho.call_sites_unavailable',
+                'No selector reference could be attributed to a function '
+                    '(${callSiteFailure ?? 'no ADRP+ADD/LDR pair targeted '
+                        '__objc_selrefs'}). Clues are reported as '
+                    '"referenced", not "called".',
                 const <String, Object>{},
               ),
       ),
@@ -2054,6 +2126,26 @@ class IosPrivacyAudit {
         'parental control (device management)',
   };
 
+  /// 「这些选择子在 N 个函数里被引用」——附在证据行末尾。
+  ///
+  /// 没有调用点数据时返回空串（不是「0 处」）：「我们没扫到」与「扫到了 0 处」
+  /// 是两件事，写成 0 会让读者以为确认过。
+  static String _callSiteSuffix(
+    Map<String, IosSelectorCallSite> callSites,
+    Iterable<String> selectors,
+  ) {
+    var calls = 0;
+    final functions = <int>{};
+    for (final selector in selectors) {
+      final hit = callSites[selector];
+      if (hit == null) continue;
+      calls += hit.callSites;
+      functions.addAll(hit.functions);
+    }
+    if (calls == 0) return '';
+    return ' — $calls call site(s) in ${functions.length} function(s)';
+  }
+
   static List<SecurityEvidence> _clueEvidence(
     Map<String, _MachOClue> clues,
     List<String> ids,
@@ -2071,6 +2163,18 @@ class IosPrivacyAudit {
             '${clue.classReference ? ' (class table)' : ''}: '
             '${clue.samples.join(' | ')}',
       ));
+      // 调用点单独一条证据：它回答的是「在哪个函数里」，与上面「出现过几次
+      // 这个字符串」是两个不同的问题，合成一条会丢掉这个区别。
+      final callSites = clue.callSites;
+      if (callSites != null) {
+        evidence.add(SecurityEvidence(
+          source: SecurityEvidenceSource.machoSymbol,
+          location: '${callSites.selector} call sites',
+          detail: '${callSites.callSites} instruction(s) in '
+              '${callSites.functionCount} function(s)'
+              '${callSites.samples.isEmpty ? '' : ': ${callSites.samples.join(', ')}'}',
+        ));
+      }
     }
     return evidence;
   }

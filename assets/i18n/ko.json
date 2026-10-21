@@ -930,8 +930,8 @@
       "android_signature_v1_undetermined": "v2+ 서명 블록은 읽었지만 v1(JAR) 서명의 존재 여부는 판정할 수 없었습니다",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 펼치지 못했기 때문에(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음) 평문 통신 정책을 판정하지 않았습니다",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 과 targetSdkVersion 을 모두 읽을 수 없어 평문 통신의 플랫폼 기본값을 도출할 수 없습니다",
-      "ios_macho_call_sites": "이 바이너리에는 함수가 {functions}개 있지만 어느 것도 귀속되지 않았습니다. iOS 측에는 명령 수준 디스어셈블이 없어 \"어느 함수가 이 셀렉터를 호출하는가\"에 답할 수 없습니다. 단서는 \"참조됨\"으로만 보고되며 \"호출됨\"으로는 보고되지 않습니다.",
-      "ios_macho_call_sites_unknown": "iOS 측에는 명령 수준 디스어셈블이 없어 \"어느 함수가 이 셀렉터를 호출하는가\"에 답할 수 없습니다. 단서는 \"참조됨\"으로만 보고됩니다."
+      "ios_macho_call_sites": "선택자 참조 {total}건 중 {attributed}건을 함수에 귀속했습니다(바이너리의 함수 {functions}개). \"참조됨\"은 여전히 \"호출됨\"이 아닙니다: ADRP+ADD는 선택자 주소를 레지스터에 넣을 뿐이며 이후 전달 대상은 정적으로 보이지 않습니다.",
+      "ios_macho_call_sites_unavailable": "__objc_selrefs를 가리키는 ADRP+ADD/LDR 명령 쌍이 없거나 LC_FUNCTION_STARTS가 없어 선택자 참조를 함수에 귀속할 수 없었습니다. 단서는 \"참조됨\"으로만 보고됩니다."
     },
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",

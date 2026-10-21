@@ -67,11 +67,20 @@ class MachOSection {
   /// 节的字节数。零填充节（`__bss`）为 0。
   final int fileSize;
 
+  /// 节的**虚拟地址**（`section_64.addr`）。
+  ///
+  /// 指令扫描要用它把「代码里算出来的地址」映射回节内偏移 —— 用
+  /// `segment.vmAddress + (fileOffset - segment.fileOffset)` 推导在正常二进制
+  /// 上成立，但 `__TEXT` 的 `fileoff` 未必是 0（加密/对齐），推导会错位。
+  /// 文件里明写着，就直接读。
+  final int address;
+
   const MachOSection({
     required this.name,
     required this.segment,
     required this.fileOffset,
     required this.fileSize,
+    this.address = 0,
   });
 
   /// `__TEXT,__objc_methname` 这种「段,节」写法 —— 证据里直接用这个。
@@ -1154,12 +1163,17 @@ class MachOParser {
       final offset = is64
           ? _readUint32(data, base + 48, order)
           : _readUint32(data, base + 40, order);
+      // `addr` 在两种布局里都在 +32（64 位是 8 字节、32 位是 4 字节）。
+      final address = is64
+          ? _readUint64(data, base + 32, order)
+          : _readUint32(data, base + 32, order);
       if (size == null || offset == null) continue;
       sections.add(MachOSection(
         name: name,
         segment: segment,
         fileOffset: offset,
         fileSize: size,
+        address: address ?? 0,
       ));
     }
     return sections;

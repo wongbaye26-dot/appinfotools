@@ -40,6 +40,7 @@ export 'src/security/ios_privacy_audit.dart';
 export 'src/security/ios_crypto_audit.dart';
 export 'src/security/ios_jailbreak_audit.dart';
 export 'src/security/ios_repackaging_audit.dart';
+export 'src/security/ios_call_sites.dart';
 export 'src/security/ios_native_symbol_audit.dart';
 export 'src/plist/binary_plist_parser.dart';
 export 'src/plist/plist_fields.dart';

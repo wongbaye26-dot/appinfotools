@@ -1096,8 +1096,8 @@
       "android_signature_v1_undetermined": "The v2+ signing block was read, but whether a v1 (JAR) signature exists could not be determined",
       "android_cleartext_policy_target_sdk_unknown": "Neither android:usesCleartextTraffic nor targetSdkVersion could be read, so the platform default for cleartext traffic cannot be derived",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged",
-      "ios_macho_call_sites": "This binary has {functions} functions, but none of them were attributed: iOS analysis has no instruction-level disassembly, so \"which function calls this selector\" cannot be answered. Clues are reported as \"referenced\", not \"called\".",
-      "ios_macho_call_sites_unknown": "iOS analysis has no instruction-level disassembly, so \"which function calls this selector\" cannot be answered. Clues are reported as \"referenced\", not \"called\"."
+      "ios_macho_call_sites": "Attributed {attributed} of {total} selector references to functions ({functions} functions in the binary). \"Referenced\" still does not mean \"called\": ADRP+ADD only loads the selector address, and what it is passed to is not visible statically.",
+      "ios_macho_call_sites_unavailable": "No selector reference could be attributed to a function (no ADRP+ADD/LDR pair targeted __objc_selrefs, or no LC_FUNCTION_STARTS). Clues are reported as \"referenced\", not \"called\"."
     }
   },
   "diff": {
