@@ -54,6 +54,78 @@ class AdbDevice {
   String toString() => 'AdbDevice($id, $status)';
 }
 
+/// 一台设备的品牌 / 型号 / 系统版本。
+///
+/// `adb devices -l` 只给 `model:SM_G9910` 这种代号，用户认不出是哪台机器；
+/// 真正的营销名与系统版本要 `getprop`。三者都允许为空 —— 部分定制 ROM 会
+/// 删掉 `ro.product.brand`，那时用 `ro.product.manufacturer` 兜底。
+class AdbDeviceInfo {
+  final String? brand;
+  final String? model;
+  final String? systemVersion;
+
+  const AdbDeviceInfo({this.brand, this.model, this.systemVersion});
+
+  bool get hasAny =>
+      (brand?.isNotEmpty ?? false) ||
+      (model?.isNotEmpty ?? false) ||
+      (systemVersion?.isNotEmpty ?? false);
+
+  Map<String, dynamic> toJson() => {
+        if (brand != null) 'brand': brand,
+        if (model != null) 'model': model,
+        if (systemVersion != null) 'system': systemVersion,
+      };
+
+  static AdbDeviceInfo fromJson(Map<String, dynamic> json) => AdbDeviceInfo(
+        brand: json['brand'] as String?,
+        model: json['model'] as String?,
+        systemVersion: json['system'] as String?,
+      );
+
+  @override
+  String toString() => 'AdbDeviceInfo($brand, $model, $systemVersion)';
+}
+
+/// 保存下来的设备（历史记录）。
+///
+/// 只对**无线**设备有「重连」价值：USB 设备插上就在，序列号也是固定的，
+/// 保存它只是为了让列表里能显示「上次那台机器叫什么」。
+class KnownAdbDevice {
+  final String id;
+  final bool wireless;
+  final AdbDeviceInfo info;
+  final DateTime lastSeen;
+
+  const KnownAdbDevice({
+    required this.id,
+    required this.wireless,
+    required this.info,
+    required this.lastSeen,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'wireless': wireless,
+        'lastSeen': lastSeen.millisecondsSinceEpoch,
+        ...info.toJson(),
+      };
+
+  static KnownAdbDevice? fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    if (id is! String || id.isEmpty) return null;
+    final millis = json['lastSeen'];
+    return KnownAdbDevice(
+      id: id,
+      wireless: json['wireless'] == true,
+      info: AdbDeviceInfo.fromJson(json),
+      lastSeen: DateTime.fromMillisecondsSinceEpoch(
+        millis is int ? millis : 0,
+      ),
+    );
+  }
+}
+
 /// 一次 adb 命令的结果。
 ///
 /// 刻意不抛异常：adb 的失败绝大多数是**可预期的环境问题**（没授权、端口错、
@@ -257,6 +329,64 @@ class AdbService {
     return parseDevices(result.output);
   }
 
+  /// 读一台设备的品牌 / 型号 / 系统版本。
+  ///
+  /// 一次 `adb shell` 拿三项：`echo B:$(...)` 这种带前缀的写法能容忍某个
+  /// 属性为空（部分 ROM 删掉了 `ro.product.brand`）—— 直接按行号取会在
+  /// 空值被折叠后错位。
+  static Future<AdbDeviceInfo?> deviceInfo(
+    String deviceId, {
+    Duration? timeout,
+  }) async {
+    final result = await _run(
+      [
+        '-s',
+        deviceId,
+        'shell',
+        // 原始字符串：`$(...)` 必须原样交给设备的 shell，不能被 Dart 插值。
+        r'echo B:$(getprop ro.product.brand); '
+            r'echo N:$(getprop ro.product.manufacturer); '
+            r'echo M:$(getprop ro.product.model); '
+            r'echo S:$(getprop ro.build.version.release)',
+      ],
+      timeout: timeout ?? const Duration(seconds: 15),
+    );
+    if (!result.ok) return null;
+    return parseDeviceInfo(result.output);
+  }
+
+  /// 解析 [deviceInfo] 的输出。
+  static AdbDeviceInfo? parseDeviceInfo(String output) {
+    String? brand;
+    String? manufacturer;
+    String? model;
+    String? system;
+    for (final line in const LineSplitter().convert(output)) {
+      final trimmed = line.trim();
+      if (trimmed.length < 2 || trimmed[1] != ':') continue;
+      final value = trimmed.substring(2).trim();
+      if (value.isEmpty) continue;
+      switch (trimmed[0]) {
+        case 'B':
+          brand = value;
+        case 'N':
+          manufacturer = value;
+        case 'M':
+          model = value;
+        case 'S':
+          system = value;
+      }
+    }
+    // `ro.product.brand` 缺失时用厂商名兜底 —— 对用户来说两者都是「牌子」。
+    final resolvedBrand = brand ?? manufacturer;
+    if (resolvedBrand == null && model == null && system == null) return null;
+    return AdbDeviceInfo(
+      brand: resolvedBrand,
+      model: model,
+      systemVersion: system,
+    );
+  }
+
   static Future<AdbCommandResult> pair({
     required String address,
     required String code,
@@ -283,6 +413,22 @@ class AdbService {
       ['disconnect', address],
       timeout: timeout ?? const Duration(seconds: 10),
       parse: parseDisconnectResult,
+    );
+  }
+
+  /// 卸载指定包。
+  ///
+  /// 用于「安装前先卸载」：签名不一致时 `adb install -r` 必然失败，而重打包
+  /// 的包几乎一定签名不同。**失败不抛异常** —— 包里本来就没有这个包时
+  /// `uninstall` 会返回 `Failure [not installed]`，那不是错误，接着装就行。
+  static Future<AdbCommandResult> uninstall(
+    String deviceId,
+    String packageName, {
+    Duration? timeout,
+  }) {
+    return _run(
+      ['-s', deviceId, 'uninstall', packageName],
+      timeout: timeout ?? const Duration(seconds: 60),
     );
   }
 

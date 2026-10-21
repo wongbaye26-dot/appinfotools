@@ -137,6 +137,12 @@ class Config {
   /// 最近分析过的文件列表，JSON 数组字符串。
   static final recentFiles = ConfigItem("recent_files", "[]");
 
+  /// 安装页保存过的设备（JSON 数组）。
+  ///
+  /// 存的是「上次连上时它叫什么、什么系统版本」，不是连接状态 —— 状态每次
+  /// 都要重新问 adb。无线设备靠它免去重新输入 IP。
+  static final knownDevices = ConfigItem("known_devices", "[]");
+
   static final List<ConfigItem> _globalItems = [
     aapt2Path,
     apksignerPath,
@@ -152,6 +158,7 @@ class Config {
     enableSecurityAudit,
     enableDebug,
     systemIconEnabled,
+    knownDevices,
     maxLines,
     themeColor,
     titleWidth,

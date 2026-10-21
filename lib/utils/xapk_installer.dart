@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
@@ -190,6 +191,13 @@ class XapkInstaller {
     Map<String, bool>? selectedSplits,
     bool Function()? isCancelled,
 
+    /// 安装过程的阶段日志（面向用户，直接进安装页的日志区）。
+    ///
+    /// 只报**阶段**，不报 adb 的原始输出 —— `install-multiple` 的输出在
+    /// `_runProcess` 里没有逐行暴露，为了日志去改进程管道不值得。分包安装
+    /// 的用户最需要知道的是「卡在解压还是卡在安装」。
+    void Function(String message)? onLog,
+
     /// 测试用：覆盖临时目录，便于断言「失败后没有残留」。
     @visibleForTesting Directory? tempDirOverride,
 
@@ -208,8 +216,10 @@ class XapkInstaller {
       }
 
       // 解压XAPK
+      onLog?.call(t.install.log_open_container);
       if (!(await zip.open(xapkPath)).isOk) {
         log.severe('Failed to open XAPK file');
+        onLog?.call(t.install.log_open_failed);
         return false;
       }
 
@@ -241,6 +251,9 @@ class XapkInstaller {
         return false;
       }
 
+      onLog?.call(t.install.log_split_summary(
+          total: '${splitApks.length}', count: '${apksToInstall.length}'));
+
       // 解压需要安装的APK
       String? baseApkPath;
       for (final apk in apksToInstall) {
@@ -267,6 +280,8 @@ class XapkInstaller {
         return false;
       }
 
+      onLog?.call(t.install.log_extracted);
+
       // 构建安装命令
       final adbPath = CommandTools.getAdbPath();
       final apkPaths =
@@ -286,8 +301,10 @@ class XapkInstaller {
       }
       if (exitCode != 0) {
         log.severe('Failed to install APKs, exit code: $exitCode');
+        onLog?.call(t.install.log_install_failed(code: '$exitCode'));
         return false;
       }
+      onLog?.call(t.install.log_install_done);
 
       // 安装OBB文件
       final obbEntries = zip.listFiles(extension: '.obb');

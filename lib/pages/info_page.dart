@@ -1378,13 +1378,17 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   List<Widget> _buildActions(FileState fileState) {
     return [
       IconButton(
-          icon: const Icon(Icons.file_open),
+          // 「打开文件」用文件夹图标：`file_open` 是一个带折角的文件，
+          // 在 20px 下和「更多」里的文档图标几乎分不出来。
+          icon: const Icon(Icons.folder_open),
           tooltip: t.open.open_apk,
           onPressed: () async {
             openFilePicker();
           }),
       IconButton(
-          icon: const Icon(Icons.search),
+          // 「重新解析」曾经是放大镜（`Icons.search`）—— 那是「查找」的语义，
+          // 而这里做的是把当前文件重新走一遍解析流水线。
+          icon: const Icon(Icons.refresh),
           tooltip: t.parse.parse_apk,
           onPressed: fileState.filePath == null
               ? null

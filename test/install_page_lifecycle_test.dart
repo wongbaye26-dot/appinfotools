@@ -136,6 +136,36 @@ void main() {
     expect(shown.enable, isTrue);
   });
 
+  // 设备行必须显示「品牌 + 型号 + 系统版本」—— 只给 `model:SM_G9910` 这种
+  // adb 代号，用户认不出是哪台机器。
+  testWidgets('设备行显示品牌型号与系统版本', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        InstallPage(
+          deviceLoader: () async => [
+            AdbDevice(
+              id: 'R58M12ABCDE',
+              status: 'device',
+              model: 'SM_G9910',
+              device: 'o1q',
+            ),
+          ],
+          deviceInfoLoader: (_) async => const AdbDeviceInfo(
+            brand: 'samsung',
+            model: 'SM_G9910',
+            systemVersion: '14',
+          ),
+        ),
+      ),
+    );
+    // `remember` 会把设备写进 Config（防抖 100ms），这里把它推完，
+    // 免得留下 pending timer。
+    await tester.pumpAndSettle(const Duration(milliseconds: 200));
+
+    expect(find.text('samsung SM_G9910'), findsOneWidget);
+    expect(find.textContaining('Android 14'), findsOneWidget);
+  });
+
   // 新页面必须在小窗口下也不溢出。`RenderFlex overflowed` 在测试里是一条
   // 异常，`takeException` 能抓到 —— 这比肉眼看截图可靠，且能在 CI 里跑。
   for (final size in const [Size(1100, 700), Size(760, 520)]) {

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/utils/adb_service.dart';
+import 'package:apk_info_tool/utils/known_devices.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/xapk_installer.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -29,11 +31,13 @@ class _DeviceState {
 ///
 /// 独立页面之后，三件事在同一个平面上：选包 → 连设备（USB 自动出现，
 /// 无线在这里配对）→ 安装。
-///
-/// 分析页顶栏的安装按钮**已移除**：同一件事两个入口，用户每次都要判断
-/// 「该点哪个」。
 class InstallPage extends StatefulWidget {
-  const InstallPage({super.key, this.deviceLoader});
+  const InstallPage({
+    super.key,
+    this.deviceLoader,
+    this.deviceInfoLoader,
+    this.apkInfoLoader,
+  });
 
   /// 设备枚举实现。
   ///
@@ -42,30 +46,56 @@ class InstallPage extends StatefulWidget {
   /// 测试的 fake-async 区里会留下未触发的 Timer，无法稳定复现。
   final Future<List<AdbDevice>> Function()? deviceLoader;
 
+  /// 设备品牌 / 型号 / 系统版本的读取实现。
+  final Future<AdbDeviceInfo?> Function(String deviceId)? deviceInfoLoader;
+
+  /// 安装包信息（图标 / 名称 / 版本）的读取实现。
+  final Future<ApkInfo?> Function(String path)? apkInfoLoader;
+
   @override
   State<InstallPage> createState() => _InstallPageState();
 }
 
 class _InstallPageState extends State<InstallPage> {
+  // ---- 安装包 ----
   String? _filePath;
   bool _isXapk = false;
+  ApkInfo? _apkInfo;
+  bool _parsing = false;
+  bool _parseFailed = false;
 
+  /// 解析序号：用户连续换文件时，丢掉旧的那次结果。
+  int _parseGeneration = 0;
+
+  /// XAPK 分包勾选（只在分包包上有内容）。
+  final Map<String, bool> _selectedSplits = {};
+
+  // ---- 设备 ----
   List<AdbDevice> _devices = const [];
+  final Map<String, AdbDeviceInfo> _deviceInfo = {};
+  List<KnownAdbDevice> _known = const [];
   final Set<String> _selected = {};
   final Map<String, _DeviceState> _states = {};
   bool _loadingDevices = false;
 
+  // ---- 选项 ----
   bool _allowDowngrade = false;
-  bool _forceInstall = false;
+
+  /// 覆盖安装（`-r`）。**默认开**：分析工具反复装同一个包是常态，
+  /// 关着会让第二次安装直接失败（`INSTALL_FAILED_ALREADY_EXISTS`）。
+  bool _forceInstall = true;
   bool _allowTest = false;
 
-  List<String> _splitApks = const [];
-  final Map<String, bool> _selectedSplits = {};
+  /// 安装前先卸载。签名不一致时 `-r` 必然失败，重打包的包尤其常见。
+  bool _uninstallFirst = false;
 
+  // ---- 安装过程 ----
   bool _installing = false;
   bool _cancelled = false;
   Process? _currentProcess;
   XapkInstaller? _currentInstaller;
+  final List<String> _logs = [];
+  final ScrollController _logScroll = ScrollController();
   bool _dragging = false;
 
   /// 上一次已知的可见状态，用于「刚被切到前台」时刷新设备。
@@ -78,16 +108,13 @@ class _InstallPageState extends State<InstallPage> {
   /// 测试都会拉起一个 adb 子进程 —— 而 `Process.start` 在测试的 fake-async
   /// 区里会留下一个永不完成的零延迟 Timer，撞上
   /// `A Timer is still pending even after the widget tree was disposed`。
-  /// 实测一次撞挂 10 个既有测试。
-  ///
-  /// 用 `Visibility.of` 当信号还顺带解决了另一个问题：不可见的页面**不该**
-  /// 抢拖放（见 [build] 里的 `enable`）。
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final visible = Visibility.of(context);
     if (visible && !_wasVisible) {
       _wasVisible = true;
+      _known = KnownDeviceStore.load();
       unawaited(_refreshDevices());
     } else if (!visible) {
       _wasVisible = false;
@@ -99,6 +126,8 @@ class _InstallPageState extends State<InstallPage> {
     _cancelled = true;
     _currentProcess?.kill();
     _currentInstaller?.cancel();
+    _apkInfo?.dispose();
+    _logScroll.dispose();
     super.dispose();
   }
 
@@ -123,31 +152,27 @@ class _InstallPageState extends State<InstallPage> {
       return;
     }
     final isXapk = lower.endsWith('.xapk') || lower.endsWith('.apks');
+    final generation = ++_parseGeneration;
+
     setState(() {
+      _apkInfo?.dispose();
+      _apkInfo = null;
+      _parseFailed = false;
+      _parsing = true;
       _filePath = path;
       _isXapk = isXapk;
-      _splitApks = const [];
       _selectedSplits.clear();
     });
-    if (isXapk) await _loadSplits(path);
-  }
 
-  void _clearFile() {
-    setState(() {
-      _filePath = null;
-      _isXapk = false;
-      _splitApks = const [];
-      _selectedSplits.clear();
-    });
+    if (isXapk) unawaited(_loadSplits(path));
+    await _loadApkInfo(path, generation);
   }
 
   Future<void> _loadSplits(String path) async {
     try {
-      final installer = XapkInstaller();
-      final splits = await installer.getSplitApks(path);
+      final splits = await XapkInstaller().getSplitApks(path);
       if (!mounted || splits == null) return;
       setState(() {
-        _splitApks = splits;
         for (final split in splits) {
           _selectedSplits[split] = true;
         }
@@ -155,6 +180,46 @@ class _InstallPageState extends State<InstallPage> {
     } catch (e) {
       log.warning('InstallPage: 读取分包失败: $e');
     }
+  }
+
+  /// 读应用信息（图标 / 名称 / 版本 / 包名）。
+  ///
+  /// 走的是与分析页同一条 `getApkInfo` 流水线 —— 安装页不该为了「显示个
+  /// 图标」另写一套解析。代价是分包包会走 aapt2、大包要几秒，因此有
+  /// [_parsing] 状态；且**失败不影响安装**（安装只用路径）。
+  Future<void> _loadApkInfo(String path, int generation) async {
+    try {
+      final info = await (widget.apkInfoLoader ?? getApkInfo).call(path);
+      if (!mounted || generation != _parseGeneration) {
+        info?.dispose();
+        return;
+      }
+      setState(() {
+        _apkInfo = info;
+        _parsing = false;
+        _parseFailed = info == null;
+      });
+    } catch (e) {
+      log.warning('InstallPage: 读取应用信息失败: $e');
+      if (!mounted || generation != _parseGeneration) return;
+      setState(() {
+        _parsing = false;
+        _parseFailed = true;
+      });
+    }
+  }
+
+  void _clearFile() {
+    _parseGeneration++;
+    setState(() {
+      _apkInfo?.dispose();
+      _apkInfo = null;
+      _filePath = null;
+      _isXapk = false;
+      _parsing = false;
+      _parseFailed = false;
+      _selectedSplits.clear();
+    });
   }
 
   // ---------------------------------------------------------------- 设备
@@ -169,27 +234,62 @@ class _InstallPageState extends State<InstallPage> {
       setState(() {
         _devices = devices;
         _loadingDevices = false;
-        // 只保留仍然存在**且可用**的设备的选择与状态。
-        //
-        // 两种都要清：拔掉的设备（id 消失）和状态退化的设备（`device` →
-        // `unauthorized` / `offline`）。后者尤其重要 —— 手机在列表返回前被
-        // 锁屏，设备就变成 `unauthorized` 了，但选择集里还留着它，点安装
-        // 会对着一台没授权的设备发命令，失败信息还很难懂。
         final usable = {
           for (final device in devices)
             if (device.isUsable) device.id,
         };
         _selected.removeWhere((id) => !usable.contains(id));
         _states.removeWhere((id, _) => !usable.contains(id));
-        // 首次枚举时，把可用设备默认勾上（与旧对话框一致）。
         for (final id in usable) {
           if (!_states.containsKey(id)) _selected.add(id);
         }
       });
+      await _loadDeviceInfo(devices);
     } catch (e) {
       log.warning('InstallPage: 枚举设备失败: $e');
       if (mounted) setState(() => _loadingDevices = false);
     }
+  }
+
+  /// 读取每台可用设备的品牌 / 型号 / 系统版本。
+  ///
+  /// 这些信息只用于展示，**拿不到就不显示**，绝不因此把设备标成不可用。
+  Future<void> _loadDeviceInfo(List<AdbDevice> devices) async {
+    final loader = widget.deviceInfoLoader ?? AdbService.deviceInfo;
+    for (final device in devices.where((d) => d.isUsable)) {
+      if (_deviceInfo.containsKey(device.id)) continue;
+      try {
+        final info = await loader(device.id);
+        if (!mounted) return;
+        if (info == null) continue;
+        setState(() => _deviceInfo[device.id] = info);
+        await KnownDeviceStore.remember(
+          id: device.id,
+          wireless: device.isWireless,
+          info: info,
+        );
+      } catch (e) {
+        log.warning('InstallPage: 读取 ${device.id} 信息失败: $e');
+      }
+    }
+    if (!mounted) return;
+    setState(() => _known = KnownDeviceStore.load());
+  }
+
+  Future<void> _connectKnown(KnownAdbDevice device) async {
+    final result = await AdbService.connect(device.id);
+    if (!mounted) return;
+    if (!result.ok) {
+      _snack('${t.install.wireless_connect}: ${result.output}');
+      return;
+    }
+    await _refreshDevices();
+  }
+
+  Future<void> _forgetKnown(KnownAdbDevice device) async {
+    await KnownDeviceStore.forget(device.id);
+    if (!mounted) return;
+    setState(() => _known = KnownDeviceStore.load());
   }
 
   Future<void> _openPairDialog() async {
@@ -223,11 +323,24 @@ class _InstallPageState extends State<InstallPage> {
   bool get _canInstall =>
       !_installing && _filePath != null && _selected.isNotEmpty;
 
+  void _appendLog(String line) {
+    final text = line.trimRight();
+    if (text.isEmpty) return;
+    if (!mounted) return;
+    setState(() => _logs.add(text));
+    // 新行进来后滚到底：用户盯着的是最后一行。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_logScroll.hasClients) return;
+      _logScroll.jumpTo(_logScroll.position.maxScrollExtent);
+    });
+  }
+
   Future<void> _startInstall() async {
     if (!_canInstall) return;
     setState(() {
       _installing = true;
       _cancelled = false;
+      _logs.clear();
       for (final id in _selected) {
         _states[id] = _DeviceState();
       }
@@ -256,6 +369,17 @@ class _InstallPageState extends State<InstallPage> {
   }
 
   Future<void> _installOn(String deviceId, List<String> options) async {
+    AdbDevice? device;
+    for (final candidate in _devices) {
+      if (candidate.id == deviceId) {
+        device = candidate;
+        break;
+      }
+    }
+    _appendLog(t.install.log_install_started(
+      device: _deviceLabel(device, deviceId),
+    ));
+
     setState(() {
       _states[deviceId] = _DeviceState()
         ..phase = _Phase.installing
@@ -263,6 +387,17 @@ class _InstallPageState extends State<InstallPage> {
     });
 
     try {
+      // 先卸载：签名不一致时 `-r` 必然失败，而重打包的包几乎一定签名不同。
+      if (_uninstallFirst) {
+        final packageName = _apkInfo?.packageName;
+        if (packageName == null || packageName.isEmpty) {
+          _appendLog('uninstall skipped: package name unknown');
+        } else {
+          _appendLog(t.install.log_uninstall(package: packageName));
+          await AdbService.uninstall(deviceId, packageName);
+        }
+      }
+
       bool ok;
       String? error;
       if (_isXapk) {
@@ -274,6 +409,7 @@ class _InstallPageState extends State<InstallPage> {
           options,
           selectedSplits: _selectedSplits,
           isCancelled: () => _cancelled,
+          onLog: _appendLog,
         );
         _currentInstaller = null;
         if (!ok && !_cancelled) error = t.install.error;
@@ -287,13 +423,20 @@ class _InstallPageState extends State<InstallPage> {
         final stderrBuffer = StringBuffer();
         process.stdout
             .transform(const SystemEncoding().decoder)
-            .listen(stdoutBuffer.write);
+            .listen((chunk) {
+          stdoutBuffer.write(chunk);
+          _appendLog(chunk);
+        });
         process.stderr
             .transform(const SystemEncoding().decoder)
-            .listen(stderrBuffer.write);
+            .listen((chunk) {
+          stderrBuffer.write(chunk);
+          _appendLog(chunk);
+        });
         final exitCode = await process.exitCode;
         _currentProcess = null;
         ok = exitCode == 0;
+        _appendLog('exit code: $exitCode');
         if (!ok) {
           error = stderrBuffer.toString().trim();
           if (error.isEmpty) error = stdoutBuffer.toString().trim();
@@ -318,6 +461,7 @@ class _InstallPageState extends State<InstallPage> {
       });
     } catch (e) {
       if (!mounted) return;
+      _appendLog('$e');
       setState(() {
         _states[deviceId] = _DeviceState()
           ..phase = _cancelled ? _Phase.stopped : _Phase.failed
@@ -326,11 +470,7 @@ class _InstallPageState extends State<InstallPage> {
     }
   }
 
-  String get _adbExecutable {
-    // 与安装对话框时期一致：解析失败时退回裸命令名，让 adb 自己报
-    // 「command not found」比我们编一个路径更诚实。
-    return _adbPath ?? 'adb';
-  }
+  String get _adbExecutable => _adbPath ?? 'adb';
 
   String? get _adbPath => AdbService.adbExecutable;
 
@@ -356,7 +496,6 @@ class _InstallPageState extends State<InstallPage> {
     // `desktop_drop` 的通道是**全局扇出**的：每个 `DropTarget` 各自按渲染盒
     // 判「是否在界内」，而 `IndexedStack` 里各页尺寸完全重叠，于是不可见的页
     // 也会收到同一次拖放 —— 拖一个 APK 到概览页会同时被安装页接住。
-    // 概览页与分析页早就按这个约定做了，新页面必须一致。
     final visible = Visibility.of(context);
     return Scaffold(
       body: DropTarget(
@@ -400,6 +539,8 @@ class _InstallPageState extends State<InstallPage> {
                 _buildDeviceCard(theme),
                 const SizedBox(height: 12),
                 _buildOptionsCard(theme),
+                const SizedBox(height: 12),
+                _buildLogCard(theme),
                 const SizedBox(height: 20),
                 _buildInstallBar(theme),
                 const SizedBox(height: 24),
@@ -439,6 +580,8 @@ class _InstallPageState extends State<InstallPage> {
         ),
       );
 
+  // ---- 安装包 ----
+
   Widget _buildFileCard(ThemeData theme) {
     final path = _filePath;
     return _card(
@@ -457,7 +600,6 @@ class _InstallPageState extends State<InstallPage> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: theme.dividerColor.withValues(alpha: 0.4),
-                  style: BorderStyle.solid,
                 ),
               ),
               child: Column(
@@ -474,54 +616,122 @@ class _InstallPageState extends State<InstallPage> {
           )
         else
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                _isXapk ? Icons.folder_zip_outlined : Icons.android,
-                size: 20,
-                color: theme.colorScheme.primary,
+              _buildAppIcon(theme),
+              const SizedBox(width: 14),
+              Expanded(child: _buildAppText(theme, path)),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                      onPressed: _installing ? null : _pickFile,
+                      child: Text(t.install.change_file)),
+                  TextButton(
+                      onPressed: _installing ? null : _clearFile,
+                      child: Text(t.install.clear_file)),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p.basename(path),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    Text(
-                      _fileSubtitle(path),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                  onPressed: _pickFile, child: Text(t.install.change_file)),
-              TextButton(
-                  onPressed: _clearFile, child: Text(t.install.clear_file)),
             ],
           ),
       ],
     );
   }
 
-  String _fileSubtitle(String path) {
-    final type = _isXapk ? 'XAPK / APKS' : 'APK';
+  /// 应用图标 —— 与概览页 Hero 同一套渲染（`RawImage` + cover）。
+  Widget _buildAppIcon(ThemeData theme) {
+    final image = _apkInfo?.mainIconImage;
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: image != null
+          ? RawImage(image: image, fit: BoxFit.cover)
+          : Center(
+              child: Icon(
+                _isXapk ? Icons.folder_zip_outlined : Icons.android,
+                size: 26,
+                color: theme.hintColor.withValues(alpha: 0.5),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildAppText(ThemeData theme, String path) {
+    final info = _apkInfo;
+    final name =
+        (info?.label?.isNotEmpty ?? false) ? info!.label! : p.basename(path);
+    final package = info?.packageName;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (package != null && package.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            package,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          ),
+        ],
+        const SizedBox(height: 4),
+        Text(
+          _parsing
+              ? t.install.app_parsing
+              : _parseFailed
+                  ? t.install.app_info_failed
+                  : _versionLine(info),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: _parseFailed ? theme.colorScheme.error : theme.hintColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// `v1.2.3 (123) · 100.6 MB`。
+  String _versionLine(ApkInfo? info) {
+    final parts = <String>[];
+    final versionName = info?.versionName;
+    final versionCode = info?.versionCode;
+    if (versionName != null && versionName.isNotEmpty) {
+      parts.add(
+        versionCode == null ? 'v$versionName' : 'v$versionName ($versionCode)',
+      );
+    }
+    final size = _formatBytes(info?.apkSize ?? _fileSize(_filePath));
+    if (size.isNotEmpty) parts.add(size);
+    if (_isXapk) parts.insert(0, 'XAPK / APKS');
+    return parts.join(' · ');
+  }
+
+  static int _fileSize(String? path) {
+    if (path == null) return 0;
     try {
-      final size = File(path).lengthSync();
-      return '$type · ${_formatBytes(size)}';
+      return File(path).lengthSync();
     } catch (_) {
-      return type;
+      return 0;
     }
   }
 
   static String _formatBytes(int bytes) {
+    if (bytes <= 0) return '';
     const units = ['B', 'KB', 'MB', 'GB'];
     var value = bytes.toDouble();
     var unit = 0;
@@ -532,7 +742,12 @@ class _InstallPageState extends State<InstallPage> {
     return '${value.toStringAsFixed(unit == 0 ? 0 : 1)} ${units[unit]}';
   }
 
+  // ---- 设备 ----
+
   Widget _buildDeviceCard(ThemeData theme) {
+    final knownWireless = _known
+        .where((d) => d.wireless && !_devices.any((x) => x.id == d.id))
+        .toList();
     return _card(
       theme: theme,
       children: [
@@ -555,7 +770,7 @@ class _InstallPageState extends State<InstallPage> {
         const SizedBox(height: 4),
         if (_devices.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -573,6 +788,15 @@ class _InstallPageState extends State<InstallPage> {
           )
         else
           ..._devices.map((device) => _buildDeviceRow(theme, device)),
+        if (knownWireless.isNotEmpty) ...[
+          const Divider(height: 24),
+          Text(
+            t.install.saved_devices,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          ),
+          const SizedBox(height: 4),
+          ...knownWireless.map((device) => _buildKnownRow(theme, device)),
+        ],
       ],
     );
   }
@@ -580,6 +804,7 @@ class _InstallPageState extends State<InstallPage> {
   Widget _buildDeviceRow(ThemeData theme, AdbDevice device) {
     final state = _states[device.id];
     final selectable = device.isUsable && !_installing;
+    final info = _deviceInfo[device.id];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -612,7 +837,7 @@ class _InstallPageState extends State<InstallPage> {
                   children: [
                     Flexible(
                       child: Text(
-                        device.displayName,
+                        _deviceLabel(device, device.id),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium,
@@ -623,7 +848,7 @@ class _InstallPageState extends State<InstallPage> {
                   ],
                 ),
                 Text(
-                  state?.message ?? device.id,
+                  _deviceSubtitle(device, info, state?.message),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -642,6 +867,90 @@ class _InstallPageState extends State<InstallPage> {
         ],
       ),
     );
+  }
+
+  /// `samsung SM_G9910` —— 品牌 + 型号；读不到时退回 adb 给的代号。
+  String _deviceLabel(AdbDevice? device, String fallbackId) {
+    final info = _deviceInfo[fallbackId];
+    final model = info?.model;
+    if (model != null && model.isNotEmpty) {
+      final brand = info?.brand;
+      return (brand == null || brand.isEmpty) ? model : '$brand $model';
+    }
+    return device?.displayName ?? fallbackId;
+  }
+
+  String _deviceSubtitle(
+    AdbDevice device,
+    AdbDeviceInfo? info,
+    String? message,
+  ) {
+    final parts = <String>[device.id];
+    final system = info?.systemVersion;
+    if (system != null && system.isNotEmpty) {
+      parts.add('Android $system');
+    }
+    if (message != null && message.isNotEmpty) parts.add(message);
+    return parts.join(' · ');
+  }
+
+  Widget _buildKnownRow(ThemeData theme, KnownAdbDevice device) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          Icon(Icons.wifi_off, size: 16, color: theme.hintColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _knownLabel(device),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
+                Text(
+                  _knownSubtitle(device),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _connectKnown(device),
+            child: Text(t.install.saved_connect),
+          ),
+          IconButton(
+            tooltip: t.install.saved_forget,
+            onPressed: () => _forgetKnown(device),
+            icon: const Icon(Icons.close, size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _knownLabel(KnownAdbDevice device) {
+    final model = device.info.model;
+    if (model == null || model.isEmpty) return device.id;
+    final brand = device.info.brand;
+    return (brand == null || brand.isEmpty) ? model : '$brand $model';
+  }
+
+  String _knownSubtitle(KnownAdbDevice device) {
+    final parts = <String>[device.id];
+    final system = device.info.systemVersion;
+    if (system != null && system.isNotEmpty) parts.add('Android $system');
+    return parts.join(' · ');
   }
 
   Color _messageColor(ThemeData theme, _DeviceState? state) {
@@ -674,7 +983,11 @@ class _InstallPageState extends State<InstallPage> {
     );
   }
 
+  // ---- 选项 ----
+
   Widget _buildOptionsCard(ThemeData theme) {
+    final packageName = _apkInfo?.packageName;
+    final canUninstall = packageName != null && packageName.isNotEmpty;
     return _card(
       theme: theme,
       children: [
@@ -687,6 +1000,22 @@ class _InstallPageState extends State<InstallPage> {
           onChanged: _installing
               ? null
               : (value) => setState(() => _forceInstall = value),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text(t.install.uninstall_first),
+          subtitle: Text(
+            canUninstall
+                ? t.install.uninstall_first_desc
+                : t.install.app_info_failed,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          ),
+          value: _uninstallFirst,
+          // 没有包名就没法卸载 —— 灰掉而不是让用户点了才发现没生效。
+          onChanged: (_installing || !canUninstall)
+              ? null
+              : (value) => setState(() => _uninstallFirst = value),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -706,7 +1035,7 @@ class _InstallPageState extends State<InstallPage> {
               ? null
               : (value) => setState(() => _allowTest = value),
         ),
-        if (_splitApks.isNotEmpty) ...[
+        if (_selectedSplits.isNotEmpty) ...[
           const Divider(height: 24),
           Row(
             children: [
@@ -726,7 +1055,7 @@ class _InstallPageState extends State<InstallPage> {
               ),
             ],
           ),
-          ..._splitApks.map(
+          ..._selectedSplits.keys.map(
             (split) => CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -743,6 +1072,60 @@ class _InstallPageState extends State<InstallPage> {
       ],
     );
   }
+
+  // ---- 日志 ----
+
+  Widget _buildLogCard(ThemeData theme) {
+    return _card(
+      theme: theme,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _sectionTitle(theme, t.install.log_title)),
+            if (_logs.isNotEmpty)
+              Text(
+                '${_logs.length}',
+                style:
+                    theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_logs.isEmpty)
+          Text(
+            t.install.log_empty,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          )
+        else
+          Container(
+            width: double.infinity,
+            height: 160,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Scrollbar(
+              controller: _logScroll,
+              child: SingleChildScrollView(
+                controller: _logScroll,
+                child: SelectableText(
+                  _logs.join('\n'),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11.5,
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ---- 底栏 ----
 
   Widget _buildInstallBar(ThemeData theme) {
     return Row(
@@ -813,7 +1196,6 @@ class _WirelessPairDialogState extends State<_WirelessPairDialog> {
     // 补了反而会连到一个不存在的端口上，报一句误导人的错。
     final address = AdbService.normalizeAddress(
       _addressController.text,
-      // 配对端口必须显式给出：它是设备随机生成的。
       defaultPort: null,
     );
     final code = _codeController.text.trim();
