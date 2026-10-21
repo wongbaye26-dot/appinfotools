@@ -79,6 +79,21 @@ void main() {
     expect(result.scannedBytes, NativeCryptoScan.maxBytesPerLibrary);
   });
 
+  test('大而几乎提不出字符串 → 疑似加密/加壳', () {
+    // 正常编译出来的 `.so` 里 `.rodata` / `.dynstr` 有大量字符串；密度低到
+    // 每 4 KiB 一条都没有，多半是整体加密或加壳。
+    final packed = Uint8List(2 * 1024 * 1024); // 全 0，没有可打印串
+    final result = NativeCryptoScan.scan(
+      [NativeLibraryBytes('libpacked.so', packed)],
+    );
+    expect(result.looksPacked, isTrue);
+  });
+
+  test('小库不判加壳（样本太小，密度没有意义）', () {
+    final result = _scan(['secp256k1_ecdsa_sign_recoverable']);
+    expect(result.looksPacked, isFalse);
+  });
+
   test('多个库时按库分别记录来源', () {
     final result = NativeCryptoScan.scan([
       NativeLibraryBytes('liba.so', _blob(['secp256k1'])),

@@ -663,6 +663,8 @@ class AnalysisReport {
     final signals = finding.messageArgs['signals'];
     // 加密资产规则里写死的链上地址条数。
     final addressCount = finding.messageArgs['addressCount'];
+    // 「静态分析没看全」的地方（预算截断 / 原生库疑似加壳）。
+    final blindSpots = finding.messageArgs['blindSpots'];
     // ATS 例外里「真正放宽了」的域名数。
     final weakened = finding.messageArgs['weakened'];
     // 证书固定涉及的域名（`<pin-set>` 所在域）。
@@ -713,13 +715,15 @@ class AnalysisReport {
             ),
       'crypto.theft_risk' => signals == null
           ? null
-          : f.crypto_theft_risk(
+          : '${f.crypto_theft_risk(
               signals: _joinNames(signals, t) ?? '—',
               // 没有地址时整句不出现 —— 印出「0 个地址」比不印更让人困惑。
               addresses: addressCount is int && addressCount > 0
                   ? f.crypto_theft_risk_addresses(count: addressCount)
                   : '',
-            ),
+            )}'
+              // 「没看全」必须单独说一句：否则「没报出来」会被读成「没有」。
+              '${blindSpots is List && blindSpots.isNotEmpty ? '\n\n${f.crypto_theft_risk_blind_spots}' : ''}',
       'android.packer' => names == null ? null : f.android_packer(names: names),
       'android.deeplink' => (count == null || schemes == null)
           ? null

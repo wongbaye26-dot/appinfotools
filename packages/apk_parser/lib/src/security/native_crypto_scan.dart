@@ -56,6 +56,7 @@ class NativeCryptoScan {
     final scannedNames = <String>[];
 
     var scannedBytes = 0;
+    var stringCount = 0;
 
     for (final library in libraries) {
       if (scannedBytes >= maxTotalBytes) {
@@ -76,6 +77,7 @@ class NativeCryptoScan {
       scannedNames.add(library.name);
 
       for (final text in AsciiStrings.extract(library.bytes, limit: limit)) {
+        stringCount++;
         for (final marker in cryptoMarkers) {
           if (!text.contains(marker.literal)) continue;
           final bucket = samples.putIfAbsent(marker.id, () => <String>{});
@@ -102,6 +104,7 @@ class NativeCryptoScan {
       skippedLibraries: skipped,
       scannedBytes: scannedBytes,
       totalLibraries: libraries.length,
+      stringCount: stringCount,
     );
   }
 }
@@ -126,6 +129,9 @@ class NativeCryptoScanResult {
   final int scannedBytes;
   final int totalLibraries;
 
+  /// 实际提取到的 ASCII 串条数。
+  final int stringCount;
+
   const NativeCryptoScanResult({
     required this.samples,
     required this.sources,
@@ -135,6 +141,7 @@ class NativeCryptoScanResult {
     required this.skippedLibraries,
     required this.scannedBytes,
     required this.totalLibraries,
+    required this.stringCount,
   });
 
   bool get isEmpty => samples.isEmpty && addresses.isEmpty;
@@ -147,6 +154,17 @@ class NativeCryptoScanResult {
 
   /// 没有任何库可扫（没提供原生库）。
   bool get hasNoInput => totalLibraries == 0;
+
+  /// 原生库**看起来被加密 / 加壳**了。
+  ///
+  /// 判据：扫了至少 1 MiB，但每 4 KiB 连一条 ASCII 串都提不出来。
+  /// 正常编译出来的 `.so` 密度远高于此（字符串常量、符号名、错误文案都在
+  /// `.rodata` / `.dynstr` 里）；密度低到这个程度，多半是整体加密或加壳。
+  ///
+  /// 这条**不是**结论，是「我们看不清」的诚实标记 —— 它只用来给报告加一句
+  /// 「native 侧的结论可能偏保守」，不会改变判级。
+  bool get looksPacked =>
+      scannedBytes >= 1024 * 1024 && stringCount * 4096 < scannedBytes;
 }
 
 /// 一个空的扫描结果（没有原生库时用）。
@@ -159,4 +177,5 @@ const NativeCryptoScanResult emptyNativeCryptoScan = NativeCryptoScanResult(
   skippedLibraries: [],
   scannedBytes: 0,
   totalLibraries: 0,
+  stringCount: 0,
 );

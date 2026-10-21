@@ -1007,6 +1007,12 @@ SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
       'addressCount': s.addresses.length,
       if (addressSwap) 'addressSwap': true,
       if (keyWithChannel) 'keyWithChannel': true,
+      // 「我们看不清」的地方。不改判级，只让读者知道结论可能偏保守。
+      'blindSpots': [
+        if (f.scan.skippedForBudget.isNotEmpty) 'dexPartial',
+        if (f.nativeCrypto.skippedLibraries.isNotEmpty) 'nativePartial',
+        if (f.nativeCrypto.looksPacked) 'nativePacked',
+      ],
     },
     evidence: [
       for (final reference in f.allCodeRefs)
