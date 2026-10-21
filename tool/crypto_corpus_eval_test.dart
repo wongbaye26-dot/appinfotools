@@ -11,7 +11,12 @@
 //   ~/development/flutter/bin/flutter test tool/crypto_corpus_eval_test.dart
 // ```
 //
-// 可选：`CRYPTO_CORPUS_OUT=/path/report.md` 把同一份结果写成 Markdown。
+// 可选：`CRYPTO_CORPUS_OUT=/path/report.md` 把同一份结果写成 Markdown；
+// `CRYPTO_CORPUS_JSON=/path/report.json` 写成机器可读的 JSON。
+//
+// 命中的文件会附上**原始样本**（前几条证据）—— 只报标记 id 的话，评估会变成
+// 数字游戏：同一个 `wallet-imtoken` 可能是「实现了 imToken 的接口」，也可能是
+// 「把 imToken 列在目标清单里」。人得看得到原文才能判。
 //
 // ## 语料目录约定
 //
@@ -37,6 +42,7 @@
 // 解析不了的文件**不进分母**，单独计数并列出。把「打不开」算成「没命中」
 // 会让召回虚高，这是这类评估最常见的自欺。
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -66,6 +72,15 @@ class _Row {
 
   bool hitHigh() =>
       finding != null && finding!.severity.index <= SecuritySeverity.p2.index;
+
+  /// 命中时给几条**原始样本** —— 只报标记 id 的话，人没法判断
+  /// 「这是钱包实现」还是「这只是把钱包名字列在字符串里」。
+  List<String> get samples => finding == null
+      ? const []
+      : [
+          for (final e in finding!.evidence.take(6))
+            if (e.detail.isNotEmpty) e.detail,
+        ];
 
   String get verdict {
     if (!analysed) return 'SKIP';
@@ -184,6 +199,19 @@ void _report(List<_Row> rows, {String? outPath}) {
     line('| ${row.category} | ${row.name} | ${row.verdict} | '
         '${row.finding == null ? '' : _signalsOf(row.finding!)} |');
   }
+  // 命中的文件把原始样本列出来：人要靠它判断「真命中」还是「名字被列在
+  // 字符串里」。只给标记 id 的话，评估就变成了数字游戏。
+  final hits = rows.where((r) => r.hitAny()).toList();
+  if (hits.isNotEmpty) {
+    line('');
+    line('**命中样本（供人工核对）**');
+    for (final row in hits) {
+      line('- ${row.category}/${row.name}');
+      for (final sample in row.samples) {
+        line('  - `$sample`');
+      }
+    }
+  }
 
   final analysed = rows.where((r) => r.analysed).toList();
   final skipped = rows.where((r) => !r.analysed).toList();
@@ -199,9 +227,12 @@ void _report(List<_Row> rows, {String? outPath}) {
     final tp = malicious.where(predicate).length;
     final fp = negatives.where(predicate).length;
     line('');
+    // 没有负样本时精确度是**算不出来的** —— 印 100% 会让读者以为验证过。
+    final precision =
+        negatives.isEmpty ? 'n/a（没有负样本，精确度无法计算）' : pct(tp, tp + fp);
     line('**$label**：召回 $tp/${malicious.length} '
         '(${pct(tp, malicious.length)})，'
-        '精确度 ${pct(tp, tp + fp)}（$tp 真阳性 / $fp 误报，'
+        '精确度 $precision（$tp 真阳性 / $fp 误报，'
         '负样本 ${negatives.length} 个）');
   }
 
@@ -228,6 +259,30 @@ void _report(List<_Row> rows, {String? outPath}) {
 
   if (outPath != null && outPath.isNotEmpty) {
     File(outPath).writeAsStringSync(buffer.toString());
+  }
+
+  final jsonPath = Platform.environment['CRYPTO_CORPUS_JSON'];
+  if (jsonPath != null && jsonPath.isNotEmpty) {
+    File(jsonPath)
+        .writeAsStringSync(const JsonEncoder.withIndent('  ').convert({
+      'rows': [
+        for (final row in rows)
+          {
+            'category': row.category,
+            'file': row.name,
+            'verdict': row.verdict,
+            'ruleId': row.finding?.ruleId,
+            'severity': row.finding?.severity.name,
+            'signals': row.finding?.messageArgs['signals'],
+            'samples': row.samples,
+            'failure': row.failure,
+          },
+      ],
+      'analysed': analysed.length,
+      'skipped': skipped.length,
+      'malicious': malicious.length,
+      'negatives': negatives.length,
+    }));
   }
 }
 
