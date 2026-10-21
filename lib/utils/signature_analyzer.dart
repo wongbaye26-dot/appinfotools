@@ -212,16 +212,47 @@ class SignatureAnalyzer {
     required String stdout,
     String stderr = '',
   }) {
+    final status = _determineStatus(exitCode, stdout, stderr);
+    // 运行时缺失时 apksigner 根本没跑起来，不能标成「执行过」。
+    final runtimeMissing = status == SignatureStatus.toolUnavailable;
     return SignatureAnalysis(
-      status: _determineStatus(exitCode, stdout, stderr),
+      status: status,
       verifiedSchemes: _parseVerifiedSchemes(stdout),
       signers: _parseSigners(stdout),
       exitCode: exitCode,
       stdout: stdout,
       stderr: stderr,
-      toolExecuted: true,
+      error: runtimeMissing
+          ? 'apksigner could not start (Java runtime missing?): '
+              '${_firstNonEmptyLine(stderr) ?? _firstNonEmptyLine(stdout) ?? 'exit code $exitCode'}'
+          : null,
+      toolExecuted: !runtimeMissing,
     );
   }
+
+  static String? _firstNonEmptyLine(String value) {
+    for (final line in const LineSplitter().convert(value)) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return null;
+  }
+
+  /// 「启动器自己起不来」的输出特征。
+  ///
+  /// 必须**在**退出码判定之前拦下来，原因是 macOS 的 `/usr/bin/java` 是一个
+  /// **桩**：没装 JDK 时它存在、也能执行，但立刻打印
+  /// `Unable to locate a Java Runtime` 并以 **1** 退出 —— 正好和 apksigner 的
+  /// 「验证未通过」撞码。不先拦，缺 JDK 的机器上**每一个包**都会被判成
+  /// 「签名被篡改」，这是最严重的一类误报。
+  static final _runtimeMissingPatterns = <RegExp>[
+    RegExp(r'unable to locate a java runtime', caseSensitive: false),
+    RegExp(r'no java runtime present', caseSensitive: false),
+    // bash / zsh / dash：`line 97: java: command not found` / `java: not found`
+    RegExp(r'\bjava(w)?(\.exe)?\b.*(command )?not found', caseSensitive: false),
+    // cmd.exe：`'java' is not recognized as an internal or external command`
+    RegExp(r'\bjava(w)?(\.exe)?\b.*is not recognized', caseSensitive: false),
+  ];
 
   /// apksigner 的退出码约定：0 = 验证通过，1 = 未通过验证。
   ///
@@ -232,10 +263,16 @@ class SignatureAnalyzer {
     String stdout,
     String stderr,
   ) {
+    final combined = '$stdout\n$stderr';
+    // 先判「启动器起不来」：它可能借用了 1 号退出码（见 _runtimeMissingPatterns）。
+    if (exitCode == 127 ||
+        _runtimeMissingPatterns.any((p) => p.hasMatch(combined))) {
+      return SignatureStatus.toolUnavailable;
+    }
     if (exitCode == 0) return SignatureStatus.verified;
     if (exitCode == 1) return SignatureStatus.verificationFailed;
     // 少数版本在输出中给出明确结论但退出码不同，做一次兜底识别。
-    if ('$stdout\n$stderr'.contains('DOES NOT VERIFY')) {
+    if (combined.contains('DOES NOT VERIFY')) {
       return SignatureStatus.verificationFailed;
     }
     return SignatureStatus.unknown;

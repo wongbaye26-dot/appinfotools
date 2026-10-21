@@ -119,6 +119,73 @@ void main() {
     });
   });
 
+  group('运行时缺失不能被说成「签名被篡改」', () {
+    // apksigner 在 macOS / Linux 上只是一段 `exec java -jar apksigner.jar`
+    // 的 shell 脚本。Java 缺失时它起不来 —— 而 macOS 的 /usr/bin/java 是个
+    // 桩：没装 JDK 时它存在、能执行、以 **1** 退出。1 正是 apksigner 的
+    // 「验证未通过」退出码。不先拦下来，缺 JDK 的机器上每个包都会被判成
+    // 「签名被篡改」。
+    test('macOS java 桩（退出码 1 + Unable to locate a Java Runtime）', () {
+      final a = SignatureAnalyzer.parseResult(
+        exitCode: 1,
+        stdout: '',
+        stderr: 'The operation couldn\'t be completed. '
+            'Unable to locate a Java Runtime.\n'
+            'Please visit http://www.java.com for information on installing '
+            'Java.\n',
+      );
+
+      expect(a.status, SignatureStatus.toolUnavailable);
+      expect(a.status, isNot(SignatureStatus.verificationFailed));
+      expect(a.toolExecuted, isFalse);
+      expect(a.error, contains('Unable to locate a Java Runtime'));
+    });
+
+    test('bash 找不到 java（退出码 127）', () {
+      final a = SignatureAnalyzer.parseResult(
+        exitCode: 127,
+        stdout: '',
+        stderr: '/path/apksigner: line 97: java: command not found\n',
+      );
+
+      expect(a.status, SignatureStatus.toolUnavailable);
+      expect(a.toolExecuted, isFalse);
+    });
+
+    test('dash 的 `java: not found`', () {
+      final a = SignatureAnalyzer.parseResult(
+        exitCode: 127,
+        stdout: '',
+        stderr: '/path/apksigner: 97: java: not found\n',
+      );
+
+      expect(a.status, SignatureStatus.toolUnavailable);
+    });
+
+    test('cmd.exe 的 is not recognized', () {
+      final a = SignatureAnalyzer.parseResult(
+        exitCode: 9009,
+        stdout: '',
+        stderr:
+            "'java' is not recognized as an internal or external command,\n",
+      );
+
+      expect(a.status, SignatureStatus.toolUnavailable);
+    });
+
+    test('普通的验证失败仍判为 verificationFailed（没被新规则吃掉）', () {
+      final a = SignatureAnalyzer.parseResult(
+        exitCode: 1,
+        stdout: _failureOutput,
+        stderr: 'ERROR: APK integrity check failed\n',
+      );
+
+      expect(a.status, SignatureStatus.verificationFailed);
+      expect(a.toolExecuted, isTrue);
+      expect(a.error, isNull);
+    });
+  });
+
   group('SignatureStatus / SignatureAnalysis 语义', () {
     test('工具不可用不是「签名无效」，且标记为未执行工具', () {
       final a = SignatureAnalysis.toolUnavailable('apksigner not found');

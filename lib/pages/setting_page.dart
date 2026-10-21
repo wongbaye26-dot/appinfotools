@@ -14,6 +14,8 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/system_thumbnail.dart';
 import 'package:apk_info_tool/widgets/system_icon_section.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
+import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
+import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/tool_downloader.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
@@ -56,12 +58,28 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   /// 取决于第一次写到哪里，结果不可预测。
   bool _thumbnailBusy = false;
 
+  /// Java 运行时状态。`null` 表示还没探测过。
+  ///
+  /// 它是 `apksigner` 的**隐含依赖**（apksigner 只是 `exec java -jar` 的壳），
+  /// 却不在任何「路径」设置里，用户从界面上完全看不出它缺了。
+  JavaRuntimeInfo _javaInfo = const JavaRuntimeInfo();
+
+  /// `codesign` 的路径；非 macOS 或确实没有时为 `null`。
+  ///
+  /// 不提供配置项：macOS 上它固定在 `/usr/bin/codesign`，配错只会更糟。
+  /// 列出来是为了回答「iOS 签名验证为什么不可用」。
+  String? _codesignPath;
+
   @override
   void initState() {
     super.initState();
     _maxLinesController.text = ref.read(
         uiConfigStateProvider.select((value) => value.textMaxLines.toString()));
     _loadThumbnailStatus();
+    // 两项都是文件系统判断（不拉子进程），同步做完即可 —— 异步化反而会在
+    // widget 测试里留下未完成的 Timer。
+    _javaInfo = JavaRuntime.detect();
+    _codesignPath = IosCodeSignAnalyzer.findCodesignPath();
   }
 
   /// 首次查询缩略图处理器状态。
@@ -94,7 +112,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     switch (toolType) {
       case 'aapt2':
         _autoDetectTool(
-          systemPath: ToolPaths.findInPath(CommandTools.aapt2),
+          systemPath: ToolPaths.findSystemTool(CommandTools.aapt2),
           builtinPath: ToolPaths.getDownloadedAapt2Path(baseDir: downloadDir) ??
               ToolPaths.getBundledToolPath(
                   Platform.isWindows ? 'aapt2.exe' : 'aapt2'),
@@ -104,7 +122,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         break;
       case 'adb':
         _autoDetectTool(
-          systemPath: ToolPaths.findInPath(CommandTools.adb),
+          systemPath: ToolPaths.findSystemTool(CommandTools.adb),
           builtinPath: ToolPaths.getDownloadedAdbPath(baseDir: downloadDir) ??
               ToolPaths.getBundledToolPath(
                   Platform.isWindows ? 'adb.exe' : 'adb'),
@@ -114,7 +132,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         break;
       case 'apksigner':
         _autoDetectTool(
-          systemPath: ToolPaths.findInPath(CommandTools.apksigner),
+          systemPath: ToolPaths.findSystemTool(CommandTools.apksigner),
           builtinPath:
               ToolPaths.getDownloadedApksignerPath(baseDir: downloadDir) ??
                   ToolPaths.getBundledToolPath(
@@ -382,9 +400,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ref.watch(settingStateProvider.select((value) => value.downloadDir));
     final resolvedDownloadDir = ToolPaths.resolveDownloadDir(downloadDir);
 
-    final aapt2System = ToolPaths.findInPath(CommandTools.aapt2);
-    final apksignerSystem = ToolPaths.findInPath(CommandTools.apksigner);
-    final adbSystem = ToolPaths.findInPath(CommandTools.adb);
+    final aapt2System = ToolPaths.findSystemTool(CommandTools.aapt2);
+    final apksignerSystem = ToolPaths.findSystemTool(CommandTools.apksigner);
+    final adbSystem = ToolPaths.findSystemTool(CommandTools.adb);
 
     final aapt2Builtin =
         ToolPaths.getDownloadedAapt2Path(baseDir: resolvedDownloadDir) ??
@@ -480,7 +498,47 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           }),
           onReset: () => resetToDefaultPath('adb'),
         ),
+        // 下面两项没有配置入口，只报状态。原因各不相同：
+        // - Java 是 apksigner 的运行时依赖，换一个 java 路径并不会改变
+        //   「装没装 JDK」这个事实，给用户一个可编辑的框只会误导；
+        // - codesign 在 macOS 上固定 `/usr/bin/codesign`，配错更糟。
+        _buildDependencyStatusRow(
+          title: t.settings.java_runtime,
+          value: _javaInfo.usable
+              ? _javaInfo.displayLabel
+              : t.settings.java_runtime_missing,
+          // 找到路径但跑不起来（macOS 的 java 桩）同样算问题：apksigner 会
+          // 以 1 号退出码失败，看起来像「签名被篡改」。
+          isProblem: !_javaInfo.usable,
+        ),
+        _buildDependencyStatusRow(
+          title: t.settings.codesign_path,
+          value: _codesignPath ?? t.settings.codesign_unavailable,
+          // 非 macOS 上「不可用」是平台事实，不是环境问题，不该标红。
+          isProblem: _codesignPath == null && Platform.isMacOS,
+        ),
       ],
+    );
+  }
+
+  /// 只读的依赖状态行。
+  ///
+  /// 与三个「工具路径」共用 [TitleValueLayout]，但**没有**来源下拉与「自动
+  /// 检测」按钮 —— 这两项不是可以「指向别处」的工具。
+  Widget _buildDependencyStatusRow({
+    required String title,
+    required String value,
+    required bool isProblem,
+  }) {
+    final theme = Theme.of(context);
+    return TitleValueLayout(
+      title: title,
+      value: value,
+      singleLine: true,
+      copyable: false,
+      valueStyle: theme.textTheme.bodyMedium?.copyWith(
+        color: isProblem ? theme.colorScheme.error : null,
+      ),
     );
   }
 
