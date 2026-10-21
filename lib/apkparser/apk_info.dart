@@ -570,6 +570,24 @@ Future<ApkInfo?> getApkInfo(
       }
       iconMs = iconSw.elapsedMilliseconds;
 
+      // **aapt2 只给元数据**。安全分析走的是内建引擎（manifest + DEX +
+      // 原生库），跟用哪个引擎读清单没有关系 —— 这里此前直接 `return`，
+      // 于是把解析引擎设成 aapt2 的用户看到的是「安全 未检测」，还以为
+      // 工具坏了（实测日志里 `getApkInfo: aapt2 exitCode=0` 之后没有任何
+      // 审计记录）。
+      if (Config.enableSecurityAudit.value) {
+        final securitySw = Stopwatch()..start();
+        try {
+          apkInfo.securityResult = await _auditExtractedBaseApk(apk);
+        } catch (e) {
+          // 审计失败不能把整个解析拖垮：元数据已经拿到了，界面照样能显示。
+          log.warning('getApkInfo(aapt2): security audit failed: $e');
+        }
+        log.info('getApkInfo(aapt2): security audit '
+            '${securitySw.elapsedMilliseconds}ms '
+            'findings=${apkInfo.securityResult?.findings.length}');
+      }
+
       totalSw.stop();
       log.info("[PERF] getApkInfo: total=${totalSw.elapsedMilliseconds}ms"
           " | aapt2_badging=${aapt2BadgingMs}ms"
