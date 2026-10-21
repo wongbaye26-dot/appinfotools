@@ -866,7 +866,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     // ===== 安全检测 =====
-    cards.addAll(_buildSecurityCards(result.security));
+    cards.addAll(_buildSecurityCards(result.security, isIos: true));
 
     return cards;
   }
@@ -898,7 +898,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   /// 1. 总览卡片：发现数量与覆盖状态摘要
   /// 2. 发现卡片列表：每条发现独立成卡，含风险徽章、可展开证据
   /// 3. 局限卡片：引擎覆盖不足的说明
-  List<Widget> _buildSecurityCards(SecurityAnalysisResult? security) {
+  List<Widget> _buildSecurityCards(
+    SecurityAnalysisResult? security, {
+    bool isIos = false,
+  }) {
     if (security == null) return const [];
 
     final findings = security.findings;
@@ -911,10 +914,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 「盗 U 风险」单独一项：它跨平台、是用户明确关心的一类风险，
     // 埋在几十条发现里看不见。摘出来之后通用列表里就不重复列了。
     SecurityFinding? cryptoRisk;
+    SecurityFinding? jailbreak;
     for (final f in findings) {
       if (f.category == SecurityCategory.cryptoAsset) {
-        cryptoRisk = f;
-        break;
+        cryptoRisk ??= f;
+      } else if (f.ruleId == 'IOS-JAILBREAK-TOOLKIT') {
+        jailbreak = f;
       }
     }
 
@@ -925,11 +930,19 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 「盗 U 风险」小结（无发现时也显示「未发现」，而不是整块消失）
       _buildCryptoRiskHeader(cryptoRisk),
       if (cryptoRisk != null) SecurityFindingCard(finding: cryptoRisk),
+      // 越狱 / 漏洞利用组件：只有 iOS 包才查得到，Android 侧不显示这块
+      // —— 显示一个永远「未发现」的卡片等于暗示「查过了」。
+      if (isIos) ...[
+        _buildJailbreakHeader(jailbreak),
+        if (jailbreak != null) SecurityFindingCard(finding: jailbreak),
+      ],
     ];
 
     // 按严重程度排序的发现卡片（P0 在前，INFO 在后）
     final sortedFindings = List<SecurityFinding>.from(findings)
-      ..removeWhere((f) => f.category == SecurityCategory.cryptoAsset)
+      ..removeWhere((f) =>
+          f.category == SecurityCategory.cryptoAsset ||
+          f.ruleId == 'IOS-JAILBREAK-TOOLKIT')
       ..sort((a, b) => a.severity.index.compareTo(b.severity.index));
 
     for (final finding in sortedFindings) {
@@ -1065,6 +1078,69 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.hintColor,
                 ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「越狱 / 漏洞利用组件」小结。
+  ///
+  /// 只在分析 iOS 包时出现 —— Android 侧这条规则不会产出发现，
+  /// 显示一个永远「未发现」的卡片等于噪声。
+  Widget _buildJailbreakHeader(SecurityFinding? risk) {
+    final theme = Theme.of(context);
+    final color =
+        risk == null ? theme.hintColor : Theme.of(context).colorScheme.error;
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withValues(alpha: 0.35), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.memory_outlined, size: 20, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    t.security.jailbreak_risk.title,
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    risk == null
+                        ? t.security.jailbreak_risk.state_none
+                        : t.security.jailbreak_risk.state_found,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (risk == null) ...[
+              const SizedBox(height: 8),
+              Text(
+                t.security.jailbreak_risk.not_found,
+                style:
+                    theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
               ),
             ],
           ],

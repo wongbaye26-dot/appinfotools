@@ -929,6 +929,12 @@
       "state_review": "needs review",
       "state_high": "high risk",
       "not_found": "No wallet SDK, seed-phrase / private-key handling, clipboard access or hard-coded on-chain address was found."
+    },
+    "jailbreak_risk": {
+      "title": "Jailbreak components",
+      "state_none": "not found",
+      "state_found": "found",
+      "not_found": "No jailbreak, kernel-exploit or code-signing-bypass component was found."
     }
   },
   "detail_tab": {

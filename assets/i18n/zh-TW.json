@@ -929,6 +929,12 @@
       "state_review": "需核對",
       "state_high": "高風險",
       "not_found": "沒有發現錢包 SDK、助記詞 / 私鑰處理、剪貼簿讀寫或寫死在程式碼裡的鏈上位址。"
+    },
+    "jailbreak_risk": {
+      "title": "越獄 / 漏洞利用元件",
+      "state_none": "未發現",
+      "state_found": "已發現",
+      "not_found": "沒有發現越獄、核心漏洞利用或簽章繞過元件。"
     }
   },
   "detail_tab": {
