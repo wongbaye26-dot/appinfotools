@@ -213,7 +213,9 @@ class IosCallSiteScanner {
     //
     // 只认相邻两条时，实测只有 **29%** 的 selrefs 槽位能被引用到；改成
     // 「按寄存器回溯」后覆盖率显著上升，而且仍然是线性扫描、不需要反汇编。
-    final hits = <int, List<int>>{};
+    // 按**名字**聚合（不是按槽位）：同一张表里槽位唯一，但 stub 那条路
+    // 拿到的也是名字，两边要合并。
+    final hits = <String, List<int>>{};
     final adrpOffset = List<int>.filled(32, -1);
     for (var offset = 0; offset + 4 <= scanLength; offset += 4) {
       final insn = _u32(textBytes, offset);
@@ -238,9 +240,22 @@ class IosCallSiteScanner {
       if (target == null) continue;
       if (target < base || target >= end) continue;
       final slot = (target - base) ~/ 8;
-      if (!selectorOfSlot.containsKey(slot)) continue;
-      (hits[slot] ??= <int>[]).add(text.address + offset);
+      final name = selectorOfSlot[slot];
+      if (name == null) continue;
+      (hits[name] ??= <int>[]).add(text.address + offset);
     }
+
+    // ---- 2b. `__objc_stubs`：试过，不划算 ----
+    //
+    // 理论很顺：桩内 `ADRP+LDR` 取选择子、`BR x16` 跳 `objc_msgSend`，
+    // 扫 `__text` 的 `BL <stub>` 就能归属到调用者。**实测不成立**：
+    // 在 33-v8.5.5 上只多出 1 条引用（8795 → 8796），却因为要再扫一遍
+    // `__text` 找 `BL`，把整个审计从 25 ms 拖到 392 ms（15 倍）。
+    //
+    // 说明这个二进制的框架类调用不是走 `__objc_stubs` 的（更可能是
+    // `objc_msgSend` 直接调用 + `NSClassFromString`），所以不保留这条路径。
+    // 真要提召回率，得先确认目标二进制确实用了 stubs，再考虑把 `BL` 检查
+    // 融进主循环（避免二次扫描）。
 
     // ---- 3. 归属到函数 ----
     var totalReferences = 0;
@@ -252,13 +267,11 @@ class IosCallSiteScanner {
     var attributed = 0;
     final perSelector = <String, List<int>>{};
     for (final entry in hits.entries) {
-      final selector = selectorOfSlot[entry.key];
-      if (selector == null) continue;
       for (final address in entry.value) {
         final function = _functionOf(starts, address);
         if (function == null) continue;
         attributed++;
-        (perSelector[selector] ??= <int>[]).add(address);
+        (perSelector[entry.key] ??= <int>[]).add(address);
       }
     }
 
