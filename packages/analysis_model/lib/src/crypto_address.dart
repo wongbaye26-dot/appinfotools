@@ -25,6 +25,8 @@
 /// 内存地址）会被当成地址，规则就会在几乎所有应用上出现。
 library;
 
+import 'dart:typed_data';
+
 /// 地址所属的链。报告里要区分 —— TRON 地址和 EVM 地址的处理方式不同。
 enum CryptoAddressFormat {
   /// `0x` + 40 位十六进制。
@@ -132,6 +134,233 @@ bool isKnownContractAddress(CryptoAddressHit hit) => switch (hit.format) {
         knownContractAddresses.contains(hit.address),
     };
 
+// ---- 校验：不再靠「长得像」判断地址 ----
+
+/// SHA-256（FIPS 180-4）。
+///
+/// `analysis_model` 是**零依赖**包，不能引 `package:crypto`；TRON 的
+/// base58check 与 bech32 都需要校验和，所以自带一份。
+Uint8List _sha256(List<int> message) {
+  const k = <int>[
+    0x428a2f98,
+    0x71374491,
+    0xb5c0fbcf,
+    0xe9b5dba5,
+    0x3956c25b,
+    0x59f111f1,
+    0x923f82a4,
+    0xab1c5ed5,
+    0xd807aa98,
+    0x12835b01,
+    0x243185be,
+    0x550c7dc3,
+    0x72be5d74,
+    0x80deb1fe,
+    0x9bdc06a7,
+    0xc19bf174,
+    0xe49b69c1,
+    0xefbe4786,
+    0x0fc19dc6,
+    0x240ca1cc,
+    0x2de92c6f,
+    0x4a7484aa,
+    0x5cb0a9dc,
+    0x76f988da,
+    0x983e5152,
+    0xa831c66d,
+    0xb00327c8,
+    0xbf597fc7,
+    0xc6e00bf3,
+    0xd5a79147,
+    0x06ca6351,
+    0x14292967,
+    0x27b70a85,
+    0x2e1b2138,
+    0x4d2c6dfc,
+    0x53380d13,
+    0x650a7354,
+    0x766a0abb,
+    0x81c2c92e,
+    0x92722c85,
+    0xa2bfe8a1,
+    0xa81a664b,
+    0xc24b8b70,
+    0xc76c51a3,
+    0xd192e819,
+    0xd6990624,
+    0xf40e3585,
+    0x106aa070,
+    0x19a4c116,
+    0x1e376c08,
+    0x2748774c,
+    0x34b0bcb5,
+    0x391c0cb3,
+    0x4ed8aa4a,
+    0x5b9cca4f,
+    0x682e6ff3,
+    0x748f82ee,
+    0x78a5636f,
+    0x84c87814,
+    0x8cc70208,
+    0x90befffa,
+    0xa4506ceb,
+    0xbef9a3f7,
+    0xc67178f2,
+  ];
+  const mask = 0xffffffff;
+  int rotr(int x, int n) => ((x >> n) | (x << (32 - n))) & mask;
+
+  var h0 = 0x6a09e667;
+  var h1 = 0xbb67ae85;
+  var h2 = 0x3c6ef372;
+  var h3 = 0xa54ff53a;
+  var h4 = 0x510e527f;
+  var h5 = 0x9b05688c;
+  var h6 = 0x1f83d9ab;
+  var h7 = 0x5be0cd19;
+
+  final bitLength = message.length * 8;
+  final padded = <int>[...message, 0x80];
+  while (padded.length % 64 != 56) {
+    padded.add(0);
+  }
+  for (var i = 7; i >= 0; i--) {
+    padded.add((bitLength >> (i * 8)) & 0xff);
+  }
+
+  final w = List<int>.filled(64, 0);
+  for (var offset = 0; offset < padded.length; offset += 64) {
+    for (var i = 0; i < 16; i++) {
+      final j = offset + i * 4;
+      w[i] = (padded[j] << 24) |
+          (padded[j + 1] << 16) |
+          (padded[j + 2] << 8) |
+          padded[j + 3];
+    }
+    for (var i = 16; i < 64; i++) {
+      final s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
+      final s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & mask;
+    }
+
+    var a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (var i = 0; i < 64; i++) {
+      final s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      final ch = (e & f) ^ ((~e & mask) & g);
+      final temp1 = (h + s1 + ch + k[i] + w[i]) & mask;
+      final s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      final maj = (a & b) ^ (a & c) ^ (b & c);
+      final temp2 = (s0 + maj) & mask;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) & mask;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) & mask;
+    }
+
+    h0 = (h0 + a) & mask;
+    h1 = (h1 + b) & mask;
+    h2 = (h2 + c) & mask;
+    h3 = (h3 + d) & mask;
+    h4 = (h4 + e) & mask;
+    h5 = (h5 + f) & mask;
+    h6 = (h6 + g) & mask;
+    h7 = (h7 + h) & mask;
+  }
+
+  final out = Uint8List(32);
+  final words = [h0, h1, h2, h3, h4, h5, h6, h7];
+  for (var i = 0; i < 8; i++) {
+    out[i * 4] = (words[i] >> 24) & 0xff;
+    out[i * 4 + 1] = (words[i] >> 16) & 0xff;
+    out[i * 4 + 2] = (words[i] >> 8) & 0xff;
+    out[i * 4 + 3] = words[i] & 0xff;
+  }
+  return out;
+}
+
+/// base58 解码（Bitcoin 字母表）。非法字符返回 `null`。
+List<int>? _base58Decode(String value) {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  var number = BigInt.zero;
+  for (var i = 0; i < value.length; i++) {
+    final index = alphabet.indexOf(value[i]);
+    if (index < 0) return null;
+    number = number * BigInt.from(58) + BigInt.from(index);
+  }
+  final bytes = <int>[];
+  final base = BigInt.from(256);
+  while (number > BigInt.zero) {
+    bytes.insert(0, (number % base).toInt());
+    number = number ~/ base;
+  }
+  // 前导 '1' 代表前导零字节。
+  for (var i = 0; i < value.length && value[i] == '1'; i++) {
+    bytes.insert(0, 0);
+  }
+  return bytes;
+}
+
+/// TRON 地址是否通过 **base58check** 校验。
+///
+/// 这是把「长得像地址」变成「确实是地址」的关键一步：Swift 的符号名
+/// （`TaskModifier2VAA12ViewModifierAAMc`）恰好满足「T + 33 位 base58」，
+/// 正则分不出来，校验和分得出来 —— 实测在真实样本上就误报过一次。
+bool _tronChecksumValid(String address) {
+  final raw = _base58Decode(address);
+  if (raw == null || raw.length != 25) return false;
+  final payload = raw.sublist(0, 21);
+  final checksum = raw.sublist(21);
+  final digest = _sha256(_sha256(payload));
+  for (var i = 0; i < 4; i++) {
+    if (digest[i] != checksum[i]) return false;
+  }
+  return true;
+}
+
+const String _bech32Charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+int _bech32Polymod(List<int> values) {
+  const generator = [
+    0x3b6a57b2,
+    0x26508e6d,
+    0x1ea119fa,
+    0x3d4233dd,
+    0x2a1462b3,
+  ];
+  var checksum = 1;
+  for (final value in values) {
+    final top = checksum >> 25;
+    checksum = ((checksum & 0x1ffffff) << 5) ^ value;
+    for (var i = 0; i < 5; i++) {
+      if ((top >> i) & 1 != 0) checksum ^= generator[i];
+    }
+  }
+  return checksum;
+}
+
+/// bech32 地址是否通过校验和（BIP-173）。
+bool _bech32Valid(String address) {
+  final separator = address.lastIndexOf('1');
+  if (separator < 1 || separator + 7 > address.length) return false;
+  final hrp = address.substring(0, separator);
+  final data = <int>[];
+  for (final char in address.substring(separator + 1).split('')) {
+    final value = _bech32Charset.indexOf(char);
+    if (value < 0) return false;
+    data.add(value);
+  }
+  final expanded = <int>[
+    for (final unit in hrp.codeUnits) unit >> 5,
+    0,
+    for (final unit in hrp.codeUnits) unit & 31,
+  ];
+  return _bech32Polymod([...expanded, ...data]) == 1;
+}
+
 /// 从一条字符串里挑出所有地址字面量。
 ///
 /// 结果**按出现顺序**去重；调用方自己决定保留多少条。
@@ -148,12 +377,16 @@ List<CryptoAddressHit> findCryptoAddresses(String value) {
   }
   for (final match in _tron.allMatches(value)) {
     final address = match.group(0)!;
+    // **校验和必须过**：Swift 符号名（`TaskModifier2VAA12ViewModifierAAMc`）
+    // 恰好满足「T + 33 位 base58」，正则分不出来。
+    if (!_tronChecksumValid(address)) continue;
     if (seen.add(address)) {
       hits.add(CryptoAddressHit(CryptoAddressFormat.tron, address));
     }
   }
   for (final match in _bitcoinBech32.allMatches(value)) {
     final address = match.group(0)!;
+    if (!_bech32Valid(address)) continue;
     if (seen.add(address)) {
       hits.add(CryptoAddressHit(CryptoAddressFormat.bitcoin, address));
     }

@@ -247,7 +247,7 @@ void main() {
             strings: [
               'Lorg/web3j/crypto/ECKeyPair;',
               'getPrimaryClip',
-              'TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt',
+              'TA4Y62o6YC2Zsck9rZVGTvqW1AQ7X9zTnj',
             ],
           ),
       // 导出组件上声明了链接 scheme。
@@ -476,7 +476,7 @@ void main() {
       final finding = cryptoFinding(auditNative([
         'secp256k1_ecdsa_sign_recoverable',
         'getPrimaryClip',
-        'TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt',
+        'TA4Y62o6YC2Zsck9rZVGTvqW1AQ7X9zTnj',
       ]));
       expect(finding, isNotNull);
       expect(finding!.severity, SecuritySeverity.p2);

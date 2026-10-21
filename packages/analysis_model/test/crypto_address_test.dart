@@ -91,6 +91,43 @@ void main() {
     expect(hits, hasLength(1));
   });
 
+  group('校验和：不再靠「长得像」判断地址', () {
+    test('Swift 符号名不是 TRON 地址（真实样本上误报过）', () {
+      // `TaskModifier2VAA12ViewModifierAAMc` 恰好是「T + 33 位 base58」，
+      // 正则分不出来；base58check 的校验和分得出来。
+      expect(
+        findCryptoAddresses('TaskModifier2VAA12ViewModifierAAMc'),
+        isEmpty,
+      );
+    });
+
+    test('校验和不对的 34 位串不算地址', () {
+      expect(
+        findCryptoAddresses('TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt'),
+        isEmpty,
+      );
+    });
+
+    test('校验和正确的地址仍然保留', () {
+      final hits = findCryptoAddresses('TA4Y62o6YC2Zsck9rZVGTvqW1AQ7X9zTnj');
+      expect(hits, hasLength(1));
+      expect(hits.single.format, CryptoAddressFormat.tron);
+    });
+
+    test('bech32 校验和不对的不算地址', () {
+      // 改掉最后一位，校验和必然不成立。
+      expect(
+        findCryptoAddresses('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq')
+            .isNotEmpty,
+        isTrue,
+      );
+      expect(
+        findCryptoAddresses('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdp'),
+        isEmpty,
+      );
+    });
+  });
+
   group('公开合约地址不算「写死的收款地址」', () {
     test('USDT-TRC20 合约地址被过滤', () {
       // 正规 TRON 钱包都会写死这个常量。不过滤的话，「钱包 + 剪贴板 + 写死
@@ -127,7 +164,7 @@ void main() {
     test('普通收款地址仍然保留', () {
       final out = <CryptoAddressHit>{};
       collectCryptoAddresses(
-        'TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt',
+        'TA4Y62o6YC2Zsck9rZVGTvqW1AQ7X9zTnj',
         out,
       );
       expect(out, hasLength(1));
