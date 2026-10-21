@@ -75,11 +75,23 @@ class ApkSigningSchemes {
   /// 解析失败的原因；`null` 表示成功读到了结构（**不代表签名有效**）。
   final String? failure;
 
-  const ApkSigningSchemes({this.pairIds = const [], this.failure});
+  /// v2 / v3 签名块里**第一个签名者的证书**（X.509 DER 原始字节）。
+  ///
+  /// `null` 表示没读到：没有 v2/v3 块、块结构不对、或证书字段解析失败。
+  /// **这只是「证书长什么样」，不是「签名有效」** —— 有效性仍然要 apksigner
+  /// 说了算，这里给出的指纹只用于「拿去和官方公布的比对」。
+  final Uint8List? signingCertificate;
+
+  const ApkSigningSchemes({
+    this.pairIds = const [],
+    this.failure,
+    this.signingCertificate,
+  });
 
   const ApkSigningSchemes.unreadable(String reason)
       : pairIds = const [],
-        failure = reason;
+        failure = reason,
+        signingCertificate = null;
 
   bool get parsed => failure == null;
 
@@ -192,6 +204,8 @@ ApkSigningSchemes parseApkSigningBlock({
 
   // ---- 4. 逐个 pair ----
   final pairIds = <int>[];
+  // v2 / v3 / v3.1 的值区间（同一个 id 只记第一次出现）。
+  final schemeValues = <int, (int, int)>{};
   var cursor = 8;
   final pairsEnd = block.length - 24;
   while (cursor + 12 <= pairsEnd) {
@@ -203,9 +217,87 @@ ApkSigningSchemes parseApkSigningBlock({
     }
     final id = _u32(block, cursor + 8);
     if (!pairIds.contains(id)) pairIds.add(id);
+    // 值是 id 之后的 length-4 字节。
+    if (id == ApkSignatureBlockId.v2 ||
+        id == ApkSignatureBlockId.v3 ||
+        id == ApkSignatureBlockId.v31) {
+      schemeValues.putIfAbsent(id, () => (cursor + 12, cursor + 8 + length));
+    }
     cursor += 8 + length;
   }
-  return ApkSigningSchemes(pairIds: pairIds);
+
+  // 证书：优先 v2（轮换后 v3 里可能有多个签名者，v2 更稳定），再 v3 / v3.1。
+  Uint8List? certificate;
+  for (final id in const [
+    ApkSignatureBlockId.v31,
+    ApkSignatureBlockId.v3,
+    ApkSignatureBlockId.v2,
+  ]) {
+    final range = schemeValues[id];
+    if (range == null) continue;
+    certificate = _firstCertificate(block, range.$1, range.$2);
+    if (certificate != null) break;
+  }
+
+  return ApkSigningSchemes(pairIds: pairIds, signingCertificate: certificate);
+}
+
+/// 从 v2 / v3 的 pair 值里取出第一个签名者的证书（DER）。
+///
+/// 结构（AOSP `ApkSigningBlockUtils`）：
+///
+/// ```
+/// scheme        := [len]signers                 <- pair 值的第一层
+/// signers       := signer*
+/// signer        := [len]signed-data [len]signatures [len]public-key      (v2)
+///                  [len]signed-data minSdk maxSdk [len]signatures [len]public-key  (v3)
+/// signed-data   := [len]digests [len]certificates [len]attributes
+/// certificates  := ([len]x509)*
+/// ```
+///
+/// **第一层最容易漏**：pair 值不是 signer，而是「signer 序列」。少剥这一层
+/// 会稳定地落到 digest 记录里 —— 拿到的字节以 `03 01 00 00`（签名算法 id
+/// 0x0103 = RSA-PKCS1-SHA256）开头，而不是 DER 的 `30 82`。实测踩过。
+///
+/// v3 只是把 minSdk / maxSdk 插在 signed-data **之后**，所以「读第一个
+/// length-prefixed 字段」对两者都成立 —— 不需要区分版本。
+///
+/// 所有长度都来自不可信输入，每一步都做边界检查；任何一步不成立就返回
+/// `null`，**绝不猜一个证书出来**。
+Uint8List? _firstCertificate(Uint8List block, int start, int end) {
+  if (start < 0 || end > block.length || end - start < 8) return null;
+
+  final signers = _slice(block, start, end);
+  if (signers == null) return null;
+  final signer = _slice(block, signers.$1, signers.$2);
+  if (signer == null) return null;
+  final signedData = _slice(block, signer.$1, signer.$2);
+  if (signedData == null) return null;
+
+  // signed-data 的第一个字段是 digests，跳过。
+  final digests = _slice(block, signedData.$1, signedData.$2);
+  if (digests == null) return null;
+  final certificates = _slice(block, digests.$2, signedData.$2);
+  if (certificates == null) return null;
+
+  final cert = _slice(block, certificates.$1, certificates.$2);
+  if (cert == null) return null;
+  // 一个 X.509 证书至少几十字节；太短说明长度被伪造。
+  if (cert.$2 - cert.$1 < 32) return null;
+  return Uint8List.sublistView(block, cert.$1, cert.$2);
+}
+
+/// 读一个 uint32 长度前缀字段，返回 `(内容起点, 内容终点)`。
+///
+/// 越界、长度为 0、长度超过剩余空间时返回 `null`。
+(int, int)? _slice(Uint8List data, int start, int end) {
+  if (start < 0 || start + 4 > end || end > data.length) return null;
+  final length = _u32(data, start);
+  if (length <= 0) return null;
+  final contentStart = start + 4;
+  final contentEnd = contentStart + length;
+  if (contentEnd > end || contentEnd > data.length) return null;
+  return (contentStart, contentEnd);
 }
 
 const List<int> _kMagic = [

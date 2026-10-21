@@ -209,7 +209,9 @@
     "status_not_checked": "not run (disabled in settings)",
     "failed_code_modified_hint": "codesign reports a code-hash mismatch (not a resource-seal mismatch). The usual cause is that this bundle was decrypted or repackaged: once the binary is decrypted or patched, the original signature cannot validate, while the app may still run. To double-check independently, unzip the IPA and run `codesign --verify --strict` on the same .app.",
     "failed_generic_hint": "Signature verification did not pass. Read the raw output below: 'a sealed resource is missing or invalid' usually means files were added or removed; 'code or signature have been modified' means the binary was modified.",
-    "failed_decrypted_hint": "The main executable is decrypted (cryptid=0), which is the signature of a dumped build: once the code section is decrypted, the bytes the original signature covered have changed, so it can never validate. The app may still run, but 'the signature is valid' no longer holds."
+    "failed_decrypted_hint": "The main executable is decrypted (cryptid=0), which is the signature of a dumped build: once the code section is decrypted, the bytes the original signature covered have changed, so it can never validate. The app may still run, but 'the signature is valid' no longer holds.",
+    "local_cert_sha256": "Signing certificate SHA-256 (read locally from the v2/v3 block): {value}",
+    "local_cert_hint": "This is a structural fact, not a verdict: it proves which certificate is in the signing block, not that the signature is valid. Compare it with the fingerprint published by the developer."
   },
   "parse": {
     "signature_verify_failed": "Signature verification failed",
@@ -791,7 +793,9 @@
       "ios_jailbreak_toolkit_limitation": "Detected by component name only (framework directory names and dylib paths). A privately rebuilt exploit with a different name, or one linked statically with no residual strings, is not visible here. Absence of this finding does not prove the app is clean.",
       "ios_repackaged": "This bundle was modified after it was built: {dylibs} sit(s) directly in the .app root, outside Frameworks/. Apps built normally keep their dylibs under Frameworks/; a library at the bundle root is the standard footprint of an injected tweak or a re-signed repack.",
       "ios_repackaged_review": "If you did not inject this library yourself, treat it as untrusted code running inside the app's sandbox: it can read everything the app can read (including credentials and clipboard contents) and talk to the network on its own. Cross-check with the signature verdict — a re-signed or decrypted bundle usually fails verification as well.",
-      "ios_repackaged_limitation": "Only dylibs sitting directly at the .app root are counted. A repack that merely renames the bundle, or one that patches the main binary in place, leaves no extra file and is not visible here — for those, the signature verdict is the only signal. Nor can static analysis tell what the injected library does."
+      "ios_repackaged_limitation": "Only dylibs sitting directly at the .app root are counted. A repack that merely renames the bundle, or one that patches the main binary in place, leaves no extra file and is not visible here — for those, the signature verdict is the only signal. Nor can static analysis tell what the injected library does.",
+      "ios_upload_api": "Upload-related code found: the multipart/form-data construction used to attach files or binary payloads. This only proves the upload capability exists; it does not prove sensitive data was uploaded.",
+      "ios_upload_api_confirm_sink": "Confirm what is uploaded and what triggers it. A multipart body is also how crash reports, log bundles and avatar uploads are sent, so the capability alone is not a finding."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -1041,7 +1045,8 @@
       "ios_entitlements": "Entitlements",
       "android_nativeHardening": "Native library hardening",
       "android_sdkInventory": "Third-party SDK inventory",
-      "android_signature": "Signature materials"
+      "android_signature": "Signature materials",
+      "ios_machoSites": "Mach-O call sites"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",
@@ -1072,7 +1077,9 @@
       "android_signature_unreadable": "The APK Signing Block could not be read ({reason}): the signature schemes are unknown",
       "android_signature_v1_undetermined": "The v2+ signing block was read, but whether a v1 (JAR) signature exists could not be determined",
       "android_cleartext_policy_target_sdk_unknown": "Neither android:usesCleartextTraffic nor targetSdkVersion could be read, so the platform default for cleartext traffic cannot be derived",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged",
+      "ios_macho_call_sites": "This binary has {functions} functions, but none of them were attributed: iOS analysis has no instruction-level disassembly, so \"which function calls this selector\" cannot be answered. Clues are reported as \"referenced\", not \"called\".",
+      "ios_macho_call_sites_unknown": "iOS analysis has no instruction-level disassembly, so \"which function calls this selector\" cannot be answered. Clues are reported as \"referenced\", not \"called\"."
     }
   },
   "diff": {

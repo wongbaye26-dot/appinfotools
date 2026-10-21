@@ -256,6 +256,18 @@ class MachOImage {
   /// 或符号表存在但读不出条目（见 `MachOFile.diagnostics`）。
   final List<MachOSymbol> symbols;
 
+  /// `LC_FUNCTION_STARTS` 解出的函数起始地址（按地址升序）。
+  ///
+  /// 空列表有两种含义，**必须分开**：没有 `LC_FUNCTION_STARTS`，或表解不出来。
+  /// 因此判「有没有函数」要用 [hasFunctionStarts]，不要用 `isEmpty`。
+  final List<int> functionStarts;
+
+  /// 本次是否真的读到了函数起始表。
+  final bool hasFunctionStarts;
+
+  /// 函数个数。读不到表时为 `null` —— 不是 0。
+  int? get functionCount => hasFunctionStarts ? functionStarts.length : null;
+
   /// 本次是否**真的读取**过符号表。
   ///
   /// 为 `false` 时，「没有导入符号」不能读成「没有能力」—— 那是「没查」。
@@ -281,6 +293,8 @@ class MachOImage {
     this.rpaths = const [],
     this.segments = const [],
     this.chainedFixups,
+    this.functionStarts = const [],
+    this.hasFunctionStarts = false,
     this.entryOffset,
     this.symtab,
     this.symbols = const [],
@@ -468,6 +482,13 @@ class MachOParser {
   static const int _lcVersionMinIphoneos = 0x25;
   static const int _lcVersionMinTvos = 0x2F;
   static const int _lcVersionMinWatchos = 0x30;
+
+  /// `LC_FUNCTION_STARTS`：函数起始地址表（ULEB128 增量编码）。
+  ///
+  /// 这是**唯一**能在不做反汇编的前提下拿到「这个二进制有多少个函数」的
+  /// 结构信息。它不告诉我们函数里调用了什么，但给了分母 —— 「共 N 个函数，
+  /// 其中 0 个做了调用点归属」比「没有调用点分析」这句话有用得多。
+  static const int _lcFunctionStarts = 0x26;
 
   /// `nlist_64` / `nlist` 的字节数。
   static const int _nlist64Size = 16;
@@ -736,6 +757,8 @@ class MachOParser {
     int? entryOffset;
     MachOSymtab? symtab;
     ChainedFixups? chainedFixups;
+    int? functionStartOffset;
+    int? functionStartSize;
 
     final commandsEnd = base + headerSize + sizeofcmds;
     var cursor = base + headerSize;
@@ -799,6 +822,16 @@ class MachOParser {
                   ChainedFixups(dataOffset: dataoff, dataSize: datasize);
             }
           }
+        case _lcFunctionStarts:
+          // `linkedit_data_command`：cmd + cmdsize + dataoff + datasize。
+          if (cmdsize >= 16) {
+            final dataoff = _readUint32(data, cursor + 8, byteOrder);
+            final datasize = _readUint32(data, cursor + 12, byteOrder);
+            if (dataoff != null && datasize != null) {
+              functionStartOffset = dataoff;
+              functionStartSize = datasize;
+            }
+          }
         case _lcUuid:
           if (cmdsize >= 24) {
             final bytes = data.sublist(cursor + 8, cursor + 24);
@@ -837,6 +870,34 @@ class MachOParser {
       }
 
       cursor += cmdsize;
+    }
+
+    // 函数起始表：ULEB128 增量编码，基址是 `__TEXT` 段的 vmaddr。
+    //
+    // 第一个值是「首个函数相对 `__TEXT` 的偏移」，之后每个值是**相对前一个
+    // 函数**的增量，末尾以 0 结束。解码失败（越界、表被截断）时返回空列表，
+    // 而不是猜一个数字 —— 「不知道有多少函数」与「0 个函数」是两件事。
+    var functionStarts = const <int>[];
+    var functionStartsRead = false;
+    if (functionStartOffset != null && functionStartSize != null) {
+      int? textVmaddr;
+      for (final seg in segments) {
+        if (seg.name == '__TEXT') {
+          textVmaddr = seg.vmAddress;
+          break;
+        }
+      }
+      if (textVmaddr != null) {
+        functionStartsRead = true;
+        functionStarts = _readFunctionStarts(
+          data,
+          base: base,
+          available: available,
+          dataOffset: functionStartOffset,
+          dataSize: functionStartSize,
+          textVmaddr: textVmaddr,
+        );
+      }
     }
 
     // 读符号表。**偏移是相对本切片起始的** —— fat 里每个切片都是一份完整的
@@ -878,6 +939,8 @@ class MachOParser {
       rpaths: rpaths,
       segments: segments,
       chainedFixups: chainedFixups,
+      functionStarts: functionStarts,
+      hasFunctionStarts: functionStartsRead,
       entryOffset: entryOffset,
       symtab: symtab,
       symbols: symbols,
@@ -1143,6 +1206,50 @@ class MachOParser {
         (data[offset + 1] << 16) |
         (data[offset + 2] << 8) |
         data[offset + 3];
+  }
+
+  /// 解码 `LC_FUNCTION_STARTS`（ULEB128 增量表）。
+  ///
+  /// 格式：第一个值是首个函数相对 `__TEXT` vmaddr 的偏移，之后每个值是
+  /// **相对前一个函数**的增量，遇到 0 结束。
+  ///
+  /// 任何一步越界都返回已解出的部分，不抛异常 —— 函数表只是**分母**，
+  /// 不值得为它让整个解析失败。表被截断时返回值会偏少，调用方在 limitation
+  /// 里说明这一点。
+  static List<int> _readFunctionStarts(
+    Uint8List data, {
+    required int base,
+    required int available,
+    required int dataOffset,
+    required int dataSize,
+    required int textVmaddr,
+  }) {
+    final start = base + dataOffset;
+    final end = start + dataSize;
+    final limit = base + available;
+    if (start < 0 || end > data.length || end > limit || end <= start) {
+      return const [];
+    }
+
+    final result = <int>[];
+    var cursor = start;
+    var address = textVmaddr;
+    while (cursor < end) {
+      var value = 0;
+      var shift = 0;
+      var byte = 0;
+      do {
+        if (cursor >= end || shift > 28) return result;
+        byte = data[cursor++];
+        value |= (byte & 0x7f) << shift;
+        shift += 7;
+      } while ((byte & 0x80) != 0);
+
+      if (value == 0) break; // 终止符
+      address += value;
+      result.add(address);
+    }
+    return result;
   }
 
   static int? _readUint32(Uint8List data, int offset, MachOByteOrder order) {

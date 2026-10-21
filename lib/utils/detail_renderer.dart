@@ -118,6 +118,13 @@ class DetailRenderer {
 
     if (analysis.status == SignatureStatus.toolUnavailable) {
       sb.writeln(t.signature.tool_hint);
+      // 没装工具时**仍然**能给出证书指纹 —— 那是结构事实，不需要密码学验证。
+      // 但必须说清楚它不是「签名有效」的证据，否则会被当成结论用。
+      final local = analysis.localCertificateSha256;
+      if (local != null && local.isNotEmpty) {
+        sb.writeln(t.signature.local_cert_sha256(value: local));
+        sb.writeln(t.signature.local_cert_hint);
+      }
     }
 
     if (analysis.verifiedSchemes.isNotEmpty) {

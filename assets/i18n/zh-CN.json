@@ -216,7 +216,9 @@
     "status_not_checked": "未执行（设置中已关闭）",
     "failed_code_modified_hint": "codesign 报的是「代码哈希与签名不符」，不是「包内资源被改」。最常见的原因是这个包被砸壳或重打包过 —— 二进制一旦被解密或改写，原签名必然失效，而应用本身仍可能正常运行。要独立复核：用 unzip 解出 Payload，对同一个 .app 再跑一次 `codesign --verify --strict`。",
     "failed_generic_hint": "签名校验未通过。请对照下面的原始输出判断：`a sealed resource is missing or invalid` 通常是包内文件被增删；`code or signature have been modified` 通常是二进制被改动。",
-    "failed_decrypted_hint": "主可执行文件已解密（cryptid=0）—— 这是砸壳包的典型特征：代码段被解密后，原始签名覆盖的字节已经改变，签名必然失效。应用仍可能正常运行，但「签名有效」这条保证不再成立。"
+    "failed_decrypted_hint": "主可执行文件已解密（cryptid=0）—— 这是砸壳包的典型特征：代码段被解密后，原始签名覆盖的字节已经改变，签名必然失效。应用仍可能正常运行，但「签名有效」这条保证不再成立。",
+    "local_cert_sha256": "签名证书 SHA-256（本地从 v2/v3 签名块读出）：{value}",
+    "local_cert_hint": "这是结构事实，不是结论：它只说明签名块里是哪张证书，不说明签名有效。可拿去和开发者公布的指纹比对。"
   },
   "parse": {
     "signature_verify_failed": "签名验证失败",
@@ -791,7 +793,9 @@
       "ios_jailbreak_toolkit_limitation": "只按**组件名**识别（框架目录名与 dylib 路径）。改名后重新编译的私有分支、或静态链接进主二进制且没留下字符串的漏洞代码，这里看不到。**没有这条发现不等于这个包干净。**",
       "ios_repackaged": "这个包在构建之后被改动过：{dylibs} 直接放在 .app 根目录下，不在 Frameworks/ 里。正常构建的应用把动态库放在 Frameworks/；根目录下的库是注入插件或重签打包的标准痕迹。",
       "ios_repackaged_review": "如果不是你自己注入的这个库，请把它当成运行在应用沙箱内的不可信代码：它能读到应用能读到的一切（包括凭据与剪贴板内容），也能自行联网。请与签名结论对照看 —— 重签或砸壳过的包通常验证也通不过。",
-      "ios_repackaged_limitation": "只统计直接位于 .app 根目录的 dylib。只改 bundle 名、或就地修改主二进制的重打包不会多出文件，这里看不到 —— 那种情况只能靠签名结论。静态分析也无法判断注入的库具体做了什么。"
+      "ios_repackaged_limitation": "只统计直接位于 .app 根目录的 dylib。只改 bundle 名、或就地修改主二进制的重打包不会多出文件，这里看不到 —— 那种情况只能靠签名结论。静态分析也无法判断注入的库具体做了什么。",
+      "ios_upload_api": "代码里有上传相关的实现：用于附带文件或二进制数据的 multipart/form-data 构造。这只证明「具备上传能力」，不证明上传了敏感数据。",
+      "ios_upload_api_confirm_sink": "确认上传的是什么、由什么触发。崩溃日志、日志包、头像上传同样走 multipart，单凭这项能力不构成发现。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -1041,7 +1045,8 @@
       "ios_entitlements": "授权项",
       "android_nativeHardening": "原生库加固",
       "android_sdkInventory": "第三方 SDK 清单",
-      "android_signature": "签名材料"
+      "android_signature": "签名材料",
+      "ios_machoSites": "Mach-O 调用点"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",
@@ -1072,7 +1077,9 @@
       "android_signature_unreadable": "APK 签名块读不出来（{reason}），签名方案未知",
       "android_signature_v1_undetermined": "v2+ 签名块已读取，但无法判定是否存在 v1（JAR）签名",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 与 targetSdkVersion 都没读到，无法推出平台对明文流量的默认策略",
-      "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略"
+      "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略",
+      "ios_macho_call_sites": "这个二进制有 {functions} 个函数，但一个都没有做归属：iOS 侧没有指令级反汇编，回答不了「哪个函数调用了这个选择子」。线索只报「被引用」，不报「被调用」。",
+      "ios_macho_call_sites_unknown": "iOS 侧没有指令级反汇编，回答不了「哪个函数调用了这个选择子」。线索只报「被引用」，不报「被调用」。"
     }
   },
   "diff": {

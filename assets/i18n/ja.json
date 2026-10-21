@@ -193,7 +193,9 @@
     "diagnostics": "診断情報",
     "failed_code_modified_hint": "codesign が報告しているのは「コードハッシュが署名と一致しない」であり、「バンドル内のリソースが変更された」ではありません。最も多い原因は、このバンドルが復号（ダンプ）または再パッケージされたことです。バイナリが復号・改変されると元の署名は必ず無効になりますが、アプリ自体は動作することがあります。独立して確認するには、IPA を unzip して同じ .app に対して `codesign --verify --strict` を実行してください。",
     "failed_generic_hint": "署名の検証に合格しませんでした。下の生出力で判断してください。`a sealed resource is missing or invalid` はバンドル内のファイルが増減された場合、`code or signature have been modified` はバイナリが改変された場合に多いです。",
-    "failed_decrypted_hint": "メイン実行ファイルが復号されています（cryptid=0）。これはダンプ（脱獄）されたビルドの典型で、コードセクションが復号されると元の署名が対象としていたバイト列が変わるため、署名は必ず無効になります。アプリ自体は動作することがありますが、「署名が有効」という保証は失われます。"
+    "failed_decrypted_hint": "メイン実行ファイルが復号されています（cryptid=0）。これはダンプ（脱獄）されたビルドの典型で、コードセクションが復号されると元の署名が対象としていたバイト列が変わるため、署名は必ず無効になります。アプリ自体は動作することがありますが、「署名が有効」という保証は失われます。",
+    "local_cert_sha256": "署名証明書の SHA-256（v2/v3 ブロックからローカルで読み取り）：{value}",
+    "local_cert_hint": "これは構造的な事実であり、判定ではありません。署名ブロックにどの証明書が入っているかを示すだけで、署名が有効であることは示しません。開発者が公開している指紋と比較してください。"
   },
   "parse": {
     "signature_verify_failed": "署名検証失敗",
@@ -796,7 +798,9 @@
       "ios_jailbreak_toolkit_limitation": "**コンポーネント名**（フレームワークのディレクトリ名と dylib パス）だけで判定しています。名前を変えて再ビルドした非公開版や、静的リンクされて文字列が残っていないコードは表示されません。**この指摘がないことは、クリーンである証明ではありません。**",
       "ios_repackaged": "このバンドルはビルド後に改変されています：{dylibs} が Frameworks/ の外、.app のルート直下に置かれています。通常のアプリは dylib を Frameworks/ に置きます。ルート直下のライブラリは、tweak の注入や再署名パッケージの典型的な痕跡です。",
       "ios_repackaged_review": "自分で注入したものでなければ、アプリのサンドボックス内で動く信頼できないコードとして扱ってください。アプリが読めるものはすべて読め（認証情報やクリップボードを含む）、独自に通信もできます。署名の判定と併せて確認してください。",
-      "ios_repackaged_limitation": "カウントするのは .app のルート直下にある dylib のみです。バンドル名の変更だけ、あるいはメインバイナリを直接書き換えた再パッケージは余分なファイルを残さないため、ここでは検出できません。注入されたライブラリの動作も静的解析では分かりません。"
+      "ios_repackaged_limitation": "カウントするのは .app のルート直下にある dylib のみです。バンドル名の変更だけ、あるいはメインバイナリを直接書き換えた再パッケージは余分なファイルを残さないため、ここでは検出できません。注入されたライブラリの動作も静的解析では分かりません。",
+      "ios_upload_api": "アップロード関連の実装が見つかりました：ファイルやバイナリデータを添付する multipart/form-data の構築です。これは「アップロード能力がある」ことの証明にすぎず、機密データが送信されたことの証明ではありません。",
+      "ios_upload_api_confirm_sink": "何を、何をきっかけにアップロードするのかを確認してください。クラッシュレポートやログ、アバター画像も multipart で送られるため、能力だけでは指摘になりません。"
     },
     "sdk_categories": {
       "analytics": "分析 / アトリビューション",
@@ -870,7 +874,8 @@
       "ios_entitlements": "権利（Entitlements）",
       "android_nativeHardening": "ネイティブライブラリの堅牢化",
       "android_sdkInventory": "サードパーティ SDK 一覧",
-      "android_signature": "署名素材"
+      "android_signature": "署名素材",
+      "ios_machoSites": "Mach-O 呼び出し箇所"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",
@@ -906,7 +911,9 @@
       "android_signature_unreadable": "APK 署名ブロックを読み取れません（{reason}）。署名方式は不明です",
       "android_signature_v1_undetermined": "v2+ 署名ブロックは読み取りましたが、v1（JAR）署名の有無は判定できませんでした",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できなかった（リソース、ファイルパス、XML 自体のいずれかが読めない）ため、平文通信ポリシーは判定していません",
-      "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic も targetSdkVersion も読めないため、平文通信のプラットフォーム既定値を導けません"
+      "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic も targetSdkVersion も読めないため、平文通信のプラットフォーム既定値を導けません",
+      "ios_macho_call_sites": "このバイナリには {functions} 個の関数がありますが、いずれも帰属できていません：iOS 側には命令レベルの逆アセンブルがなく、「どの関数がこのセレクタを呼ぶか」に答えられません。手がかりは「参照されている」として報告され、「呼ばれている」とは報告されません。",
+      "ios_macho_call_sites_unknown": "iOS 側には命令レベルの逆アセンブルがなく、「どの関数がこのセレクタを呼ぶか」に答えられません。手がかりは「参照されている」として報告されます。"
     },
     "partial": "一部カバー",
     "summary": "{applicable} 件中 {covered} 件の項目を完全にカバーしています",

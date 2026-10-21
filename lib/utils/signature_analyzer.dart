@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
+import 'package:crypto/crypto.dart';
+import 'package:apk_parser/apk_parser.dart' show parseApkSigningBlock;
 import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 
@@ -86,6 +89,15 @@ class SignatureAnalysis {
   /// 是否真的执行了 apksigner。`false` 表示 [SignatureStatus.toolUnavailable]。
   final bool toolExecuted;
 
+  /// **本地**从 v2/v3 签名块读出的签名证书 SHA-256（小写十六进制，无冒号）。
+  ///
+  /// 存在的理由：没装 apksigner 时，签名结论只能是「无法确认」—— 但
+  /// 「这个包由哪张证书签的」是**结构事实**，不需要密码学验证也能读出来。
+  /// 用户拿这个指纹就能和官方公布的比对。
+  ///
+  /// **它不是「签名有效」的证据**：任何人都能把一张证书塞进签名块。
+  final String? localCertificateSha256;
+
   const SignatureAnalysis({
     required this.status,
     this.verifiedSchemes = const {},
@@ -95,11 +107,17 @@ class SignatureAnalysis {
     this.stderr = '',
     this.error,
     this.toolExecuted = false,
+    this.localCertificateSha256,
   });
 
   /// 工具不可用时的结果。**不是**「签名无效」。
-  factory SignatureAnalysis.toolUnavailable(String reason) => SignatureAnalysis(
+  factory SignatureAnalysis.toolUnavailable(
+    String reason, {
+    String? localCertificateSha256,
+  }) =>
+      SignatureAnalysis(
         status: SignatureStatus.toolUnavailable,
+        localCertificateSha256: localCertificateSha256,
         error: reason,
       );
 
@@ -127,10 +145,16 @@ class SignatureAnalyzer {
     Duration timeout = const Duration(seconds: 120),
     String? apksignerPath,
   }) async {
+    // 先把**结构事实**读出来：不管 apksigner 在不在，证书指纹都是能拿到的。
+    final localCert = readLocalCertificateSha256(apkPath);
+
     final resolved = apksignerPath ?? CommandTools.findApkSignerPath();
     if (resolved == null || resolved.isEmpty) {
       log.info('SignatureAnalyzer: apksigner 不可用，无法得出结论');
-      return SignatureAnalysis.toolUnavailable('apksigner not found');
+      return SignatureAnalysis.toolUnavailable(
+        'apksigner not found',
+        localCertificateSha256: localCert,
+      );
     }
 
     Process process;
@@ -151,7 +175,10 @@ class SignatureAnalyzer {
       // 二进制存在但无法执行（权限、架构不匹配等）—— 仍属「工具不可用」，
       // 而不是「签名无效」。
       log.warning('SignatureAnalyzer: apksigner 无法执行: $e');
-      return SignatureAnalysis.toolUnavailable('cannot execute apksigner: $e');
+      return SignatureAnalysis.toolUnavailable(
+        'cannot execute apksigner: $e',
+        localCertificateSha256: localCert,
+      );
     }
 
     final stdoutBuffer = StringBuffer();
@@ -187,6 +214,7 @@ class SignatureAnalyzer {
         status: SignatureStatus.unknown,
         error: 'apksigner timed out after ${timeout.inSeconds}s',
         toolExecuted: true,
+        localCertificateSha256: localCert,
       );
     }
 
@@ -197,7 +225,43 @@ class SignatureAnalyzer {
       exitCode: exitCode,
       stdout: stdoutBuffer.toString(),
       stderr: stderrBuffer.toString(),
+      localCertificateSha256: localCert,
     );
+  }
+
+  /// 从 v2/v3 签名块里读出签名证书的 SHA-256。
+  ///
+  /// **只读结构，不做密码学校验**。证书是否存在是确定的，签名是否有效不是 ——
+  /// 所以这个值只能在「apksigner 跑不了」时作为**替代信息**展示，
+  /// 不能替代签名结论。
+  ///
+  /// 失败一律返回 `null`：读不出指纹不该让签名分析失败。
+  static String? readLocalCertificateSha256(String apkPath) {
+    RandomAccessFile? raf;
+    try {
+      final file = File(apkPath);
+      final length = file.lengthSync();
+      if (length < 32) return null;
+      raf = file.openSync();
+      final schemes = parseApkSigningBlock(
+        fileLength: length,
+        read: (offset, count) {
+          if (offset < 0 || count <= 0 || offset + count > length) {
+            return Uint8List(0);
+          }
+          raf!.setPositionSync(offset);
+          return raf.readSync(count);
+        },
+      );
+      final cert = schemes.signingCertificate;
+      if (cert == null) return null;
+      return sha256.convert(cert).toString();
+    } catch (e) {
+      log.warning('SignatureAnalyzer: 读取签名证书失败: $e');
+      return null;
+    } finally {
+      raf?.closeSync();
+    }
   }
 
   /// 等待输出流关闭。
@@ -220,6 +284,7 @@ class SignatureAnalyzer {
     required int exitCode,
     required String stdout,
     String stderr = '',
+    String? localCertificateSha256,
   }) {
     final status = _determineStatus(exitCode, stdout, stderr);
     // 运行时缺失时 apksigner 根本没跑起来，不能标成「执行过」。
@@ -236,6 +301,7 @@ class SignatureAnalyzer {
               '${_firstNonEmptyLine(stderr) ?? _firstNonEmptyLine(stdout) ?? 'exit code $exitCode'}'
           : null,
       toolExecuted: !runtimeMissing,
+      localCertificateSha256: localCertificateSha256,
     );
   }
 

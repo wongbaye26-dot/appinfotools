@@ -36,6 +36,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:apk_parser/apk_parser.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _v1Only = 'test/fixtures/apk/signed-v1-only.apk';
@@ -267,5 +268,33 @@ void main() {
       expect(file.existsSync(), isTrue, reason: path);
       expect(file.lengthSync(), greaterThan(1000), reason: path);
     }
+  });
+
+  // 证书指纹必须与 apksigner 逐字节一致 —— 这是唯一能验证「我们切出来的
+  // 那 718 字节确实是一张 X.509 证书」的办法。
+  //
+  // 基准值来自独立工具：
+  //   apksigner verify --print-certs test/fixtures/apk/signed-v2-v3.apk
+  //   V3.0 Signer: certificate SHA-256 digest: 3ffbedba…
+  group('签名证书（v2 / v3）', () {
+    test('从签名块读出的证书指纹与 apksigner 一致', () {
+      final schemes = _parse('test/fixtures/apk/signed-v2-v3.apk');
+      final cert = schemes.signingCertificate;
+
+      expect(cert, isNotNull);
+      // DER SEQUENCE 的头两字节是 0x30 0x82 —— 少了这个检查，一旦解析
+      // 错位（比如少剥一层，落到 digest 记录里），指纹照样算得出来但全是错的。
+      expect(cert![0], 0x30);
+      expect(cert[1], 0x82);
+      expect(
+        sha256.convert(cert).toString(),
+        '3ffbedbaeb558314ee9532321acb12ffff1ac73a6eb3aad5ff76a909d1ab60dd',
+      );
+    });
+
+    test('只有 v1 签名时没有证书可读（不是「读了但为空」）', () {
+      final schemes = _parse('test/fixtures/apk/signed-v1-only.apk');
+      expect(schemes.signingCertificate, isNull);
+    });
   });
 }

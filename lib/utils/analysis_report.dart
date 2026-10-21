@@ -633,6 +633,7 @@ class AnalysisReport {
       'ios.privacyManifest' => d.ios_privacyManifest,
       'ios.executables' => d.ios_executables,
       'ios.macho.strings' => d.ios_macho_strings,
+      'ios.machoSites' => d.ios_machoSites,
       'ios.nativeSymbols' => d.ios_nativeSymbols,
       'ios.entitlements' => d.ios_entitlements,
       'ios.signature' => d.ios_signature,
@@ -723,6 +724,7 @@ class AnalysisReport {
                 : '',
           );
         })(),
+      'ios.upload_api' => f.ios_upload_api,
       'ios.repackaged' => (() {
           final dylibs = _joinNames(finding.messageArgs['dylibs'], t);
           if (dylibs == null) return null;
@@ -993,6 +995,7 @@ class AnalysisReport {
       'ios.usage_without_api.review' => f.ios_usage_without_api_review,
       'ios.jailbreak_toolkit.review' => f.ios_jailbreak_toolkit_review,
       'ios.repackaged.review' => f.ios_repackaged_review,
+      'ios.upload_api.confirm_sink' => f.ios_upload_api_confirm_sink,
       'ios.rule_a.manual_review' => f.ios_rule_a_manual_review,
       'ios.ocr_capability.confirm_input_and_sink' =>
         f.ios_ocr_capability_confirm_input_and_sink,
@@ -1837,6 +1840,7 @@ class AnalysisReport {
     final reason = entry.noteArgs['reason'];
     // 「N 个里有多少没覆盖」这类说明要用总数。
     final total = entry.noteArgs['total'];
+    final functions = entry.noteArgs['functions'];
 
     final String? localized = switch (code) {
       'android.manifest.unparsed' =>
@@ -1862,6 +1866,9 @@ class AnalysisReport {
       'android.native_symbols.skipped_for_budget' => count == null
           ? null
           : n.android_native_symbols_skipped_for_budget(count: count),
+      'ios.macho.call_sites' =>
+        functions == null ? null : n.ios_macho_call_sites(functions: functions),
+      'ios.macho.call_sites_unknown' => n.ios_macho_call_sites_unknown,
       'android.arsc.missing' => n.android_arsc_missing,
       'android.arsc.empty' => n.android_arsc_empty,
       // 这两条此前在 limitationNoteText 里（那里没有对应 code 的 AnalysisNote），

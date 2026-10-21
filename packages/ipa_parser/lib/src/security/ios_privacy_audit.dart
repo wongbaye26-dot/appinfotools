@@ -1156,6 +1156,31 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- 上传能力（与 Android 的 ANDROID-UPLOAD-API 对称）----
+    //
+    // **只认上传专用的线索**（`multipart/form-data`），不把 `NSURLSession`
+    // 算进来：后者几乎每个应用都有，按「具备上传能力」报等于给所有包加一条
+    // 恒亮的记录。Android 侧也是把「上传线索」与「网络客户端」分成两条规则。
+    if (clues.containsKey('network-upload')) {
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-UPLOAD-API',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.dataExfiltration,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.independentCapability,
+        finding: 'Upload-related code found: the multipart/form-data '
+            'construction used to attach files or binary payloads. This only '
+            'proves the upload capability exists; it does not prove sensitive '
+            'data was uploaded.',
+        messageCode: 'ios.upload_api',
+        evidence: _clueEvidence(clues, const ['network-upload']),
+        recommendation: 'Confirm what is uploaded and what triggers it. A '
+            'multipart body is also how crash reports, log bundles and avatar '
+            'uploads are sent, so the capability alone is not a finding.',
+        recommendationCode: 'ios.upload_api.confirm_sink',
+      ));
+    }
+
     // ---- iOS 规则 B：图像输入 + 文字识别 ----
     //
     // 与 Android 规则 B 同构：两段线索同现，但**没有**证实它们位于同一条
@@ -1665,6 +1690,24 @@ class IosPrivacyAudit {
     // 覆盖说明用「三件套」：稳定 code + 英文回退 + 占位符实参（见
     // `CoverageEntry.noted`）。此前这里写的是中文，而本包不依赖 slang，
     // 于是英文/日文/韩文报告里会混进中文。
+    // ---- 函数级覆盖：iOS 侧**没有**指令级分析，这里给出分母 ----
+    //
+    // `LC_FUNCTION_STARTS` 能回答「这个二进制有多少个函数」，但回答不了
+    // 「哪个函数调用了某个选择子」—— 后者需要反汇编。把分母摆出来，
+    // 「0 / 121807」比一句「没有调用点分析」有用得多。
+    var totalFunctions = 0;
+    var functionsKnown = false;
+    for (final target in targets) {
+      final bytes = target.bytes;
+      if (bytes == null || bytes.isEmpty) continue;
+      final parsed = MachOParser.parse(bytes);
+      final count =
+          parsed.images.isEmpty ? null : parsed.images.first.functionCount;
+      if (count == null) continue;
+      functionsKnown = true;
+      totalFunctions += count;
+    }
+
     final coverage = AnalysisCoverage(entries: [
       CoverageEntry.noted(
         id: 'ios.infoPlist',
@@ -1758,6 +1801,33 @@ class IosPrivacyAudit {
                     const <String, Object>{},
                   )
                 : null),
+      ),
+      CoverageEntry.noted(
+        // 这一维**恒为 notCovered**：iOS 侧不做反汇编，拿不到调用点。
+        // 显式列出来，而不是让它不存在 —— 不存在会被读成「没问题」。
+        id: 'ios.machoSites',
+        status: CoverageStatus.notCovered,
+        covered: 0,
+        limit: functionsKnown ? totalFunctions : null,
+        // 读不到函数表时**不给数字** —— 写「有 0 个函数」是把「不知道」
+        // 说成了一个具体的错误结论。
+        note: functionsKnown
+            ? (
+                'ios.macho.call_sites',
+                'This binary has $totalFunctions functions, but none of them '
+                    'were attributed: iOS analysis has no instruction-level '
+                    'disassembly, so "which function calls this selector" '
+                    'cannot be answered. Clues are reported as "referenced", '
+                    'not "called".',
+                {'functions': totalFunctions},
+              )
+            : (
+                'ios.macho.call_sites_unknown',
+                'iOS analysis has no instruction-level disassembly, so '
+                    '"which function calls this selector" cannot be answered. '
+                    'Clues are reported as "referenced", not "called".',
+                const <String, Object>{},
+              ),
       ),
       CoverageEntry.noted(
         id: 'ios.nativeSymbols',
