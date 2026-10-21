@@ -84,6 +84,26 @@ List of devices attached
       expect(result.output, contains('Invalid code'));
     });
 
+    test('真实失败形状：拿连接端口去 pair -> protocol fault', () {
+      // 实测输出（macOS，adb 37.0.0）：
+      //   error: protocol fault (couldn't read status message): Undefined error: 0
+      final result = AdbService.parsePairResult(
+        1,
+        'error: protocol fault (couldn\'t read status message): '
+        'Undefined error: 0',
+      );
+      expect(result.ok, isFalse);
+      expect(result.output, contains('protocol fault'));
+    });
+
+    test('成功时退出码非零也认（文本优先）', () {
+      final result = AdbService.parsePairResult(
+        1,
+        'Successfully paired to 192.168.1.35:37123 [guid=adb-xyz]',
+      );
+      expect(result.ok, isTrue);
+    });
+
     test('退出码 0 但文本不是成功 -> 仍判失败', () {
       // 少数版本对失败也返回 0，只把原因写进输出。
       final result = AdbService.parsePairResult(

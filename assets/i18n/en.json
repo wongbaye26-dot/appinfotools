@@ -394,7 +394,11 @@
     "pair_done_no_connection": "Paired, but not connected yet",
     "pair_done_no_connection_hint": "Go back to the phone's \"Wireless debugging\" screen and copy the \"IP address & port\" shown there, then use Connect with it. The port in the pairing dialog is only for pairing.",
     "pair_done_go_connect": "Connect now",
-    "connect_error_after_restart": "The port is reachable from this computer, but adb still cannot connect (the adb background process was already restarted). This usually means the pairing is no longer valid - pair the device again, then connect."
+    "connect_error_after_restart": "The port is reachable from this computer, but adb still cannot connect (the adb background process was already restarted). This usually means the pairing is no longer valid - pair the device again, then connect.",
+    "pair_error_invalid_code": "Wrong pairing code (or it has expired). Close this dialog and reopen \"Pair device with pairing code\" on the phone - the code changes every time.",
+    "pair_error_not_pairing_port": "This port does not answer pairing - you probably typed the **connect** port. The pairing port is the one shown in the \"Pair device with pairing code\" popup on the phone.",
+    "pair_error_already_paired": "This device is already paired. Just use \"Connect over Wi-Fi\".",
+    "pair_error_unreachable": "Cannot reach the pairing port. Make sure the phone is still on the \"Pair device with pairing code\" popup, and that the port is the one shown there."
   },
   "ios_info": {
     "architectures": "Architectures",

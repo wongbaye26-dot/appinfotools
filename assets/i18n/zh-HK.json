@@ -394,7 +394,11 @@
     "pair_done_no_connection": "已配對，但還沒連上",
     "pair_done_no_connection_hint": "回到手機的「無線偵錯」頁面，抄下那裡顯示的「IP 地址和端口」，再點「連接」填進去。配對彈窗裡那個端口只用於配對。",
     "pair_done_go_connect": "去連接",
-    "connect_error_after_restart": "這台電腦能連上那個端口，但 adb 仍然連不上（已自動重啟過後台進程）。這種情況通常是配對失效了 —— 重新配對一次，再連接。"
+    "connect_error_after_restart": "這台電腦能連上那個端口，但 adb 仍然連不上（已自動重啟過後台進程）。這種情況通常是配對失效了 —— 重新配對一次，再連接。",
+    "pair_error_invalid_code": "配對碼不對（或已過期）。關掉這個對話框，在手機上重新打開「使用配對碼配對設備」—— 每次打開配對碼都會變。",
+    "pair_error_not_pairing_port": "這個端口不響應配對 —— 你多半填了**連接端口**。配對端口在手機「使用配對碼配對設備」的彈窗裡。",
+    "pair_error_already_paired": "這台設備已經配對過了，直接點「無線連接」就行。",
+    "pair_error_unreachable": "連不上那個配對端口。確認手機還停在「使用配對碼配對設備」的彈窗上，並且端口填的是彈窗裡那個。"
   },
   "ios_info": {
     "architectures": "架構",

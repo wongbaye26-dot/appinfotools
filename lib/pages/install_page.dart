@@ -1254,8 +1254,35 @@ class _WirelessPairDialogState extends State<_WirelessPairDialog> {
     }
     setState(() {
       _busy = false;
-      _error = result.output;
+      _error = _describePairError(result.output);
     });
+  }
+
+  /// 把 `adb pair` 的原文翻成人话。
+  ///
+  /// 四种失败对应四种完全不同的动作，直接甩英文等于让用户自己猜：
+  /// - 配对码错 → 重开一次配对弹窗（码会变）；
+  /// - 连不上配对端口 → 手机可能已经退出了那个弹窗；
+  /// - `protocol fault` → **填的是连接端口**（实测：拿连接端口去 pair 就是这句）；
+  /// - 已配对 → 直接去连接。
+  String _describePairError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('invalid code') || lower.contains('wrong password')) {
+      return t.install.pair_error_invalid_code;
+    }
+    if (lower.contains('protocol fault')) {
+      return t.install.pair_error_not_pairing_port;
+    }
+    if (lower.contains('already paired')) {
+      return t.install.pair_error_already_paired;
+    }
+    if (lower.contains('unable to connect') ||
+        lower.contains('connection refused') ||
+        lower.contains('timed out') ||
+        lower.contains('timeout')) {
+      return t.install.pair_error_unreachable;
+    }
+    return raw;
   }
 
   @override

@@ -246,7 +246,11 @@ class AdbService {
   /// - `Failed: unable to connect to …`（端口不对 / 不在同一网络）
   static AdbCommandResult parsePairResult(int exitCode, String output) {
     final text = output.trim();
-    if (exitCode == 0 && text.toLowerCase().contains('successfully paired')) {
+    // **文本优先，不看退出码** —— 与 [parseConnectResult] 同一口径。
+    // adb 各版本对「成功」的退出码并不统一，而成功时一定会打印
+    // `Successfully paired to …`；反过来，非零退出码也可能是「已经配对过」
+    // 这种不该当失败的情况。
+    if (text.toLowerCase().contains('successfully paired')) {
       return AdbCommandResult(ok: true, output: text);
     }
     return AdbCommandResult(

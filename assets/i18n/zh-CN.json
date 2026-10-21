@@ -394,7 +394,11 @@
     "pair_done_no_connection": "已配对，但还没连上",
     "pair_done_no_connection_hint": "回到手机的「无线调试」页面，抄下那里显示的「IP 地址和端口」，再点「连接」填进去。配对弹窗里那个端口只用于配对。",
     "pair_done_go_connect": "去连接",
-    "connect_error_after_restart": "这台电脑能连上那个端口，但 adb 仍然连不上（已自动重启过后台进程）。这种情况通常是配对失效了 —— 重新配对一次，再连接。"
+    "connect_error_after_restart": "这台电脑能连上那个端口，但 adb 仍然连不上（已自动重启过后台进程）。这种情况通常是配对失效了 —— 重新配对一次，再连接。",
+    "pair_error_invalid_code": "配对码不对（或已过期）。关掉这个对话框，在手机上重新打开「使用配对码配对设备」—— 每次打开配对码都会变。",
+    "pair_error_not_pairing_port": "这个端口不响应配对 —— 你多半填了**连接端口**。配对端口在手机「使用配对码配对设备」的弹窗里。",
+    "pair_error_already_paired": "这台设备已经配对过了，直接点「无线连接」就行。",
+    "pair_error_unreachable": "连不上那个配对端口。确认手机还停在「使用配对码配对设备」的弹窗上，并且端口填的是弹窗里那个。"
   },
   "ios_info": {
     "architectures": "架构",
