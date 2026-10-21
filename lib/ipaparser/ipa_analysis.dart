@@ -88,6 +88,12 @@ class IpaAnalysis {
   /// `max(这个值, nestedBinaries.length)`，不会因此算出比实际更小的分母。
   final int nestedBundleTotal;
 
+  /// 主应用 bundle 的目录布局事实（重打包判据的输入）。
+  ///
+  /// 手工构造时留 [IpaLayoutFacts.empty]：那表示「没算过」，审计据此
+  /// **不产出** `IOS-REPACKAGED`，而不是编一个「布局正常」的结论。
+  final IpaLayoutFacts layout;
+
   final List<AnalysisDiagnostic> diagnostics;
 
   const IpaAnalysis({
@@ -102,6 +108,7 @@ class IpaAnalysis {
     this.authorization,
     this.nestedBinaries = const [],
     this.nestedBundleTotal = 0,
+    this.layout = IpaLayoutFacts.empty,
     this.diagnostics = const [],
   });
 
@@ -345,6 +352,7 @@ class IpaAnalysisReader {
       // 分母：容器里**一共有**多少个装代码的 bundle。
       // 用 `nested.binaries.length` 会把截断掉的那些悄悄从分母里去掉。
       nestedBundleTotal: nested.total,
+      layout: IpaLayoutReader.read(archive, mainApp),
       diagnostics: diagnostics,
     );
   }

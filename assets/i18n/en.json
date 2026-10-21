@@ -737,7 +737,10 @@
       "ios_jailbreak_toolkit": "This bundle ships known jailbreak / kernel-exploit components: {components}.{kernel} No App Store app bundles these — they exist to bypass code signing and the sandbox.",
       "ios_jailbreak_kernel_suffix": " Kernel exploits give the code read/write access to the kernel, i.e. full control of the device.",
       "ios_jailbreak_toolkit_review": "Decide whether this is a tool you intentionally analysed. If it is an app from an unknown source, a bundled kernel exploit means it can take full control of the device — do not install it on a personal device.",
-      "ios_jailbreak_toolkit_limitation": "Detected by component name only (framework directory names and dylib paths). A privately rebuilt exploit with a different name, or one linked statically with no residual strings, is not visible here. Absence of this finding does not prove the app is clean."
+      "ios_jailbreak_toolkit_limitation": "Detected by component name only (framework directory names and dylib paths). A privately rebuilt exploit with a different name, or one linked statically with no residual strings, is not visible here. Absence of this finding does not prove the app is clean.",
+      "ios_repackaged": "This bundle was modified after it was built: {dylibs} sit(s) directly in the .app root, outside Frameworks/. Apps built normally keep their dylibs under Frameworks/; a library at the bundle root is the standard footprint of an injected tweak or a re-signed repack.",
+      "ios_repackaged_review": "If you did not inject this library yourself, treat it as untrusted code running inside the app's sandbox: it can read everything the app can read (including credentials and clipboard contents) and talk to the network on its own. Cross-check with the signature verdict — a re-signed or decrypted bundle usually fails verification as well.",
+      "ios_repackaged_limitation": "Only dylibs sitting directly at the .app root are counted. A repack that merely renames the bundle, or one that patches the main binary in place, leaves no extra file and is not visible here — for those, the signature verdict is the only signal. Nor can static analysis tell what the injected library does."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",

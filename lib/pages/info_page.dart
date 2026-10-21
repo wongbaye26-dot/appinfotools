@@ -442,6 +442,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           // 不传的话审计只能用「传进来几个」当分母，于是 28 个 bundle 只解析
           // 24 个也会显示成「25/25 已覆盖」。
           nestedBundleTotal: parsed.nestedBundleTotal,
+          // 重打包判据的输入：`.app` 根目录下有没有多出来的 dylib。
+          // 布局是在 worker 里拿着 `Archive` 算的，这里只负责转发。
+          layout: parsed.layout,
           // 阶段 5b：嵌套 bundle 的可执行文件也参与扫描。
           // 只传**真的拿到了字节**的那些；没拿到的一并传过去（`bytes` 为
           // null），让审计把它们算进「未覆盖」—— 静默省略会让覆盖率虚高。

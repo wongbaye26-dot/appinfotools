@@ -723,6 +723,11 @@ class AnalysisReport {
                 : '',
           );
         })(),
+      'ios.repackaged' => (() {
+          final dylibs = _joinNames(finding.messageArgs['dylibs'], t);
+          if (dylibs == null) return null;
+          return f.ios_repackaged(dylibs: dylibs);
+        })(),
       'crypto.theft_risk' => signals == null
           ? null
           : '${f.crypto_theft_risk(
@@ -987,6 +992,7 @@ class AnalysisReport {
         f.ios_capability_no_usage_add_usage,
       'ios.usage_without_api.review' => f.ios_usage_without_api_review,
       'ios.jailbreak_toolkit.review' => f.ios_jailbreak_toolkit_review,
+      'ios.repackaged.review' => f.ios_repackaged_review,
       'ios.rule_a.manual_review' => f.ios_rule_a_manual_review,
       'ios.ocr_capability.confirm_input_and_sink' =>
         f.ios_ocr_capability_confirm_input_and_sink,
@@ -1190,6 +1196,7 @@ class AnalysisReport {
       'android.deeplink.limitation' => f.android_deeplink_limitation,
       'ios.reference_tables.limitation' => f.ios_reference_tables_limitation,
       'ios.jailbreak_toolkit.limitation' => f.ios_jailbreak_toolkit_limitation,
+      'ios.repackaged.limitation' => f.ios_repackaged_limitation,
       'android.malware_indicators.limitation' =>
         f.android_malware_indicators_limitation,
       'crypto.theft_risk.limitation' => f.crypto_theft_risk_limitation,

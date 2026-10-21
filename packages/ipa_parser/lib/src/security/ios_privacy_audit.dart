@@ -4,9 +4,11 @@ import 'package:analysis_model/analysis_model.dart';
 
 import 'ios_crypto_audit.dart';
 import 'ios_jailbreak_audit.dart';
+import 'ios_repackaging_audit.dart';
 
 import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
+import '../ipa_layout.dart';
 import '../ios_reference_tables.dart';
 import '../macho.dart';
 import '../ios_signature.dart';
@@ -261,6 +263,15 @@ class IosPrivacyAudit {
     /// 不加 `@visibleForTesting`：`meta` 不是本包的依赖，为一个注解引入一个
     /// 依赖不划算。命名与文档已经说清用途。
     int? scanBudgetBytes,
+
+    /// 主应用 bundle 的目录布局事实（重打包判据的输入）。
+    ///
+    /// 布局只能在持有 `Archive` 的地方算（`IpaAnalysisReader.analyze`），
+    /// 审计层拿不到归档 —— 因此由调用方算好传进来。
+    ///
+    /// 不传时**不产出** `IOS-REPACKAGED`：手工构造的 `IpaAnalysis` 与
+    /// 几十个既有测试都不传，编不出「布局正常」这种它们没验证过的结论。
+    IpaLayoutFacts? layout,
   }) {
     final budgetBytes = scanBudgetBytes ?? _Budget.maxBytes;
     final findings = <SecurityFinding>[];
@@ -576,6 +587,12 @@ class IosPrivacyAudit {
       ],
       executableBytes: executableBytes,
     ));
+
+    // 重打包 / 注入：只看布局，不看内容。
+    final layoutFacts = layout;
+    if (layoutFacts != null) {
+      findings.addAll(IosRepackagingAudit.audit(layout: layoutFacts));
+    }
 
     for (final (id, description, literal) in _markers) {
       final samples = byMarker[id];

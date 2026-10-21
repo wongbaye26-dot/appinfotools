@@ -22,6 +22,8 @@ export 'src/der.dart';
 export 'src/x509.dart';
 export 'src/ipa_container.dart';
 export 'src/ipa_icon.dart';
+// 主应用 bundle 的目录布局事实（重打包判据的输入）。
+export 'src/ipa_layout.dart';
 // `Assets.car` 的**索引**解析（不解码像素：数据是 LZFSE 压缩的）。
 export 'src/assets_car.dart';
 // LZFSE 解码：`Assets.car` 的像素数据是 LZFSE 压过的。
@@ -37,6 +39,7 @@ export 'src/ios_reference_tables.dart';
 export 'src/security/ios_privacy_audit.dart';
 export 'src/security/ios_crypto_audit.dart';
 export 'src/security/ios_jailbreak_audit.dart';
+export 'src/security/ios_repackaging_audit.dart';
 export 'src/security/ios_native_symbol_audit.dart';
 export 'src/plist/binary_plist_parser.dart';
 export 'src/plist/plist_fields.dart';
