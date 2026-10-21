@@ -92,6 +92,19 @@ class Config {
   static final apksignerSource =
       ConfigItem("apksigner_source", kToolSourceBuiltin);
   static final adbSource = ConfigItem("adb_source", kToolSourceBuiltin);
+
+  /// Java 运行时（`apksigner` 的依赖）。
+  ///
+  /// 与另外三个工具同一套「内置 / 系统环境 / 自定义」语义：
+  /// - 内置 = 我们下载的 JRE（`<数据目录>/bin/jre`）
+  /// - 系统环境 = 自动探测（`JAVA_HOME` → `PATH` → 各平台常见安装目录）
+  /// - 自定义 = 用户指定的 `java` 可执行文件
+  ///
+  /// 默认「内置」与其它三项一致：没下载时自动退回系统探测，不会因为
+  /// 用户没点过下载就变成「未找到」。
+  static final javaPath = ConfigItem("java_path", "");
+  static final javaSource = ConfigItem("java_source", kToolSourceBuiltin);
+
   static final downloadDir = ConfigItem("download_dir", "");
   static final enableSignature = ConfigItem("enable_signature", false);
   static final enableHash = ConfigItem("enable_hash", true);
@@ -131,6 +144,8 @@ class Config {
     aapt2Source,
     apksignerSource,
     adbSource,
+    javaPath,
+    javaSource,
     downloadDir,
     enableSignature,
     enableHash,

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
+import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 
 /// 重新导出 [SignatureStatus]。
@@ -137,6 +138,14 @@ class SignatureAnalyzer {
       process = await Process.start(
         resolved,
         ['verify', '--print-certs', '--verbose', apkPath],
+        // `apksigner` 是 java 的壳：脚本内部执行的是裸命令 `java`（macOS /
+        // Linux）或 `%JAVA_HOME%\bin\java.exe`（Windows 的 .bat）。
+        //
+        // **只探测到 java 在哪是不够的** —— 用户的 java 常常装了但不在 PATH
+        // 里，脚本照样找不到它。这里把 java 的 `bin` 前置到 PATH 并设好
+        // `JAVA_HOME`，两条脚本路径就都能走通。没找到 java 时返回空 map，
+        // 等于不覆盖父进程环境（`includeParentEnvironment` 默认为 true）。
+        environment: JavaRuntime.childEnvironment(),
       );
     } on ProcessException catch (e) {
       // 二进制存在但无法执行（权限、架构不匹配等）—— 仍属「工具不可用」，

@@ -246,6 +246,17 @@ class ToolPaths {
     return getBundledToolPath(name);
   }
 
+  /// 下载的 JRE 里的 `java`（`<dir>/jre/bin/java`）。
+  ///
+  /// `apksigner` 是 java 的壳，所以 JRE 与 adb/aapt2 一样属于「下载依赖」的
+  /// 一部分。放在 `jre/` 而不是 `jdk/`：我们只装运行时，没有编译器。
+  static String? getDownloadedJavaPath({String? baseDir}) {
+    final name = Platform.isWindows ? 'java.exe' : 'java';
+    final root = baseDir ?? installBinDir;
+    final candidate = path.join(root, 'jre', 'bin', name);
+    return File(candidate).existsSync() ? candidate : null;
+  }
+
   static String? getDownloadedAapt2Path({String? baseDir}) {
     final buildToolsDir = _getLatestBuildToolsDir(baseDir: baseDir);
     if (buildToolsDir == null) {

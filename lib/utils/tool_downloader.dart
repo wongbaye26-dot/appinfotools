@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
@@ -20,10 +21,14 @@ class ToolDownloadResult {
   final String platformToolsVersion;
   final String buildToolsVersion;
 
+  /// 下载的 JRE 版本（如 `17.0.20+101`）；没下载时为 `null`。
+  final String? jreVersion;
+
   ToolDownloadResult({
     required this.installDir,
     required this.platformToolsVersion,
     required this.buildToolsVersion,
+    this.jreVersion,
   });
 }
 
@@ -42,6 +47,18 @@ class ToolDownloader {
       'https://dl.google.com/android/repository/repository2-3.xml';
   static const String mirrorRepositoryIndexUrl =
       'https://github.com/huanfeng/apk_info_tool_binary/releases/download/latest/repository2-3.xml';
+
+  /// Eclipse Temurin（Adoptium）的资产 API。
+  ///
+  /// **为什么不用 Google 那套仓库索引**：Android SDK 仓库里没有 JRE。
+  /// `apksigner` 是 java 的壳，没有 java 它起不来，而 Windows 的安装器默认
+  /// 不把 `bin` 写进 PATH —— 所以这里必须自己提供一个「装了就能用」的选项。
+  ///
+  /// 选 Adoptium 是因为它给出**稳定的 API + SHA-256**：一次请求就拿到下载
+  /// 直链与校验和，不用自己维护版本号与镜像。这与 `repository2-3.xml` 是
+  /// 同一套思路（先拿清单、再下包、下完校验）。
+  static const String adoptiumAssetsUrl =
+      'https://api.adoptium.net/v3/assets/latest/17/hotspot';
 
   /// 测试注入用的 `HttpClient` 工厂。
   ///
@@ -83,15 +100,21 @@ class ToolDownloader {
       final indexUrls = options.sourceUrls.isEmpty
           ? buildRepositoryIndexUrls()
           : options.sourceUrls;
-      final xmlContent = await _downloadTextWithFallback(
-        indexUrls,
-        options.onProgress,
-      );
+
+      // **只在真的要 Android 工具时才去拉仓库索引。**
+      // 索引来自 dl.google.com，和 JRE 的来源（Adoptium）毫无关系；
+      // 用户如果只勾了「Java 运行时」，却因为连不上 Google 而整条下载失败，
+      // 那是把两件独立的事绑死了。
+      final needsAndroidTools =
+          options.downloadPlatformTools || options.downloadBuildTools;
+      final xmlContent = needsAndroidTools
+          ? await _downloadTextWithFallback(indexUrls, options.onProgress)
+          : null;
       final platformArchive = options.downloadPlatformTools
-          ? _selectPlatformTools(xmlContent)
+          ? _selectPlatformTools(xmlContent!)
           : null;
       final buildTools =
-          options.downloadBuildTools ? _selectBuildTools(xmlContent) : null;
+          options.downloadBuildTools ? _selectBuildTools(xmlContent!) : null;
 
       final baseUris = indexUrls.map((url) {
         final uri = _toUri(url);
@@ -133,6 +156,36 @@ class ToolDownloader {
         );
       }
 
+      String? jreVersion;
+      if (options.downloadJre) {
+        // 与上面两项不同：JRE 不在 Google 的仓库索引里，先向 Adoptium 要
+        // 「直链 + SHA-256」，再下包。校验和是硬要求 —— 这个 java 会被本进程
+        // 直接执行，和 adb/aapt2 同一个信任级别。
+        final jre = await _resolveJre();
+        final jreTemp = await _downloadToTemp(
+          _toUri(jre.url),
+          'jre',
+          options.onProgress == null
+              ? null
+              : (received, total) => options.onProgress!(
+                    ToolDownloadProgress(
+                      task: 'jre',
+                      received: received,
+                      total: total,
+                    ),
+                  ),
+        );
+        tempDirs.add(jreTemp.parent);
+        await verifyArchiveChecksum(
+          jreTemp,
+          ArchiveInfo(url: jre.url, checksums: {'sha256': jre.checksum}),
+        );
+        await extractJre(jreTemp, installDir);
+        await _ensureExecutable(
+            ToolPaths.getDownloadedJavaPath(baseDir: installDir) ?? '');
+        jreVersion = jre.version;
+      }
+
       await _ensureExecutable(
           ToolPaths.getDownloadedAdbPath(baseDir: installDir) ?? '');
       await _ensureExecutable(
@@ -144,6 +197,7 @@ class ToolDownloader {
         installDir: installDir,
         platformToolsVersion: platformArchive?.version ?? '',
         buildToolsVersion: buildTools?.version ?? '',
+        jreVersion: jreVersion,
       );
     } finally {
       // 成功与失败都要清 —— 校验失败时那个压缩包同样不该留在磁盘上。
@@ -513,6 +567,111 @@ class ToolDownloader {
     );
   }
 
+  /// 解包 JRE。`@visibleForTesting` 的理由同 [extractPlatformTools]。
+  ///
+  /// Adoptium 的 zip 只有一个顶层目录（`jdk-17.0.20.1+1-jre/`），剥掉它，
+  /// 让 `java` 正好落在 `<installDir>/jre/bin/java` —— 与
+  /// [ToolPaths.getDownloadedJavaPath] 的约定一致。
+  @visibleForTesting
+  static Future<void> extractJre(
+    File zipFile,
+    String installDir, {
+    int? maxSessionBytes,
+  }) async {
+    final archive = ZipDecoder().decodeBytes(await zipFile.readAsBytes());
+    ZipBudget.ensureWithin(archive, source: 'jre');
+    await ZipGuard.extractToDirectory(
+      archive,
+      path.join(installDir, 'jre'),
+      stripPrefix: _singleTopLevelPrefix(archive),
+      maxSessionBytes: maxSessionBytes,
+    );
+  }
+
+  /// 归档里唯一的顶层目录（带尾斜杠）；没有或不止一个时返回空串。
+  static String _singleTopLevelPrefix(Archive archive) {
+    final tops = <String>{};
+    for (final file in archive.files) {
+      final name = file.name.replaceAll('\\', '/');
+      final slash = name.indexOf('/');
+      if (slash <= 0) return '';
+      tops.add(name.substring(0, slash));
+      if (tops.length > 1) return '';
+    }
+    return tops.isEmpty ? '' : '${tops.first}/';
+  }
+
+  /// 向 Adoptium 要一份 JRE 的下载直链与 SHA-256。
+  ///
+  /// 用 `assets/latest` 而不是拼一个「猜出来的」GitHub Release 地址：版本号
+  /// 变了链接就失效，而**校验和是安全控制**，不能靠猜。
+  static Future<AdoptiumJre> _resolveJre() async {
+    if (!JavaRuntime.supportsDownload) {
+      // 只有 Windows 支持：macOS / Linux 的 JRE 只有 `.tar.gz`，而
+      // `ZipGuard` 是 zip 专用的。**宁可直接报错，也不要给用户下错平台
+      // 的包** —— 解出来是一堆用不了的 `.exe`。
+      throw ToolDownloadException(
+        ToolDownloadError.archiveDownload,
+        detail: 'JRE 下载仅支持 Windows',
+      );
+    }
+    final uri = Uri.parse(adoptiumAssetsUrl).replace(queryParameters: {
+      'os': 'windows',
+      'architecture': JavaRuntime.adoptiumArchitecture,
+      'image_type': 'jre',
+      'vendor': 'eclipse',
+    });
+
+    final text = await _downloadText(uri, null);
+    Object? decoded;
+    try {
+      decoded = jsonDecode(text);
+    } catch (e) {
+      throw ToolDownloadException(
+        ToolDownloadError.archiveDownload,
+        detail: 'Adoptium 返回的不是 JSON: $e',
+      );
+    }
+    if (decoded is! List || decoded.isEmpty) {
+      throw ToolDownloadException(
+        ToolDownloadError.archiveDownload,
+        detail: 'Adoptium 没有返回可用的 JRE',
+      );
+    }
+
+    final first = decoded.first;
+    final binary = first is Map ? first['binary'] : null;
+    final package = binary is Map ? binary['package'] : null;
+    if (package is! Map) {
+      throw ToolDownloadException(
+        ToolDownloadError.archiveDownload,
+        detail: 'Adoptium 响应里缺少 binary.package',
+      );
+    }
+    final link = package['link'];
+    final checksum = package['checksum'];
+    if (link is! String || link.isEmpty) {
+      throw ToolDownloadException(
+        ToolDownloadError.archiveDownload,
+        detail: 'Adoptium 响应里缺少下载地址',
+      );
+    }
+    if (checksum is! String || checksum.isEmpty) {
+      // 与 `verifyArchiveChecksum` 同一个立场：没有校验和就不装。
+      throw ToolDownloadException(
+        ToolDownloadError.checksumMismatch,
+        detail: 'Adoptium 未提供 SHA-256，拒绝安装未经验证的 JRE: $link',
+      );
+    }
+
+    final version = first is Map
+        ? (first['version'] is Map
+            ? '${(first['version'] as Map)['semver']}'
+            : '')
+        : '';
+    return AdoptiumJre(url: link, checksum: checksum, version: version);
+  }
+
   static Future<void> _ensureExecutable(String filePath) async {
     if (filePath.isEmpty || Platform.isWindows) {
       return;
@@ -770,6 +929,12 @@ class ToolDownloadOptions {
   final String installDir;
   final bool downloadPlatformTools;
   final bool downloadBuildTools;
+
+  /// 是否下载 JRE（`apksigner` 的运行时依赖）。
+  ///
+  /// 只在 Windows 上提供，见 [JavaRuntime.supportsDownload]。
+  final bool downloadJre;
+
   final ToolDownloadProgressCallback? onProgress;
 
   ToolDownloadOptions({
@@ -777,7 +942,25 @@ class ToolDownloadOptions {
     required this.installDir,
     required this.downloadPlatformTools,
     required this.downloadBuildTools,
+    this.downloadJre = false,
     this.onProgress,
+  });
+}
+
+/// Adoptium 提供的一份 JRE 资产。
+class AdoptiumJre {
+  final String url;
+
+  /// SHA-256（十六进制，无前缀）。
+  final String checksum;
+
+  /// 如 `17.0.20+101`。
+  final String version;
+
+  const AdoptiumJre({
+    required this.url,
+    required this.checksum,
+    required this.version,
   });
 }
 

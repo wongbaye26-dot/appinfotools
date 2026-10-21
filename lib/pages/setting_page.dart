@@ -58,12 +58,6 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   /// 取决于第一次写到哪里，结果不可预测。
   bool _thumbnailBusy = false;
 
-  /// Java 运行时状态。`null` 表示还没探测过。
-  ///
-  /// 它是 `apksigner` 的**隐含依赖**（apksigner 只是 `exec java -jar` 的壳），
-  /// 却不在任何「路径」设置里，用户从界面上完全看不出它缺了。
-  JavaRuntimeInfo _javaInfo = const JavaRuntimeInfo();
-
   /// `codesign` 的路径；非 macOS 或确实没有时为 `null`。
   ///
   /// 不提供配置项：macOS 上它固定在 `/usr/bin/codesign`，配错只会更糟。
@@ -76,9 +70,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     _maxLinesController.text = ref.read(
         uiConfigStateProvider.select((value) => value.textMaxLines.toString()));
     _loadThumbnailStatus();
-    // 两项都是文件系统判断（不拉子进程），同步做完即可 —— 异步化反而会在
-    // widget 测试里留下未完成的 Timer。
-    _javaInfo = JavaRuntime.detect();
+    // codesign 是纯文件系统判断（不拉子进程），同步做完即可 —— 异步化反而会
+    // 在 widget 测试里留下未完成的 Timer。Java 的探测跟着配置走，放在
+    // `_buildEnvironmentSection` 里（`JavaRuntime.detect` 自己带缓存）。
     _codesignPath = IosCodeSignAnalyzer.findCodesignPath();
   }
 
@@ -139,6 +133,17 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                       Platform.isWindows ? 'apksigner.bat' : 'apksigner'),
           customPath: Config.apksignerPath.value,
           onSource: ref.read(settingStateProvider.notifier).setApksignerSource,
+        );
+        break;
+      case 'java':
+        // Java 的「内置」只有下载的 JRE（没有随包分发的那一份），
+        // 所以 builtinPath 可能为 null —— `_autoDetectTool` 会据此退回
+        // 「系统环境」，而不是把一个不存在的路径写成内置。
+        _autoDetectTool(
+          systemPath: JavaRuntime.probeSystemPath(),
+          builtinPath: ToolPaths.getDownloadedJavaPath(baseDir: downloadDir),
+          customPath: Config.javaPath.value,
+          onSource: ref.read(settingStateProvider.notifier).setJavaSource,
         );
         break;
     }
@@ -384,6 +389,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   }
 
   Widget _buildEnvironmentSection() {
+    final theme = Theme.of(context);
     final aapt2Path =
         ref.watch(settingStateProvider.select((value) => value.aapt2Path));
     final apksignerPath =
@@ -396,6 +402,10 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         .watch(settingStateProvider.select((value) => value.apksignerSource));
     final adbSource =
         ref.watch(settingStateProvider.select((value) => value.adbSource));
+    final javaPath =
+        ref.watch(settingStateProvider.select((value) => value.javaPath));
+    final javaSource =
+        ref.watch(settingStateProvider.select((value) => value.javaSource));
     final downloadDir =
         ref.watch(settingStateProvider.select((value) => value.downloadDir));
     final resolvedDownloadDir = ToolPaths.resolveDownloadDir(downloadDir);
@@ -415,6 +425,14 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     final adbBuiltin = ToolPaths.getDownloadedAdbPath(
             baseDir: resolvedDownloadDir) ??
         ToolPaths.getBundledToolPath(Platform.isWindows ? 'adb.exe' : 'adb');
+
+    // Java 与另外三项的区别：**没有「系统 PATH」这一档以外的探测**。
+    // `probeSystemPath` 会走 JAVA_HOME → PATH → 各平台常见安装目录 ——
+    // Windows 上「装了 JDK 但没配环境变量」正是靠最后一档救回来的。
+    final javaSystem = JavaRuntime.probeSystemPath();
+    final javaBuiltin =
+        ToolPaths.getDownloadedJavaPath(baseDir: resolvedDownloadDir);
+    final javaInfo = JavaRuntime.detect();
 
     return _buildSettingCard(
       title: t.settings.environment,
@@ -502,15 +520,35 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         // - Java 是 apksigner 的运行时依赖，换一个 java 路径并不会改变
         //   「装没装 JDK」这个事实，给用户一个可编辑的框只会误导；
         // - codesign 在 macOS 上固定 `/usr/bin/codesign`，配错更糟。
-        _buildDependencyStatusRow(
+        _buildToolSelector(
           title: t.settings.java_runtime,
-          value: _javaInfo.usable
-              ? _javaInfo.displayLabel
-              : t.settings.java_runtime_missing,
-          // 找到路径但跑不起来（macOS 的 java 桩）同样算问题：apksigner 会
-          // 以 1 号退出码失败，看起来像「签名被篡改」。
-          isProblem: !_javaInfo.usable,
+          source: javaSource,
+          systemPath: javaSystem,
+          builtinPath: javaBuiltin,
+          customPath: javaPath,
+          singleLine: true,
+          onSourceChanged: (value) {
+            ref.read(settingStateProvider.notifier).setJavaSource(value);
+          },
+          onCustomPick: () => openFilePicker((path) {
+            ref.read(settingStateProvider.notifier).setJavaPath(path);
+            ref
+                .read(settingStateProvider.notifier)
+                .setJavaSource(Config.kToolSourceCustom);
+          }),
+          onReset: () => resetToDefaultPath('java'),
         ),
+        if (!javaInfo.usable)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              JavaRuntime.supportsDownload
+                  ? t.settings.java_missing_hint
+                  : t.settings.java_missing_hint_manual,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.error),
+            ),
+          ),
         _buildDependencyStatusRow(
           title: t.settings.codesign_path,
           value: _codesignPath ?? t.settings.codesign_unavailable,
@@ -1189,11 +1227,21 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
   final _installDirController = TextEditingController();
   bool _downloadPlatformTools = true;
   bool _downloadBuildTools = true;
+
+  /// 是否下载 JRE。只在 Windows 上提供 —— Adoptium 给 Windows 的是 `.zip`，
+  /// 能复用现有的校验 + 解包链路；macOS / Linux 只有 `.tar.gz`，为它另写一套
+  /// 安全解包是另一个面，见 [JavaRuntime.supportsDownload]。
+  ///
+  /// 默认值跟着当前状态走：**已经能用就不勾**（多数机器有 java），
+  /// 不能用才默认勾上 —— 用户打开这个对话框通常正是为了补它。
+  late bool _downloadJre =
+      JavaRuntime.supportsDownload && !JavaRuntime.detect().usable;
   bool _downloading = false;
   String _installDir = '';
   String _installDirDisplay = '';
   double? _platformProgress;
   double? _buildProgress;
+  double? _jreProgress;
 
   @override
   void initState() {
@@ -1276,6 +1324,8 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
         _platformProgress = progress.percent;
       } else if (progress.task == 'build-tools') {
         _buildProgress = progress.percent;
+      } else if (progress.task == 'jre') {
+        _jreProgress = progress.percent;
       }
     });
   }
@@ -1294,6 +1344,11 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
       if (buildRoot.existsSync() &&
           buildRoot.listSync().whereType<Directory>().isNotEmpty) {
         existing.add(t.settings.download_build_tools);
+      }
+    }
+    if (_downloadJre) {
+      if (ToolPaths.getDownloadedJavaPath(baseDir: _installDir) != null) {
+        existing.add(t.settings.download_java_runtime);
       }
     }
     return existing;
@@ -1323,7 +1378,7 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
   }
 
   Future<void> _startDownload() async {
-    if (!_downloadPlatformTools && !_downloadBuildTools) {
+    if (!_downloadPlatformTools && !_downloadBuildTools && !_downloadJre) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t.settings.download_select_empty)),
       );
@@ -1340,6 +1395,7 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
       _downloading = true;
       _platformProgress = _downloadPlatformTools ? 0.0 : null;
       _buildProgress = _downloadBuildTools ? 0.0 : null;
+      _jreProgress = _downloadJre ? 0.0 : null;
     });
     try {
       final urls = _selectedSource == _autoSourceValue
@@ -1351,6 +1407,7 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
           installDir: _installDir,
           downloadPlatformTools: _downloadPlatformTools,
           downloadBuildTools: _downloadBuildTools,
+          downloadJre: _downloadJre,
           onProgress: _updateProgress,
         ),
       );
@@ -1464,12 +1521,14 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
     required String title,
     required double? progress,
     required ValueChanged<bool?> onChanged,
+    String? subtitle,
   }) {
     final percentText = !value
         ? t.settings.download_disabled
         : _downloading
             ? '${((progress ?? 0) * 100).toStringAsFixed(1)}%'
             : '';
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1482,6 +1541,15 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
               if (percentText.isNotEmpty) Text(percentText),
             ],
           ),
+          // 副标题解释「这一项为什么需要」—— JRE 尤其需要：它不是 Android
+          // 工具，用户看到它出现在这里会以为下错了东西。
+          subtitle: subtitle == null
+              ? null
+              : Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor),
+                ),
           onChanged: _downloading ? null : onChanged,
         ),
         if (_downloading && value)
@@ -1592,6 +1660,20 @@ class _DependencyDownloadDialogState extends State<DependencyDownloadDialog> {
                   }
                 },
               ),
+              if (JavaRuntime.supportsDownload)
+                _buildDownloadOption(
+                  value: _downloadJre,
+                  title: t.settings.download_java_runtime,
+                  subtitle: t.settings.download_java_runtime_desc,
+                  progress: _jreProgress,
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _downloadJre = value;
+                      });
+                    }
+                  },
+                ),
             ],
           ),
         ),

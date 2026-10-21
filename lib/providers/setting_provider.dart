@@ -12,9 +12,11 @@ abstract class Settings with _$Settings {
     required String aapt2Path,
     required String apksignerPath,
     required String adbPath,
+    required String javaPath,
     required String aapt2Source,
     required String apksignerSource,
     required String adbSource,
+    required String javaSource,
     required String downloadDir,
     required bool enableSignature,
     required bool enableHash,
@@ -33,9 +35,11 @@ class SettingState extends _$SettingState {
         aapt2Path: Config.aapt2Path.value,
         apksignerPath: Config.apksignerPath.value,
         adbPath: Config.adbPath.value,
+        javaPath: Config.javaPath.value,
         aapt2Source: Config.aapt2Source.value,
         apksignerSource: Config.apksignerSource.value,
         adbSource: Config.adbSource.value,
+        javaSource: Config.javaSource.value,
         downloadDir: Config.downloadDir.value,
         enableSignature: Config.enableSignature.value,
         enableHash: Config.enableHash.value,
@@ -74,6 +78,16 @@ class SettingState extends _$SettingState {
   void setAdbSource(String value) {
     state = state.copyWith(adbSource: value);
     Config.adbSource.updateValue(value);
+  }
+
+  void setJavaPath(String value) {
+    state = state.copyWith(javaPath: value);
+    Config.javaPath.updateValue(value);
+  }
+
+  void setJavaSource(String value) {
+    state = state.copyWith(javaSource: value);
+    Config.javaSource.updateValue(value);
   }
 
   void setDownloadDir(String value) {
