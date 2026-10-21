@@ -15,6 +15,7 @@ export 'src/ascii_strings.dart';
 export 'src/diagnostic.dart';
 export 'src/field_value.dart';
 export 'src/security_finding.dart';
+export 'src/crypto_address.dart';
 export 'src/signature_status.dart';
 export 'src/native_symbol_markers.dart';
 export 'src/analysis_coverage.dart';

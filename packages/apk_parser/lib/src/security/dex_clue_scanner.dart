@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:analysis_model/analysis_model.dart';
 
 import 'code_markers.dart';
-import 'crypto_address.dart';
 import 'sdk_catalog.dart';
 
 /// 一个待扫描的 DEX 文件：名字 + 字节。

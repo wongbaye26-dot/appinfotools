@@ -6,7 +6,6 @@ import 'sdk_inventory_scanner.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
-import 'crypto_address.dart';
 
 /// 组合规则用到的**事实**：扫描结果的一次性归纳。
 ///
@@ -911,21 +910,28 @@ _CryptoTheftSignals _cryptoTheftSignals(AndroidRuleFacts f) {
   );
 }
 
+/// 「能把东西送出去」的通道。
+///
+/// - 无障碍 / 短信：能读屏、能截验证码，是盗 U 样本的真实通道；
+/// - **上传 + 写死的地址**：单纯「有上传能力」几乎每个应用都有（统计、日志），
+///   单靠它判 P2 会让规则在九成应用上出现。配上「包里写死了一个链上地址」，
+///   才算「有地方送、也准备好了收」。
+bool _hasTheftChannel(_CryptoTheftSignals s) =>
+    s.specialAccess || s.smsAccess || (s.upload && s.addresses.isNotEmpty);
+
 /// 是否报「盗 U 风险」。
 ///
 /// 两条**组合**判据，任一成立即报：
 ///
-/// 1. **密钥材料 + 高危通道**：代码里出现助记词/私钥处理，同时具备无障碍/短信
-///    这类能拿到用户输入或验证码的能力，**或**具备上传能力 —— 这是「拿到
-///    密钥材料并送出去」的形态。
+/// 1. **密钥材料 + 通道**：代码里出现助记词/私钥处理，同时具备能把它送出去的
+///    通道（见 [_hasTheftChannel]）。
 /// 2. **钱包 + 剪贴板 + 写死的地址**：地址替换型盗 U 的完整三件套。
 ///
 /// 其余情况（只有钱包 SDK、只有地址字面量）只给 P3 —— 正规钱包与交易所都有
 /// 这些，单独出现说明不了任何问题。
 bool _matchesCryptoTheftRisk(AndroidRuleFacts f) {
   final s = _cryptoTheftSignals(f);
-  final keyWithChannel =
-      s.keyMaterial.isNotEmpty && (s.specialAccess || s.smsAccess || s.upload);
+  final keyWithChannel = s.keyMaterial.isNotEmpty && _hasTheftChannel(s);
   final addressSwap = s.walletSdk.isNotEmpty &&
       s.clipboard.isNotEmpty &&
       s.addresses.isNotEmpty;
@@ -943,8 +949,7 @@ bool _matchesCryptoTheftRisk(AndroidRuleFacts f) {
 /// 的通道」摆在一起，让人工核对有落点。
 SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
   final s = _cryptoTheftSignals(f);
-  final keyWithChannel =
-      s.keyMaterial.isNotEmpty && (s.specialAccess || s.smsAccess || s.upload);
+  final keyWithChannel = s.keyMaterial.isNotEmpty && _hasTheftChannel(s);
   final addressSwap = s.walletSdk.isNotEmpty &&
       s.clipboard.isNotEmpty &&
       s.addresses.isNotEmpty;
@@ -974,7 +979,7 @@ SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
             'on-chain address literal${s.addresses.length == 1 ? '' : 's'})' : ''}. '
         'A legitimate wallet has the same capabilities, so this is a '
         '**triage lead, not a verdict**.',
-    messageCode: 'android.crypto_theft_risk',
+    messageCode: 'crypto.theft_risk',
     messageArgs: {
       'signals': signals,
       'addresses': [
@@ -1020,12 +1025,12 @@ SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
         'same clipboard calls and the same address literals (merchant or '
         'contract addresses), so **presence is not theft**. Strings beyond the '
         'per-DEX scan budget were not examined.',
-    limitationCode: 'android.crypto_theft_risk.limitation',
+    limitationCode: 'crypto.theft_risk.limitation',
     recommendation: 'Check the wallet flow by hand: does the app ever replace '
         'a clipboard address, does it ask for the seed phrase outside its own '
         'wallet UI, and where do the address literals come from? Dynamic '
         'analysis in an isolated device settles it.',
-    recommendationCode: 'android.crypto_theft_risk.review',
+    recommendationCode: 'crypto.theft_risk.review',
   );
 }
 

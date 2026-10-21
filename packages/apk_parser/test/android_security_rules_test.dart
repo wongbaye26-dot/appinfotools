@@ -383,10 +383,21 @@ void main() {
       expect(finding!.severity, SecuritySeverity.p3);
     });
 
-    test('助记词 + 上传 → P2：能拿到密钥材料，也有送出去的通道', () {
-      final finding = cryptoFinding(audit(['mnemonic', 'multipart/form-data']));
+    test('助记词 + 上传 + 写死地址 → P2：能拿到密钥材料，也有送出去的通道', () {
+      final finding = cryptoFinding(audit([
+        'mnemonic',
+        'multipart/form-data',
+        '0x52908400098527886E0F7030069857D2E4169EE7',
+      ]));
       expect(finding, isNotNull);
       expect(finding!.severity, SecuritySeverity.p2);
+    });
+
+    test('助记词 + 只有上传（没有地址）→ P3：上传能力几乎每个应用都有', () {
+      // 单靠 upload 判 P2 会让规则在九成应用上出现 —— 这条钉住那个取舍。
+      final finding = cryptoFinding(audit(['mnemonic', 'multipart/form-data']));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p3);
     });
 
     test('钱包 + 剪贴板 + 写死的地址 → P2：地址替换型的三件套', () {

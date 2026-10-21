@@ -908,14 +908,28 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final hasActualGaps = security.hasActualGaps;
     final gapCount = security.coverageGapCount;
 
+    // 「盗 U 风险」单独一项：它跨平台、是用户明确关心的一类风险，
+    // 埋在几十条发现里看不见。摘出来之后通用列表里就不重复列了。
+    SecurityFinding? cryptoRisk;
+    for (final f in findings) {
+      if (f.category == SecurityCategory.cryptoAsset) {
+        cryptoRisk = f;
+        break;
+      }
+    }
+
     final cards = <Widget>[
       _SectionHeader(title: t.security.title, tab: DetailTab.security),
       // 总览摘要卡片
       _buildSecurityOverviewCard(findings, hasActualGaps, gapCount),
+      // 「盗 U 风险」小结（无发现时也显示「未发现」，而不是整块消失）
+      _buildCryptoRiskHeader(cryptoRisk),
+      if (cryptoRisk != null) SecurityFindingCard(finding: cryptoRisk),
     ];
 
     // 按严重程度排序的发现卡片（P0 在前，INFO 在后）
     final sortedFindings = List<SecurityFinding>.from(findings)
+      ..removeWhere((f) => f.category == SecurityCategory.cryptoAsset)
       ..sort((a, b) => a.severity.index.compareTo(b.severity.index));
 
     for (final finding in sortedFindings) {
@@ -985,6 +999,78 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     return cards;
+  }
+
+  /// 「盗 U 风险」这一项的小结行。
+  ///
+  /// **没有发现时也要出现**：整块消失会让用户以为「没查」，而我们要说的是
+  /// 「查了，没发现」。三档状态由发现项的有无与等级决定，颜色与文案都由
+  /// i18n 给，不在这里拼字符串。
+  Widget _buildCryptoRiskHeader(SecurityFinding? risk) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final highRisk =
+        risk != null && risk.severity.index <= SecuritySeverity.p2.index;
+    final (label, color) = risk == null
+        ? (t.security.crypto_risk.state_none, theme.hintColor)
+        : highRisk
+            ? (t.security.crypto_risk.state_high, colorScheme.error)
+            : (t.security.crypto_risk.state_review, Colors.amber.shade700);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withValues(alpha: 0.35), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.account_balance_wallet_outlined,
+                    size: 20, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    t.security.crypto_risk.title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    label,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (risk == null) ...[
+              const SizedBox(height: 8),
+              Text(
+                t.security.crypto_risk.not_found,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   /// 安全检测总览摘要卡片。

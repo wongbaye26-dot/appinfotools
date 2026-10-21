@@ -4,7 +4,7 @@
 // 收款地址。判宽的代价是**每个应用都被报**（哈希、颜色值、内存地址都会被
 // 当成地址），所以边界条件要逐条钉住。
 
-import 'package:apk_parser/src/security/crypto_address.dart';
+import 'package:analysis_model/analysis_model.dart';
 import 'package:test/test.dart';
 
 void main() {

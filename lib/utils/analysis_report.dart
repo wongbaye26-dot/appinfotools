@@ -711,13 +711,13 @@ class AnalysisReport {
                   ? f.android_malware_reflection_suffix
                   : '',
             ),
-      'android.crypto_theft_risk' => signals == null
+      'crypto.theft_risk' => signals == null
           ? null
-          : f.android_crypto_theft_risk(
+          : f.crypto_theft_risk(
               signals: _joinNames(signals, t) ?? '—',
               // 没有地址时整句不出现 —— 印出「0 个地址」比不印更让人困惑。
               addresses: addressCount is int && addressCount > 0
-                  ? f.android_crypto_theft_risk_addresses(count: addressCount)
+                  ? f.crypto_theft_risk_addresses(count: addressCount)
                   : '',
             ),
       'android.packer' => names == null ? null : f.android_packer(names: names),
@@ -966,7 +966,7 @@ class AnalysisReport {
       'android.packer.review' => f.android_packer_review,
       'android.malware_indicators.review' =>
         f.android_malware_indicators_review,
-      'android.crypto_theft_risk.review' => f.android_crypto_theft_risk_review,
+      'crypto.theft_risk.review' => f.crypto_theft_risk_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
@@ -1176,8 +1176,7 @@ class AnalysisReport {
       'ios.reference_tables.limitation' => f.ios_reference_tables_limitation,
       'android.malware_indicators.limitation' =>
         f.android_malware_indicators_limitation,
-      'android.crypto_theft_risk.limitation' =>
-        f.android_crypto_theft_risk_limitation,
+      'crypto.theft_risk.limitation' => f.crypto_theft_risk_limitation,
       _ => null,
     };
     return localized ?? raw;

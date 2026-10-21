@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 
+import 'ios_crypto_audit.dart';
+
 import '../ipa_container.dart';
 import '../ipa_info_plist.dart';
 import '../ios_reference_tables.dart';
@@ -468,6 +470,9 @@ class IosPrivacyAudit {
     var attempted = 0;
     var truncated = false;
 
+    // 「盗 U」信号：在下面那次字符串遍历里顺带收集，不额外解码一遍。
+    final cryptoSignals = IosCryptoSignals();
+
     for (final target in targets) {
       final bytes = target.bytes;
       if (bytes == null || bytes.isEmpty) {
@@ -550,6 +555,8 @@ class IosPrivacyAudit {
         minLength: _Budget.minStringLength,
       )) {
         NetworkEndpoints.collect(str, domainSet, ipSet);
+        // 「盗 U」信号复用这一次遍历：钱包框架 / 助记词 / 剪贴板 / 链上地址。
+        cryptoSignals.collect(str, target.path);
         for (final (id, _, literal) in _markers) {
           if (!str.contains(literal)) continue;
           (byMarker[id] ??= <String>[]).add(str);
@@ -557,6 +564,8 @@ class IosPrivacyAudit {
         }
       }
     }
+
+    findings.addAll(buildIosCryptoFindings(cryptoSignals));
 
     for (final (id, description, literal) in _markers) {
       final samples = byMarker[id];
