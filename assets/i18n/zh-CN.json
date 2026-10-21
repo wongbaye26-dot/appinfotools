@@ -64,7 +64,9 @@
     "field_nested_bundle_count": "嵌套包数",
     "field_executable": "可执行文件",
     "copy_field": "复制{label}",
-    "field_details": "详细信息"
+    "field_details": "详细信息",
+    "sig_disabled": "已在设置中关闭",
+    "security_disabled": "已在设置中关闭"
   },
   "home": {
     "copy_file_path": "复制文件路径",

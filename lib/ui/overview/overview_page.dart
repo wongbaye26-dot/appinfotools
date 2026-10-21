@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
@@ -1053,6 +1054,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     PackageAnalysisResult? analysis,
     bool isIos,
   ) {
+    // Android 的签名验证要 apksigner，是**可关闭的设置项**。关掉时显示
+    // 「已在设置中关闭」，不要显示「未验证」—— 后者读起来像「验了但没通过」。
+    if (!isIos && !Config.enableSignature.value) {
+      return (t.overview.sig_disabled, Colors.grey);
+    }
     final status =
         isIos ? analysis?.ios?.codeSign?.status : fileState.signature?.status;
     return switch (status) {
@@ -1071,6 +1077,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     bool isParsing,
   ) {
     if (isParsing) return (t.overview.status_parsing, Colors.blue);
+    // 「没开」与「没跑成」必须分开：前者是用户的设置，后者是结果缺失。
+    // 都显示「未检测」的话，用户会以为工具坏了。
+    if (!Config.enableSecurityAudit.value) {
+      return (t.overview.security_disabled, Colors.grey);
+    }
     if (security == null) return (t.overview.security_not_run, Colors.grey);
     final count = security.findings.length;
     if (count == 0) return (t.overview.security_clean, Colors.green);

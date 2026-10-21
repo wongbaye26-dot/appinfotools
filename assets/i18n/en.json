@@ -64,7 +64,9 @@
     "field_nested_bundle_count": "Nested bundles",
     "field_executable": "Executable",
     "copy_field": "Copy {label}",
-    "field_details": "Details"
+    "field_details": "Details",
+    "sig_disabled": "disabled in settings",
+    "security_disabled": "disabled in settings"
   },
   "home": {
     "copy_file_path": "Copy file path",

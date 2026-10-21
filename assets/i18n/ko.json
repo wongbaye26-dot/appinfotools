@@ -54,7 +54,9 @@
     "sig_none": "미검증",
     "field_permission_count": "권한 수",
     "field_component_count": "컴포넌트 수",
-    "field_nested_bundle_count": "중첩 번들 수"
+    "field_nested_bundle_count": "중첩 번들 수",
+    "sig_disabled": "설정에서 꺼짐",
+    "security_disabled": "설정에서 꺼짐"
   },
   "home": {
     "copy_file_path": "파일 경로 복사",

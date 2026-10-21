@@ -54,7 +54,9 @@
     "sig_none": "未検証",
     "field_permission_count": "権限数",
     "field_component_count": "コンポーネント数",
-    "field_nested_bundle_count": "ネスト数"
+    "field_nested_bundle_count": "ネスト数",
+    "sig_disabled": "設定で無効",
+    "security_disabled": "設定で無効"
   },
   "home": {
     "copy_file_path": "ファイルパスをコピー",
