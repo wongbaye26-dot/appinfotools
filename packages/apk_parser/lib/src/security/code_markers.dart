@@ -212,10 +212,29 @@ const List<CodeMarker> codeMarkers = [
   // 界面文案是 MUTF-8 字节，根本不会被当成字符串取出来 —— 写 `助记词` 这类
   // 中文标记只会是一条永远不命中的死规则（`dex_method_scanner_test` 的漂移
   // 守卫会当场报出来）。
+  //
+  // 另外注意**长度**：提取器只保留 ≥ 6 字符的串。`bip39` / `erc20` 这类 5 字符
+  // 字面量，只有当它出现在更长的串里（`bip39_mnemonic_to_seed`）才可能命中；
+  // 单独成串会被直接丢掉。
   CodeMarker('wallet-mnemonic', SecurityCategory.cryptoAsset,
       'mnemonic / seed phrase handling', 'mnemonic'),
   CodeMarker('wallet-private-key', SecurityCategory.cryptoAsset,
       'private key handling', 'privateKey'),
+  // 下面几条主要给**原生库**用：钱包的密码学实现常被静态链接进 `.so`，
+  // 符号不导出，但 `.rodata` 里的常量名还在（`secp256k1`、`bip39`…）。
+  // 放在同一张表里，DEX 侧顺带也能命中。
+  CodeMarker('wallet-secp256k1', SecurityCategory.cryptoAsset,
+      'secp256k1 signing', 'secp256k1'),
+  CodeMarker(
+      'wallet-bip39', SecurityCategory.cryptoAsset, 'BIP39 mnemonic', 'bip39'),
+  CodeMarker('wallet-bip32', SecurityCategory.cryptoAsset,
+      'BIP32 key derivation', 'bip32'),
+  CodeMarker('wallet-keccak', SecurityCategory.cryptoAsset,
+      'keccak hashing (EVM)', 'keccak'),
+  CodeMarker('wallet-erc20', SecurityCategory.cryptoAsset, 'ERC20 token calls',
+      'erc20'),
+  CodeMarker('wallet-trc20', SecurityCategory.cryptoAsset, 'TRC20 token calls',
+      'trc20'),
   CodeMarker('clipboard-read', SecurityCategory.cryptoAsset, 'clipboard read',
       'getPrimaryClip'),
   CodeMarker('clipboard-write', SecurityCategory.cryptoAsset, 'clipboard write',

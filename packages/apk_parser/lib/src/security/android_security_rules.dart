@@ -6,6 +6,7 @@ import 'sdk_inventory_scanner.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
+import 'native_crypto_scan.dart';
 
 /// 组合规则用到的**事实**：扫描结果的一次性归纳。
 ///
@@ -44,6 +45,7 @@ class AndroidRuleFacts {
     required this.unusedPermissionNames,
     required this.nativeHardening,
     required this.sdkInventory,
+    required this.nativeCrypto,
   });
 
   final ApkMeta meta;
@@ -80,6 +82,12 @@ class AndroidRuleFacts {
 
   /// 是否存在「非图片」的敏感数据来源（设备标识 / 通讯录）。
   final bool hasSensitiveSource;
+
+  /// 原生库（`lib/**.so`）字符串里的「盗 U」信号。
+  ///
+  /// 钱包的密码学实现常被静态链接进 `.so` 且不导出符号 —— 符号表看不到，
+  /// 但 `.rodata` 里的字符串还在。见 `native_crypto_scan.dart`。
+  final NativeCryptoScanResult nativeCrypto;
 
   /// 第三方**服务类** SDK 的盘点结果（含覆盖情况）。
   ///
@@ -862,11 +870,19 @@ const Set<String> _walletSdkMarkers = {
   'wallet-okx',
   'wallet-binance',
   'wallet-coinbase',
+  // 下面几条主要来自**原生库字符串**（钱包逻辑在 `.so` 里时 DEX 是干净的）。
+  'wallet-secp256k1',
+  'wallet-keccak',
+  'wallet-erc20',
+  'wallet-trc20',
 };
 
 const Set<String> _keyMaterialMarkers = {
   'wallet-mnemonic',
   'wallet-private-key',
+  // BIP39 / BIP32 是助记词与派生路径，同属「能签走资产的材料」。
+  'wallet-bip39',
+  'wallet-bip32',
 };
 
 const Set<String> _clipboardMarkers = {
@@ -894,6 +910,8 @@ _CryptoTheftSignals _cryptoTheftSignals(AndroidRuleFacts f) {
   final ids = {
     for (final r in f.allCodeRefs) r.markerId,
     for (final c in f.allClues) c.markerId,
+    // 原生库字符串也算：逻辑在 native 里的样本，DEX 侧是干净的。
+    ...f.nativeCrypto.samples.keys,
   };
   List<String> pick(Set<String> group) => [
         for (final id in group)
@@ -903,7 +921,7 @@ _CryptoTheftSignals _cryptoTheftSignals(AndroidRuleFacts f) {
     walletSdk: pick(_walletSdkMarkers),
     keyMaterial: pick(_keyMaterialMarkers),
     clipboard: pick(_clipboardMarkers),
-    addresses: f.scan.cryptoAddresses,
+    addresses: [...f.scan.cryptoAddresses, ...f.nativeCrypto.addresses],
     specialAccess: f.specialAccessKinds.isNotEmpty,
     smsAccess: f.meta.permissions.any(_smsPermissions.contains),
     upload: f.hasUploadCapability,
@@ -1010,6 +1028,16 @@ SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
             location: clue.dexNames.join(', '),
             detail: '${clue.markerId} (string only): '
                 '${clue.samples.take(3).join(' | ')}',
+          ),
+      // 原生库字符串里的命中：位置是 `.so` 路径，来源标 `nativeString`。
+      for (final id in signals)
+        for (final sample
+            in (f.nativeCrypto.samples[id] ?? const <String>{}).take(3))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.nativeString,
+            location:
+                (f.nativeCrypto.sources[id] ?? const <String>{}).join(', '),
+            detail: '$id (native string): $sample',
           ),
       // 地址字面量单独给证据：用户要能把它拿去链上查。
       for (final hit in s.addresses.take(8))

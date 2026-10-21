@@ -7,6 +7,7 @@ import 'android_security_rules.dart';
 import 'code_markers.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
+import 'native_crypto_scan.dart';
 import 'native_symbol_scanner.dart';
 import 'packer_catalog.dart';
 import 'permission_catalog.dart';
@@ -1234,6 +1235,9 @@ class AndroidSecurityAudit {
     // 每条只从 `AndroidRuleFacts` 取输入，互不读取对方的产物 ——
     // 抽表前「规则 B 里算出 `hasImageInput`，再由 C / D / E 读取」那种
     // 隐式顺序依赖没有了：调换表里两行的顺序只改变输出顺序，不改变结论。
+    // 原生库字符串里的「盗 U」信号（逻辑在 native 里的样本靠这一条）。
+    final nativeCrypto = NativeCryptoScan.scan(nativeEntries);
+
     final facts = AndroidRuleFacts(
       meta: meta,
       scan: scan,
@@ -1265,6 +1269,7 @@ class AndroidSecurityAudit {
           if (h.parsed) h,
       ],
       sdkInventory: sdkInventory,
+      nativeCrypto: nativeCrypto,
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));

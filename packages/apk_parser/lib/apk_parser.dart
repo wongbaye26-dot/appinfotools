@@ -36,6 +36,7 @@ export 'src/security/android_security_audit.dart';
 // 测试要能逐条驱动它，应用层也可能要按 ruleId 反查规则说明。
 export 'src/security/android_security_rules.dart';
 export 'src/security/dex_clue_scanner.dart';
+export 'src/security/native_crypto_scan.dart';
 export 'src/security/dex_method_scanner.dart';
 export 'src/security/code_markers.dart';
 export 'src/security/native_symbol_scanner.dart';

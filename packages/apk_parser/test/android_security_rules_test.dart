@@ -435,6 +435,65 @@ void main() {
     });
   });
 
+  group('盗 U 风险：原生库字符串也算信号', () {
+    // 逻辑在 native 里的样本，DEX 侧是干净的 —— 只有扫 `.so` 才看得见。
+    SecurityAnalysisResult auditNative(List<String> strings) =>
+        AndroidSecurityAudit.audit(
+          meta: _meta(targetSdk: 34),
+          dexEntries: const [],
+          nativeEntries: [
+            NativeLibraryBytes('lib/arm64-v8a/libwallet.so', _blob(strings)),
+          ],
+        );
+
+    SecurityFinding? cryptoFinding(SecurityAnalysisResult result) {
+      for (final f in result.findings) {
+        if (f.ruleId == 'ANDROID-CRYPTO-THEFT-RISK') return f;
+      }
+      return null;
+    }
+
+    test('只有原生库里的 secp256k1 → P3，证据来源标 nativeString', () {
+      final finding =
+          cryptoFinding(auditNative(['secp256k1_ecdsa_sign_recoverable']));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p3);
+      expect(finding.messageArgs['signals'], contains('wallet-secp256k1'));
+      expect(
+        finding.evidence
+            .any((e) => e.source == SecurityEvidenceSource.nativeString),
+        isTrue,
+        reason: '证据要能指出是哪一层的字符串',
+      );
+      expect(
+        finding.evidence.any((e) => e.location.contains('libwallet.so')),
+        isTrue,
+        reason: '位置要能追到具体库',
+      );
+    });
+
+    test('原生库里的 钱包 + 剪贴板 + 地址 → P2', () {
+      final finding = cryptoFinding(auditNative([
+        'secp256k1_ecdsa_sign_recoverable',
+        'getPrimaryClip',
+        'TXk9W1FpvF9PCw8c5wLKr6vH7Wq3vJ9dKt',
+      ]));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p2);
+    });
+
+    test('原生库里的公开合约地址仍然被过滤', () {
+      final finding = cryptoFinding(auditNative([
+        'secp256k1_ecdsa_sign_recoverable',
+        'getPrimaryClip',
+        'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+      ]));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p3, reason: '地址被过滤后不够 P2');
+      expect(finding.messageArgs['addressCount'], 0);
+    });
+  });
+
   group('签名方案判据：v1-only 与未签名必须分开', () {
     SecurityAnalysisResult auditSigning({required bool? hasV1}) => _audit(
           meta: _meta(targetSdk: 34)

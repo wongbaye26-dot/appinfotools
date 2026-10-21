@@ -178,6 +178,14 @@ enum SecurityEvidenceSource {
   /// Mach-O 符号 / 字符串。
   machoSymbol,
 
+  /// 原生库（ELF）里的 ASCII 字符串。
+  ///
+  /// 与 [nativeSymbol] 分开：那个是 `.dynsym` 里的**精确符号名**，这个是
+  /// 从 `.rodata` / `.dynstr` 里捞出来的**普通字符串**（常量名、错误文案）。
+  /// 钱包的密码学实现常被静态链接进 `.so` 且不导出符号，符号表里看不到，
+  /// 但它们的字符串还在。
+  nativeString,
+
   /// 原生库（ELF / Mach-O）的**符号表**条目。
   ///
   /// 与 [machoSymbol] 分开：那个目前用于 iOS 侧的符号/字符串线索，
@@ -207,6 +215,7 @@ enum SecurityEvidenceSource {
         SecurityEvidenceSource.dexMethodReference => 'DEX method references',
         SecurityEvidenceSource.machoSymbol => 'Mach-O symbols',
         SecurityEvidenceSource.nativeSymbol => 'native library symbols',
+        SecurityEvidenceSource.nativeString => 'native library strings',
         SecurityEvidenceSource.zipEntry => 'archive entry',
         SecurityEvidenceSource.provisioning => 'provisioning / entitlements',
         SecurityEvidenceSource.runtime => 'runtime observation',
