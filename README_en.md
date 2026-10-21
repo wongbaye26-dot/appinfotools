@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Cross-platform Android / iOS package inspector</strong><br>
-  Parse the structure, review the risks — all in one window.
+  Parse the structure, review the risks, install to a device — all in one window.
 </p>
 
 <p align="center">
@@ -86,10 +86,38 @@ There are 19 security rules on Android (8 of them cross-field combinations) and 
 rather than defaulting to high: device identifiers, location and clipboard are P3 because nearly every
 app has them, while contacts / SMS / microphone combined with upload are P2.
 
+### Installing to a device (Android)
+
+Analysing a package usually leads to "let me actually try it". The install page keeps
+the whole loop in one place — pick a package, connect a device, install, read the log.
+No more dropping into a terminal to type `adb`.
+
+| Capability | What it does |
+|---|---|
+| USB / wireless | Devices show up as soon as they are plugged in; wireless supports `adb pair`, `adb connect` and disconnect |
+| Package info | Icon, app name, package name, version and build number — same parsing pipeline as the analysis page |
+| Device details | Brand + model + OS version (`samsung SM_G9910` / `Android 14`), not the `model:SM_G9910` code name |
+| Remembered devices | Wireless devices are remembered, so next time you just hit "Connect" instead of hunting for the IP again |
+| Install log | The raw `adb install` output, line by line, selectable |
+| Splits | Pick which splits of an XAPK / APKS to install |
+| Options | Overwrite (on by default), downgrade, test packages, **uninstall first** |
+
+> **"Uninstall first" exists for repacked APKs.** When the signature differs,
+> `adb install -r` always fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` — and a
+> repacked APK almost never matches the installed signature. That is the single most
+> common failure for the kind of packages this tool is used on.
+
+**Android only for now.** On iOS the blocker is not tooling but signing: an IPA only
+installs if it was signed *for that device*, so App Store and decrypted packages can
+never be installed — only enterprise (In-House) and Ad-Hoc builds are meaningful.
+The evaluation lives in [`docs/notes/install-support-eval.md`](docs/notes/install-support-eval.md);
+it is not implemented.
+
 ### Interface
 
 - **Overview** — everything on one screen: current file status, four status cards (platform / size / signature / security), statistics and recent files
 - **Detail page** — six tabs (Overview / Application / Permissions / Structure / Signature / Security) with identical semantics for APK and IPA
+- **Install page** — pick a package, connect a device (USB shows up automatically, wireless pairs here), install; includes an install log and split selection
 - **Version comparison** — structured diff between two analysed packages (field level plus collections such as permissions, components, native symbols and domains), shown as added / removed / changed while keeping "we could not read it" strictly apart from "not present in the file"; exports a Markdown / JSON comparison report
 - **Drag and drop** — dropping a file starts the analysis immediately
 - **File association** — registers `.apk` / `.ipa` / `.xapk` / `.apks` / `.apkm` as candidate handlers for this app.
@@ -218,7 +246,7 @@ The Android and iOS parsers do not depend on each other; they share only `analys
 
 ### Quality and verification
 
-- **1,549 root tests + 357 package tests** (`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`), `flutter analyze --fatal-infos --fatal-warnings` clean and `dart format` clean; CI runs the same gate on all three platforms
+- **1,728 root tests + 441 package tests** (`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`), `flutter analyze --fatal-infos --fatal-warnings` clean and `dart format` clean; CI runs the same gate on all three platforms
 - **Expected values always come from an independent implementation**, never from this project's own parser:
   `aapt2` for the manifest and resources, `apksigner` / `codesign` for signatures, `assetutil` for iOS asset catalogs,
   `libcompression` (Apple's system library) for LZFSE, and `actool` (bundled with Xcode) to generate asset-catalog fixtures
@@ -238,6 +266,7 @@ When they are hit, the tool says so plainly instead of producing something that 
 | Large packages are scanned within a budget | Dimensions that exceed the budget are marked `partial` **with the ratio** (e.g. "266 unique native libraries, 24 scanned"), never reported as "24/24 covered" |
 | Signature verification depends on external tools | Without `apksigner` / `codesign` the result is "cannot determine", which is **not** the same as an invalid signature |
 | 日本語 / 한국어 are incomplete | See "UI languages" above |
+| Installation is Android-only | An iOS IPA only installs if it was signed for that device (enterprise / Ad-Hoc); App Store and decrypted packages never do. Evaluation in `docs/notes/install-support-eval.md`, not implemented |
 
 ## Design principles
 

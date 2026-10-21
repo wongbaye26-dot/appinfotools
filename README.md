@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>跨平台 Android / iOS 应用包分析工具</strong><br>
-  解析包结构、检视安全风险，一个窗口看完。
+  解析包结构、检视安全风险、装到设备上 —— 一个窗口看完。
 </p>
 
 <p align="center">
@@ -89,10 +89,34 @@ Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 28 条逐
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 组合规则 C 的等级**跟着证据强度走**：同一方法体内两个调用点给 P1，只有整包层面共现给 P2。
 
+### 安装到设备（Android）
+
+分析完的下一步通常是「装上去看看」。安装页把这套流程做完整了 —— 选包、连设备、
+安装、看日志都在同一个页面里，不必再开终端敲 `adb`。
+
+| 能力 | 说明 |
+|---|---|
+| 有线 / 无线 | USB 插上自动出现；无线支持 `adb pair` 配对、`adb connect` 连接、断开 |
+| 安装包信息 | 图标、应用名、包名、版本与构建号 —— 与分析页同一条解析流水线 |
+| 设备详情 | 品牌 + 型号 + 系统版本（`samsung SM_G9910` / `Android 14`），不是 `model:SM_G9910` 这种代号 |
+| 记住设备 | 连过的无线设备会保存下来，下次点「连接」即可，不用再翻手机找 IP |
+| 安装日志 | `adb install` 的原始输出逐行显示，可选中复制 |
+| 分包 | XAPK / APKS 可勾选要装哪些分包 |
+| 选项 | 覆盖安装（默认开）、降级、测试包、**安装前先卸载** |
+
+> **「安装前先卸载」是给重打包的包准备的。** 签名不一致时 `adb install -r`
+> 必然失败（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`），而重打包的包签名几乎一定
+> 与已装版本不同 —— 这正是本工具的用户最常撞上的一种失败。
+
+**目前只支持 Android。** iOS 的门槛不在工具，而在签名：IPA 必须「为这台设备
+签过」才装得上，App Store 包与砸壳包一律装不上，只有企业签与 Ad-Hoc 有意义。
+方案评估在 [`docs/notes/install-support-eval.md`](docs/notes/install-support-eval.md)，尚未实现。
+
 ### 界面
 
 - **概览页**：一屏看完 —— 当前文件状态、平台/大小/签名/安全四个状态卡、统计与最近文件
 - **详情页**：六个 Tab（概览 / 应用 / 权限 / 结构 / 签名 / 安全），APK 与 IPA 语义一致
+- **安装页**：选包 → 连设备（USB 自动出现 / 无线配对）→ 安装，带安装日志与分包选择
 - **版本对比**：选两个已解析的包做结构化差异（字段级 + 权限 / 组件 / 原生符号 / 域名等集合级），
   三态呈现，且把「我们没读到」与「文件里没有」严格分开；可导出 Markdown / JSON 对比报告
 - **拖放即用**：拖入文件自动解析
@@ -218,7 +242,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
 
 ### 质量与验证
 
-- **1,625 个根测试 + 378 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
+- **1,728 个根测试 + 441 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
 - **期望值一律来自独立实现**，不取自本项目解析器：
   `aapt2` 核对清单与资源、`apksigner` / `codesign` 核对签名、`assetutil` 核对 iOS 资产目录、
   `libcompression`（Apple 系统库）核对 LZFSE、`actool`（Xcode 自带）生成资产目录夹具
@@ -238,6 +262,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
 | 大包扫描有预算上限 | 超出预算的维度标为 `partial` 并给出**比例**（例如「266 个唯一原生库，只扫了 24 个」），不会写成「24/24 已覆盖」 |
 | 签名验证依赖外部工具 | 未安装 `apksigner` / `codesign` 时显示「无法确认」，**不等于**签名无效 |
 | 日本語 / 한국어 未补齐 | 见上文「界面语言」 |
+| 安装只支持 Android | iOS 的 IPA 需要「为这台设备签过」才装得上（企业签 / Ad-Hoc），App Store 包与砸壳包一律装不上。方案评估见 `docs/notes/install-support-eval.md`，未实现 |
 
 ## 设计原则
 
