@@ -75,10 +75,14 @@ class IosJailbreakAudit {
   };
 
   /// 只在**主二进制字符串**里找的长字面量（短名子在字符串里太容易误伤）。
+  ///
+  /// **`mobilesubstrate` 不在里面**：正常应用会去**探测**它来判断设备是否
+  /// 越狱（`/Library/MobileSubstrate/DynamicLibraries/...` 是最经典的越狱
+  /// 检测路径）。把它当「自带越狱组件」，等于把「防越狱」说成「越狱」——
+  /// 实测在一个改包微信上就这么误报过。
   static const List<String> stringMarkers = [
     'libjailbreak',
     'libchoma',
-    'mobilesubstrate',
     'multicast_bytecopy',
     'trollstore',
     'roothide',

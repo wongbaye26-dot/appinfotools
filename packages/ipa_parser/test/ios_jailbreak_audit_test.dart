@@ -73,6 +73,18 @@ void main() {
     expect(finding.messageArgs['components'], contains('libchoma'));
   });
 
+  test('只是**探测** MobileSubstrate 的应用不算越狱工具', () {
+    // 正常应用会检查 `/Library/MobileSubstrate/DynamicLibraries/...` 来判断
+    // 设备是否越狱 —— 把「防越狱」说成「越狱」是方向反了的误报。
+    expect(
+      _finding(
+        paths: ['Payload/App.app/App'],
+        strings: ['/Library/MobileSubstrate/DynamicLibraries/LiveClock.plist'],
+      ),
+      isNull,
+    );
+  });
+
   test('普通应用不命中', () {
     expect(
       _finding(paths: [

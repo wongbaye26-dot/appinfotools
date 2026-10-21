@@ -61,7 +61,14 @@ class _Row {
   final String category;
   final String name;
 
+  /// 「盗 U」规则的发现。
   SecurityFinding? finding;
+
+  /// 越狱 / 内核漏洞利用组件的发现（iOS 才有）。
+  ///
+  /// 同一次评估里量两条规则：它们性质完全不同（一个是能力推断、一个是
+  /// 组件事实），混成一个数字没有意义。
+  SecurityFinding? jailbreak;
 
   /// 非空表示这个文件**没能分析**（不计入分母）。
   String? failure;
@@ -72,6 +79,8 @@ class _Row {
 
   bool hitHigh() =>
       finding != null && finding!.severity.index <= SecuritySeverity.p2.index;
+
+  bool get hitJailbreak => jailbreak != null;
 
   /// 命中时给几条**原始样本** —— 只报标记 id 的话，人没法判断
   /// 「这是钱包实现」还是「这只是把钱包名字列在字符串里」。
@@ -124,6 +133,7 @@ Future<_Row> _evalApk(File file, String category) async {
       arscEntryCount: reader.arscParser?.getAllResources().length,
     );
     row.finding = _cryptoFinding(security);
+    row.jailbreak = _jailbreakFinding(security);
     return row;
   } catch (e) {
     row.failure = 'exception: $e';
@@ -158,18 +168,47 @@ Future<_Row> _evalIpa(File file, String category) async {
       }
     }
 
+    // 嵌套可执行文件：**必须传**，否则越狱组件规则只能靠主二进制里的
+    // dylib 路径命中，会漏掉「框架在包里但主二进制没引用」的情况。
+    // 这里只给路径（`bytes: null`）—— 对这条规则来说路径就够了。
+    final nested = <IosNestedExecutableInput>[
+      for (final entry in archive.files)
+        if (entry.isFile &&
+            (entry.name.contains('.framework/') ||
+                entry.name.endsWith('.dylib')) &&
+            !entry.name.contains('_CodeSignature') &&
+            !entry.name.endsWith('.plist') &&
+            !entry.name.contains('/Headers/') &&
+            !entry.name.contains('/Modules/'))
+          IosNestedExecutableInput(
+            path: entry.name,
+            bundlePath: entry.name.substring(0, entry.name.lastIndexOf('/')),
+            kind: IosBundleKind.framework,
+            bytes: null,
+          ),
+    ];
+
     final security = IosPrivacyAudit.audit(
       infoPlist: plist,
       executableBytes:
           executableBytes == null ? null : Uint8List.fromList(executableBytes),
       executablePath: executablePath,
+      nestedExecutables: nested,
     );
     row.finding = _cryptoFinding(security);
+    row.jailbreak = _jailbreakFinding(security);
     return row;
   } catch (e) {
     row.failure = 'exception: $e';
     return row;
   }
+}
+
+SecurityFinding? _jailbreakFinding(SecurityAnalysisResult result) {
+  for (final finding in result.findings) {
+    if (finding.ruleId == 'IOS-JAILBREAK-TOOLKIT') return finding;
+  }
+  return null;
 }
 
 SecurityFinding? _cryptoFinding(SecurityAnalysisResult result) {
@@ -193,10 +232,11 @@ void _report(List<_Row> rows, {String? outPath}) {
     buffer.writeln(text);
   }
 
-  line('| 类别 | 文件 | 结果 | 信号 |');
-  line('|---|---|---|---|');
+  line('| 类别 | 文件 | 盗 U | 越狱组件 | 信号 |');
+  line('|---|---|---|---|---|');
   for (final row in rows) {
     line('| ${row.category} | ${row.name} | ${row.verdict} | '
+        '${row.hitJailbreak ? row.jailbreak!.severity.name.toUpperCase() : '-'} | '
         '${row.finding == null ? '' : _signalsOf(row.finding!)} |');
   }
   // 命中的文件把原始样本列出来：人要靠它判断「真命中」还是「名字被列在
@@ -235,6 +275,15 @@ void _report(List<_Row> rows, {String? outPath}) {
         '精确度 $precision（$tp 真阳性 / $fp 误报，'
         '负样本 ${negatives.length} 个）');
   }
+
+  // 越狱组件规则：与盗 U 分开量 —— 它是「组件事实」，误报应当接近 0。
+  final jbTp = malicious.where((r) => r.hitJailbreak).length;
+  final jbFp = negatives.where((r) => r.hitJailbreak).length;
+  line('');
+  line('**越狱组件（iOS）**：召回 $jbTp/${malicious.length} '
+      '(${pct(jbTp, malicious.length)})，'
+      '精确度 ${negatives.isEmpty ? 'n/a（没有负样本）' : pct(jbTp, jbTp + jbFp)}'
+      '（$jbTp 真阳性 / $jbFp 误报）');
 
   final walletFp = negatives.where((r) => r.category == 'wallet' && r.hitAny());
   final benignFp = negatives.where((r) => r.category == 'benign' && r.hitAny());
