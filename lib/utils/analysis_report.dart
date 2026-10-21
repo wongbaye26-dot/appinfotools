@@ -1963,8 +1963,7 @@ class AnalysisReport {
               total: total,
               functions: functions ?? '?',
             ),
-      'ios.macho.call_sites_unavailable' =>
-        n.ios_macho_call_sites_unavailable,
+      'ios.macho.call_sites_unavailable' => n.ios_macho_call_sites_unavailable,
       'android.arsc.missing' => n.android_arsc_missing,
       'android.arsc.empty' => n.android_arsc_empty,
       // 这两条此前在 limitationNoteText 里（那里没有对应 code 的 AnalysisNote），
