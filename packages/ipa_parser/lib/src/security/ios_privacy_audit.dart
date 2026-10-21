@@ -628,12 +628,18 @@ class IosPrivacyAudit {
       if (bytes == null || bytes.isEmpty) continue;
       final parsed = MachOParser.parse(bytes);
       if (parsed.images.isEmpty) continue;
-      // **只扫 `__objc_selrefs`。** `__objc_classrefs` 结构相同，但它的槽位
-      // 指向的是 **class 对象**（`__objc_data` 里的 `class_t`），不是
-      // `__objc_classname` 里的名字字符串 —— 要拿到类名还得再解一层
-      // `class_ro_t.name`，而 arm64e 的指针认证会让这条路更脆。实测扫类引用
-      // 表命中 0 条（指针不落进 `__objc_classname`），所以不做。
-      final reports = [IosCallSiteScanner.scan(bytes, parsed.images.first)];
+      // 两张表都扫：选择子表回答「这个 API 在哪个函数里被引用」，
+      // 类引用表回答「这个类在哪个函数里被用到」—— 后者才是安全规则
+      // 的线索（`AVCaptureDevice`、`CNContactStore`）需要的那一层。
+      final reports = [
+        IosCallSiteScanner.scan(bytes, parsed.images.first),
+        IosCallSiteScanner.scan(
+          bytes,
+          parsed.images.first,
+          refsSection: IosCallSiteScanner.classRefsSection,
+          namesSection: IosCallSiteScanner.classNamesSection,
+        ),
+      ];
       var anyOk = false;
       for (final report in reports) {
         if (!report.ok) {
@@ -1881,7 +1887,7 @@ class IosPrivacyAudit {
             ? (
                 'ios.macho.call_sites',
                 'Attributed $callSiteAttributed of $callSiteTotal selector '
-                    'references to functions'
+                    '/ class references to functions'
                     '${functionsKnown ? ' ($totalFunctions functions in the binary)' : ''}. '
                     '"Referenced" still does not mean "called": ADRP+ADD only '
                     'loads the selector address, and what it is passed to is '

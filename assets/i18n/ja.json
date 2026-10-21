@@ -930,7 +930,7 @@
       "android_signature_v1_undetermined": "v2+ 署名ブロックは読み取りましたが、v1（JAR）署名の有無は判定できませんでした",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig を展開できなかった（リソース、ファイルパス、XML 自体のいずれかが読めない）ため、平文通信ポリシーは判定していません",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic も targetSdkVersion も読めないため、平文通信のプラットフォーム既定値を導けません",
-      "ios_macho_call_sites": "{total} 件のセレクタ参照のうち {attributed} 件を関数に帰属できました（バイナリ内の関数は {functions} 個）。「参照されている」は「呼ばれている」とは異なります：ADRP+ADD はセレクタのアドレスをレジスタに入れるだけで、その後の渡し先は静的に見えません。",
+      "ios_macho_call_sites": "{total} 件のセレクタ / クラス参照のうち {attributed} 件を関数に帰属できました（バイナリ内の関数は {functions} 個）。「参照されている」は「呼ばれている」とは異なります：ADRP+ADD はアドレスをレジスタに入れるだけで、その後の渡し先は静的に見えません。",
       "ios_macho_call_sites_unavailable": "__objc_selrefs を指す ADRP+ADD/LDR の命令対がないか、LC_FUNCTION_STARTS がないため、セレクタ参照を関数に帰属できませんでした。手がかりは「参照されている」として報告されます。"
     },
     "partial": "一部カバー",

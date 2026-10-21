@@ -129,10 +129,10 @@ class IosCallSiteScanner {
   /// 扫描一个 Mach-O 镜像。
   ///
   /// [file] 是整个文件字节，[image] 是其中的一个切片。
-  /// 两张结构相同的指针表：`__objc_selrefs` → `__objc_methname`（选择子），
-  /// `__objc_classrefs` → `__objc_classname`（类名）。
+  /// 两张表：`__objc_selrefs` → `__objc_methname`（选择子），
+  /// `__objc_classrefs` → `__objc_classname`（类名，要多解两层 `class_t`）。
   ///
-  /// 两张都要扫：安全规则里的线索大多是**类名**（`AVCaptureDevice`、
+  /// **两张都要扫**：安全规则里的线索大多是**类名**（`AVCaptureDevice`、
   /// `CNContactStore`），只扫选择子的话，算出来的调用点没有消费者。
   static const String selectorRefsSection = '__objc_selrefs';
   static const String selectorNamesSection = '__objc_methname';
@@ -173,14 +173,24 @@ class IosCallSiteScanner {
     // ---- 1. 槽位 → 选择子 ----
     final slotCount = selrefsBytes.length ~/ 8;
     final selectorOfSlot = <int, String>{};
+    final isClassTable = refsSection == classRefsSection;
     for (var i = 0; i < slotCount; i++) {
-      final selector = _resolveSelector(
-        selrefsBytes,
-        i,
-        methnameBytes,
-        methname.address,
-        image,
-      );
+      final selector = isClassTable
+          ? _resolveClassName(
+              file,
+              selrefsBytes,
+              i,
+              methnameBytes,
+              methname.address,
+              image,
+            )
+          : _resolveSelector(
+              selrefsBytes,
+              i,
+              methnameBytes,
+              methname.address,
+              image,
+            );
       if (selector != null) selectorOfSlot[i] = selector;
     }
 
@@ -330,19 +340,7 @@ class IosCallSiteScanner {
     final raw = ByteData.sublistView(selrefs, offset, offset + 8)
         .getUint64(0, Endian.little);
 
-    // 候选解读，按「最常见 → 最少见」排列。
-    final candidates = <int>[
-      // 1. 经典（无 chained fixups）：文件里直接是绝对 vmaddr。
-      raw,
-      // 2. `DYLD_CHAINED_PTR_64_OFFSET`：target 是相对 image base 的偏移。
-      (raw & 0xFFFFFFFFF) + _imageBase(image),
-      // 3. `DYLD_CHAINED_PTR_64`：target 是绝对 vmaddr（36 位）。
-      raw & 0xFFFFFFFFF,
-      // 4. arm64e 变体：高位 8 位参与地址。
-      ((raw >> 36) & 0xFF) << 56 | (raw & 0xFFFFFFFFF),
-    ];
-
-    for (final address in candidates) {
+    for (final address in _pointerCandidates(raw, image)) {
       if (address < methnameAddress) continue;
       final delta = address - methnameAddress;
       if (delta >= methname.length) continue;
@@ -353,6 +351,107 @@ class IosCallSiteScanner {
       if (selector.length > 200) continue;
       if (!selector.codeUnits.every((c) => c >= 0x20 && c < 0x7f)) continue;
       return selector;
+    }
+    return null;
+  }
+
+  /// 一个 8 字节槽位的**候选解读**。
+  ///
+  /// 文件里的指针是「重定位前」的形态，编码随链接器版本与指针格式而变。
+  /// 与其解析 `LC_DYLD_CHAINED_FIXUPS` 头部（格式有好几种，几百行），不如把
+  /// 四种可能的解读都列出来，**由调用方用「目标落进已知区间」筛掉错的** ——
+  /// 一个几十 KB 的节范围本身就是很强的校验。
+  static List<int> _pointerCandidates(int raw, MachOImage image) {
+    return <int>[
+      // 1. 经典（无 chained fixups）：文件里直接是绝对 vmaddr。
+      raw,
+      // 2. `DYLD_CHAINED_PTR_64_OFFSET`：target 是相对 image base 的偏移。
+      (raw & 0xFFFFFFFFF) + _imageBase(image),
+      // 3. `DYLD_CHAINED_PTR_64`：target 是绝对 vmaddr（36 位）。
+      raw & 0xFFFFFFFFF,
+      // 4. arm64e 变体：高位 8 位参与地址。
+      ((raw >> 36) & 0xFF) << 56 | (raw & 0xFFFFFFFFF),
+    ];
+  }
+
+  /// 虚拟地址 → 文件偏移（跨段映射）。落不进任何有文件内容的段时返回 `null`。
+  static int? _fileOffsetOf(MachOImage image, int vmaddr) {
+    if (vmaddr <= 0) return null;
+    for (final segment in image.segments) {
+      if (segment.vmSize <= 0) continue;
+      if (vmaddr < segment.vmAddress) continue;
+      final delta = vmaddr - segment.vmAddress;
+      if (delta >= segment.vmSize) continue;
+      // 零填充部分（`__bss`）没有文件内容。
+      if (delta >= segment.fileSize) return null;
+      return image.offset + segment.fileOffset + delta;
+    }
+    return null;
+  }
+
+  /// 从文件 [offset] 处读一个 8 字节指针。
+  static int? _readPointer(Uint8List file, int offset) {
+    if (offset < 0 || offset + 8 > file.length) return null;
+    return ByteData.sublistView(file, offset, offset + 8)
+        .getUint64(0, Endian.little);
+  }
+
+  /// 把第 [index] 个 `__objc_classrefs` 槽位解析成**类名**。
+  ///
+  /// 与选择子表不同：`__objc_classrefs` 的槽位指向 **class 对象**
+  /// （`__objc_data` 里的 `class_t`），不是名字字符串。要拿到名字得走三层：
+  ///
+  /// ```c
+  /// struct objc_class {          // 64 位，40 字节
+  ///   isa, superclass;           // +0, +8
+  ///   cache_t cache;             // +16（16 字节）
+  ///   uintptr_t data;            // +32 -> class_ro_t*（低 3 位是标志）
+  /// };
+  /// struct class_ro_t {
+  ///   uint32_t flags, instanceStart, instanceSize, reserved;  // +0..+12
+  ///   const uint8_t *ivarLayout;                              // +16
+  ///   const char *name;                                       // +24
+  /// };
+  /// ```
+  ///
+  /// 每一层的指针都要按 [_pointerCandidates] 试解读，并用「下一跳能落进
+  /// 有文件内容的段」筛掉错的 —— 三层串起来，误判几乎不可能。
+  static String? _resolveClassName(
+    Uint8List file,
+    Uint8List classrefs,
+    int index,
+    Uint8List classname,
+    int classnameAddress,
+    MachOImage image,
+  ) {
+    final raw = _readPointer(classrefs, index * 8);
+    if (raw == null) return null;
+
+    for (final classAddr in _pointerCandidates(raw, image)) {
+      final classOffset = _fileOffsetOf(image, classAddr);
+      if (classOffset == null) continue;
+
+      final dataRaw = _readPointer(file, classOffset + 32);
+      if (dataRaw == null) continue;
+
+      for (final roRaw in _pointerCandidates(dataRaw, image)) {
+        // `class_data_bits_t` 的低 3 位是标志（FAST_IS_SWIFT 等）。
+        final roOffset = _fileOffsetOf(image, roRaw & ~7);
+        if (roOffset == null) continue;
+
+        final nameRaw = _readPointer(file, roOffset + 24);
+        if (nameRaw == null) continue;
+
+        for (final nameAddr in _pointerCandidates(nameRaw, image)) {
+          if (nameAddr < classnameAddress) continue;
+          final delta = nameAddr - classnameAddress;
+          if (delta >= classname.length) continue;
+          final name = _cString(classname, delta);
+          if (name == null || name.length > 200) continue;
+          if (!name.codeUnits.every((c) => c >= 0x20 && c < 0x7f)) continue;
+          return name;
+        }
+      }
     }
     return null;
   }

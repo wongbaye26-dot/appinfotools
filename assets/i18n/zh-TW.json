@@ -1096,7 +1096,7 @@
       "android_signature_v1_undetermined": "v2+ 簽章區塊已讀取，但無法判定是否存在 v1（JAR）簽章",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 與 targetSdkVersion 都沒讀到，無法推出平台對明文流量的預設策略",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略",
-      "ios_macho_call_sites": "在 {total} 條選擇子引用中，{attributed} 條成功歸屬到函式（二進位共 {functions} 個函式）。「被引用」仍不等於「被呼叫」：ADRP+ADD 只是把選擇子位址裝進暫存器，之後傳給誰靜態看不到。",
+      "ios_macho_call_sites": "在 {total} 條選擇子 / 類引用中，{attributed} 條成功歸屬到函式（二進位共 {functions} 個函式）。「被引用」仍不等於「被呼叫」：ADRP+ADD 只是把位址裝進暫存器，之後傳給誰靜態看不到。",
       "ios_macho_call_sites_unavailable": "沒有任何選擇子引用能歸屬到函式（沒有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令對，或缺少 LC_FUNCTION_STARTS）。線索只報「被引用」，不報「被呼叫」。"
     }
   },
