@@ -293,17 +293,47 @@ class _InstallPageState extends State<InstallPage> {
   }
 
   Future<void> _openPairDialog() async {
-    final paired = await showDialog<bool>(
+    // 对话框返回**配对成功的 IP**（不是 bool）：配对之后还要用这个 IP
+    // 引导用户去连接。
+    final ip = await showDialog<String>(
       context: context,
       builder: (context) => const _WirelessPairDialog(),
     );
-    if (paired == true) await _refreshDevices();
+    if (ip == null) return;
+    await _refreshDevices();
+    if (!mounted) return;
+
+    // 配对成功后 adb 通常会自动把设备连上。没连上的话，用户多半不知道
+    // 下一步该填什么 —— 必须明确告诉他「去手机抄连接端口」。
+    final connected =
+        _devices.any((d) => d.isWireless && d.id.startsWith('$ip:'));
+    if (connected) return;
+
+    final goConnect = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t.install.pair_done_no_connection),
+        content: Text(t.install.pair_done_no_connection_hint),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(t.base.close),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(t.install.pair_done_go_connect),
+          ),
+        ],
+      ),
+    );
+    if (goConnect == true) await _openConnectDialog(initialAddress: ip);
   }
 
-  Future<void> _openConnectDialog() async {
+  Future<void> _openConnectDialog({String? initialAddress}) async {
     final connected = await showDialog<bool>(
       context: context,
-      builder: (context) => const _WirelessConnectDialog(),
+      builder: (context) =>
+          _WirelessConnectDialog(initialAddress: initialAddress),
     );
     if (connected == true) await _refreshDevices();
   }
@@ -1215,7 +1245,11 @@ class _WirelessPairDialogState extends State<_WirelessPairDialog> {
     final result = await AdbService.pair(address: address, code: code);
     if (!mounted) return;
     if (result.ok) {
-      Navigator.of(context).pop(true);
+      // 把 IP 传回去：配对之后还要用它引导「去连接」。
+      final colon = address.lastIndexOf(':');
+      Navigator.of(context).pop(
+        colon > 0 ? address.substring(0, colon) : address,
+      );
       return;
     }
     setState(() {
@@ -1280,14 +1314,21 @@ class _WirelessPairDialogState extends State<_WirelessPairDialog> {
 
 /// 无线连接对话框（配对之后，或已知端口的旧式无线调试）。
 class _WirelessConnectDialog extends StatefulWidget {
-  const _WirelessConnectDialog();
+  const _WirelessConnectDialog({this.initialAddress});
+
+  /// 预填的 IP（来自刚配对的那台设备）。
+  ///
+  /// 只填 IP、不填端口：连接端口和配对端口**不是同一个**，预填一个错的端口
+  /// 只会让人直接点确定然后失败 —— 那正是这个对话框最初的问题。
+  final String? initialAddress;
 
   @override
   State<_WirelessConnectDialog> createState() => _WirelessConnectDialogState();
 }
 
 class _WirelessConnectDialogState extends State<_WirelessConnectDialog> {
-  final _addressController = TextEditingController();
+  late final TextEditingController _addressController =
+      TextEditingController(text: widget.initialAddress ?? '');
   bool _busy = false;
   String? _error;
 
@@ -1295,6 +1336,24 @@ class _WirelessConnectDialogState extends State<_WirelessConnectDialog> {
   void dispose() {
     _addressController.dispose();
     super.dispose();
+  }
+
+  /// 把 adb 的原文翻成人话。
+  ///
+  /// 这三个错误各自对应一种**不同的用户动作**，直接甩 `No route to host`
+  /// 只会让人以为是网络坏了 —— 而实际最常见的原因是「填了配对端口」。
+  String _describeError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('no route to host')) {
+      return t.install.connect_error_no_route;
+    }
+    if (lower.contains('connection refused')) {
+      return t.install.connect_error_refused;
+    }
+    if (lower.contains('failed to authenticate')) {
+      return t.install.connect_error_auth;
+    }
+    return raw;
   }
 
   Future<void> _submit() async {
@@ -1318,7 +1377,7 @@ class _WirelessConnectDialogState extends State<_WirelessConnectDialog> {
     }
     setState(() {
       _busy = false;
-      _error = result.output;
+      _error = _describeError(result.output);
     });
   }
 
@@ -1340,8 +1399,8 @@ class _WirelessConnectDialogState extends State<_WirelessConnectDialog> {
             controller: _addressController,
             enabled: !_busy,
             decoration: InputDecoration(
-              labelText: t.install.pair_address,
-              hintText: '192.168.1.5:5555',
+              labelText: t.install.connect_address,
+              hintText: '192.168.1.35:37123',
             ),
           ),
           if (_error != null) ...[

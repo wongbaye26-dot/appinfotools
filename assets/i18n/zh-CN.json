@@ -362,7 +362,7 @@
     "pair_code": "六位配对码",
     "pair_invalid_address": "地址格式不对，应为 IP:端口",
     "pair_invalid_code": "配对码不能为空",
-    "connect_hint": "输入 IP:端口（省略端口时用 5555）。配对成功后通常已经自动连上。",
+    "connect_hint": "填手机「无线调试」页面显示的 IP 地址和端口（如 192.168.1.35:37123）。这个端口和配对弹窗里那个不是一回事 —— 配对端口不能用来连接。",
     "working": "处理中...",
     "start": "开始安装",
     "reason_no_file": "先选一个安装包",
@@ -384,7 +384,14 @@
     "saved_forget": "忘记",
     "uninstall_first": "安装前先卸载",
     "uninstall_first_desc": "签名冲突时用；重打包的包必须",
-    "device_unknown": "未知设备"
+    "device_unknown": "未知设备",
+    "connect_address": "连接地址（IP:端口）",
+    "connect_error_no_route": "连不上这个地址。端口多半不对，或者手机和电脑不在同一个网络。（如果只填了 IP，默认用 5555 —— Android 11 起的无线调试端口是随机的，请照抄手机上显示的那个。）",
+    "connect_error_refused": "手机拒绝了连接。端口不对 —— 配对端口不能用来连接。",
+    "connect_error_auth": "配对信息已失效，请重新配对。",
+    "pair_done_no_connection": "已配对，但还没连上",
+    "pair_done_no_connection_hint": "回到手机的「无线调试」页面，抄下那里显示的「IP 地址和端口」，再点「连接」填进去。配对弹窗里那个端口只用于配对。",
+    "pair_done_go_connect": "去连接"
   },
   "ios_info": {
     "architectures": "架构",

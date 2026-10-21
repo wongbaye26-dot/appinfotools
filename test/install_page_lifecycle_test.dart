@@ -166,6 +166,22 @@ void main() {
     expect(find.textContaining('Android 14'), findsOneWidget);
   });
 
+  // 用户把**配对端口**填进「连接」对话框，报 `No route to host` —— 这两个端口
+  // 不是一回事：配对端口只在配对时有效，连接要用「无线调试」主页面上的那个。
+  // 这个对话框原先复用了「配对地址」的标签和提示，等于在引导用户填错。
+  testWidgets('连接对话框用「连接地址」标签，并说明与配对端口不同', (WidgetTester tester) async {
+    await tester.pumpWidget(_host(InstallPage(deviceLoader: () async => [])));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(t.install.wireless_connect));
+    await tester.pumpAndSettle();
+
+    expect(find.text(t.install.connect_address), findsOneWidget);
+    expect(find.text(t.install.connect_hint), findsOneWidget);
+    // 不能再用「配对地址」这个标签，否则用户会以为要填刚才那个端口。
+    expect(find.text(t.install.pair_address), findsNothing);
+  });
+
   // 新页面必须在小窗口下也不溢出。`RenderFlex overflowed` 在测试里是一条
   // 异常，`takeException` 能抓到 —— 这比肉眼看截图可靠，且能在 CI 里跑。
   for (final size in const [Size(1100, 700), Size(760, 520)]) {

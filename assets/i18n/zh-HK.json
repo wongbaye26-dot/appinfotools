@@ -362,7 +362,7 @@
     "pair_code": "六位配對碼",
     "pair_invalid_address": "地址格式不對，應為 IP:端口",
     "pair_invalid_code": "配對碼不能為空",
-    "connect_hint": "輸入 IP:端口（省略端口時用 5555）。配對成功後通常已經自動連上。",
+    "connect_hint": "填手機「無線偵錯」頁面顯示的 IP 地址和端口（如 192.168.1.35:37123）。這個端口和配對彈窗裡那個不是一回事 —— 配對端口不能用來連接。",
     "working": "處理中...",
     "start": "開始安裝",
     "reason_no_file": "先選一個安裝包",
@@ -384,7 +384,14 @@
     "saved_forget": "忘記",
     "uninstall_first": "安裝前先解除安裝",
     "uninstall_first_desc": "簽名衝突時用；重打包的包必須",
-    "device_unknown": "未知裝置"
+    "device_unknown": "未知裝置",
+    "connect_address": "連接地址（IP:端口）",
+    "connect_error_no_route": "連不上這個地址。端口多半不對，或者手機和電腦不在同一個網絡。（如果只填了 IP，默認用 5555 —— Android 11 起的無線偵錯端口是隨機的，請照抄手機上顯示的那個。）",
+    "connect_error_refused": "手機拒絕了連接。端口不對 —— 配對端口不能用來連接。",
+    "connect_error_auth": "配對信息已失效，請重新配對。",
+    "pair_done_no_connection": "已配對，但還沒連上",
+    "pair_done_no_connection_hint": "回到手機的「無線偵錯」頁面，抄下那裡顯示的「IP 地址和端口」，再點「連接」填進去。配對彈窗裡那個端口只用於配對。",
+    "pair_done_go_connect": "去連接"
   },
   "ios_info": {
     "architectures": "架構",

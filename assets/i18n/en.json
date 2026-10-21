@@ -362,7 +362,7 @@
     "pair_code": "Six-digit pairing code",
     "pair_invalid_address": "Invalid address; expected IP:port",
     "pair_invalid_code": "The pairing code cannot be empty",
-    "connect_hint": "Enter IP:port (5555 is used when the port is omitted). After pairing, the device is usually connected already.",
+    "connect_hint": "Use the IP address and port shown on the phone's \"Wireless debugging\" screen (e.g. 192.168.1.35:37123). That port is NOT the one from the pairing dialog - a pairing port cannot be used to connect.",
     "working": "Working...",
     "start": "Install",
     "reason_no_file": "Choose a package first",
@@ -384,7 +384,14 @@
     "saved_forget": "Forget",
     "uninstall_first": "Uninstall first",
     "uninstall_first_desc": "Needed when signatures conflict - a repacked APK always does",
-    "device_unknown": "Unknown device"
+    "device_unknown": "Unknown device",
+    "connect_address": "Connect address (IP:port)",
+    "connect_error_no_route": "Cannot reach that address. The port is probably wrong, or the phone and this computer are not on the same network. (If you typed only the IP, 5555 is used - Android 11+ picks a random port for wireless debugging, so copy the one shown on the phone.)",
+    "connect_error_refused": "The phone refused the connection. The port is wrong - a pairing port cannot be used to connect.",
+    "connect_error_auth": "The pairing is no longer valid. Pair the device again.",
+    "pair_done_no_connection": "Paired, but not connected yet",
+    "pair_done_no_connection_hint": "Go back to the phone's \"Wireless debugging\" screen and copy the \"IP address & port\" shown there, then use Connect with it. The port in the pairing dialog is only for pairing.",
+    "pair_done_go_connect": "Connect now"
   },
   "ios_info": {
     "architectures": "Architectures",
