@@ -1096,7 +1096,7 @@
       "android_signature_v1_undetermined": "The v2+ signing block was read, but whether a v1 (JAR) signature exists could not be determined",
       "android_cleartext_policy_target_sdk_unknown": "Neither android:usesCleartextTraffic nor targetSdkVersion could be read, so the platform default for cleartext traffic cannot be derived",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged",
-      "ios_macho_call_sites": "Attributed {attributed} of {total} selector / class references to functions ({functions} functions in the binary). \"Referenced\" still does not mean \"called\": ADRP+ADD only loads the address, and what it is passed to is not visible statically.",
+      "ios_macho_call_sites": "Attributed {attributed} of {total} selector / class references to functions ({functions} functions in the binary). \"Referenced\" still does not mean \"called\": ADRP+ADD only loads the address, and what it is passed to is not visible statically. Note that `__objc_classrefs` mainly covers the app's **own** classes; system framework classes (`AVCaptureDevice`, `CNContactStore`) are usually reached through a direct `objc_msgSend` or `NSClassFromString`, so they are outside this dimension.",
       "ios_macho_call_sites_unavailable": "No selector reference could be attributed to a function (no ADRP+ADD/LDR pair targeted __objc_selrefs, or no LC_FUNCTION_STARTS). Clues are reported as \"referenced\", not \"called\"."
     }
   },

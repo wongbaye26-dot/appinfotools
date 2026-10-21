@@ -1096,7 +1096,7 @@
       "android_signature_v1_undetermined": "v2+ 签名块已读取，但无法判定是否存在 v1（JAR）签名",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 与 targetSdkVersion 都没读到，无法推出平台对明文流量的默认策略",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略",
-      "ios_macho_call_sites": "在 {total} 条选择子 / 类引用中，{attributed} 条成功归属到函数（二进制共 {functions} 个函数）。「被引用」仍不等于「被调用」：ADRP+ADD 只是把地址装进寄存器，之后传给谁静态看不到。",
+      "ios_macho_call_sites": "在 {total} 条选择子 / 类引用中，{attributed} 条成功归属到函数（二进制共 {functions} 个函数）。「被引用」仍不等于「被调用」：ADRP+ADD 只是把地址装进寄存器，之后传给谁静态看不到。 另外，类引用表（`__objc_classrefs`）主要覆盖**应用自己的类**；系统框架类（`AVCaptureDevice`、`CNContactStore`）通常通过 `objc_msgSend` 直接调用或 `NSClassFromString` 取得，不在这一维的覆盖范围内。",
       "ios_macho_call_sites_unavailable": "没有任何选择子引用能归属到函数（没有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令对，或缺少 LC_FUNCTION_STARTS）。线索只报「被引用」，不报「被调用」。"
     }
   },
