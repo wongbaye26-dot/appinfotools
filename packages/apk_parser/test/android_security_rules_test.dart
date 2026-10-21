@@ -383,14 +383,27 @@ void main() {
       expect(finding!.severity, SecuritySeverity.p3);
     });
 
-    test('助记词 + 上传 + 写死地址 → P2：能拿到密钥材料，也有送出去的通道', () {
+    test('钱包 + 助记词 + 上传 + 写死地址 → P2：密钥材料落在钱包语境里', () {
       final finding = cryptoFinding(audit([
+        'Lorg/web3j/crypto/ECKeyPair;',
         'mnemonic',
         'multipart/form-data',
         '0x52908400098527886E0F7030069857D2E4169EE7',
       ]));
       expect(finding, isNotNull);
       expect(finding!.severity, SecuritySeverity.p2);
+    });
+
+    test('助记词 + 上传但没有钱包语境 → P3', () {
+      // 「有 privateKey 字样 + 有上传」在输入法、内嵌 BouncyCastle 的应用上
+      // 都会成立 —— 密钥材料必须落在钱包语境里才算 P2。
+      final finding = cryptoFinding(audit([
+        'mnemonic',
+        'multipart/form-data',
+        '0x52908400098527886E0F7030069857D2E4169EE7',
+      ]));
+      expect(finding, isNotNull);
+      expect(finding!.severity, SecuritySeverity.p3);
     });
 
     test('助记词 + 只有上传（没有地址）→ P3：上传能力几乎每个应用都有', () {

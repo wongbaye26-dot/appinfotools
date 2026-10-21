@@ -879,10 +879,12 @@ const Set<String> _walletSdkMarkers = {
 
 const Set<String> _keyMaterialMarkers = {
   'wallet-mnemonic',
-  'wallet-private-key',
   // BIP39 / BIP32 是助记词与派生路径，同属「能签走资产的材料」。
   'wallet-bip39',
   'wallet-bip32',
+  // **`wallet-private-key` 不在判级里**：`privateKey` 在任何带加密库的应用里
+  // 都有（BouncyCastle / Conscrypt / 各种 RSA 工具）。它作为「钱包证据」的
+  // 精度太低 —— 实测在一个内嵌 OpenSSL 的 iOS 样本上就是这么误报的。
 };
 
 const Set<String> _clipboardMarkers = {
@@ -949,7 +951,10 @@ bool _hasTheftChannel(_CryptoTheftSignals s) =>
 /// 这些，单独出现说明不了任何问题。
 bool _matchesCryptoTheftRisk(AndroidRuleFacts f) {
   final s = _cryptoTheftSignals(f);
-  final keyWithChannel = s.keyMaterial.isNotEmpty && _hasTheftChannel(s);
+  // **密钥材料要落在钱包语境里**：只凭「有 privateKey 字样 + 有无障碍」
+  // 判 P2，会把输入法、内嵌 BouncyCastle 的应用全报成高风险。
+  final keyWithChannel =
+      s.walletSdk.isNotEmpty && s.keyMaterial.isNotEmpty && _hasTheftChannel(s);
   final addressSwap = s.walletSdk.isNotEmpty &&
       s.clipboard.isNotEmpty &&
       s.addresses.isNotEmpty;
@@ -967,7 +972,8 @@ bool _matchesCryptoTheftRisk(AndroidRuleFacts f) {
 /// 的通道」摆在一起，让人工核对有落点。
 SecurityFinding _buildCryptoTheftRisk(AndroidRuleFacts f) {
   final s = _cryptoTheftSignals(f);
-  final keyWithChannel = s.keyMaterial.isNotEmpty && _hasTheftChannel(s);
+  final keyWithChannel =
+      s.walletSdk.isNotEmpty && s.keyMaterial.isNotEmpty && _hasTheftChannel(s);
   final addressSwap = s.walletSdk.isNotEmpty &&
       s.clipboard.isNotEmpty &&
       s.addresses.isNotEmpty;

@@ -85,9 +85,29 @@ void main() {
       expect(finding.severity, SecuritySeverity.p2);
     });
 
-    test('助记词 + 剪贴板 → P2：能拿到密钥材料，也有通道', () {
-      final signals = _signals(['mnemonic', 'UIPasteboard']);
+    test('钱包 + 助记词 + 剪贴板 → P2：密钥材料落在钱包语境里', () {
+      final signals = _signals(['WalletConnect', 'mnemonic', 'UIPasteboard']);
       expect(iosCryptoIsHighRisk(signals), isTrue);
+    });
+
+    test('只有助记词 + 剪贴板（没有钱包语境）→ P3', () {
+      // iOS 上 `UIPasteboard` 几乎人人都有。只凭「有密钥材料 + 有剪贴板」
+      // 判 P2，会把每个内嵌 OpenSSL 的应用都报成高风险。
+      final signals = _signals(['mnemonic', 'UIPasteboard']);
+      expect(iosCryptoIsHighRisk(signals), isFalse);
+    });
+
+    test('OpenSSL 的 privateKey 不算密钥材料（真实样本上的误报）', () {
+      final signals = _signals([
+        'SSL_CTX_use_PrivateKey',
+        'SSL_CTX_use_PrivateKey_ASN1',
+      ]);
+      expect(signals.samples.containsKey('wallet-private-key'), isFalse);
+    });
+
+    test('钱包自己的 privateKey（小写 p）仍然算', () {
+      final signals = _signals(['privateKey', 'WalletConnect']);
+      expect(signals.samples.containsKey('wallet-private-key'), isTrue);
     });
 
     test('只有钱包框架 → P3，不判高风险', () {

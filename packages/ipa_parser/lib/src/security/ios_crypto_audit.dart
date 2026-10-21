@@ -47,7 +47,8 @@ class IosCryptoSignals {
   void collect(String text, String source) {
     final lower = text.toLowerCase();
     for (final marker in iosCryptoMarkers) {
-      if (!lower.contains(marker.literal)) continue;
+      final haystack = marker.caseSensitive ? text : lower;
+      if (!haystack.contains(marker.literal)) continue;
       final bucket = samples.putIfAbsent(marker.id, () => <String>{});
       if (bucket.length < _maxSamplesPerMarker) bucket.add(text);
       (sources[marker.id] ??= <String>{}).add(source);
@@ -75,7 +76,19 @@ class IosCryptoMarker {
   /// 小写字面量（匹配前会把字符串转小写）。
   final String literal;
 
-  const IosCryptoMarker(this.id, this.literal);
+  /// 是否**区分大小写**（默认不区分）。
+  ///
+  /// 给「字面量本身太泛」的标记用：`privateKey`（Swift / ObjC 属性）与
+  /// OpenSSL 的 `PrivateKey`（大写 P，如 `SSL_CTX_use_PrivateKey`、
+  /// `d2i_PrivateKey`）只差一个字母的大小写 —— 实测在一个内嵌 OpenSSL 的
+  /// 微信改版包上，不区分大小写会把这条发现凭空造出来。
+  final bool caseSensitive;
+
+  const IosCryptoMarker(
+    this.id,
+    this.literal, {
+    this.caseSensitive = false,
+  });
 }
 
 /// 三组标记：钱包 SDK / 密钥材料 / 剪贴板。
@@ -98,8 +111,11 @@ const Set<String> walletSdkMarkers = {
 const Set<String> keyMaterialMarkers = {
   'wallet-mnemonic',
   'wallet-seed-phrase',
-  'wallet-private-key',
   'wallet-bip39',
+  // **`wallet-private-key` 不在判级里**：`privateKey` 这个字面量在任何带
+  // 加密库的应用里都有（实测：X.509 的 `privateKeyUsagePeriod`、OpenSSL 的
+  // `PrivateKey`、各种 RSA 工具）。它作为「钱包证据」的精度太低，留着只会
+  // 把「用了 OpenSSL」说成「在管私钥」。助记词 / BIP39 才是钱包特有的。
 };
 
 const Set<String> pasteboardMarkers = {
@@ -121,7 +137,14 @@ const List<IosCryptoMarker> iosCryptoMarkers = [
   // ---- 密钥材料 ----
   IosCryptoMarker('wallet-mnemonic', 'mnemonic'),
   IosCryptoMarker('wallet-seed-phrase', 'seedphrase'),
-  IosCryptoMarker('wallet-private-key', 'privatekey'),
+  // `privateKey` **只作为线索收集，不参与判级**（见 `keyMaterialMarkers`
+  // 的注释）。保留这一条是为了在证据里能看到它 —— 但一条命中不足以说明
+  // 这个应用在管钱包私钥。
+  IosCryptoMarker(
+    'wallet-private-key',
+    'privateKey',
+    caseSensitive: true,
+  ),
   IosCryptoMarker('wallet-bip39', 'bip39'),
   // ---- 剪贴板 ----
   //
@@ -141,8 +164,14 @@ bool iosCryptoIsHighRisk(IosCryptoSignals s) {
   final wallet = s.hitsOf(walletSdkMarkers).isNotEmpty;
   final pasteboard = s.hitsOf(pasteboardMarkers).isNotEmpty;
   final addresses = s.addresses.isNotEmpty;
-  final channel = pasteboard || addresses;
-  return (key && channel) || (wallet && pasteboard && addresses);
+
+  // **密钥材料必须落在钱包语境里**。iOS 上 `UIPasteboard` 几乎人人都有，
+  // 只凭「有 privateKey 字样 + 有剪贴板」判 P2，会把每个内嵌 OpenSSL 的
+  // 应用都报成高风险 —— 实测在真实样本上就是这么误报的。
+  if (wallet && key && (pasteboard || addresses)) return true;
+  // 地址替换三件套。
+  if (wallet && pasteboard && addresses) return true;
+  return false;
 }
 
 /// 产出发现项。没有信号时返回空列表（不编造「未发现」的结论 —— 那是 UI 的事）。
