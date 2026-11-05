@@ -1177,6 +1177,7 @@
     "distribution_ad_hoc": "Ad Hoc（配布）",
     "distribution_enterprise": "エンタープライズ / 社内",
     "distribution_development": "開発",
-    "distribution_unknown": "不明"
+    "distribution_unknown": "不明",
+    "bundle_kind_dylib": "ダイナミックライブラリ"
   }
 }

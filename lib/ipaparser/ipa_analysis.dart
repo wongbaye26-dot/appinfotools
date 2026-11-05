@@ -346,6 +346,64 @@ class IpaAnalysisReader {
         usageDescriptions: info.privacyUsageDescriptions.value,
       ));
     }
+    // 主应用根目录下的独立 `.dylib`：正常 App 的动态库在 Frameworks/ 下，
+    // 根目录的 dylib 是注入/重打包典型布局；它不是 bundle，但必须参与安全
+    // 扫描（字符串/选择子/原生符号），否则只能看到“布局异常”看不到内容。
+    const maxRootDylibs = 32;
+    final rootDylibEntries = <ArchiveFile>[];
+    final prefix = '${mainApp.path}/';
+    for (final file in archive.files) {
+      if (file.isDirectory || !file.name.startsWith(prefix)) continue;
+      final rest = file.name.substring(prefix.length);
+      if (rest.isEmpty || rest.contains('/')) continue;
+      if (!rest.toLowerCase().endsWith('.dylib')) continue;
+      rootDylibEntries.add(file);
+    }
+    rootDylibEntries.sort((a, b) => a.name.compareTo(b.name));
+    for (final file in rootDylibEntries.take(maxRootDylibs)) {
+      final bytes = _readEntry(archive, file.name, maxMachOBytes, ledger);
+      if (bytes == null) {
+        result.add(IosNestedBinary(
+          bundlePath: mainApp.path,
+          kind: IosBundleKind.dylib,
+          path: file.name,
+          failure: 'entry missing or too large',
+        ));
+        continue;
+      }
+      final macho = MachOParser.parse(bytes);
+      final retain = retainedBytes + bytes.length <= maxNestedRetainedBytes;
+      if (retain) {
+        retainedBytes += bytes.length;
+      } else {
+        droppedForBudget++;
+      }
+      result.add(IosNestedBinary(
+        bundlePath: mainApp.path,
+        kind: IosBundleKind.dylib,
+        path: file.name,
+        macho: macho.isMachO ? macho : null,
+        failure: macho.isMachO
+            ? null
+            : (macho.diagnostics.isEmpty
+                ? 'not a Mach-O'
+                : macho.diagnostics.first.message),
+        bytes: retain ? bytes : null,
+        bytesFailure: retain
+            ? null
+            : 'bytes not retained (nested budget of '
+                '${maxNestedRetainedBytes ~/ (1024 * 1024)} MiB reached)',
+      ));
+    }
+    if (rootDylibEntries.length > maxRootDylibs) {
+      diagnostics.add(AnalysisDiagnostic.info(
+        'ios.root_dylib.truncated',
+        'only the first $maxRootDylibs of ${rootDylibEntries.length} '
+            'root-level dylibs were scanned',
+        source: FieldSource.zipDirectory,
+      ));
+    }
+
     if (droppedForBudget > 0) {
       // **不许静默丢字节。** 丢了就意味着这些可执行文件不参与安全扫描，
       // 报告里的覆盖率必须反映出来。
@@ -359,7 +417,10 @@ class IpaAnalysisReader {
       ));
     }
 
-    return (binaries: result, total: candidates.length);
+    return (
+      binaries: result,
+      total: candidates.length + rootDylibEntries.length
+    );
   }
 
   /// 读取归档里的 `.strings` / 本地化文本文件。

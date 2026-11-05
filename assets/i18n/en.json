@@ -515,7 +515,8 @@
     "distribution_ad_hoc": "Ad Hoc",
     "distribution_enterprise": "Enterprise / In-House",
     "distribution_development": "Development",
-    "distribution_unknown": "Unknown"
+    "distribution_unknown": "Unknown",
+    "bundle_kind_dylib": "dylib"
   },
   "report": {
     "android_section": "Android",

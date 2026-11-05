@@ -406,6 +406,7 @@ class DetailRenderer {
         IosBundleKind.watchApp => t.ios_info.bundle_kind_watch_app,
         IosBundleKind.nestedApp => t.ios_info.bundle_kind_nested_app,
         IosBundleKind.framework => t.ios_info.bundle_kind_framework,
+        IosBundleKind.dylib => t.ios_info.bundle_kind_dylib,
       };
 
   /// 容器结构概览。

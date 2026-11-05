@@ -19,6 +19,12 @@ enum IosBundleKind {
 
   /// 动态框架：`.framework`。
   framework,
+
+  /// 主应用根目录下的独立 `.dylib`（不是 bundle）。
+  ///
+  /// 正常的 App 把动态库放在 `Frameworks/` 里；根目录的 `.dylib` 是重打包/
+  /// 注入的典型布局。它不是 bundle，但安全扫描要把它当成可执行目标。
+  dylib,
 }
 
 /// IPA 中一个 bundle 的结构描述。

@@ -515,7 +515,8 @@
     "distribution_ad_hoc": "Ad Hoc",
     "distribution_enterprise": "企業 / 內部分發",
     "distribution_development": "開發分發",
-    "distribution_unknown": "未知"
+    "distribution_unknown": "未知",
+    "bundle_kind_dylib": "動態庫"
   },
   "report": {
     "android_section": "Android 專屬資訊",

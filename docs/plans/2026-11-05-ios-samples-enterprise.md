@@ -25,6 +25,7 @@
 - `IOS-RULE-D-ESCALATED` P1：`NSAllowsArbitraryLoads=true`；
 - `IOS-RULE-A/B/G` P2；
 - 5 个运行时权限请求：ATT、麦克风、相机、定位、通知；
+- 根目录 `slqtFqpyy.dylib` 现在也进入安全扫描目标（Mach-O/字符串/选择子），不再只报布局异常；
 - 盗 U 链：capability/source/injection 有证据，payload/family 缺失；
 - 评估：`capabilityOnly / P3 / score 50`；
 - 密封：`verified 64/1479`，`entry_limit`（部分）。
@@ -35,6 +36,7 @@
 - `IOS-RULE-D-ESCALATED` P1：ATS 任意明文；
 - `IOS-RULE-A/E/G` P2；
 - 联系人/相册/相机/IDFA/运动/后台能力并存；
+- 根目录 `aabyfp.dylib` 现在也进入安全扫描目标；
 - 盗 U 链：capability/source/injection/payload 有证据，family 缺失；
 - 评估：`suspicious / P2 / score 71`；
 - 密封：`verified 64/1789`，`entry_limit`（部分）。

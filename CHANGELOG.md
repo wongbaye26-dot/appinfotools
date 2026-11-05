@@ -39,6 +39,8 @@
 - iOS 分发类型：App Store / Ad Hoc / Enterprise / Development / unknown。
 - 修正 iOS CodeResources 超过 64 条时把“已验部分”误标成 `notChecked`；现在保留
   `verified` + `checked/total` + `entry_limit`，摘要函数不可用才标 `notChecked`。
+- 主应用根目录下的独立 `.dylib` 纳入安全扫描目标（此前只报 `IOS-REPACKAGED`，
+  不分析其 Mach-O/字符串/选择子）。
 
 ### 已知限制
 

@@ -1177,6 +1177,7 @@
     "distribution_ad_hoc": "Ad Hoc 배포",
     "distribution_enterprise": "엔터프라이즈 / 사내",
     "distribution_development": "개발",
-    "distribution_unknown": "알 수 없음"
+    "distribution_unknown": "알 수 없음",
+    "bundle_kind_dylib": "동적 라이브러리"
   }
 }
