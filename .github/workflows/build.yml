@@ -968,6 +968,9 @@ jobs:
         with:
           name: Release ${{ github.ref_name }}
           body_path: ${{ steps.body.outputs.body_path }}
+          # 预发布：tag 里带 `-rc` / `-beta` 等后缀时不占用 latest。
+          # 这样 2.9.0-rc1 可以先给 Windows 真机验证，验证通过后再打 v2.9.0。
+          prerelease: ${{ contains(github.ref_name, '-') }}}
           # 各目录名来自 `download-artifact@v4` 的行为：它把每个 artifact
           # 解到**以 artifact 名命名**的目录。所以缩略图自检工具在
           # `windows-thumbnail-selftest/`，而不是构建机上的
