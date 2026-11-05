@@ -567,60 +567,69 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $setup = Get-ChildItem 'build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe' |
-            Select-Object -First 1
-          if (-not $setup) { throw 'installer not found' }
-          $dir = Join-Path $env:RUNNER_TEMP 'AppInfoToolSmoke'
           $log = Join-Path $env:RUNNER_TEMP 'installer-smoke.log'
-          Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+          $dir = Join-Path $env:RUNNER_TEMP 'AppInfoToolSmoke'
+          try {
+            $setup = Get-ChildItem 'build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe' |
+              Select-Object -First 1
+            if (-not $setup) { throw 'installer not found' }
+            Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 
-          $installArgs = @(
-            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
-            '/TASKS=associate', "/DIR=$dir", "/LOG=$log"
-          )
-          $p = Start-Process -FilePath $setup.FullName -ArgumentList $installArgs -Wait -PassThru
-          if ($p.ExitCode -ne 0) {
-            if (Test-Path $log) { Get-Content $log | Select-Object -Last 30 | Write-Host }
-            throw "installer exited $($p.ExitCode)"
-          }
+            $installArgs = @(
+              '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
+              '/TASKS=associate', "/DIR=$dir", "/LOG=$log"
+            )
+            $p = Start-Process -FilePath $setup.FullName -ArgumentList $installArgs -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "installer exited $($p.ExitCode)" }
 
-          foreach ($name in 'AppInfoTool.exe', 'appinfotool_thumbnail.dll', 'app_icon_extractor.exe') {
-            if (-not (Test-Path (Join-Path $dir $name))) {
-              throw "installed file missing: $name"
+            foreach ($name in 'AppInfoTool.exe', 'appinfotool_thumbnail.dll', 'app_icon_extractor.exe') {
+              if (-not (Test-Path (Join-Path $dir $name))) {
+                throw "installed file missing: $name"
+              }
             }
+
+            $clsid = '{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}'
+            $thumbKey = "HKCU:\Software\Classes\CLSID\$clsid\InprocServer32"
+            if (-not (Test-Path $thumbKey)) { throw "missing thumbnail CLSID: $thumbKey" }
+            $thumbDll = (Get-Item $thumbKey).GetValue('')
+            if ($thumbDll -ne (Join-Path $dir 'appinfotool_thumbnail.dll')) {
+              throw "thumbnail DLL path mismatch: $thumbDll"
+            }
+
+            $shellEx = "HKCU:\Software\Classes\.apk\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}"
+            if (-not (Test-Path $shellEx)) { throw "missing .apk ShellEx: $shellEx" }
+            $thumbClsid = (Get-Item $shellEx).GetValue('')
+            if ($thumbClsid -ne $clsid) { throw "ShellEx CLSID mismatch: $thumbClsid" }
+
+            $assoc = 'HKLM:\Software\Classes\AppInfoTool.apk\shell\open\command'
+            if (-not (Test-Path $assoc)) { throw "missing HKLM association: $assoc" }
+            $cmd = (Get-Item $assoc).GetValue('')
+            if ($cmd -notmatch 'AppInfoTool\.exe') { throw "association command mismatch: $cmd" }
+
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '### Installer smoke'
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- installed to ``$dir``"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- thumbnail CLSID: ``$thumbDll``"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- .apk ShellEx: ``$thumbClsid``"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- association: ``$cmd``"
+            Write-Host "installer smoke ok: $dir"
+
+            $unins = Join-Path $dir 'unins000.exe'
+            if (-not (Test-Path $unins)) { throw "uninstaller missing: $unins" }
+            $u = Start-Process -FilePath $unins -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+            if ($u.ExitCode -ne 0) { throw "uninstaller exited $($u.ExitCode)" }
+            if (Test-Path (Join-Path $dir 'AppInfoTool.exe')) { throw 'uninstall left AppInfoTool.exe behind' }
+            Write-Host 'installer smoke uninstall ok'
+          } catch {
+            Write-Host "::error::$($_.Exception.Message)"
+            if (Test-Path $log) {
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '### Installer log'
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+              Get-Content $log | Select-Object -Last 80 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+              Get-Content $log | Select-Object -Last 10 | ForEach-Object { Write-Host "::error::$_" }
+            }
+            exit 1
           }
-
-          $clsid = '{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}'
-          $thumbKey = "HKCU:\Software\Classes\CLSID\$clsid\InprocServer32"
-          if (-not (Test-Path $thumbKey)) { throw "missing thumbnail CLSID: $thumbKey" }
-          $thumbDll = (Get-Item $thumbKey).GetValue('')
-          if ($thumbDll -ne (Join-Path $dir 'appinfotool_thumbnail.dll')) {
-            throw "thumbnail DLL path mismatch: $thumbDll"
-          }
-
-          $shellEx = "HKCU:\Software\Classes\.apk\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}"
-          if (-not (Test-Path $shellEx)) { throw "missing .apk ShellEx: $shellEx" }
-          $thumbClsid = (Get-Item $shellEx).GetValue('')
-          if ($thumbClsid -ne $clsid) { throw "ShellEx CLSID mismatch: $thumbClsid" }
-
-          $assoc = 'HKLM:\Software\Classes\AppInfoTool.apk\shell\open\command'
-          if (-not (Test-Path $assoc)) { throw "missing HKLM association: $assoc" }
-          $cmd = (Get-Item $assoc).GetValue('')
-          if ($cmd -notmatch 'AppInfoTool\.exe') { throw "association command mismatch: $cmd" }
-
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '### Installer smoke'
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- installed to ``$dir``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- thumbnail CLSID: ``$thumbDll``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- .apk ShellEx: ``$thumbClsid``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- association: ``$cmd``"
-          Write-Host "installer smoke ok: $dir"
-
-          $unins = Join-Path $dir 'unins000.exe'
-          if (-not (Test-Path $unins)) { throw "uninstaller missing: $unins" }
-          $u = Start-Process -FilePath $unins -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
-          if ($u.ExitCode -ne 0) { throw "uninstaller exited $($u.ExitCode)" }
-          if (Test-Path (Join-Path $dir 'AppInfoTool.exe')) { throw 'uninstall left AppInfoTool.exe behind' }
-          Write-Host 'installer smoke uninstall ok'
 
       - name: Create ZIP Package
         shell: bash
