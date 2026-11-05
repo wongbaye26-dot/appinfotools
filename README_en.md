@@ -246,7 +246,7 @@ The Android and iOS parsers do not depend on each other; they share only `analys
 
 ### Quality and verification
 
-- **1,728 root tests + 441 package tests** (`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`), `flutter analyze --fatal-infos --fatal-warnings` clean and `dart format` clean; CI runs the same gate on all three platforms
+- **1,780 root tests + 667 package tests** (`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`), `flutter analyze --fatal-infos --fatal-warnings` clean and `dart format` clean; CI runs the same gate on all three platforms
 - **Expected values always come from an independent implementation**, never from this project's own parser:
   `aapt2` for the manifest and resources, `apksigner` / `codesign` for signatures, `assetutil` for iOS asset catalogs,
   `libcompression` (Apple's system library) for LZFSE, and `actool` (bundled with Xcode) to generate asset-catalog fixtures

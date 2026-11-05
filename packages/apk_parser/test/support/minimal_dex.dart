@@ -29,12 +29,20 @@
 //       string_data: uleb128(utf16_size) + MUTF-8 + 0x00
 // ```
 
+import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:apk_parser/apk_parser.dart';
 
 /// 用给定的字符串列表构造一个最小 DEX。
 ///
 /// 字符串按顺序放进 `string_ids`，索引 0..n-1 —— 与真实 DEX 一致（真实 DEX
 /// 的 `string_ids` 也是按字典序排的，但扫描器不依赖顺序）。
+///
+/// 非 ASCII 按 UTF-8 写入：对 BMP 字符（中文都在这里）MUTF-8 与 UTF-8
+/// 逐字节相同，只有 U+0000 与增补平面字符才有区别，测试里不用。
+/// 校验和用本包的 `adler32` 补齐 —— 不是拿它当期望值，只是让夹具通过
+/// `DexStructure` 自己的完整性检查，少一条无关的 `dex.checksum_mismatch`。
 Uint8List buildMinimalDex(List<String> strings) {
   const headerSize = 0x70;
   final stringIdsSize = strings.length;
@@ -50,11 +58,7 @@ Uint8List buildMinimalDex(List<String> strings) {
     final utf16Length = value.length;
     assert(utf16Length < 0x80, '测试字符串请短于 128 个 UTF-16 单元');
     dataBytes.add(utf16Length);
-    for (final unit in value.codeUnits) {
-      // ASCII 直接写单字节；非 ASCII 用 MUTF-8 的替代形式太绕，测试里不用。
-      assert(unit < 0x80, '测试字符串请只用 ASCII');
-      dataBytes.add(unit);
-    }
+    dataBytes.addAll(utf8.encode(value));
     dataBytes.add(0); // 结尾 NUL
   }
 
@@ -79,6 +83,9 @@ Uint8List buildMinimalDex(List<String> strings) {
   for (var i = 0; i < dataBytes.length; i++) {
     out[dataStart + i] = dataBytes[i];
   }
+  // 校验和覆盖 bytes[12:]；补齐后 DexStructure 不会再报非阻断的
+  // `dex.checksum_mismatch`。
+  data.setUint32(8, adler32(out, start: 12), Endian.little);
   return out;
 }
 

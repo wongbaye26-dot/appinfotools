@@ -18,6 +18,7 @@ import 'package:apk_parser/apk_parser.dart'
 import 'package:ipa_parser/ipa_parser.dart'
     show
         IosAuthorizationVerdict,
+        IosDistributionType,
         IosBundleKind,
         IosIconCandidate,
         IosIconResolution,
@@ -508,6 +509,11 @@ class DetailRenderer {
         sb.writeln('  application-identifier: '
             '${value.applicationIdentifier.value}');
       }
+      final distribution = value.distribution;
+      if (distribution != IosDistributionType.unknown) {
+        sb.writeln('  ${t.ios_info.profile_distribution}: '
+            '${_iosDistributionLabel(distribution, t)}');
+      }
       final expiry = value.expirationDate.value;
       if (expiry != null) {
         // 用**当前时间**判断是否过期：这是用户唯一关心的相对结论。
@@ -732,4 +738,14 @@ class DetailRenderer {
 
     return sb.toString().trimRight();
   }
+}
+
+String _iosDistributionLabel(IosDistributionType type, Translations t) {
+  return switch (type) {
+    IosDistributionType.appStore => t.ios_info.distribution_app_store,
+    IosDistributionType.adHoc => t.ios_info.distribution_ad_hoc,
+    IosDistributionType.enterprise => t.ios_info.distribution_enterprise,
+    IosDistributionType.development => t.ios_info.distribution_development,
+    IosDistributionType.unknown => t.ios_info.distribution_unknown,
+  };
 }

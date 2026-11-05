@@ -12,12 +12,16 @@
 
 import 'dart:io';
 
+import 'package:analysis_model/analysis_model.dart';
+
 import 'package:apk_info_tool/ipaparser/ios_codesign_step.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
+import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/ipa_bundle_extractor.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
+import 'package:archive_safety/archive_safety.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipa_parser/ipa_parser.dart';
 
@@ -32,6 +36,13 @@ Future<(T, double)> _timed<T>(Future<T> Function() body) async {
   return (value, sw.elapsedMicroseconds / 1000);
 }
 
+(T, double) _timedSync<T>(T Function() body) {
+  final sw = Stopwatch()..start();
+  final value = body();
+  sw.stop();
+  return (value, sw.elapsedMicroseconds / 1000);
+}
+
 void main() {
   test('IPA 解析各阶段耗时基线', () async {
     final file = File(_ipaPath);
@@ -40,6 +51,7 @@ void main() {
       return;
     }
     final sizeMB = (await file.length()) / (1024 * 1024);
+    final rssStart = ProcessInfo.currentRss;
 
     final rows = <(String, double)>[];
 
@@ -119,8 +131,89 @@ void main() {
       await helper2.open(_ipaPath);
       return IpaAnalysisReader.analyze(helper2.archive!);
     });
-    rows.add(('★ 完整静态解析（open + analyze）', totalMs));
+    rows.add(('★ 完整静态解析（open + analyze，含安全审计）', totalMs));
     helper2.close();
+
+    // 单独量一次 securityAudit=false，用差值回答「新增安全审计贵多少」。
+    final helper4 = ZipHelper();
+    final (noSecurityAnalysis, noSecurityMs) = await _timed(() async {
+      await helper4.open(_ipaPath);
+      return IpaAnalysisReader.analyze(
+        helper4.archive!,
+        securityAudit: false,
+      );
+    });
+    rows.add(('★ 完整静态解析（securityAudit:false）', noSecurityMs));
+    rows.add(('   安全审计增量（true - false）', totalMs - noSecurityMs));
+
+    // Phase B/C-3 新增事实层的单独耗时（不含安全审计）。
+    final archive4 = helper4.archive!;
+    final (entryFacts, entryFactsMs) = _timedSync(() => [
+          for (final entry in archive4.files)
+            ContainerEntryFact(
+              path: normalizeArchivePath(entry.name),
+              sizeBytes: entry.size,
+              isDirectory: entry.isDirectory,
+            ),
+        ]);
+    rows.add(('6e. 条目事实（${entryFacts.length} 条）', entryFactsMs));
+    final (artifacts, inventoryMs) =
+        _timedSync(() => IosArtifactInventoryScanner.scan(entryFacts));
+    rows.add(('6f. 制品清单（${artifacts.entries.length} 条）', inventoryMs));
+    final (loadGraph, loadGraphMs) = _timedSync(() {
+      final inputs = <IosMachOInput>[
+        if (noSecurityAnalysis.executable != null &&
+            noSecurityAnalysis.executablePath != null)
+          IosMachOInput(
+            path: noSecurityAnalysis.executablePath!,
+            macho: noSecurityAnalysis.executable!,
+          ),
+        for (final nested in noSecurityAnalysis.nestedBinaries)
+          if (nested.macho != null)
+            IosMachOInput(path: nested.path, macho: nested.macho!),
+      ];
+      return IosLoadGraphScanner.scan(
+        binaries: inputs,
+        inventory: artifacts,
+        mainBundlePath: noSecurityAnalysis.mainApp?.path,
+      );
+    });
+    rows.add(('6g. 加载链（${loadGraph.edges.length} 边）', loadGraphMs));
+    final (payloadProbe, payloadMs) = _timedSync(() {
+      final ledger = BoundedReadLedger.session();
+      final inputs = <PayloadProbeInput>[];
+      for (final artifact in artifacts.entries) {
+        if (inputs.length >= 64) break;
+        if (artifact.sizeBytes <= 0 || artifact.sizeBytes > 8 * 1024 * 1024) {
+          continue;
+        }
+        if (!(artifact.kind.isCode ||
+            artifact.kind == ArtifactKind.assetArchive ||
+            artifact.kind == ArtifactKind.assetBinary ||
+            artifact.kind == ArtifactKind.script)) {
+          continue;
+        }
+        final file = archive4.findFile(artifact.path);
+        if (file == null) continue;
+        final read = readEntryPrefix(file, maxBytes: 4096, ledger: ledger);
+        if (!read.isOk || read.bytes == null) continue;
+        final dot = artifact.path.lastIndexOf('.');
+        inputs.add(PayloadProbeInput(
+          path: artifact.path,
+          sizeBytes: artifact.sizeBytes,
+          headBytes: read.bytes!,
+          declaredExtension:
+              dot > 0 ? artifact.path.substring(dot).toLowerCase() : null,
+        ));
+      }
+      return IosPayloadProbe.scan(inputs);
+    });
+    rows.add(('6h. 载荷探测（${payloadProbe.entriesProbed} 条）', payloadMs));
+    rows.add((
+      '   Phase B 事实层合计',
+      entryFactsMs + inventoryMs + loadGraphMs + payloadMs,
+    ));
+    helper4.close();
 
     // 三条并行线里另外两条。
     final (_, hashMs) = await _timed(() => computeFileHashes(_ipaPath));
@@ -152,6 +245,22 @@ void main() {
     print('   → codesign 路径：'
         '${IosCodeSignAnalyzer.findCodesignPath()}');
 
+    // 两阶段事件下的用户感知：静态结果先到，安全审计后到。
+    final task = await IpaParseTask.start(_ipaPath);
+    final perceived = Stopwatch()..start();
+    double? firstParseMs;
+    double? securityMs;
+    await for (final event in task.events) {
+      if (event is IpaParseSucceeded) {
+        firstParseMs = perceived.elapsedMilliseconds.toDouble();
+      }
+      if (event is IpaSecurityReady) {
+        securityMs = perceived.elapsedMilliseconds.toDouble();
+      }
+    }
+    rows.add(('★ 两阶段：静态结果先到', firstParseMs ?? -1));
+    rows.add(('★ 两阶段：安全结果后到', securityMs ?? -1));
+
     final buffer = StringBuffer()
       ..writeln('')
       ..writeln('样本 $_ipaPath（${sizeMB.toStringAsFixed(1)} MB）')
@@ -165,6 +274,10 @@ void main() {
         '嵌套字节合计 ${(nestedRetained / (1024 * 1024)).toStringAsFixed(1)} MB');
     // ignore: avoid_print
     print(buffer.toString());
+    // ignore: avoid_print
+    print('RSS start=${(rssStart / 1048576).toStringAsFixed(1)} MB '
+        'end=${(ProcessInfo.currentRss / 1048576).toStringAsFixed(1)} MB '
+        'peak=${(ProcessInfo.maxRss / 1048576).toStringAsFixed(1)} MB');
 
     expect(machoBytes, isNotNull);
     expect(container.mainApp, isNotNull);

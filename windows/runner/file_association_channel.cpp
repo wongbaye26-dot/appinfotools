@@ -176,22 +176,6 @@ std::wstring ClassesKeyForExtension(const std::wstring& extension) {
   return L"Software\\Classes\\" + extension;
 }
 
-/// 这个扩展名是否已经有用户选择（`UserChoice`）。
-///
-/// 有的话**绝不能**改写扩展名的默认值 —— 那会被系统忽略，还可能让
-/// 用户回到「选择打开方式」的弹窗，反而更糟。
-bool HasUserChoice(const std::wstring& extension) {
-  const std::wstring subkey =
-      L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\" +
-      extension + L"\\UserChoice";
-  HKEY key = nullptr;
-  if (::RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_READ, &key) !=
-      ERROR_SUCCESS) {
-    return false;
-  }
-  ::RegCloseKey(key);
-  return true;
-}
 
 /// 读一个 `REG_SZ` 值；不存在时返回空串。
 std::wstring ReadStringValue(HKEY root, const std::wstring& subkey,
@@ -394,14 +378,12 @@ std::string FileAssociationChannel::RegisterAssociations() {
       ++failures;
     }
 
-    // 3) 只有在用户**还没选过**打开方式时，才把默认值写成我们。
-    //    已经有 UserChoice 时改写会被系统忽略，且容易把用户带回
-    //    「选择打开方式」弹窗 —— 那不是帮忙。
-    if (!HasUserChoice(association.extension)) {
-      SetStringValue(HKEY_CURRENT_USER,
-                     ClassesKeyForExtension(association.extension), nullptr,
-                     association.prog_id);
-    }
+    // 3) **不写扩展名的默认值。**
+    //    此前在「没有 UserChoice」时把默认值写成我们，等于替用户做了默认
+    //    程序决定，与 README 的「由你决定」相矛盾；而本程序每次启动都会
+    //    走到这里，也会把用户后来选的默认值再抢回来。
+    //    这里只登记候选（OpenWithProgids + ProgID）；要不要设为默认由用户
+    //    在系统「打开方式」里决定。安装器那份显式关联不受影响。
   }
 
   // 让资源管理器立刻刷新关联，否则新装的程序要等注销才出现在「打开方式」里。

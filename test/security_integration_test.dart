@@ -195,7 +195,9 @@ void main() {
 
       final report = AnalysisReport.render(result, t, generatedAt: _at);
 
-      expect(report, contains('Only ASCII strings are scanned'));
+      // 这句话会随扫描能力更新（新增 UTF-8 / UTF-16 BE 覆盖时改过一次），
+      // 断言只钉住「走的是本地化文案，不是引擎里的旧中文原文」。
+      expect(report, contains('UTF-8 Unicode and UTF-16 (LE/BE) strings'));
       expect(report, isNot(contains('旧的中文原文')));
     });
 
@@ -300,7 +302,7 @@ void main() {
       // 报告 schema 化（缺陷 D3）：结构版本、报告 ID、输入文件身份、
       // 引擎与规则版本都要在 —— 否则脚本无法判断能不能解析这份报告、
       // 也无法追溯它是用哪套规则跑出来的。
-      expect(json, contains('"reportSchemaVersion": 7'));
+      expect(json, contains('"reportSchemaVersion": 8'));
       expect(json, contains('"reportId"'));
       expect(json, contains('"generatedAt": "2026-10-14T12:00:00.000Z"'));
       expect(json, contains('"inputArtifact"'));

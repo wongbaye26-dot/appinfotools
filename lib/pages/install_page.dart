@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/pages/setting_page.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
+import 'package:apk_info_tool/utils/adb_install_error.dart';
 import 'package:apk_info_tool/utils/adb_service.dart';
 import 'package:apk_info_tool/utils/known_devices.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -77,6 +79,7 @@ class _InstallPageState extends State<InstallPage> {
   final Set<String> _selected = {};
   final Map<String, _DeviceState> _states = {};
   bool _loadingDevices = false;
+  bool _adbMissing = false;
 
   // ---- 选项 ----
   bool _allowDowngrade = false;
@@ -227,12 +230,23 @@ class _InstallPageState extends State<InstallPage> {
   Future<void> _refreshDevices() async {
     if (_loadingDevices) return;
     setState(() => _loadingDevices = true);
+    // 生产路径：adb 可执行文件缺失要显性化，不能折成“没有找到设备”。
+    final adbMissing =
+        widget.deviceLoader == null && AdbService.adbExecutable == null;
+    if (adbMissing) {
+      setState(() {
+        _adbMissing = true;
+        _loadingDevices = false;
+      });
+      return;
+    }
     try {
       final devices =
           await (widget.deviceLoader ?? AdbService.listDevices).call();
       if (!mounted) return;
       setState(() {
         _devices = devices;
+        _adbMissing = false;
         _loadingDevices = false;
         final usable = {
           for (final device in devices)
@@ -442,7 +456,13 @@ class _InstallPageState extends State<InstallPage> {
           onLog: _appendLog,
         );
         _currentInstaller = null;
-        if (!ok && !_cancelled) error = t.install.error;
+        if (!ok && !_cancelled) {
+          error = _localizedInstallError(
+            installer.lastOutput,
+            t,
+            -1,
+          );
+        }
       } else {
         final process = await Process.start(
           _adbExecutable,
@@ -468,9 +488,10 @@ class _InstallPageState extends State<InstallPage> {
         ok = exitCode == 0;
         _appendLog('exit code: $exitCode');
         if (!ok) {
-          error = stderrBuffer.toString().trim();
-          if (error.isEmpty) error = stdoutBuffer.toString().trim();
-          if (error.isEmpty) error = 'adb install exited with $exitCode';
+          final raw = stderrBuffer.toString().trim().isNotEmpty
+              ? stderrBuffer.toString().trim()
+              : stdoutBuffer.toString().trim();
+          error = _localizedInstallError(raw, t, exitCode);
         }
       }
 
@@ -798,7 +819,35 @@ class _InstallPageState extends State<InstallPage> {
           ],
         ),
         const SizedBox(height: 4),
-        if (_devices.isEmpty)
+        if (_adbMissing)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t.install.adb_missing,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.error)),
+                const SizedBox(height: 6),
+                Text(
+                  t.install.adb_missing_hint,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SettingPage(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.settings, size: 18),
+                  label: Text(t.install.open_settings),
+                ),
+              ],
+            ),
+          )
+        else if (_devices.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Column(
@@ -1462,4 +1511,31 @@ class _WirelessConnectDialogState extends State<_WirelessConnectDialog> {
       ],
     );
   }
+}
+
+/// 把 adb 原始失败输出转成用户可读的本地化句子。
+String _localizedInstallError(
+  String raw,
+  Translations t,
+  int exitCode,
+) {
+  final code = adbInstallFailureCode(raw);
+  if (code == null) {
+    return raw.isNotEmpty ? raw : 'adb install exited with $exitCode';
+  }
+  return switch (code) {
+    'INSTALL_FAILED_ALREADY_EXISTS' => t.install.error_already_exists,
+    'INSTALL_FAILED_INSUFFICIENT_STORAGE' =>
+      t.install.error_insufficient_storage,
+    'INSTALL_FAILED_INVALID_APK' ||
+    'INSTALL_PARSE_FAILED_NOT_APK' ||
+    'INSTALL_PARSE_FAILED_NO_CERTIFICATES' ||
+    'INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES' =>
+      t.install.error_invalid_apk,
+    'INSTALL_FAILED_VERSION_DOWNGRADE' => t.install.error_version_downgrade,
+    'INSTALL_FAILED_UPDATE_INCOMPATIBLE' => t.install.error_update_incompatible,
+    'INSTALL_FAILED_NO_MATCHING_ABIS' => t.install.error_no_matching_abis,
+    'INSTALL_FAILED_SHARED_USER_INCOMPATIBLE' => t.install.error_signature,
+    _ => t.install.error_generic(code: code),
+  };
 }

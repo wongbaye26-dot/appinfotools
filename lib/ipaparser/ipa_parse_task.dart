@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
+import 'package:apk_info_tool/utils/content_digest.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:archive_safety/archive_safety.dart' show ArchiveOpenResult;
@@ -10,8 +12,8 @@ import 'package:archive_safety/archive_safety.dart' show ArchiveOpenResult;
 /// IPA 解析任务发出的事件。
 ///
 /// 与 `ApkParseTask` 的约定一致：事件按顺序到达，且只会以
-/// [IpaParseSucceeded]、[IpaParseFailed]、[IpaOpenFailed] 或
-/// [IpaParseCancelled] 之一收尾。
+/// [IpaParseSucceeded]、[IpaSecurityReady]、[IpaParseFailed]、[IpaOpenFailed]
+/// 或 [IpaParseCancelled] 之一收尾。
 sealed class IpaParseEvent {
   const IpaParseEvent();
 }
@@ -45,7 +47,23 @@ class IpaParseFailed extends IpaParseEvent {
 class IpaParseSucceeded extends IpaParseEvent {
   final IpaAnalysis analysis;
 
-  const IpaParseSucceeded(this.analysis);
+  /// 安全审计是否还在进行。
+  ///
+  /// `true` 时 [analysis.security] 为 `null`，随后会收到 [IpaSecurityReady]；
+  /// `false` 时本次任务已经结束（未启用安全审计或旧调用方）。
+  final bool securityPending;
+
+  const IpaParseSucceeded(this.analysis, {this.securityPending = false});
+}
+
+/// 安全审计结果（两阶段解析的第二阶段）。
+///
+/// `security` 为 `null` 表示审计失败/未启用；调用方保留静态解析结果，
+/// 不把整次解析判失败。
+class IpaSecurityReady extends IpaParseEvent {
+  final SecurityAnalysisResult? security;
+
+  const IpaSecurityReady(this.security);
 }
 
 /// 任务被用户取消。取消之后不会再有其它事件。
@@ -75,7 +93,11 @@ class IpaParseTask implements CancellableParseTask {
   IpaParseTask._(this._receive, this._controller) : events = _controller.stream;
 
   /// 启动一次解析。返回后 worker isolate 已在运行。
-  static Future<IpaParseTask> start(String filePath) async {
+  static Future<IpaParseTask> start(
+    String filePath, {
+    bool securityAudit = true,
+    OfficialBaselineDb? baselineDb,
+  }) async {
     final receive = ReceivePort();
     final controller = StreamController<IpaParseEvent>();
     final task = IpaParseTask._(receive, controller);
@@ -86,7 +108,12 @@ class IpaParseTask implements CancellableParseTask {
 
     final isolate = await Isolate.spawn(
       _ipaParseEntryPoint,
-      _IpaParseRequest(reply: receive.sendPort, filePath: filePath),
+      _IpaParseRequest(
+        reply: receive.sendPort,
+        filePath: filePath,
+        securityAudit: securityAudit,
+        baselineDb: baselineDb,
+      ),
     );
     task._isolate = isolate;
 
@@ -118,7 +145,14 @@ class IpaParseTask implements CancellableParseTask {
     if (_finished) return;
 
     switch (event) {
-      case IpaParseSucceeded() || IpaParseFailed() || IpaOpenFailed():
+      case IpaParseSucceeded(:final securityPending):
+        if (!_controller.isClosed) _controller.add(event);
+        if (!securityPending) {
+          _finished = true;
+          _controller.close();
+          _receive.close();
+        }
+      case IpaSecurityReady() || IpaParseFailed() || IpaOpenFailed():
         _finished = true;
         _emitAndClose(event);
         _receive.close();
@@ -137,8 +171,15 @@ class IpaParseTask implements CancellableParseTask {
 class _IpaParseRequest {
   final SendPort reply;
   final String filePath;
+  final bool securityAudit;
+  final OfficialBaselineDb? baselineDb;
 
-  const _IpaParseRequest({required this.reply, required this.filePath});
+  const _IpaParseRequest({
+    required this.reply,
+    required this.filePath,
+    required this.securityAudit,
+    required this.baselineDb,
+  });
 }
 
 /// worker isolate 的入口。
@@ -147,6 +188,7 @@ class _IpaParseRequest {
 /// isolate 提前结束，它会一直活到异步工作结束。
 void _ipaParseEntryPoint(_IpaParseRequest request) async {
   final helper = ZipHelper();
+  var partialSent = false;
   try {
     request.reply.send(const IpaStageReached(IpaParseStage.openContainer));
 
@@ -171,12 +213,31 @@ void _ipaParseEntryPoint(_IpaParseRequest request) async {
     final analysis = IpaAnalysisReader.analyze(
       archive,
       onStage: (stage) => request.reply.send(IpaStageReached(stage)),
+      securityAudit: request.securityAudit,
+      digest: contentDigest,
+      baselineDb: request.baselineDb,
+      retainRawBytes: false,
+      onParsed: (partial) {
+        // 两阶段：先让 UI 拿到静态解析结果，安全审计继续在 worker 里跑。
+        partialSent = true;
+        request.reply.send(IpaParseSucceeded(
+          partial,
+          securityPending: request.securityAudit,
+        ));
+      },
     );
 
-    request.reply.send(IpaParseSucceeded(analysis));
+    if (request.securityAudit) {
+      request.reply.send(IpaSecurityReady(analysis.security));
+    }
   } catch (e) {
     log.warning('IpaParseTask: worker failed: $e');
-    request.reply.send(IpaParseFailed('$e'));
+    if (partialSent) {
+      // 静态解析已经成功；安全审计失败不应把整次解析判失败。
+      request.reply.send(const IpaSecurityReady(null));
+    } else {
+      request.reply.send(IpaParseFailed('$e'));
+    }
   } finally {
     helper.close();
   }

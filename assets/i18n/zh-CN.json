@@ -195,7 +195,9 @@
       "diag_dll": "处理器 DLL：{path}",
       "diag_helper": "图标提取器：{present}",
       "diag_yes": "存在",
-      "diag_no": "缺失"
+      "diag_no": "缺失",
+      "machine_wide": "检测到机器级注册",
+      "machine_wide_detail": "旧版安装把缩略图处理器写进了 HKLM。应用停用只删除 HKCU；要彻底移除请以管理员身份运行应用（或手动清理 HKLM）。"
     }
   },
   "signature": {
@@ -293,7 +295,9 @@
     "structure_directories": "顶层目录",
     "structure_file_count": "{count} 个文件",
     "text_info": "文本信息",
-    "component_count": "{count} 个（见下方列表）"
+    "component_count": "{count} 个（见下方列表）",
+    "partial_manifest_title": "部分解析：Manifest 未读到",
+    "partial_manifest_body": "AndroidManifest.xml 无法解析。包名来自 resources.arsc；版本、组件、权限未知。安全审计仍覆盖 DEX 和资源，但无法评估清单声明。"
   },
   "icon": {
     "switch_icon": "切换图标",
@@ -318,7 +322,13 @@
     "name_cannot_be_empty": "文件名不能为空",
     "must_end_with_apk": "文件名必须以 .apk/.xapk/.apkm/.apks/.ipa 结尾",
     "default_name": "默认名称",
-    "not_ready": "请等待解析完成后再重命名"
+    "not_ready": "请等待解析完成后再重命名",
+    "batch_title": "批量重命名",
+    "batch_preparing": "正在分析所选文件…",
+    "batch_include_version": "包含版本",
+    "batch_done": "已重命名 {count} 个文件",
+    "batch_failed": "{count} 个文件失败",
+    "batch_apply": "全部重命名"
   },
   "install": {
     "refresh_devices": "刷新设备列表",
@@ -399,7 +409,18 @@
     "pair_error_invalid_code": "配对码不对（或已过期）。关掉这个对话框，在手机上重新打开「使用配对码配对设备」—— 每次打开配对码都会变。",
     "pair_error_not_pairing_port": "这个端口不响应配对 —— 你多半填了**连接端口**。配对端口在手机「使用配对码配对设备」的弹窗里。",
     "pair_error_already_paired": "这台设备已经配对过了，直接点「无线连接」就行。",
-    "pair_error_unreachable": "连不上那个配对端口。确认手机还停在「使用配对码配对设备」的弹窗上，并且端口填的是弹窗里那个。"
+    "pair_error_unreachable": "连不上那个配对端口。确认手机还停在「使用配对码配对设备」的弹窗上，并且端口填的是弹窗里那个。",
+    "adb_missing": "未找到 adb",
+    "adb_missing_hint": "安装需要 adb。请在“设置 → 外部工具”里配置 adb 路径，或在那里使用内置下载。",
+    "open_settings": "打开设置",
+    "error_already_exists": "应用已安装。请打开“强制安装”或先卸载。",
+    "error_insufficient_storage": "设备存储空间不足。",
+    "error_invalid_apk": "APK 无效或已损坏。",
+    "error_version_downgrade": "已安装的版本更高。请打开“允许降级”或先卸载。",
+    "error_update_incompatible": "更新与已安装应用不兼容。",
+    "error_no_matching_abis": "APK 里没有匹配此设备 ABI 的原生库。",
+    "error_signature": "APK 签名与已安装应用不一致。请先卸载旧应用。",
+    "error_generic": "安装失败（{code}）。"
   },
   "ios_info": {
     "architectures": "架构",
@@ -488,7 +509,13 @@
     "certificate_count": "{count} 张证书",
     "certificate_entry": "{subject}（签发者 {issuer}）",
     "certificate_valid_until": "有效期至 {date}",
-    "certificate_material_note": "这些只是材料：只说明证书自称是谁签的，不代表证书可信，也不代表签名有效。"
+    "certificate_material_note": "这些只是材料：只说明证书自称是谁签的，不代表证书可信，也不代表签名有效。",
+    "profile_distribution": "分发类型",
+    "distribution_app_store": "App Store",
+    "distribution_ad_hoc": "Ad Hoc",
+    "distribution_enterprise": "企业 / 内部分发",
+    "distribution_development": "开发分发",
+    "distribution_unknown": "未知"
   },
   "report": {
     "android_section": "Android 专属信息",
@@ -626,7 +653,7 @@
       "ios_privacy_info_cross_check": "将声明内容与 API 线索、隐私政策人工比对。",
       "ios_privacy_tracking_confirm_att": "确认跟踪用途与 ATT 授权流程是否符合预期。",
       "ios_url_schemes_limitation": "本次未检查 scheme 的处理代码（未反汇编）；「入口存在」与「入口安全」是两件事。",
-      "ios_scan_coverage_limitation": "扫描仅提取可打印 ASCII 字符串：dyld 共享缓存里的系统框架符号、非 ASCII 字面量以及被加密/加固的段都会漏掉。",
+      "ios_scan_coverage_limitation": "扫描会提取可打印 ASCII、UTF-8 Unicode 与 UTF-16（小端/大端）字符串；dyld 共享缓存里的系统框架符号、Swift 小字符串常量、.strings / 本地化资源以及被加密/加固的段仍会漏掉。",
       "ios_photo_library_limitation": "API 符号存在不等于运行时会调用；符号也可能来自未使用的框架引用。",
       "ios_rule_a_relationship": "「缺少选择器路径」是**静态推断**：选择器也可能通过 SwiftUI 的 `PhotosPicker` 或动态加载使用，而它们不一定会留下可扫描的符号。",
       "ios_rule_a_limitation": "符号存在不等于运行时会调用；符号缺失也不等于功能不存在（动态加载、反射、SwiftUI 包装）。",
@@ -638,7 +665,7 @@
       "ios_rule_e_limitation": "`UIBackgroundModes` 是**声明**，不等于运行时的实际后台行为；未反汇编、未观察流量。",
       "ios_rule_d_limitation": "配置允许明文不等同于实际使用明文；例外域内的具体例外设置未展开。",
       "ios_privacy_info_limitation": "隐私清单不记录实际行为；运行时的数据访问需依赖系统的 App Privacy Report（本版本不提供）。",
-      "ios_rule_f_limitation": "只扫描 ASCII 字符串（主可执行文件 + 嵌套可执行文件）。共享 dyld 缓存里的代码、运行时加载的代码以及非 ASCII 字面量都不在覆盖范围内。",
+      "ios_rule_f_limitation": "扫描的是 ASCII、UTF-8 Unicode 与 UTF-16（小端/大端）字符串（主可执行文件 + 嵌套可执行文件）。共享 dyld 缓存里的代码、运行时加载的代码、Swift 小字符串常量与 .strings / 本地化资源都不在覆盖范围内。",
       "android_permission_uncategorized": "另有 {count} 项权限未纳入风险目录，仅作事实记录：{names}",
       "android_permission_uncategorized_manual_review": "未编目不等于无风险：如需评估这些权限，请对照 Android 权限文档人工确认。",
       "android_permission_sdk23_conditional": "{name} 声明于 <uses-permission-sdk-23>，只在设备 API < 23 时授予；设备版本无法从安装包静态判定。",
@@ -807,7 +834,19 @@
       "ios_repackaged_limitation": "只统计直接位于 .app 根目录的 dylib。只改 bundle 名、或就地修改主二进制的重打包不会多出文件，这里看不到 —— 那种情况只能靠签名结论。静态分析也无法判断注入的库具体做了什么。",
       "ios_upload_api": "代码里有上传相关的实现：用于附带文件或二进制数据的 multipart/form-data 构造。这只证明「具备上传能力」，不证明上传了敏感数据。",
       "ios_upload_api_confirm_sink": "确认上传的是什么、由什么触发。崩溃日志、日志包、头像上传同样走 multipart，单凭这项能力不构成发现。",
-      "verify_suspected_hint": "怎么验证：静态分析到此为止。要在真机上确认，装上之后触发对应功能，同时用 `adb logcat`（iOS 用 Xcode 的 Devices 面板看系统日志）观察是否真的出现相应的网络请求或文件读取。这条结论说的是「这些能力同时存在」，不是「已经这样用了」。"
+      "verify_suspected_hint": "怎么验证：静态分析到此为止。要在真机上确认，装上之后触发对应功能，同时用 `adb logcat`（iOS 用 Xcode 的 Devices 面板看系统日志）观察是否真的出现相应的网络请求或文件读取。这条结论说的是「这些能力同时存在」，不是「已经这样用了」。",
+      "ios_unicode_phrase": "在 Unicode 字符串字面量里命中 {count} 类中文钱包 / 社工话术。这些只是界面文案线索，不是风险结论：正规钱包也包含许多相同的词。命中原文已附在证据里。",
+      "ios_unicode_phrase_review": "结合上下文阅读附带的原文：是否在索要助记词、以空投为诱饵、要求缴纳保证金解冻资金，或引导资金归集？下结论前请把它与签名 / 官方基线、加载链证据一起看。",
+      "ios_unicode_phrase_limitation": "只检查了已扫描字节里的 UTF-8 文本与 UTF-16 字面量。Swift 小字符串常量、.strings / 本地化资源、运行时下发的文案以及 dyld 共享缓存中的符号不在本次范围内；仅凭中文措辞无法说明是否真的发生转账或上传。",
+      "android_unicode_phrase": "在 DEX 字符串常量里发现 {count} 条中文钱包 / 社工话术线索。这些只是界面文案线索，不是定性：正规钱包也会包含很多同样的词。命中的原文已作为证据附上。",
+      "android_unicode_phrase_review": "结合上下文阅读命中的原文：它是在索要助记词、承诺空投、要求先充值才能解冻，还是指示归集资金？把这条与签名 / 官方基线、加载链证据放在一起再判断意图。",
+      "android_unicode_phrase_limitation": "只解码了能通过 string_ids 访问的 DEX MUTF-8 字符串常量；resources/、assets/、原生库、加固或加壳壳层、运行时下发的文案和运行时拼接的字符串都不在本次扫描范围内。中文措辞本身不能说明是否真的发生了转账或上传。",
+      "android_resource_unicode_phrase": "在资源字符串中发现 {count} 条中文钱包 / 社工话术线索（检查了 {strings} 条字符串）。这些只是界面文案线索，不是定性。",
+      "android_resource_unicode_phrase_review": "结合上下文阅读命中的原文：它是在索要助记词、承诺空投、要求先储值才能解冻，还是一条归集资金的指令？把这条与签名 / 官方基线、加载链证据放在一起再判断意图。",
+      "android_resource_unicode_phrase_limitation": "只检查了 resources.arsc 与文本型 assets 里的字符串常量；二进制资源、原生库、运行时下发文案与运行时拼接的字符串不在扫描范围内。",
+      "ios_strings_unicode_phrase": "在 .strings / 本地化文件中发现 {count} 条中文钱包 / 社工话术线索（检查了 {strings} 条候选字符串）。这些只是界面文案线索，不是定性。",
+      "ios_strings_unicode_phrase_review": "结合上下文阅读命中的原文：它是在索要助记词、承诺空投、要求先储值才能解冻，还是一条归集资金的指令？把这条与签名 / 官方基线、加载链证据放在一起再判断意图。",
+      "ios_strings_unicode_phrase_limitation": "只检查了归档里的 .strings / 本地化文本文件；Swift 小字符串、二进制 plist、运行时下发文案与运行时拼接的字符串不在扫描范围内。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -921,7 +960,15 @@
       "record_audio_description": "录制麦克风音频。",
       "record_audio_risk_note": "属于敏感数据来源：要结合录音数据去向（是否上传）以及有没有可见的录音功能判断。录音 + 上传由组合规则 G 覆盖。",
       "read_privileged_phone_state_description": "读取特权电话状态（signature 级权限）。",
-      "read_privileged_phone_state_risk_note": "signature 级：第三方应用拿不到这个授权，因此这条声明**不会生效**。出现它通常说明代码来自系统应用、抄来的样本，或混淆产物。"
+      "read_privileged_phone_state_risk_note": "signature 级：第三方应用拿不到这个授权，因此这条声明**不会生效**。出现它通常说明代码来自系统应用、抄来的样本，或混淆产物。",
+      "read_sms_description": "读取短信。",
+      "read_sms_risk_note": "高敏感数据源：短信里常有验证码与私密消息。要结合应用是否有可见的短信功能、数据最终去哪判断。",
+      "read_call_log_description": "读取通话记录。",
+      "read_call_log_risk_note": "高敏感数据源：通话记录会暴露联系人、时间与通信模式。要结合应用功能与上传行为判断。",
+      "read_calendar_description": "读取日历。",
+      "read_calendar_risk_note": "敏感数据源：日历条目会暴露日程与人际关系。单独出现不是恶意；注意与上传逻辑共现。",
+      "post_notifications_description": "发送通知（Android 13 起为运行时权限）。",
+      "post_notifications_risk_note": "大多数应用的常规权限，本身不是风险，只记录事实。"
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes 读不出来（{reason}）：注册的 URL scheme 未覆盖。",
@@ -929,7 +976,7 @@
       "ios_executable_over_budget": "{path} 有 {bytes} 字节，超过 {limit} 字节扫描预算：只扫描了前 {limit} 字节，未覆盖部分可能存在未被发现的线索。",
       "ios_executable_none_readable": "未能读取任何 Mach-O 可执行文件的内容：API 使用线索无法检查。用途说明与隐私清单结论不受影响，但不构成完整分析。",
       "ios_executable_unscanned": "{count} 个可执行文件未参与扫描（{names}）：这些文件上的「没发现线索」是「没查到」，不是「没有」。",
-      "ios_macho_scan_summary": "Mach-O 扫描共 {bytes} 字节，且仅提取可打印 ASCII 字符串：dyld 共享缓存中的符号不在覆盖范围内，非 ASCII 字面量也会漏掉。",
+      "ios_macho_scan_summary": "Mach-O 扫描共 {bytes} 字节，提取了可打印 ASCII、UTF-8 Unicode 与 UTF-16（小端/大端）字符串；dyld 共享缓存中的符号、Swift 小字符串常量与 .strings / 本地化资源不在覆盖范围内。",
       "ios_privacy_info_unparsable": "隐私清单存在但解析失败：{reason}。声明性内容无法核对。",
       "ios_privacy_info_absent": "未发现隐私清单（PrivacyInfo.xcprivacy）：这本身不是异常（仅部分应用提供），但意味着无法核对声明的数据收集类型。",
       "ios_offline_static_analysis": "本次为离线静态分析：未安装、未运行、未观察网络流量。因此不存在任何运行时证据，报告不得据此声称已完成行为确认。",
@@ -987,7 +1034,9 @@
       "android_signing_block_unreadable": "APK 签名块读不出来（{reason}）：v2+ 签名方案未知，因此本次不能下「没有签名块」的结论。这不等于「签名无效」。",
       "ios_permission_request_no_methname": "没有任何可执行文件带有可读的 __objc_methname 节，因此无法判定是否主动请求权限。这不等于「没有申请权限」。",
       "android_provider_exposed": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。",
-      "ios_reference_tables_unsupported": "类 / 选择子引用表解不出来（{reason}），因此无法区分「代码引用了这个类」与「这个词在包里出现过」。"
+      "ios_reference_tables_unsupported": "类 / 选择子引用表解不出来（{reason}），因此无法区分「代码引用了这个类」与「这个词在包里出现过」。",
+      "android_split_apk_partial": "这是分包安装包。split APK 的 DEX、资源字符串和原生库已纳入审计，但制品清单、加载链和载荷探测仍只基于 base APK 计算。",
+      "android_split_apk_cert_mismatch": "base APK 与至少一个 split APK 的签名证书不一致。Android 通常会拒绝这种安装组合；不要把这个包当成匹配的官方安装集。"
     },
     "findings": "发现项",
     "sdk_categories": {
@@ -1078,7 +1127,8 @@
       "android_nativeHardening": "原生库加固",
       "android_sdkInventory": "第三方 SDK 清单",
       "android_signature": "签名材料",
-      "ios_machoSites": "Mach-O 调用点"
+      "ios_machoSites": "Mach-O 调用点",
+      "ios_unicodeStrings": "Unicode 字符串"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",
@@ -1111,7 +1161,10 @@
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 与 targetSdkVersion 都没读到，无法推出平台对明文流量的默认策略",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 没能展开（资源、文件路径或 XML 本身读不出来），因此未判定明文流量策略",
       "ios_macho_call_sites": "在 {total} 条选择子 / 类引用中，{attributed} 条成功归属到函数（二进制共 {functions} 个函数）。「被引用」仍不等于「被调用」：ADRP+ADD 只是把地址装进寄存器，之后传给谁静态看不到。 另外，类引用表（`__objc_classrefs`）主要覆盖**应用自己的类**；系统框架类（`AVCaptureDevice`、`CNContactStore`）通常通过 `objc_msgSend` 直接调用或 `NSClassFromString` 取得，不在这一维的覆盖范围内。 这一维只覆盖**实际扫描过的**可执行文件（见「可执行文件」那一维）—— 未扫描的二进制里的引用不在分母内。",
-      "ios_macho_call_sites_unavailable": "没有任何选择子引用能归属到函数（没有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令对，或缺少 LC_FUNCTION_STARTS）。线索只报「被引用」，不报「被调用」。"
+      "ios_macho_call_sites_unavailable": "没有任何选择子引用能归属到函数（没有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令对，或缺少 LC_FUNCTION_STARTS）。线索只报「被引用」，不报「被调用」。",
+      "ios_unicode_strings_scope": "已检查可执行文件字节中的 UTF-8 文本与 UTF-16（小端/大端）字面量；Swift 小字符串常量、.strings / 本地化资源以及 dyld 共享缓存中的符号不在可见范围内。",
+      "ios_unicode_strings_truncated": "部分可执行文件超出扫描预算或 __ustring 节上限，其后的 Unicode 字符串未被检查。",
+      "ios_unicode_strings_no_content": "没有可执行文件内容可供 Unicode 字符串扫描。"
     }
   },
   "diff": {
@@ -1231,5 +1284,51 @@
     "ios_info_plist_unparsable": "{path} 解析失败：{message}",
     "ios_info_plist_not_a_dict": "{path} 的根是 {actual}，期望字典",
     "ios_info_plist_parsed": "已解析 {path}（{keys} 个键）"
+  },
+  "theft": {
+    "chain_title": "证据链",
+    "level_capability": "能力线索",
+    "level_suspicious": "疑似关联",
+    "level_strong": "强证据",
+    "level_unknown": "无法判断",
+    "score": "证据完整度",
+    "stage_capability": "能力",
+    "stage_source": "来源",
+    "stage_injection": "注入",
+    "stage_payload": "载荷",
+    "stage_family": "官方基线",
+    "stage_supported": "已支撑",
+    "stage_missing": "缺失",
+    "missing_title": "缺失环节",
+    "missing_noCapability": "未发现钱包 / 密钥 / 剪贴板能力",
+    "missing_noSource": "未发现地址或密钥的输入来源",
+    "missing_noInjection": "未发现动态加载 / 注入证据",
+    "missing_noPayload": "未发现可疑载荷",
+    "missing_shellPacked": "关键内容被加壳 / 加密，读不出来",
+    "missing_noBaseline": "该包未命中已维护的官方基线",
+    "baseline_match": "与官方基线一致",
+    "baseline_mismatch": "与官方基线不一致",
+    "baseline_none": "无官方基线条目",
+    "baseline_unavailable": "官方基线不可用",
+    "next_title": "下一步",
+    "next_clipboard": "导出当前去重后的地址清单",
+    "next_signature": "核对签名 / 密封结论",
+    "next_official": "与官方渠道包比对",
+    "not_a_verdict": "这是静态证据，不是恶意定性。",
+    "seal_title": "密封校验",
+    "seal_verified": "一致",
+    "seal_mismatch": "不一致",
+    "seal_entry_missing": "密封条目缺失",
+    "seal_unsealed": "无密封清单",
+    "seal_not_checked": "未校验",
+    "seal_unknown": "无法判断",
+    "seal_checked": "已校验 {checked}/{total}",
+    "baseline_title": "官方基线",
+    "seal_mismatch_message": "密封不一致：{path}（期望 {expected}，实际 {actual}）。",
+    "seal_mismatch_review": "在重新签名或与官方基线核对之前，按篡改处理。",
+    "seal_mismatch_limitation": "摘要不一致只能证明内容与密封记录不同，不能说明改了什么、谁改的。",
+    "baseline_mismatch_message": "官方基线不一致：{packageId}（期望 {expected}，实际 {actual}）。",
+    "baseline_mismatch_review": "在信任这个包之前，与官方渠道包或官方公布的指纹核对。",
+    "baseline_mismatch_limitation": "基线不一致只说明包身份/指纹与记录不同，本身不能证明恶意。"
   }
 }

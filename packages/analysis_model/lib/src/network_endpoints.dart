@@ -82,6 +82,10 @@ class NetworkEndpoints {
     Set<String> ips,
   ) {
     if (domains.length >= maxEndpoints && ips.length >= maxEndpoints) return;
+    // 所有模式都要求主机名里有点（IPv4 / 域名 / URL host）；没有点的字符串
+    // 连正则都不用跑。Mach-O 里绝大多数 ASCII 串是符号名，这一条过滤掉了
+    // 大部分无意义的正则调用。
+    if (!value.contains('.')) return;
     for (final match in _urlPattern.allMatches(value)) {
       final host = match.group(1)!;
       // IP 归 `ips`，不混进域名清单 —— 两张表混着放，读者分不清

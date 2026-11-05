@@ -139,6 +139,24 @@ class SystemIconSection extends StatelessWidget {
               ),
             ),
 
+            // 机器级（HKLM）注册：应用停用只删 HKCU，旧安装版会让
+            // Explorer 继续调用；这里必须明确说出来，不能显示“已停用”。
+            if (status.machineWideRegistered)
+              ListTile(
+                leading: Icon(Icons.admin_panel_settings_outlined,
+                    size: 18, color: theme.colorScheme.error),
+                title: Text(
+                  icon.machine_wide,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.error),
+                ),
+                subtitle: Text(
+                  icon.machine_wide_detail,
+                  style: theme.textTheme.bodySmall,
+                ),
+                dense: true,
+              ),
+
             // 路径不一致单独一行：这是最容易被当成「功能坏了」的状态，
             // 而它其实点一下就能修好。两个路径都要显示，否则用户不知道改成哪个。
             if (status.pathMismatch)

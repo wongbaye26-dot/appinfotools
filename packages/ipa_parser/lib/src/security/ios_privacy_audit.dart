@@ -4,6 +4,9 @@ import 'package:analysis_model/analysis_model.dart';
 
 import 'ios_call_sites.dart';
 import 'ios_crypto_audit.dart';
+import 'ios_crypto_theft_chain.dart';
+import 'ios_unicode_phrases.dart';
+import 'ios_strings_unicode.dart';
 import 'ios_jailbreak_audit.dart';
 import 'ios_repackaging_audit.dart';
 
@@ -28,6 +31,13 @@ class _Budget {
   /// （B-6 的误报就是这么来的）。真实 App 的主二进制 30–80 MB 很常见，
   /// 16 MiB 太小。
   static const int maxBytes = 64 * 1024 * 1024;
+
+  /// `__TEXT,__ustring` 的四种端序/对齐组合扫描上限。
+  ///
+  /// 这一节通常只有几十 KB，但不可信文件可以把节声明得很大；四遍扫描
+  /// 会让代价翻四倍，所以单独给个上限，超出部分如实记为截断。
+  static const int maxUstringBytes = 8 * 1024 * 1024;
+
   static const int minStringLength = 6;
   static const int maxSamplesPerMarker = 5;
 }
@@ -135,6 +145,79 @@ class IosPrivacyAudit {
   IosPrivacyAudit._();
 
   static const String engineVersion = 'ios-security-1.1.0';
+
+  /// 官方基线不一致：事实级 P1。
+  static SecurityFinding _baselineMismatchFinding(BaselineMatch baseline) {
+    final expected = baseline.expectedFingerprintPrefixes.join(', ');
+    final actual = baseline.actualFingerprintPrefixes.join(', ');
+    final packageId = baseline.packageId ?? 'unknown';
+    return SecurityFinding(
+      ruleId: 'IOS-BASELINE-MISMATCH',
+      platform: SecurityPlatform.ios,
+      category: SecurityCategory.other,
+      severity: SecuritySeverity.p1,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'Official baseline mismatch: $packageId '
+          '(expected $expected, actual $actual).',
+      evidence: [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.officialBaseline,
+          location: packageId,
+          detail: 'entry ${baseline.entryId ?? '—'}; '
+              'expected $expected, actual $actual',
+        ),
+      ],
+      recommendation:
+          'Verify this package against the official channel package '
+          'or published fingerprint before trusting it.',
+      messageCode: 'baseline.mismatch',
+      messageArgs: {
+        'packageId': packageId,
+        'expected': expected,
+        'actual': actual,
+      },
+      recommendationCode: 'baseline.mismatch.review',
+      limitation: 'A baseline mismatch means the package identity/fingerprint '
+          'differs from the recorded official entry; it does not by itself '
+          'prove malice.',
+      limitationCode: 'baseline.mismatch.limitation',
+    );
+  }
+
+  /// 密封摘要不一致：事实级 P1，独立于盗 U 五段链。
+  static SecurityFinding _sealMismatchFinding(SealCheck seal) {
+    final check = seal.checks
+        .where((c) => c.state == SealState.mismatch)
+        .cast<SealEntryCheck?>()
+        .firstWhere((c) => c != null, orElse: () => null);
+    final path = check?.path ?? 'seal';
+    final expected = check?.expectedDigestPrefix ?? '—';
+    final actual = check?.actualDigestPrefix ?? '—';
+    return SecurityFinding(
+      ruleId: 'IOS-SEAL-MISMATCH',
+      platform: SecurityPlatform.ios,
+      category: SecurityCategory.other,
+      severity: SecuritySeverity.p1,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'Seal mismatch: $path (expected $expected, actual $actual).',
+      evidence: [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.sealDigest,
+          location: path,
+          detail: 'expected $expected, actual $actual',
+        ),
+      ],
+      recommendation: 'Treat this as tampering until the package is re-signed '
+          'or verified against an official baseline.',
+      messageCode: 'seal.mismatch',
+      messageArgs: {'path': path, 'expected': expected, 'actual': actual},
+      recommendationCode: 'seal.mismatch.review',
+      limitation: 'A digest mismatch proves the content differs from the seal '
+          'record; it does not identify what changed.',
+      limitationCode: 'seal.mismatch.limitation',
+    );
+  }
+
   static const String rulesVersion = 'ios-privacy-2026.10.1';
 
   static final List<(String, String, String)> _markers = [
@@ -284,13 +367,39 @@ class IosPrivacyAudit {
     /// 不传时**不产出** `IOS-REPACKAGED`：手工构造的 `IpaAnalysis` 与
     /// 几十个既有测试都不传，编不出「布局正常」这种它们没验证过的结论。
     IpaLayoutFacts? layout,
+
+    /// Phase B 制品清单；`null` = 未接入。
+    ArtifactInventory? artifacts,
+
+    /// Phase B 加载链；`null` = 未接入。
+    LoadGraph? loadGraph,
+
+    /// Phase B 载荷探测；`null` = 未接入。
+    PayloadProbeResult? payloadProbe,
+
+    /// Phase D 密封校验；`null` = 未做/未注入摘要函数。
+    SealCheck? seal,
+
+    /// Phase E 官方基线匹配；`null` = 未做/无基线库。
+    BaselineMatch? baseline,
+
+    /// 归档里的 `.strings` / 本地化文本文件；空表示未提供。
+    List<IosStringsFile> stringsFiles = const [],
+
+    /// 仅性能探查用：在每个审计阶段回调一个稳定名字。
+    ///
+    /// 生产传 `null`；`tool/perf_probe_ios_audit_stages_test.dart` 用它把
+    /// RSS 和阶段对应起来。不是诊断文案，不参与本地化。
+    void Function(String stage)? onStage,
   }) {
     final budgetBytes = scanBudgetBytes ?? _Budget.maxBytes;
+    onStage?.call('start');
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
 
     // ---- 授权项（Entitlements）----
     findings.addAll(_auditEntitlements(entitlements));
+    onStage?.call('entitlements:done');
 
     // ---- 用途说明键：逐条事实记录 ----
     final usage = infoPlist.privacyUsageDescriptions;
@@ -498,8 +607,12 @@ class IosPrivacyAudit {
 
     // 「盗 U」信号：在下面那次字符串遍历里顺带收集，不额外解码一遍。
     final cryptoSignals = IosCryptoSignals();
+    // 中文 / Unicode 话术线索：同样挂在这几次遍历上，不另开一次读文件。
+    final phraseSignals = IosUnicodePhraseSignals();
 
+    onStage?.call('pre-strings:done');
     for (final target in targets) {
+      onStage?.call('strings:${target.path}:begin');
       final bytes = target.bytes;
       if (bytes == null || bytes.isEmpty) {
         // **只放路径，不带原因。** 原因（`bytes not retained (nested budget
@@ -535,12 +648,18 @@ class IosPrivacyAudit {
 
       // Mach-O 只解析一次：引用表与选择子表都要用。
       final macho = MachOParser.parse(bytes);
+      onStage?.call('strings:${target.path}:macho-parsed');
 
       // 引用表：`__objc_classrefs` / `__objc_selrefs` 的槽位解出来的类名
       // 与选择子名。这是 iOS 侧的「结构化引用」一级，比裸字符串强。
       final tables = macho.images.isEmpty
           ? const IosReferenceTables(failure: 'no Mach-O image')
-          : IosReferenceTables.resolve(bytes, macho.images.first);
+          : IosReferenceTables.resolve(
+              bytes,
+              macho.images.first,
+              onStage: (stage) =>
+                  onStage?.call('strings:${target.path}:$stage'),
+            );
       if (tables.failure != null) {
         tableFailure ??= tables.failure;
       } else {
@@ -550,6 +669,7 @@ class IosPrivacyAudit {
         tableSkipped += tables.skippedPointers;
       }
 
+      onStage?.call('strings:${target.path}:tables-added');
       // 选择子表：按节取，而不是在整文件里搜。
       final methname = macho.sectionBytes(
         bytes,
@@ -575,24 +695,108 @@ class IosPrivacyAudit {
         }
       }
 
+      onStage?.call('strings:${target.path}:methname-done');
+      void consume(String str, {bool unicode = false}) {
+        NetworkEndpoints.collect(str, domainSet, ipSet);
+        // 「盗 U」信号复用这一次遍历：钱包框架 / 助记词 / 剪贴板 / 链上地址。
+        cryptoSignals.collect(str, target.path);
+        // 中文话术必须赶在 `_markerPattern` 早退之前收 —— 那张 21 条标记表
+        // 全是 ASCII 类名，含中文的串一条也过不了那个 if。
+        phraseSignals.collect(str, target.path, unicode: unicode);
+        // 直接逐条 contains：合并正则在真实主二进制上会让 16 万条串的
+        // 扫描出现一个很大的瞬时峰值；21 次 contains 更稳定。
+        for (final (id, _, literal) in _markers) {
+          if (!str.contains(literal)) continue;
+          // 只要少量样例做证据；此前把每个命中串都存进 list，主二进制
+          // 上会 retain 几万条字符串，是 ASCII 扫描峰值的主要来源。
+          final bucket = byMarker[id] ??= <String>[];
+          if (bucket.length < _Budget.maxSamplesPerMarker) bucket.add(str);
+          (sourcesByMarker[id] ??= <String>{}).add(target.path);
+        }
+      }
+
       for (final str in AsciiStrings.extract(
         bytes,
         limit: limit,
         minLength: _Budget.minStringLength,
       )) {
-        NetworkEndpoints.collect(str, domainSet, ipSet);
-        // 「盗 U」信号复用这一次遍历：钱包框架 / 助记词 / 剪贴板 / 链上地址。
-        cryptoSignals.collect(str, target.path);
-        for (final (id, _, literal) in _markers) {
-          if (!str.contains(literal)) continue;
-          (byMarker[id] ??= <String>[]).add(str);
-          (sourcesByMarker[id] ??= <String>{}).add(target.path);
+        consume(str);
+      }
+      onStage?.call('strings:${target.path}:ascii-done');
+      // Unicode 扫描只走字符串节：真实 Mach-O 的 __cstring / __ustring
+      // 通常只有几 MB，而整文件扫 34 MB 会多花数秒。
+      // 没有 Mach-O 的合成输入（测试/降级）退回整文件，保持原有行为。
+      final cstring = macho.sectionBytes(
+        bytes,
+        segment: '__TEXT',
+        section: '__cstring',
+      );
+      final ustring = macho.sectionBytes(
+        bytes,
+        segment: '__TEXT',
+        section: '__ustring',
+      );
+      if (macho.images.isNotEmpty) {
+        if (cstring != null && cstring.isNotEmpty) {
+          for (final str in Utf8Strings.extract(
+            cstring,
+            limit: cstring.length,
+            minLength: 2,
+            minCjkChars: 2,
+          )) {
+            phraseSignals.collect(str, target.path, unicode: true);
+          }
+        }
+        onStage?.call('strings:${target.path}:cstring-done');
+        if (ustring != null && ustring.isNotEmpty) {
+          final ustringLimit = ustring.length > _Budget.maxUstringBytes
+              ? _Budget.maxUstringBytes
+              : ustring.length;
+          if (ustringLimit < ustring.length) phraseSignals.noteTruncation();
+          for (final str in Utf16Strings.extractAll(
+            ustring,
+            limit: ustringLimit,
+            minLength: 2,
+          )) {
+            cryptoSignals.collect(str, target.path);
+            phraseSignals.collect(str, target.path, unicode: true);
+          }
+        }
+        onStage?.call('strings:${target.path}:ustring-done');
+      } else {
+        // 非 Mach-O 输入（测试 / 降级）：保留整文件扫描。
+        for (final str in Utf16Strings.extract(
+          bytes,
+          limit: limit,
+          minLength: 4,
+          requireWide: true,
+        )) {
+          phraseSignals.collect(str, target.path, unicode: true);
+        }
+        for (final str in Utf8Strings.extract(
+          bytes,
+          limit: limit,
+          minLength: 2,
+          minCjkChars: 2,
+        )) {
+          phraseSignals.collect(str, target.path, unicode: true);
         }
       }
     }
 
-    findings.addAll(buildIosCryptoFindings(cryptoSignals));
+    onStage?.call('strings:done');
+    // 预算截断同样适用于上面三遍 Unicode 扫描；「没找到」不能读成「没有」。
+    if (truncated) phraseSignals.noteTruncation();
 
+    findings.addAll(buildIosCryptoFindings(cryptoSignals));
+    findings.addAll(buildIosUnicodePhraseFindings(phraseSignals));
+    if (stringsFiles.isNotEmpty) {
+      findings.addAll(buildIosStringsUnicodePhraseFindings(
+        scanIosStringsFiles(stringsFiles),
+      ));
+    }
+
+    onStage?.call('native:symbols:done');
     // 越狱 / 内核漏洞利用组件：只按组件名识别，与内容分析无关。
     findings.addAll(IosJailbreakAudit.audit(
       executablePaths: [
@@ -625,12 +829,14 @@ class IosPrivacyAudit {
     // 这一层是 iOS 侧**最接近「调用点」**的证据：`__objc_selrefs` 里的选择子
     // 被 `ADRP+ADD/LDR` 引用了几次、落在哪个函数里。比「字符串出现在二进制里」
     // 强一档，但仍然不等于「被调用」—— 取地址 ≠ 调用。
+    onStage?.call('call-sites:begin');
     var callSiteAttributed = 0;
     var callSiteTotal = 0;
     var callSiteTruncated = false;
     String? callSiteFailure;
     final selectorCallSites = <String, IosSelectorCallSite>{};
     for (final target in targets) {
+      onStage?.call('strings:${target.path}:begin');
       final bytes = target.bytes;
       if (bytes == null || bytes.isEmpty) continue;
       final parsed = MachOParser.parse(bytes);
@@ -733,9 +939,11 @@ class IosPrivacyAudit {
               detail: 'NOT scanned',
             ),
         ],
-        limitation: 'The scan only extracts printable ASCII strings: system '
-            'framework symbols in the dyld shared cache, non-ASCII literals '
-            'and encrypted/hardened sections are all missed.',
+        limitation: 'The scan extracts printable ASCII, UTF-8 Unicode and '
+            'UTF-16 (LE/BE) strings: system framework symbols in the dyld '
+            'shared cache, Swift small-string constants, .strings / '
+            'localization resources and encrypted/hardened sections are all '
+            'missed.',
         limitationCode: 'ios.scan_coverage.limitation',
         recommendation: 'For a more complete conclusion, manually inspect '
             'the executables that were not covered.',
@@ -761,9 +969,10 @@ class IosPrivacyAudit {
       }
       limitations.add(AnalysisNote(
         'ios.macho.scan_summary',
-        'The Mach-O scan covered $scanned bytes in total and only extracted '
-            'printable ASCII strings: symbols in the dyld shared cache are '
-            'outside the coverage, and non-ASCII literals are missed too.',
+        'The Mach-O scan covered $scanned bytes in total and extracted '
+            'printable ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings: '
+            'symbols in the dyld shared cache, Swift small-string constants '
+            'and .strings / localization resources are outside the coverage.',
         {'bytes': scanned},
       ));
     }
@@ -1707,13 +1916,15 @@ class IosPrivacyAudit {
                   scannedPaths.length > 1 ? scannedPaths.length - 1 : 0,
             ),
             detail:
-                'scanned $scanned byte(s) of ASCII strings; no NSURLSession '
-                '/ multipart / networking-library markers were found',
+                'scanned $scanned byte(s) of ASCII / UTF-8 / UTF-16 strings; no '
+                'NSURLSession / multipart / networking-library markers were found',
           ),
         ],
-        limitation: 'Only ASCII strings are scanned (main executable plus '
-            'nested executables). Code in the shared dyld cache, code loaded '
-            'at runtime, and non-ASCII literals are outside the coverage.',
+        limitation: 'ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings are '
+            'scanned (main executable plus nested executables). Code in the '
+            'shared dyld cache, code loaded at runtime, Swift small-string '
+            'constants and .strings / localization resources are outside the '
+            'coverage.',
         limitationCode: 'ios.rule_f.limitation',
         recommendation: 'To confirm, combine this with runtime traffic '
             'observation (not provided in this version).',
@@ -1740,6 +1951,7 @@ class IosPrivacyAudit {
     //
     // 与 Android 侧读 ELF `.dynsym` 对应：C/C++ 代码不经过 Objective-C /
     // Swift 运行时，字符串扫描看不到它导入了哪些系统能力。
+    onStage?.call('native:symbols:begin');
     final nativeResult = IosNativeSymbolAudit.scan(
       executableBytes: executableBytes,
       executablePath: executablePath,
@@ -1772,6 +1984,7 @@ class IosPrivacyAudit {
     var totalFunctions = 0;
     var functionsKnown = false;
     for (final target in targets) {
+      onStage?.call('strings:${target.path}:begin');
       final bytes = target.bytes;
       if (bytes == null || bytes.isEmpty) continue;
       final parsed = MachOParser.parse(bytes);
@@ -1875,6 +2088,42 @@ class IosPrivacyAudit {
                     const <String, Object>{},
                   )
                 : null),
+      ),
+      CoverageEntry.noted(
+        // Unicode 字符串覆盖：与 `ios.macho.strings` 共用同一份字节预算，
+        // 但回答的是「中文/宽字符文案有没有被看过」。`covered`/`limit` 与
+        // `status` 回答同一个问题 —— 这些字节里扫了多少；命中了多少条话术
+        // 是发现项的事，不拿来当覆盖率分子。
+        id: 'ios.unicodeStrings',
+        status: scannedPaths.isEmpty
+            ? CoverageStatus.notCovered
+            : (phraseSignals.truncated
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: scanned,
+        limit: attempted == 0 ? null : attempted,
+        note: scannedPaths.isEmpty
+            ? (
+                'ios.unicode_strings.no_content',
+                'No executable content was available for Unicode string scanning',
+                const <String, Object>{},
+              )
+            : (phraseSignals.truncated
+                ? (
+                    'ios.unicode_strings.truncated',
+                    'Some executables exceeded the scan budget or the '
+                        '__ustring cap; Unicode strings past that point were not '
+                        'examined',
+                    const <String, Object>{},
+                  )
+                : (
+                    'ios.unicode_strings.scope',
+                    'UTF-8 text and UTF-16 (LE/BE) literals in the scanned '
+                        'executable bytes were examined; Swift small-string '
+                        'constants, .strings / localization resources and symbols '
+                        'in the dyld shared cache are not visible',
+                    const <String, Object>{},
+                  )),
       ),
       CoverageEntry.noted(
         // 调用点归属的覆盖：分子是「成功归属到函数的指令数」，分母是
@@ -1987,6 +2236,14 @@ class IosPrivacyAudit {
       ),
     ]);
 
+    if (seal?.state == SealState.mismatch) {
+      findings.add(_sealMismatchFinding(seal!));
+    }
+    if (baseline?.isMismatch ?? false) {
+      findings.add(_baselineMismatchFinding(baseline!));
+    }
+
+    onStage?.call('done');
     return SecurityAnalysisResult(
       engineVersion: engineVersion,
       rulesVersion: rulesVersion,
@@ -1999,6 +2256,18 @@ class IosPrivacyAudit {
         ips: ipSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
       ),
       coverage: coverage,
+      cryptoTheft: IosCryptoTheftChain.assess(
+        signals: cryptoSignals,
+        phrases: phraseSignals,
+        layout: layout,
+        artifacts: artifacts,
+        loadGraph: loadGraph,
+        payloadProbe: payloadProbe,
+        seal: seal,
+        baseline: baseline,
+      ),
+      seal: seal,
+      baseline: baseline,
     );
   }
 

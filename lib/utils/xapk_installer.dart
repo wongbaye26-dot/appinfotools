@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/adb_install_error.dart';
+import 'package:apk_info_tool/utils/apks_toc.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/zip_guard.dart';
@@ -16,6 +18,12 @@ class XapkInstaller {
   bool _isCancelled = false;
   Process? _currentProcess;
 
+  /// 最近一次 adb 调用的原始输出（截断到 64 KiB）。
+  String lastOutput = '';
+
+  /// 最近一次失败里能识别出的稳定失败码；没有时为 `null`。
+  String? get lastFailureCode => adbInstallFailureCode(lastOutput);
+
   /// 取消当前安装
   void cancel() {
     _isCancelled = true;
@@ -27,7 +35,7 @@ class XapkInstaller {
         await zip.readFileContent('info.json') ??
         await zip.readFileContent('meta.json');
     if (manifestData == null) return null;
-    final manifestJson = String.fromCharCodes(manifestData);
+    final manifestJson = utf8.decode(manifestData, allowMalformed: true);
     return Map<String, dynamic>.from(jsonDecode(manifestJson));
   }
 
@@ -111,15 +119,27 @@ class XapkInstaller {
     }
   }
 
+  /// 读 APKS 的 `toc.pb`，只保留归档里实际存在的条目。
+  Future<List<String>> _tocApks(ZipHelper zip) async {
+    final bytes = await zip.readFileContent('toc.pb');
+    if (bytes == null || bytes.isEmpty) return const [];
+    final declared = parseApksToc(bytes);
+    if (declared.isEmpty) return const [];
+    final present = zip.listFiles(extension: '.apk').toSet();
+    return declared.where(present.contains).toList();
+  }
+
   /// 获取XAPK中的所有分包
   Future<List<String>?> getSplitApks(String xapkPath) async {
     final zip = ZipHelper();
     try {
       if (!(await zip.open(xapkPath)).isOk) return null;
-      final manifest = await _loadManifestData(zip);
-      var splitApks =
-          manifest == null ? <String>[] : _splitApksFromManifest(manifest);
-
+      var splitApks = await _tocApks(zip);
+      final manifest = splitApks.isEmpty ? await _loadManifestData(zip) : null;
+      if (splitApks.isEmpty) {
+        splitApks =
+            manifest == null ? <String>[] : _splitApksFromManifest(manifest);
+      }
       if (splitApks.isEmpty) {
         splitApks = zip.listFiles(extension: '.apk');
       }
@@ -154,12 +174,33 @@ class XapkInstaller {
 
     final process = await Process.start(executable, args);
     _currentProcess = process;
+    lastOutput = '';
 
-    // 消耗 stdout/stderr 防止管道缓冲区满导致进程死锁
-    process.stdout.drain<void>();
-    process.stderr.drain<void>();
+    // 边读边保留尾部输出：既防止管道缓冲区满导致进程死锁，也让安装页
+    // 能把 `INSTALL_FAILED_*` 映射成本地化文案，而不是只报退出码。
+    const maxKeep = 64 * 1024;
+    final buffer = StringBuffer();
+    void add(String chunk) {
+      buffer.write(chunk);
+      if (buffer.length > maxKeep) {
+        final text = buffer.toString();
+        buffer
+          ..clear()
+          ..write(text.substring(text.length - maxKeep));
+      }
+    }
 
+    final stdoutDone = process.stdout
+        .transform(const SystemEncoding().decoder)
+        .listen(add)
+        .asFuture<void>();
+    final stderrDone = process.stderr
+        .transform(const SystemEncoding().decoder)
+        .listen(add)
+        .asFuture<void>();
     final exitCode = await process.exitCode;
+    await Future.wait([stdoutDone, stderrDone]);
+    lastOutput = buffer.toString().trim();
     _currentProcess = null;
 
     return exitCode;
@@ -223,14 +264,17 @@ class XapkInstaller {
         return false;
       }
 
-      final manifest = await _loadManifestData(zip);
+      final tocApks = await _tocApks(zip);
+      final manifest = tocApks.isEmpty ? await _loadManifestData(zip) : null;
       final manifestSplitApks =
           manifest == null ? <String>[] : _splitApksFromManifest(manifest);
 
-      // 获取所有APK文件
-      final splitApks = manifestSplitApks.isNotEmpty
-          ? manifestSplitApks
-          : zip.listFiles(extension: '.apk');
+      // 获取所有APK文件：toc.pb（APKS）> manifest > 目录枚举。
+      final splitApks = tocApks.isNotEmpty
+          ? tocApks
+          : (manifestSplitApks.isNotEmpty
+              ? manifestSplitApks
+              : zip.listFiles(extension: '.apk'));
       if (splitApks.isEmpty) {
         log.severe('Failed to get split APKs from manifest');
         return false;

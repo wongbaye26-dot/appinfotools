@@ -30,13 +30,14 @@ import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
+import 'package:apk_info_tool/utils/official_baseline_store.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
-import 'package:ipa_parser/ipa_parser.dart'
-    show IosBundle, IosNestedExecutableInput, IosPrivacyAudit;
+import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
+import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
@@ -44,6 +45,7 @@ import 'package:apk_info_tool/widgets/export_report_dialog.dart';
 import 'package:apk_info_tool/widgets/ios_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/rename_file_dialog.dart';
 import 'package:apk_info_tool/widgets/security_finding_card.dart';
+import 'package:apk_info_tool/widgets/crypto_theft_card.dart';
 import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -358,7 +360,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     IpaParseTask task;
     try {
-      task = await IpaParseTask.start(filePath);
+      final baselineDb = await OfficialBaselineStore.load();
+      task = await IpaParseTask.start(
+        filePath,
+        securityAudit: enableSecurityAudit,
+        baselineDb: baselineDb,
+      );
     } catch (e) {
       log.warning('_loadIpaInfo: failed to start the IPA task: $e');
       if (mounted) {
@@ -381,6 +388,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     _currentTask = task;
 
     IpaAnalysis? parsed;
+    SecurityAnalysisResult? security;
+    var applied = false;
     await for (final event in task.events) {
       if (_loadGeneration != gen) break;
 
@@ -406,7 +415,28 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             );
           }
         case IpaParseSucceeded(:final analysis):
+          // 两阶段：静态结果先到，安全审计随后。先让用户看到包内容。
           parsed = analysis;
+          security = analysis.security;
+          final currentState = ref.read(currentFileStateProvider);
+          fileState.update(currentState.copyWith(
+            ipaAnalysis: analysis,
+            securityResult: security,
+          ));
+          unawaited(_recordIosRecentFile(
+            analysis,
+            currentState.filePath ?? '',
+            currentState.fileSize ?? 0,
+          ));
+          isParsingState.update(false);
+          iosStageState.update(null);
+          applied = true;
+        case IpaSecurityReady(:final security):
+          if (parsed == null) break;
+          final currentState = ref.read(currentFileStateProvider);
+          fileState.update(currentState.copyWith(
+            securityResult: security,
+          ));
         case IpaParseCancelled():
           // 用户主动取消 —— 不弹错误提示。
           log.info('_loadIpaInfo: cancelled by user');
@@ -423,58 +453,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     if (parsed != null) {
-      // iOS 安全分析是同步的，在更新状态前完成。
-      SecurityAnalysisResult? security;
-      if (enableSecurityAudit && parsed.infoPlist != null) {
-        security = IosPrivacyAudit.audit(
-          infoPlist: parsed.infoPlist!,
-          executableBytes: parsed.executableBytes,
-          executablePath: parsed.executablePath,
-          // 授权项：`get-task-allow` 是 iOS 的 debuggable，`aps-environment`
-          // 说明签名环境。App Store 分发的包不含描述文件 —— 那种情况传
-          // `provisioningProfilePresent: false`，让覆盖率标「不适用」而不是
-          // 「已覆盖、没问题」。
-          entitlements:
-              parsed.signature?.profile.value?.entitlements ?? const [],
-          provisioningProfilePresent: parsed.signature?.profile.value != null,
-          // 覆盖率分母：容器里**一共**有多少个含代码的嵌套 bundle。
-          // 不传的话审计只能用「传进来几个」当分母，于是 28 个 bundle 只解析
-          // 24 个也会显示成「25/25 已覆盖」。
-          nestedBundleTotal: parsed.nestedBundleTotal,
-          // 重打包判据的输入：`.app` 根目录下有没有多出来的 dylib。
-          // 布局是在 worker 里拿着 `Archive` 算的，这里只负责转发。
-          layout: parsed.layout,
-          // 阶段 5b：嵌套 bundle 的可执行文件也参与扫描。
-          // 只传**真的拿到了字节**的那些；没拿到的一并传过去（`bytes` 为
-          // null），让审计把它们算进「未覆盖」—— 静默省略会让覆盖率虚高。
-          nestedExecutables: [
-            for (final nested in parsed.nestedBinaries)
-              IosNestedExecutableInput(
-                path: nested.path,
-                bundlePath: nested.bundlePath,
-                kind: nested.kind,
-                bytes: nested.bytes,
-                failure: nested.failure ?? nested.bytesFailure,
-                // 嵌套 bundle 自己的用途说明（iOS-A）：扩展常常正是处理
-                // 照片与 OCR 的地方，只看主应用会漏掉这一类声明。
-                usageDescriptions: nested.usageDescriptions,
-              ),
-          ],
-        );
+      // 正常情况下 `IpaParseSucceeded` 已经在循环里应用过了；这里只兜底
+      // 处理“事件顺序被未来改动打乱”的情况，不重复记录最近文件。
+      if (!applied) {
+        fileState.update(ref.read(currentFileStateProvider).copyWith(
+              ipaAnalysis: parsed,
+              securityResult: security,
+            ));
+        isParsingState.update(false);
+        iosStageState.update(null);
       }
-      final currentState = ref.read(currentFileStateProvider);
-      fileState.update(currentState.copyWith(
-        ipaAnalysis: parsed,
-        securityResult: security,
-      ));
-      // 追加到最近文件列表（走 provider，见 Android 侧的说明）。
-      unawaited(_recordIosRecentFile(
-        parsed,
-        currentState.filePath ?? '',
-        currentState.fileSize ?? 0,
-      ));
-      isParsingState.update(false);
-      iosStageState.update(null);
 
       // 签名验证是单独一步：它要解包到磁盘，因此在主 isolate 上跑，
       // 并且在静态解析完成之后才开始 —— 静态结果先呈现给用户。
@@ -929,8 +917,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       _SectionHeader(title: t.security.title, tab: DetailTab.security),
       // 总览摘要卡片
       _buildSecurityOverviewCard(findings, hasActualGaps, gapCount),
-      // 「盗 U 风险」小结（无发现时也显示「未发现」，而不是整块消失）
-      _buildCryptoRiskHeader(cryptoRisk),
+      // 「盗 U 风险」：优先用五段链评估卡；旧路径没有评估时退回小结。
+      if (security.cryptoTheft case final assessment?)
+        CryptoTheftCard(
+          assessment: assessment,
+          seal: security.seal,
+          baseline: security.baseline,
+        )
+      else
+        _buildCryptoRiskHeader(cryptoRisk),
       if (cryptoRisk != null) SecurityFindingCard(finding: cryptoRisk),
       // 越狱 / 漏洞利用组件：只有 iOS 包才查得到，Android 侧不显示这块
       // —— 显示一个永远「未发现」的卡片等于暗示「查过了」。
@@ -1729,6 +1724,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 平台标识同样放在最前：两页版式一致，这一行是用户
       // 分辨自己在看哪个平台的第一眼依据。
       _buildPlatformRow(fileState),
+      if (apkInfo?.parseFailureReason != null)
+        ManifestPartialBanner(
+          title: t.apk_info.partial_manifest_title,
+          body: t.apk_info.partial_manifest_body,
+        ),
       // ===== 应用信息 =====
       //
       // **应用信息排在文件信息之前**（V2.4.6 调换，与 iOS 侧一致）：用户

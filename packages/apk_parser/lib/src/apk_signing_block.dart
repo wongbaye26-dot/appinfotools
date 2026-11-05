@@ -82,16 +82,41 @@ class ApkSigningSchemes {
   /// 说了算，这里给出的指纹只用于「拿去和官方公布的比对」。
   final Uint8List? signingCertificate;
 
+  /// v2 pair 的原始值（给内容摘要校验用）。
+  final Uint8List? v2Value;
+
+  /// v3 / v3.1 pair 的原始值（v3-only 包的内容摘要校验用）。
+  final Uint8List? v3Value;
+
+  /// 签名块在文件中的起始偏移；没有块时为 `null`。
+  final int? signingBlockOffset;
+
+  /// 中央目录偏移（签名块之后）；没有块时为 `null`。
+  final int? centralDirOffset;
+
+  /// EOCD 记录的偏移；没有块时为 `null`。
+  final int? eocdOffset;
+
   const ApkSigningSchemes({
     this.pairIds = const [],
     this.failure,
     this.signingCertificate,
+    this.v2Value,
+    this.v3Value,
+    this.signingBlockOffset,
+    this.centralDirOffset,
+    this.eocdOffset,
   });
 
   const ApkSigningSchemes.unreadable(String reason)
       : pairIds = const [],
         failure = reason,
-        signingCertificate = null;
+        signingCertificate = null,
+        v2Value = null,
+        v3Value = null,
+        signingBlockOffset = null,
+        centralDirOffset = null,
+        eocdOffset = null;
 
   bool get parsed => failure == null;
 
@@ -239,7 +264,27 @@ ApkSigningSchemes parseApkSigningBlock({
     if (certificate != null) break;
   }
 
-  return ApkSigningSchemes(pairIds: pairIds, signingCertificate: certificate);
+  Uint8List? v2Value;
+  final v2Range = schemeValues[ApkSignatureBlockId.v2];
+  if (v2Range != null && v2Range.$2 <= block.length) {
+    v2Value = Uint8List.sublistView(block, v2Range.$1, v2Range.$2);
+  }
+  Uint8List? v3Value;
+  final v3Range = schemeValues[ApkSignatureBlockId.v3] ??
+      schemeValues[ApkSignatureBlockId.v31];
+  if (v3Range != null && v3Range.$2 <= block.length) {
+    v3Value = Uint8List.sublistView(block, v3Range.$1, v3Range.$2);
+  }
+
+  return ApkSigningSchemes(
+    pairIds: pairIds,
+    signingCertificate: certificate,
+    v2Value: v2Value,
+    v3Value: v3Value,
+    signingBlockOffset: blockStart,
+    centralDirOffset: cdOffset,
+    eocdOffset: tailStart + eocdOffset,
+  );
 }
 
 /// 从 v2 / v3 的 pair 值里取出第一个签名者的证书（DER）。

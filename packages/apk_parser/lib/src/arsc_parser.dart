@@ -55,6 +55,14 @@ class ArscParser {
   /// 不必自己再解一遍 arsc —— 那正是本类已经做过的事。解析失败时为 `null`。
   StringPool? get globalStringPool => _globalStringPool;
 
+  /// `resources.arsc` 里声明的包名；解析失败或没有包时为 `null`。
+  String? get packageName {
+    for (final package in _packages) {
+      if (package.name.isNotEmpty) return package.name;
+    }
+    return null;
+  }
+
   String? getStringValue(int resourceId, {String? locale}) {
     final packageId = (resourceId >> 24) & 0xFF;
     final typeId = (resourceId >> 16) & 0xFF;

@@ -27,7 +27,7 @@ class PermissionCatalog {
   PermissionCatalog._();
 
   /// 规则库版本。改这张表必须升版本，否则两份报告无法对照。
-  static const String rulesVersion = 'android-permissions-2026.10.3';
+  static const String rulesVersion = 'android-permissions-2026.11.1';
 
   /// 目录里的全部规则。
   static const List<PermissionRule> rules = [
@@ -321,6 +321,43 @@ class PermissionCatalog {
           'Android 11+ it is granted from a separate settings page. Judge it '
           'with whether a foreground use case justifies it.',
     ),
+    PermissionRule(
+      name: 'READ_SMS',
+      category: SecurityCategory.deviceData,
+      baseSeverity: SecuritySeverity.p3,
+      description: 'Read SMS messages.',
+      riskNote: 'A high-sensitivity data source: SMS often contains '
+          'verification codes and private messages. Judge it together with '
+          'whether the app has a visible SMS feature and where the data goes.',
+    ),
+    PermissionRule(
+      name: 'READ_CALL_LOG',
+      category: SecurityCategory.deviceData,
+      baseSeverity: SecuritySeverity.p3,
+      description: 'Read the call log.',
+      riskNote: 'A high-sensitivity data source: call history reveals '
+          'contacts, timing and communication patterns. Judge it with the '
+          'app features and upload behaviour.',
+    ),
+    PermissionRule(
+      name: 'READ_CALENDAR',
+      category: SecurityCategory.deviceData,
+      baseSeverity: SecuritySeverity.p3,
+      description: 'Read the calendar.',
+      riskNote: 'A sensitive data source: calendar entries reveal schedules '
+          'and personal relationships. On its own it is not malicious; watch '
+          'for it co-occurring with upload logic.',
+    ),
+    PermissionRule(
+      name: 'POST_NOTIFICATIONS',
+      category: SecurityCategory.backgroundTask,
+      baseSeverity: SecuritySeverity.info,
+      minApi: 33,
+      description: 'Post notifications (runtime permission since Android 13).',
+      riskNote: 'A routine permission for most apps; it is not a risk by '
+          'itself. Recorded as fact only.',
+    ),
+
     PermissionRule(
       name: 'RECORD_AUDIO',
       category: SecurityCategory.deviceData,

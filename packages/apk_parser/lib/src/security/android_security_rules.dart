@@ -6,6 +6,7 @@ import 'sdk_inventory_scanner.dart';
 import '../models.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
+import 'dex_unicode_phrases.dart';
 import 'native_crypto_scan.dart';
 
 /// 组合规则用到的**事实**：扫描结果的一次性归纳。
@@ -46,6 +47,15 @@ class AndroidRuleFacts {
     required this.nativeHardening,
     required this.sdkInventory,
     required this.nativeCrypto,
+
+    /// 制品清单（Phase B）；`null` = 该路径未接入，不是「没有制品」。
+    this.artifacts,
+
+    /// 加载链（Phase B）；`null` = 未接入。
+    this.loadGraph,
+
+    /// 载荷探测（Phase B）；`null` = 未接入。
+    this.payloadProbe,
   });
 
   final ApkMeta meta;
@@ -88,6 +98,15 @@ class AndroidRuleFacts {
   /// 钱包的密码学实现常被静态链接进 `.so` 且不导出符号 —— 符号表看不到，
   /// 但 `.rodata` 里的字符串还在。见 `native_crypto_scan.dart`。
   final NativeCryptoScanResult nativeCrypto;
+
+  /// 制品清单（Phase B）；`null` = 本次未接入该路径。
+  final ArtifactInventory? artifacts;
+
+  /// 加载链（Phase B）；`null` = 本次未接入该路径。
+  final LoadGraph? loadGraph;
+
+  /// 载荷探测（Phase B）；`null` = 本次未接入该路径。
+  final PayloadProbeResult? payloadProbe;
 
   /// 第三方**服务类** SDK 的盘点结果（含覆盖情况）。
   ///
@@ -927,6 +946,173 @@ _CryptoTheftSignals _cryptoTheftSignals(AndroidRuleFacts f) {
     specialAccess: f.specialAccessKinds.isNotEmpty,
     smsAccess: f.meta.permissions.any(_smsPermissions.contains),
     upload: f.hasUploadCapability,
+  );
+}
+
+/// 把 Android 的规则事实映射成盗 U 评估器的归一化输入。
+///
+/// 这是 Phase C 的「事实 → 评估」适配层：只搬运已经观察到的信号，不在
+/// 这里新增推断。`artifacts` / `loadGraph` / `payloadProbe` 为 `null` 表示
+/// 本次没有接入该路径（例如旧调用方只跑了规则），评估器会把相应段标成
+/// 未支撑并写缺失环节，而不是猜。
+CryptoTheftFacts buildAndroidCryptoTheftFacts(
+  AndroidRuleFacts f, {
+  BaselineMatch? baseline,
+  SealCheck? seal,
+  DexUnicodePhraseSignals? phrases,
+}) {
+  final s = _cryptoTheftSignals(f);
+  final ids = <String>{
+    for (final ref in f.allCodeRefs) ref.markerId,
+    for (final clue in f.allClues) clue.markerId,
+    ...f.nativeCrypto.samples.keys,
+  };
+
+  List<SecurityEvidence> refsFor(Set<String> markers) {
+    final out = <SecurityEvidence>[];
+    for (final ref in f.allCodeRefs) {
+      if (!markers.contains(ref.markerId)) continue;
+      out.add(SecurityEvidence(
+        source: SecurityEvidenceSource.dexMethodReference,
+        location: ref.dexNames.join(', '),
+        detail: '${ref.markerId} (code reference): '
+            '${[...ref.samples, ...ref.callSiteSamples].take(3).join(' | ')}',
+      ));
+    }
+    for (final clue in f.allClues) {
+      if (!markers.contains(clue.markerId)) continue;
+      if (f.allCodeRefs.any((r) => r.markerId == clue.markerId)) continue;
+      out.add(SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: clue.dexNames.join(', '),
+        detail: '${clue.markerId} (string only): '
+            '${clue.samples.take(3).join(' | ')}',
+      ));
+    }
+    for (final id in markers) {
+      for (final sample
+          in (f.nativeCrypto.samples[id] ?? const <String>{}).take(3)) {
+        out.add(SecurityEvidence(
+          source: SecurityEvidenceSource.nativeString,
+          location: (f.nativeCrypto.sources[id] ?? const <String>{}).join(', '),
+          detail: '$id (native string): $sample',
+        ));
+      }
+    }
+    return out;
+  }
+
+  final capabilityEvidence = <SecurityEvidence>[
+    ...refsFor({
+      ..._walletSdkMarkers,
+      ..._keyMaterialMarkers,
+      ..._clipboardMarkers,
+      ..._smsPermissions,
+    }),
+    for (final hit in s.addresses.take(8))
+      SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'DEX string',
+        detail: '${hit.format.label} address literal: ${hit.address}',
+      ),
+  ];
+
+  // 中文话术只支撑「来源」段（有要求输入助记词/私钥的界面文案），
+  // 不折算成 walletContext / keyMaterial / networkSink —— 一句界面文案
+  // 不构成能力事实，也不能凭它把等级推到 P2。
+  final phraseEvidence = <SecurityEvidence>[
+    if (phrases != null)
+      for (final id in phrases.hitIds.take(8))
+        for (final sample in (phrases.samples[id] ?? const <String>{}).take(2))
+          SecurityEvidence(
+            source: SecurityEvidenceSource.dexString,
+            location: (phrases.dexNames[id] ?? const <String>{}).join(', '),
+            detail: 'unicode phrase $id: $sample',
+          ),
+  ];
+
+  final sourceEvidence = <SecurityEvidence>[
+    ...refsFor({'clipboard-read'}),
+    ...phraseEvidence,
+  ];
+
+  final injectionEvidence = <SecurityEvidence>[
+    if (f.loadGraph case final graph?)
+      for (final edge in graph.edges)
+        if (graph.danglingEdgeIds.contains(edge.id) ||
+            edge.kind == LoadEdgeKind.dexClassLoader ||
+            edge.kind == LoadEdgeKind.inMemoryDexLoader ||
+            edge.kind == LoadEdgeKind.systemLoad ||
+            edge.kind == LoadEdgeKind.systemLoadLibrary)
+          SecurityEvidence(
+            source: SecurityEvidenceSource.loadGraph,
+            location: edge.location,
+            detail: '${edge.fromId} -> ${edge.toId} (${edge.kind.label})',
+          ),
+  ];
+
+  final payloadSignals = f.payloadProbe?.signals ?? const <PayloadSignal>[];
+  final payloadEvidence = <SecurityEvidence>[
+    for (final signal in payloadSignals)
+      SecurityEvidence(
+        source: SecurityEvidenceSource.artifactEntry,
+        location: signal.path,
+        detail: '${signal.code}; kind=${signal.kind.name}',
+      ),
+  ];
+
+  final suspiciousPayload = payloadSignals.any((signal) =>
+          signal.code == 'payload.magicMismatch' ||
+          signal.code == 'payload.nestedArchive' ||
+          signal.code == 'payload.encrypted' ||
+          signal.code == 'payload.executableInAssets') ||
+      (f.artifacts?.entries.any((e) => e.suspicionCodes.isNotEmpty) ?? false);
+
+  final packed = f.nativeCrypto.looksPacked;
+  final loadGraph = f.loadGraph;
+  final payloadProbe = f.payloadProbe;
+  final coverageIncomplete = f.nativeCrypto.skippedLibraries.isNotEmpty ||
+      (loadGraph != null && !loadGraph.complete) ||
+      (payloadProbe != null && !payloadProbe.complete);
+
+  final blindSpots = <String>[
+    if (f.nativeCrypto.skippedLibraries.isNotEmpty) 'nativePartial',
+    if (packed) 'nativePacked',
+    if (payloadProbe != null && !payloadProbe.complete) 'payloadUnavailable',
+    if (loadGraph != null && !loadGraph.complete) 'artifactsPartial',
+  ];
+
+  return CryptoTheftFacts(
+    platform: SecurityPlatform.android,
+    walletContext: s.walletSdk.isNotEmpty,
+    keyMaterial: s.keyMaterial.isNotEmpty,
+    clipboardRead: ids.contains('clipboard-read'),
+    clipboardWrite: ids.contains('clipboard-write'),
+    addressLiteral: s.addresses.isNotEmpty,
+    // 中文「助记词 / 私钥」这类词是「有输入密钥材料的界面」的线索，
+    // 只支撑 source 段；判级仍由 ASCII 侧的能力组合决定。
+    seedInput: phrases?.hasSeedPhrase ?? false,
+    specialAccess: f.specialAccessKinds.isNotEmpty,
+    webViewBridge: f.webViewCodeRefs.isNotEmpty || f.webViewClues.isNotEmpty,
+    networkSink: f.hasUploadCapability,
+    dynamicLoading: f.hasDynamicLoading,
+    danglingLoad: loadGraph?.danglingEdgeIds.isNotEmpty ?? false,
+    suspiciousPayload: suspiciousPayload,
+    baselineMismatch: baseline?.isMismatch ?? false,
+    sealMismatch: seal?.state == SealState.mismatch,
+    baselineEntryId: baseline?.entryId,
+    packed: packed,
+    coverageIncomplete: coverageIncomplete,
+    blindSpots: blindSpots,
+    evidence: {
+      ChainStage.capability: capabilityEvidence,
+      ChainStage.source: sourceEvidence,
+      ChainStage.injection: injectionEvidence,
+      ChainStage.payload: payloadEvidence,
+    },
+    noteCodes: {
+      if (blindSpots.isNotEmpty) ChainStage.payload: blindSpots,
+    },
   );
 }
 

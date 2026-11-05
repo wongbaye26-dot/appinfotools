@@ -201,16 +201,17 @@ Root: HKA; Subkey: "Software\Classes\.apkm"; ValueType: string; ValueName: ""; V
 ; CLSID 必须与 `windows/thumbnail/thumbnail_provider.cpp` 的
 ; `kThumbnailProviderClsid` 一致；ShellEx 下的那个 GUID 是
 ; `IID_IThumbnailProvider`（`{E357FCCD-…-234630154E96}`，注释里不用转义）。
-; 应用自己也会在启动时写一份 HKCU（便携版靠它），两边指向同一个 DLL。
+; 这里**只写 HKCU**：应用停用/启用也只操作 HKCU，装成 HKLM 会导致「应用说已停用、Explorer 仍在调用」。
+; 应用自己启动时也会写一份 HKCU（便携版靠它），两边指向同一个 DLL。
 ;
 ; **GUID 必须写成 `{{...}`**：Inno 把参数值里的 `{` 当成常量起始，
 ; 单个 `{9C4A7E52-…}` 会被解析成「未知常量」（编译报
 ; `Unknown constant "9C4A7E52-…"`）。`{{` 才是字面量 `{`。
-Root: HKA; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; ValueType: string; ValueName: ""; ValueData: "AppInfoTool thumbnail provider"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\appinfotool_thumbnail.dll"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\.apk\ShellEx\{{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
-Root: HKA; Subkey: "Software\Classes\.ipa\ShellEx\{{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; ValueType: string; ValueName: ""; ValueData: "AppInfoTool thumbnail provider"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\appinfotool_thumbnail.dll"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\.apk\ShellEx\{{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.ipa\ShellEx\{{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

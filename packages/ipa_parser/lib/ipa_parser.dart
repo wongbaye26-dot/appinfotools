@@ -38,10 +38,20 @@ export 'src/ios_reference_tables.dart';
 // 安全检测引擎（V1.1）：iOS 侧隐私审计。
 export 'src/security/ios_privacy_audit.dart';
 export 'src/security/ios_crypto_audit.dart';
+// 中文 / Unicode 话术线索（UTF-8 与 UTF-16 字符串，不单独判级）。
+export 'src/security/ios_unicode_phrases.dart';
+export 'src/security/ios_strings_unicode.dart';
 export 'src/security/ios_jailbreak_audit.dart';
 export 'src/security/ios_repackaging_audit.dart';
 export 'src/security/ios_call_sites.dart';
 export 'src/security/ios_native_symbol_audit.dart';
+// 盗 U 检测 Phase B 事实层（契约 C4/C7/C9）：制品清单 / 载荷探测 / 加载链。
+// 三者都只回答事实，不判恶意；判级在 Phase C 的规则层。
+export 'src/security/ios_artifact_inventory.dart';
+export 'src/security/ios_payload_probe.dart';
+export 'src/security/ios_load_graph.dart';
+export 'src/security/ios_crypto_theft_chain.dart';
+export 'src/security/ios_code_resources_check.dart';
 export 'src/plist/binary_plist_parser.dart';
 export 'src/plist/plist_fields.dart';
 export 'src/plist/plist_parser.dart';

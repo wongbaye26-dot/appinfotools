@@ -813,6 +813,10 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ref.watch(themeManagerProvider.select((value) => value.themeColor));
     final themeMode =
         ref.watch(settingStateProvider.select((value) => value.themeMode));
+    // 旧版本只存了 `zh`；现在用完整 locale 标签区分 CN/HK/TW。
+    final rawLanguage =
+        ref.watch(settingStateProvider.select((value) => value.language));
+    final language = rawLanguage == 'zh' ? 'zh-CN' : rawLanguage;
 
     return _buildSettingCard(
       title: t.settings.appearance,
@@ -821,21 +825,27 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ListTile(
           title: Text(t.settings.language),
           trailing: DropdownButton<String>(
-            value: ref
-                .watch(settingStateProvider.select((value) => value.language)),
+            value: language,
             items: [
               DropdownMenuItem(
                 value: Config.kLanguageAuto,
                 child: Text(t.settings.language_auto),
               ),
-              DropdownMenuItem(
-                value: AppLocale.en.languageCode,
-                child: Text('English'),
-              ),
-              DropdownMenuItem(
-                value: AppLocale.zhCn.languageCode,
+              const DropdownMenuItem(value: 'en', child: Text('English')),
+              const DropdownMenuItem(
+                value: 'zh-CN',
                 child: Text('简体中文'),
               ),
+              const DropdownMenuItem(
+                value: 'zh-HK',
+                child: Text('繁體中文（香港）'),
+              ),
+              const DropdownMenuItem(
+                value: 'zh-TW',
+                child: Text('繁體中文（台灣）'),
+              ),
+              const DropdownMenuItem(value: 'ja', child: Text('日本語')),
+              const DropdownMenuItem(value: 'ko', child: Text('한국어')),
             ],
             onChanged: (String? value) {
               if (value != null) {

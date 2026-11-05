@@ -4,9 +4,12 @@ import '../dex/dex_structure.dart';
 import '../models.dart';
 import '../native/elf_hardening.dart';
 import 'android_security_rules.dart';
+import 'crypto_theft_chain.dart';
 import 'code_markers.dart';
 import 'dex_clue_scanner.dart';
 import 'dex_method_scanner.dart';
+import 'dex_unicode_phrases.dart';
+import 'resource_unicode_phrases.dart';
 import 'native_crypto_scan.dart';
 import 'native_symbol_scanner.dart';
 import 'packer_catalog.dart';
@@ -51,6 +54,86 @@ class AndroidSecurityAudit {
 
   static const String rulesVersion = PermissionCatalog.rulesVersion;
 
+  /// 上传类标记：深链分析与 `parse_task` 预计算方法扫描共用同一份定义。
+  static const Set<String> uploadMarkerIds = {
+    'multipart',
+    'multipartbody',
+    'uploadfile',
+    'uploadimage',
+  };
+
+  /// 官方基线不一致：事实级 P1（不是“官方认证失败”的判决）。
+  static SecurityFinding _baselineMismatchFinding(BaselineMatch baseline) {
+    final expected = baseline.expectedFingerprintPrefixes.join(', ');
+    final actual = baseline.actualFingerprintPrefixes.join(', ');
+    final packageId = baseline.packageId ?? 'unknown';
+    return SecurityFinding(
+      ruleId: 'ANDROID-BASELINE-MISMATCH',
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.other,
+      severity: SecuritySeverity.p1,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'Official baseline mismatch: $packageId '
+          '(expected $expected, actual $actual).',
+      evidence: [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.officialBaseline,
+          location: packageId,
+          detail: 'entry ${baseline.entryId ?? '—'}; '
+              'expected $expected, actual $actual',
+        ),
+      ],
+      recommendation:
+          'Verify this package against the official channel package '
+          'or published fingerprint before trusting it.',
+      messageCode: 'baseline.mismatch',
+      messageArgs: {
+        'packageId': packageId,
+        'expected': expected,
+        'actual': actual,
+      },
+      recommendationCode: 'baseline.mismatch.review',
+      limitation: 'A baseline mismatch means the package identity/fingerprint '
+          'differs from the recorded official entry; it does not by itself '
+          'prove malice.',
+      limitationCode: 'baseline.mismatch.limitation',
+    );
+  }
+
+  /// 密封摘要不一致：事实级 P1，独立于盗 U 五段链。
+  static SecurityFinding _sealMismatchFinding(SealCheck seal) {
+    final check = seal.checks
+        .where((c) => c.state == SealState.mismatch)
+        .cast<SealEntryCheck?>()
+        .firstWhere((c) => c != null, orElse: () => null);
+    final path = check?.path ?? 'seal';
+    final expected = check?.expectedDigestPrefix ?? '—';
+    final actual = check?.actualDigestPrefix ?? '—';
+    return SecurityFinding(
+      ruleId: 'ANDROID-APK-SEAL-MISMATCH',
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.other,
+      severity: SecuritySeverity.p1,
+      confidence: SecurityConfidence.confirmed,
+      finding: 'Seal mismatch: $path (expected $expected, actual $actual).',
+      evidence: [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.sealDigest,
+          location: path,
+          detail: 'expected $expected, actual $actual',
+        ),
+      ],
+      recommendation: 'Treat this as tampering until the package is re-signed '
+          'or verified against an official baseline.',
+      messageCode: 'seal.mismatch',
+      messageArgs: {'path': path, 'expected': expected, 'actual': actual},
+      recommendationCode: 'seal.mismatch.review',
+      limitation: 'A digest mismatch proves the content differs from the seal '
+          'record; it does not identify what changed.',
+      limitationCode: 'seal.mismatch.limitation',
+    );
+  }
+
   /// [manifestParsed] 为 false 时必须给出原因（记入覆盖不足）。
   /// 从组件声明里认出**特殊访问能力**。
   ///
@@ -94,6 +177,7 @@ class AndroidSecurityAudit {
   static SecurityAnalysisResult audit({
     required ApkMeta meta,
     required List<DexBytes> dexEntries,
+    DexMethodScanResult? methodScanResult,
 
     /// 原生库（`lib/**.so`）的名字与字节。空表示没有原生库或未提供。
     List<NativeLibraryBytes> nativeEntries = const [],
@@ -132,6 +216,25 @@ class AndroidSecurityAudit {
     /// `null` 表示**调用方没能提供**（`resources.arsc` 不存在、被预算拒绝或
     /// 解析失败）。此时标 `notCovered` 是对的：那确实是「我们没读到」。
     int? arscEntryCount,
+
+    /// Phase B 制品清单；`null` = 该路径未接入（不是「没有制品」）。
+    ArtifactInventory? artifacts,
+
+    /// Phase B 加载链；`null` = 未接入。
+    LoadGraph? loadGraph,
+
+    /// Phase B 载荷探测；`null` = 未接入。
+    PayloadProbeResult? payloadProbe,
+
+    /// Phase D 密封校验；`null` = 未做/未注入摘要函数。
+    SealCheck? seal,
+
+    /// Phase E 官方基线匹配；`null` = 未做/无基线库。
+    BaselineMatch? baseline,
+
+    /// `resources.arsc` 全局字符串池 + 文本型 assets 的字符串；null/空表示
+    /// 未提供（不是「没有中文话术」）。
+    List<String> resourceStrings = const [],
   }) {
     final findings = <SecurityFinding>[];
     final limitations = <AnalysisNote>[];
@@ -205,11 +308,12 @@ class AndroidSecurityAudit {
     } else {
       limitations.add(AnalysisNote(
         'android.dex.scan_summary',
-        'The DEX string scan only covered ${scan.scannedDexCount} file(s), '
-            '${scan.scannedBytes} bytes in total, and only extracted printable '
-            'ASCII strings: non-ASCII literals, native libraries (lib/**.so), '
-            'resource files and code inside a hardened shell are all outside the '
-            'coverage.',
+        'The DEX string scan covered ${scan.scannedDexCount} file(s), '
+            '${scan.scannedBytes} bytes of printable ASCII strings, plus '
+            'Unicode string constants decoded from string_ids (MUTF-8): '
+            'text in resources/ and assets/, native libraries (lib/**.so), '
+            'runtime-assembled strings and code inside a hardened shell are '
+            'all outside the coverage.',
         {
           'dexCount': scan.scannedDexCount,
           'bytes': scan.scannedBytes,
@@ -271,32 +375,39 @@ class AndroidSecurityAudit {
       ));
     }
 
+    // ---- DEX 中文话术（第二层取证：`string_ids` 的 MUTF-8）----
+    //
+    // 复用上面已经解析好的 `structures`，不再算一次 adler32。这是**独立于
+    // `android.dex.strings` 那 8 MiB 裸字节预算**的一条结构化通路：
+    // 那条即使被截断，string_ids 仍可能完整解出来，两者不能互相代替。
+    final unicodeScan = DexUnicodePhraseScanner.scan(dexEntries, structures);
+    findings.addAll(buildAndroidUnicodePhraseFindings(unicodeScan));
+    if (resourceStrings.isNotEmpty) {
+      findings.addAll(buildAndroidResourceUnicodePhraseFindings(
+        scanAndroidResourcePhrases(resourceStrings),
+      ));
+    }
+
     // ---- DEX 方法引用（第三层取证：把「代码引用了」与「字符串提到了」分开）----
     //
     // `method_ids` 的条目只可能来自字节码的 invoke 指令、方法签名或方法句柄，
     // 不会来自字符串字面量。因此「命中」的含义比字符串线索强一档 ——
     // 但**仍然不等于「调用了」**：那要遍历 code_item 里的指令。
-    // 上传类标记：深链分析要用同一份定义（见下面 `uploadMarkerIds` 的用法）。
-    const uploadMarkerIds = {
-      'multipart',
-      'multipartbody',
-      'uploadfile',
-      'uploadimage',
-    };
     // OCR 类标记按**类别**取：与 `ocrCodeRefs` 的判据保持一致。
     final ocrMarkerIds = {
       for (final marker in codeMarkers)
         if (marker.category == SecurityCategory.ocrImage) marker.id,
     };
 
-    final methodScan = DexMethodScanner.scan(
-      dexEntries,
-      // 「OCR → 上传」的深链（3 跳以上）只有在这两组标记**都存在**时才有意义，
-      // 而建完整调用图要再遍历一遍字节码（343 MB 样本约 +3.2 s）。
-      // 因此把判据交给扫描器：两组都在才建图，其余情况零成本。
-      deepChainFrom: ocrMarkerIds,
-      deepChainTo: uploadMarkerIds,
-    );
+    final methodScan = methodScanResult ??
+        DexMethodScanner.scan(
+          dexEntries,
+          // 「OCR → 上传」的深链（3 跳以上）只有在这两组标记**都存在**时才有意义，
+          // 而建完整调用图要再遍历一遍字节码（343 MB 样本约 +3.2 s）。
+          // 因此把判据交给扫描器：两组都在才建图，其余情况零成本。
+          deepChainFrom: ocrMarkerIds,
+          deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
+        );
     if (methodScan.notTraversable.isNotEmpty) {
       limitations.add(AnalysisNote(
         'android.dex.method_not_traversable',
@@ -1270,6 +1381,9 @@ class AndroidSecurityAudit {
       ],
       sdkInventory: sdkInventory,
       nativeCrypto: nativeCrypto,
+      artifacts: artifacts,
+      loadGraph: loadGraph,
+      payloadProbe: payloadProbe,
     );
     for (final rule in androidSecurityRules) {
       if (rule.matches(facts)) findings.add(rule.build(facts));
@@ -1376,6 +1490,52 @@ class AndroidSecurityAudit {
                     '${scan.skippedForBudget.length} DEX file(s) were not '
                         'fully scanned',
                     {'count': scan.skippedForBudget.length},
+                  )),
+      ),
+      CoverageEntry.noted(
+        // 与 `android.dex.strings` 分开：那个回答「裸字节里扫了多少」，
+        // 这个回答「string_ids 里有多少条被解出来检查过」。`covered`/`limit`
+        // 与 `status` 回答同一个问题；命中了多少条中文话术是发现项的事。
+        id: 'android.dex.unicodeStrings',
+        status: unicodeScan.attemptedStrings == 0
+            ? (unicodeScan.untrustedDexes.isEmpty
+                ? CoverageStatus.notCovered
+                : CoverageStatus.partial)
+            : (unicodeScan.truncated
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: unicodeScan.decodedStrings,
+        limit: unicodeScan.attemptedStrings == 0
+            ? null
+            : unicodeScan.attemptedStrings,
+        note: unicodeScan.attemptedStrings == 0
+            ? (unicodeScan.untrustedDexes.isEmpty
+                ? (
+                    'android.dex.unicode_strings.no_content',
+                    'No DEX string_ids were available for Unicode scanning',
+                    const <String, Object>{},
+                  )
+                : (
+                    'android.dex.unicode_strings.untrusted',
+                    '${unicodeScan.untrustedDexes.length} DEX file(s) had an '
+                        'untrustworthy structure; their string constants were '
+                        'not decoded',
+                    {'count': unicodeScan.untrustedDexes.length},
+                  ))
+            : (unicodeScan.truncated
+                ? (
+                    'android.dex.unicode_strings.truncated',
+                    'Some string_ids entries could not be decoded or exceeded '
+                        'the Unicode scan budget; the unexamined part is unknown',
+                    const <String, Object>{},
+                  )
+                : (
+                    'android.dex.unicode_strings.scope',
+                    'MUTF-8 string constants reachable through DEX string_ids '
+                        'were decoded. Text in resources/ and assets/, native '
+                        'libraries, hardened shells and runtime-assembled '
+                        'strings are not visible here',
+                    const <String, Object>{},
                   )),
       ),
       CoverageEntry.noted(
@@ -1655,6 +1815,13 @@ class AndroidSecurityAudit {
       ),
     ]);
 
+    if (seal?.state == SealState.mismatch) {
+      findings.add(_sealMismatchFinding(seal!));
+    }
+    if (baseline?.isMismatch ?? false) {
+      findings.add(_baselineMismatchFinding(baseline!));
+    }
+
     return SecurityAnalysisResult(
       engineVersion: engineVersion,
       rulesVersion: rulesVersion,
@@ -1667,6 +1834,14 @@ class AndroidSecurityAudit {
       // 网络端点单列成一级字段：报告要能回答「包里写了哪些域名」，
       // 而不要求消费者去解析发现项的证据文本。
       network: NetworkFacts(domains: scan.domains, ips: scan.ips),
+      cryptoTheft: AndroidCryptoTheftChain.assess(
+        facts,
+        baseline: baseline,
+        seal: seal,
+        phrases: unicodeScan.signals,
+      ),
+      seal: seal,
+      baseline: baseline,
     );
   }
 

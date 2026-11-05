@@ -159,6 +159,13 @@ const List<CodeMarker> codeMarkers = [
       'process spawn (ProcessBuilder)', 'ProcessBuilder'),
   CodeMarker('in-memory-dex', SecurityCategory.other,
       'in-memory DEX loading (no file on disk)', 'InMemoryDexClassLoader'),
+  // 加载链（Phase C-4）：`System.loadLibrary` / `System.load` 作为标记后，
+  // `DexMethodScanner` 已经走过的调用点可被 `AndroidLoadGraphScanner` 复用，
+  // 避免为了加载链再遍历一遍字节码。
+  CodeMarker('loader-system-load-library', SecurityCategory.backgroundTask,
+      'System.loadLibrary', 'System;.loadLibrary'),
+  CodeMarker('loader-system-load', SecurityCategory.backgroundTask,
+      'System.load', 'System;.load'),
   CodeMarker('package-installer', SecurityCategory.other,
       'silent / session-based package install', 'PackageInstaller'),
   CodeMarker('reflection-for-name', SecurityCategory.other,

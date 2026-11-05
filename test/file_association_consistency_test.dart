@@ -111,10 +111,16 @@ void main() {
               '缺一半就是「收得下但注册不上」');
     });
 
-    test('不碰已有 UserChoice（那是系统保护的用户选择）', () {
+    test('不写扩展名默认值（默认程序由用户决定）', () {
       final source = _readCpp();
-      expect(source, contains('HasUserChoice'),
-          reason: '改写 UserChoice 是非法的，代码必须显式避开');
+      expect(
+        source,
+        isNot(contains(
+          'ClassesKeyForExtension(association.extension), nullptr',
+        )),
+        reason: '启动时不能把本程序写成默认打开方式',
+      );
+      expect(source, contains('OpenWithProgids'), reason: '候选打开方式必须登记');
       expect(source, contains('SHChangeNotify'),
           reason: '写完注册表要通知外壳，否则「打开方式」里要等注销才出现');
     });

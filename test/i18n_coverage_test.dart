@@ -106,7 +106,7 @@ void main() {
   // 覆盖维度名（阶段 1.3 / 阶段 3.3 的验收条件）。
   //
   // 引擎产出的是**机器 id**（`android.dex.strings` 这类，JSON 里保留它给程序读），
-  // 但 UI 与 Markdown 必须显示可读文案。两个引擎合计 15 个维度。
+  // 但 UI 与 Markdown 必须显示可读文案。下面是两个引擎的维度清单。
   group('覆盖维度名', () {
     /// 引擎产出的全部维度 id。新增维度时**必须**同步这里 ——
     /// 这条测试的意义正是「新增了维度却忘了补文案」会红。
@@ -123,6 +123,7 @@ void main() {
       'ios.usageDescriptions',
       'ios.executables',
       'ios.macho.strings',
+      'ios.unicodeStrings',
       'ios.nativeSymbols',
       'ios.signature',
       'ios.privacyManifest',

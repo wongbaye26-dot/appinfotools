@@ -4,6 +4,7 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:archive_safety/archive_safety.dart';
 import 'package:archive/archive.dart';
 import 'package:ipa_parser/ipa_parser.dart';
+import 'package:apk_info_tool/utils/official_baseline_store.dart';
 
 /// IPA 解析推进到的阶段。
 ///
@@ -94,6 +95,12 @@ class IpaAnalysis {
   /// **不产出** `IOS-REPACKAGED`，而不是编一个「布局正常」的结论。
   final IpaLayoutFacts layout;
 
+  /// 安全审计结果（Phase C-3 起在 worker 内计算）。
+  ///
+  /// `null` = 本次未执行安全审计（`securityAudit: false` 或旧的手工构造）；
+  /// 不表示「没有风险」。
+  final SecurityAnalysisResult? security;
+
   final List<AnalysisDiagnostic> diagnostics;
 
   const IpaAnalysis({
@@ -109,6 +116,7 @@ class IpaAnalysis {
     this.nestedBinaries = const [],
     this.nestedBundleTotal = 0,
     this.layout = IpaLayoutFacts.empty,
+    this.security,
     this.diagnostics = const [],
   });
 
@@ -126,6 +134,27 @@ class IpaAnalysis {
       ];
 
   bool get hasMainApp => mainApp != null;
+
+  /// 带上安全审计结果的新副本。
+  ///
+  /// 两阶段解析用：先构造 `security == null` 的 [IpaAnalysis] 让 UI 立刻显示
+  /// 静态结果，审计完成后再用本方法补上 `security`，不重新解析归档。
+  IpaAnalysis copyWithSecurity(SecurityAnalysisResult? security) => IpaAnalysis(
+        container: container,
+        mainApp: mainApp,
+        infoPlist: infoPlist,
+        icon: icon,
+        executable: executable,
+        executablePath: executablePath,
+        executableBytes: executableBytes,
+        signature: signature,
+        authorization: authorization,
+        nestedBinaries: nestedBinaries,
+        nestedBundleTotal: nestedBundleTotal,
+        layout: layout,
+        security: security,
+        diagnostics: diagnostics,
+      );
 }
 
 /// 一个嵌套 bundle 里的 Mach-O 概览。
@@ -206,156 +235,10 @@ class IpaAnalysisReader {
   static const int maxNestedBinaries = 24;
 
   /// 嵌套可执行文件**保留字节**的总预算（32 MiB）。
-  ///
-  /// Mach-O 解析只需要一次性读完就能丢掉字节；但安全扫描发生在解析之后，
-  /// 因此必须把字节留住。多 ABI 的应用里同一个框架会有几份，
-  /// 不留上限会吃掉可观内存。超出预算的如实记为未覆盖。
   static const int maxNestedRetainedBytes = 32 * 1024 * 1024;
 
   /// 单个 Mach-O 的体积上限（64 MiB）。
-  ///
-  /// 真实的 iOS 主可执行文件通常在几十 MB 以内；超过这个量级多半不是可执行
-  /// 文件，继续解析只会白占内存。
   static const int maxMachOBytes = 64 * 1024 * 1024;
-
-  static IpaAnalysis analyze(
-    Archive archive, {
-    void Function(IpaParseStage)? onStage,
-  }) {
-    final diagnostics = <AnalysisDiagnostic>[];
-
-    // **一次解析一个账本**（V2.4.12）：所有条目读取共用同一份真实产出预算。
-    // 每个读取点各建一个，等于每个条目都能重新领一份完整配额。
-    final ledger = BoundedReadLedger.session();
-
-    onStage?.call(IpaParseStage.container);
-    final container = IpaContainerReader.read(archive);
-
-    if (!container.hasPayloadDirectory) {
-      diagnostics.add(
-        AnalysisDiagnostic.warning(
-          'ios.container.no_payload',
-          'the archive has no Payload/ directory; this is not a standard IPA',
-          source: FieldSource.zipDirectory,
-        ),
-      );
-    }
-    if (container.hasMultipleMainApps) {
-      // 不猜「哪个才是真的」—— 仅凭结构无法可靠判断，猜测只会掩盖异常。
-      diagnostics.add(
-        AnalysisDiagnostic.warning(
-          'ios.container.multiple_main_apps',
-          'the container holds ${container.payloadApps.length} '
-              'Payload/*.app bundles: '
-              '${container.payloadApps.map((b) => b.path).join(', ')}',
-          messageArgs: {
-            'count': container.payloadApps.length,
-            'paths': container.payloadApps.map((b) => b.path).join(', '),
-          },
-          source: FieldSource.zipDirectory,
-        ),
-      );
-    }
-
-    final mainApp = container.mainApp;
-    if (mainApp == null) {
-      diagnostics.add(
-        const AnalysisDiagnostic.error(
-          'ios.container.no_main_app',
-          'no Payload/*.app bundle was found',
-          source: FieldSource.zipDirectory,
-        ),
-      );
-      return IpaAnalysis(
-        container: container,
-        diagnostics: diagnostics,
-      );
-    }
-
-    onStage?.call(IpaParseStage.infoPlist);
-    final infoPlist = IpaInfoPlistReader.read(archive, mainApp, ledger: ledger);
-
-    onStage?.call(IpaParseStage.icon);
-    final icon = IpaIconResolver.resolve(archive, infoPlist, ledger: ledger);
-
-    onStage?.call(IpaParseStage.macho);
-    final executablePath = _executablePath(mainApp, infoPlist);
-    MachOFile? executable;
-    Uint8List? executableBytes;
-    if (executablePath == null) {
-      diagnostics.add(
-        AnalysisDiagnostic.warning(
-          'ios.macho.no_executable_declared',
-          '${mainApp.path} does not declare a usable CFBundleExecutable',
-          source: FieldSource.infoPlist,
-        ),
-      );
-    } else {
-      final bytes = _readEntry(archive, executablePath, maxMachOBytes, ledger);
-      executableBytes = bytes;
-      if (bytes == null) {
-        diagnostics.add(
-          AnalysisDiagnostic.warning(
-            'ios.macho.missing',
-            '$executablePath is not present or is too large to read',
-            source: FieldSource.zipDirectory,
-          ),
-        );
-      } else {
-        executable = MachOParser.parse(bytes);
-        if (!executable.isMachO) {
-          diagnostics.add(
-            AnalysisDiagnostic.warning(
-              'ios.macho.unparsable',
-              '$executablePath could not be parsed as Mach-O',
-              source: FieldSource.machO,
-            ),
-          );
-        }
-      }
-    }
-
-    final nested = _readNestedBinaries(
-      archive,
-      container,
-      mainApp,
-      diagnostics,
-      ledger,
-    );
-
-    onStage?.call(IpaParseStage.signature);
-    final signature =
-        IpaSignatureMaterialReader.read(archive, mainApp, ledger: ledger);
-
-    // 只在**能可靠解析**时给出比对结论：缺任一侧就返回 incomparable，
-    // 而不是猜一个「大概匹配」。
-    final authorization = signature.profile.value == null
-        ? null
-        : compareIosAuthorization(
-            bundleIdentifier: infoPlist.bundleIdentifier,
-            profile: signature.profile.value!,
-          );
-
-    onStage?.call(IpaParseStage.done);
-
-    return IpaAnalysis(
-      container: container,
-      mainApp: mainApp,
-      infoPlist: infoPlist,
-      icon: icon,
-      executable: executable,
-      executablePath: executablePath,
-      executableBytes: executableBytes,
-      signature: signature,
-      authorization: authorization,
-      nestedBinaries: nested.binaries,
-      // 分母：容器里**一共有**多少个装代码的 bundle。
-      // 用 `nested.binaries.length` 会把截断掉的那些悄悄从分母里去掉。
-      nestedBundleTotal: nested.total,
-      layout: IpaLayoutReader.read(archive, mainApp),
-      diagnostics: diagnostics,
-    );
-  }
 
   /// 主可执行文件在归档里的路径。
   ///
@@ -479,6 +362,34 @@ class IpaAnalysisReader {
     return (binaries: result, total: candidates.length);
   }
 
+  /// 读取归档里的 `.strings` / 本地化文本文件。
+  ///
+  /// 只读主应用与嵌套 bundle 的 `.strings`，单文件 ≤1 MiB、最多 64 个、
+  /// 总量 ≤8 MiB；二进制 plist 不在本方法处理范围。
+  static List<IosStringsFile> _readStringsFiles(
+    Archive archive,
+    BoundedReadLedger ledger,
+  ) {
+    final out = <IosStringsFile>[];
+    var total = 0;
+    for (final entry in archive.files) {
+      if (out.length >= 64 || total >= 8 * 1024 * 1024) break;
+      if (entry.isDirectory) continue;
+      final lower = entry.name.toLowerCase();
+      if (!lower.endsWith('.strings')) continue;
+      if (entry.size <= 0 || entry.size > 1024 * 1024) continue;
+      final read = readEntryBounded(
+        entry,
+        maxEntryBytes: 1024 * 1024,
+        ledger: ledger,
+      );
+      if (!read.isOk || read.bytes == null) continue;
+      out.add(IosStringsFile(entry.name, read.bytes!));
+      total += read.bytes!.length;
+    }
+    return out;
+  }
+
   /// 读一个条目，超过 [maxBytes] 时返回 `null`（**逐块中止，不整条分配**）。
   ///
   /// 此前是「先 `entry.content` 全解压、再比长度」—— 声明值撒谎时，那一步
@@ -497,5 +408,243 @@ class IpaAnalysisReader {
       ledger: ledger,
     );
     return read.isOk ? read.bytes : null;
+  }
+
+  static IpaAnalysis analyze(
+    Archive archive, {
+    void Function(IpaParseStage)? onStage,
+    void Function(IpaAnalysis analysis)? onParsed,
+    bool securityAudit = true,
+    ContentDigestFn? digest,
+    OfficialBaselineDb? baselineDb,
+    bool retainRawBytes = true,
+
+    /// 性能探查用：阶段回调；生产传 `null`。
+    void Function(String stage)? onProfileStage,
+  }) {
+    onProfileStage?.call('start');
+    final diagnostics = <AnalysisDiagnostic>[];
+    final ledger = BoundedReadLedger.session();
+
+    onStage?.call(IpaParseStage.container);
+    final container = IpaContainerReader.read(archive);
+    if (!container.hasPayloadDirectory) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.container.no_payload',
+        'the archive has no Payload/ directory; this is not a standard IPA',
+        source: FieldSource.zipDirectory,
+      ));
+    }
+    if (container.hasMultipleMainApps) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.container.multiple_main_apps',
+        'the container holds ${container.payloadApps.length} Payload/*.app '
+            'bundles: ${container.payloadApps.map((b) => b.path).join(', ')}',
+        messageArgs: {
+          'count': container.payloadApps.length,
+          'paths': container.payloadApps.map((b) => b.path).join(', '),
+        },
+        source: FieldSource.zipDirectory,
+      ));
+    }
+
+    final mainApp = container.mainApp;
+    if (mainApp == null) {
+      diagnostics.add(const AnalysisDiagnostic.error(
+        'ios.container.no_main_app',
+        'no Payload/*.app bundle was found',
+        source: FieldSource.zipDirectory,
+      ));
+      return IpaAnalysis(container: container, diagnostics: diagnostics);
+    }
+
+    onStage?.call(IpaParseStage.infoPlist);
+    final infoPlist = IpaInfoPlistReader.read(archive, mainApp, ledger: ledger);
+
+    onStage?.call(IpaParseStage.icon);
+    final icon = IpaIconResolver.resolve(archive, infoPlist, ledger: ledger);
+
+    onStage?.call(IpaParseStage.macho);
+    final executablePath = _executablePath(mainApp, infoPlist);
+    MachOFile? executable;
+    Uint8List? executableBytes;
+    if (executablePath == null) {
+      diagnostics.add(AnalysisDiagnostic.warning(
+        'ios.macho.no_executable_declared',
+        '${mainApp.path} does not declare a usable CFBundleExecutable',
+        source: FieldSource.infoPlist,
+      ));
+    } else {
+      final bytes = _readEntry(archive, executablePath, maxMachOBytes, ledger);
+      executableBytes = bytes;
+      if (bytes == null) {
+        diagnostics.add(AnalysisDiagnostic.warning(
+          'ios.macho.missing',
+          '$executablePath is not present or is too large to read',
+          source: FieldSource.zipDirectory,
+        ));
+      } else {
+        executable = MachOParser.parse(bytes);
+        if (!executable.isMachO) {
+          diagnostics.add(AnalysisDiagnostic.warning(
+            'ios.macho.unparsable',
+            '$executablePath could not be parsed as Mach-O',
+            source: FieldSource.machO,
+          ));
+        }
+      }
+    }
+
+    onProfileStage?.call('macho:done');
+    final nested = _readNestedBinaries(
+      archive,
+      container,
+      mainApp,
+      diagnostics,
+      ledger,
+    );
+
+    onStage?.call(IpaParseStage.signature);
+    final signature =
+        IpaSignatureMaterialReader.read(archive, mainApp, ledger: ledger);
+    final authorization = signature.profile.value == null
+        ? null
+        : compareIosAuthorization(
+            bundleIdentifier: infoPlist.bundleIdentifier,
+            profile: signature.profile.value!,
+          );
+
+    onProfileStage?.call('nested:done');
+    final layoutFacts = IpaLayoutReader.read(archive, mainApp);
+    onProfileStage?.call('layout:done');
+
+    // Phase E: official baseline (Bundle ID + Team ID).
+    final teamIds =
+        signature.profile.value?.teamIdentifiers.value ?? const <String>[];
+    final baseline = OfficialBaselineStore.matchIos(
+      baselineDb,
+      bundleId: infoPlist.bundleIdentifier.value,
+      actualTeamIds: teamIds,
+    );
+
+    onProfileStage?.call('baseline:done');
+    // Phase D: CodeResources digest check.
+    SealCheck? seal;
+    if (digest != null) {
+      seal = IosCodeResourcesCheck.check(
+        archive: archive,
+        bundle: mainApp,
+        digest: digest,
+        ledger: ledger,
+      );
+    }
+
+    onProfileStage?.call('seal:done');
+    // Phase B/C-3 facts.
+    final entryFacts = <ContainerEntryFact>[
+      for (final entry in archive.files)
+        ContainerEntryFact(
+          path: normalizeArchivePath(entry.name),
+          sizeBytes: entry.size,
+          isDirectory: entry.isDirectory,
+        ),
+    ];
+    onProfileStage?.call('entry-facts:done');
+    final artifacts = IosArtifactInventoryScanner.scan(entryFacts);
+    onProfileStage?.call('artifacts:done');
+    final machoInputs = <IosMachOInput>[
+      if (executable != null && executablePath != null)
+        IosMachOInput(path: executablePath, macho: executable),
+      for (final nestedBinary in nested.binaries)
+        if (nestedBinary.macho != null)
+          IosMachOInput(path: nestedBinary.path, macho: nestedBinary.macho!),
+    ];
+    final loadGraph = IosLoadGraphScanner.scan(
+      binaries: machoInputs,
+      inventory: artifacts,
+      mainBundlePath: mainApp.path,
+    );
+    onProfileStage?.call('load-graph:done');
+    final payloadInputs = <PayloadProbeInput>[];
+    for (final artifact in artifacts.entries) {
+      if (payloadInputs.length >= 64) break;
+      if (artifact.sizeBytes <= 0 || artifact.sizeBytes > 8 * 1024 * 1024) {
+        continue;
+      }
+      if (!(artifact.kind.isCode ||
+          artifact.kind == ArtifactKind.assetArchive ||
+          artifact.kind == ArtifactKind.assetBinary ||
+          artifact.kind == ArtifactKind.script)) {
+        continue;
+      }
+      final file = archive.findFile(artifact.path);
+      if (file == null) continue;
+      final read = readEntryPrefix(file, maxBytes: 4096, ledger: ledger);
+      if (!read.isOk || read.bytes == null) continue;
+      final dot = artifact.path.lastIndexOf('.');
+      payloadInputs.add(PayloadProbeInput(
+        path: artifact.path,
+        sizeBytes: artifact.sizeBytes,
+        headBytes: read.bytes!,
+        declaredExtension:
+            dot > 0 ? artifact.path.substring(dot).toLowerCase() : null,
+      ));
+    }
+    final payloadProbe = IosPayloadProbe.scan(payloadInputs);
+    onProfileStage?.call('payload:done');
+
+    final baseAnalysis = IpaAnalysis(
+      container: container,
+      mainApp: mainApp,
+      infoPlist: infoPlist,
+      icon: icon,
+      executable: executable,
+      executablePath: executablePath,
+      executableBytes: retainRawBytes ? executableBytes : null,
+      signature: signature,
+      authorization: authorization,
+      nestedBinaries: nested.binaries,
+      nestedBundleTotal: nested.total,
+      layout: layoutFacts,
+      security: null,
+      diagnostics: diagnostics,
+    );
+    onParsed?.call(baseAnalysis);
+    onProfileStage?.call('base:done');
+
+    SecurityAnalysisResult? securityResult;
+    if (securityAudit) {
+      securityResult = IosPrivacyAudit.audit(
+        infoPlist: infoPlist,
+        executableBytes: executableBytes,
+        executablePath: executablePath,
+        nestedExecutables: [
+          for (final nestedBinary in nested.binaries)
+            IosNestedExecutableInput(
+              path: nestedBinary.path,
+              bundlePath: nestedBinary.bundlePath,
+              kind: nestedBinary.kind,
+              bytes: nestedBinary.bytes,
+              failure: nestedBinary.failure ?? nestedBinary.bytesFailure,
+              usageDescriptions: nestedBinary.usageDescriptions,
+            ),
+        ],
+        nestedBundleTotal: nested.total,
+        entitlements: signature.profile.value?.entitlements ?? const [],
+        provisioningProfilePresent: signature.profile.value != null,
+        layout: layoutFacts,
+        artifacts: artifacts,
+        loadGraph: loadGraph,
+        payloadProbe: payloadProbe,
+        seal: seal,
+        baseline: baseline,
+        stringsFiles: _readStringsFiles(archive, ledger),
+        onStage: onProfileStage,
+      );
+    }
+
+    onProfileStage?.call('audit:done');
+    onStage?.call(IpaParseStage.done);
+    return baseAnalysis.copyWithSecurity(securityResult);
   }
 }

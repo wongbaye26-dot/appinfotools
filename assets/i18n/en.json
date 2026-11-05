@@ -188,7 +188,9 @@
       "diag_dll": "Handler DLL: {path}",
       "diag_helper": "Extractor: {present}",
       "diag_yes": "present",
-      "diag_no": "missing"
+      "diag_no": "missing",
+      "machine_wide": "Machine-wide registration detected",
+      "machine_wide_detail": "An older installation registered the thumbnail handler under HKLM. Disabling from this app removes only HKCU; run the app as administrator (or clean HKLM) to remove it completely."
     }
   },
   "signature": {
@@ -293,7 +295,9 @@
     "structure_directories": "Top-level directories",
     "structure_file_count": "{count} files",
     "text_info": "Text Info",
-    "component_count": "{count} (listed below)"
+    "component_count": "{count} (listed below)",
+    "partial_manifest_title": "Partial parse: manifest unreadable",
+    "partial_manifest_body": "AndroidManifest.xml could not be parsed. Package name comes from resources.arsc; version, components and permissions are unknown — the security audit covers DEX and resources but cannot assess manifest declarations."
   },
   "icon": {
     "switch_icon": "Switch Icon",
@@ -318,7 +322,13 @@
     "name_cannot_be_empty": "File name cannot be empty",
     "must_end_with_apk": "File name must end with .apk/.xapk/.apkm/.apks/.ipa",
     "default_name": "Default Name",
-    "not_ready": "Wait for the analysis to finish before renaming"
+    "not_ready": "Wait for the analysis to finish before renaming",
+    "batch_title": "Batch Rename",
+    "batch_preparing": "Analyzing selected files...",
+    "batch_include_version": "Include version",
+    "batch_done": "Renamed {count} file(s)",
+    "batch_failed": "{count} file(s) failed",
+    "batch_apply": "Rename all"
   },
   "install": {
     "refresh_devices": "Refresh Devices",
@@ -399,7 +409,18 @@
     "pair_error_invalid_code": "Wrong pairing code (or it has expired). Close this dialog and reopen \"Pair device with pairing code\" on the phone - the code changes every time.",
     "pair_error_not_pairing_port": "This port does not answer pairing - you probably typed the **connect** port. The pairing port is the one shown in the \"Pair device with pairing code\" popup on the phone.",
     "pair_error_already_paired": "This device is already paired. Just use \"Connect over Wi-Fi\".",
-    "pair_error_unreachable": "Cannot reach the pairing port. Make sure the phone is still on the \"Pair device with pairing code\" popup, and that the port is the one shown there."
+    "pair_error_unreachable": "Cannot reach the pairing port. Make sure the phone is still on the \"Pair device with pairing code\" popup, and that the port is the one shown there.",
+    "adb_missing": "adb not found",
+    "adb_missing_hint": "Installation needs adb. Set the adb path in Settings → External tools, or use the built-in tool download there.",
+    "open_settings": "Open Settings",
+    "error_already_exists": "The app is already installed. Enable \"force install\" or uninstall it first.",
+    "error_insufficient_storage": "The device does not have enough storage.",
+    "error_invalid_apk": "The APK is invalid or corrupted.",
+    "error_version_downgrade": "The installed version is newer. Enable \"allow downgrade\" or uninstall it first.",
+    "error_update_incompatible": "The update is incompatible with the installed app.",
+    "error_no_matching_abis": "The APK has no native library matching this device ABI.",
+    "error_signature": "The APK signature does not match the installed app. Uninstall the old app first.",
+    "error_generic": "Installation failed ({code})."
   },
   "ios_info": {
     "architectures": "Architectures",
@@ -488,7 +509,13 @@
     "certificate_count": "{count} certificate(s)",
     "certificate_entry": "{subject} (issuer {issuer})",
     "certificate_valid_until": "valid until {date}",
-    "certificate_material_note": "These are materials only: they say who the certificates claim to be signed by. They do not make the certificates trusted, and they do not make the signature valid."
+    "certificate_material_note": "These are materials only: they say who the certificates claim to be signed by. They do not make the certificates trusted, and they do not make the signature valid.",
+    "profile_distribution": "Distribution",
+    "distribution_app_store": "App Store",
+    "distribution_ad_hoc": "Ad Hoc",
+    "distribution_enterprise": "Enterprise / In-House",
+    "distribution_development": "Development",
+    "distribution_unknown": "Unknown"
   },
   "report": {
     "android_section": "Android",
@@ -626,7 +653,7 @@
       "ios_privacy_info_cross_check": "Manually compare the declarations against the API clues and the privacy policy.",
       "ios_privacy_tracking_confirm_att": "Confirm that the tracking purpose and the ATT authorisation flow match expectations.",
       "ios_url_schemes_limitation": "The scheme handling code was not inspected (no disassembly); “the entry point exists” and “the entry point is safe” are two different things.",
-      "ios_scan_coverage_limitation": "The scan only extracts printable ASCII strings: system framework symbols in the dyld shared cache, non-ASCII literals and encrypted/hardened sections are all missed.",
+      "ios_scan_coverage_limitation": "The scan extracts printable ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings: system framework symbols in the dyld shared cache, Swift small-string constants, .strings / localization resources and encrypted/hardened sections are all missed.",
       "ios_photo_library_limitation": "The presence of an API symbol does not mean it is called at runtime; the symbol may also come from an unused framework reference.",
       "ios_rule_a_relationship": "“The picker path is missing” is a **static inference**: the picker may also be used through the SwiftUI `PhotosPicker` or loaded dynamically, and those do not necessarily leave a scannable symbol.",
       "ios_rule_a_limitation": "The presence of a symbol does not mean it is called at runtime, and the absence of a symbol does not mean the feature is missing (dynamic loading, reflection, SwiftUI wrappers).",
@@ -638,7 +665,7 @@
       "ios_rule_e_limitation": "`UIBackgroundModes` is a **declaration** and does not equal actual background behaviour at runtime; no disassembly and no traffic observation.",
       "ios_rule_d_limitation": "Allowing cleartext in the configuration is not the same as actually using cleartext; the per-domain exception settings are not expanded.",
       "ios_privacy_info_limitation": "The privacy manifest does not record actual behaviour; runtime data access would require the system App Privacy Report (not provided in this version).",
-      "ios_rule_f_limitation": "Only ASCII strings are scanned (main executable plus nested executables). Code in the shared dyld cache, code loaded at runtime, and non-ASCII literals are outside the coverage.",
+      "ios_rule_f_limitation": "ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings are scanned (main executable plus nested executables). Code in the shared dyld cache, code loaded at runtime, Swift small-string constants and .strings / localization resources are outside the coverage.",
       "android_permission_uncategorized": "Another {count} permission(s) are not in the risk catalogue. Recorded as fact only: {names}",
       "android_permission_uncategorized_manual_review": "Not being catalogued does not mean there is no risk: to assess these permissions, check them against the Android permission documentation manually.",
       "android_permission_sdk23_conditional": "{name} is declared with <uses-permission-sdk-23>, so it is only granted on devices running API < 23; the device version cannot be determined statically from the package.",
@@ -807,7 +834,19 @@
       "ios_repackaged_limitation": "Only dylibs sitting directly at the .app root are counted. A repack that merely renames the bundle, or one that patches the main binary in place, leaves no extra file and is not visible here — for those, the signature verdict is the only signal. Nor can static analysis tell what the injected library does.",
       "ios_upload_api": "Upload-related code found: the multipart/form-data construction used to attach files or binary payloads. This only proves the upload capability exists; it does not prove sensitive data was uploaded.",
       "ios_upload_api_confirm_sink": "Confirm what is uploaded and what triggers it. A multipart body is also how crash reports, log bundles and avatar uploads are sent, so the capability alone is not a finding.",
-      "verify_suspected_hint": "How to verify: static analysis stops here. To confirm on a real device, install it and watch `adb logcat` (or the system log in Xcode's Devices panel on iOS) while triggering the feature in question, and check whether the matching network request or file read actually happens. This finding says the capabilities coexist - not that they were used."
+      "verify_suspected_hint": "How to verify: static analysis stops here. To confirm on a real device, install it and watch `adb logcat` (or the system log in Xcode's Devices panel on iOS) while triggering the feature in question, and check whether the matching network request or file read actually happens. This finding says the capabilities coexist - not that they were used.",
+      "ios_unicode_phrase": "Found {count} Chinese wallet / social-engineering phrase(s) in Unicode string literals. These are UI copy clues, not a verdict: legitimate wallets contain many of the same words. The matched original text is attached as evidence.",
+      "ios_unicode_phrase_review": "Read the attached original strings in context: do they ask for a seed phrase, promise an airdrop, demand a deposit to unfreeze funds, or instruct a fund sweep? Combine this with signature / baseline and load-chain evidence before drawing a conclusion.",
+      "ios_unicode_phrase_limitation": "Only UTF-8 text and UTF-16 literals in the scanned executable bytes were examined. Swift small-string constants, .strings / localization resources, runtime-downloaded text and dyld shared cache symbols are outside this scan. Chinese wording alone says nothing about whether any transfer or upload actually happens.",
+      "android_unicode_phrase": "Found {count} Chinese wallet / social-engineering phrase(s) in DEX string constants. These are UI copy clues, not a verdict: legitimate wallets contain many of the same words. The matched original text is attached as evidence.",
+      "android_unicode_phrase_review": "Read the attached original strings in context: do they ask for a seed phrase, promise an airdrop, demand a deposit to unfreeze funds, or instruct a fund sweep? Combine this with signature / baseline and load-chain evidence before concluding anything about intent.",
+      "android_unicode_phrase_limitation": "Only DEX MUTF-8 string constants reachable through string_ids were decoded. Text in resources/ and assets/, native libraries, hardened or packed shells, runtime-downloaded copy and strings assembled at runtime are outside this scan. Chinese wording alone says nothing about whether any transfer or upload actually happens.",
+      "android_resource_unicode_phrase": "Found {count} Chinese wallet / social-engineering phrase(s) in resource strings ({strings} strings examined). These are UI copy clues, not a verdict.",
+      "android_resource_unicode_phrase_review": "Read the attached original strings in context: do they ask for a seed phrase, promise an airdrop, demand a deposit to unfreeze funds, or instruct a fund sweep? Combine this with signature / baseline and load-chain evidence before concluding anything about intent.",
+      "android_resource_unicode_phrase_limitation": "Only string constants from resources.arsc and text-like assets were examined. Binary assets, native libraries, runtime-downloaded copy and strings assembled at runtime are outside this scan.",
+      "ios_strings_unicode_phrase": "Found {count} Chinese wallet / social-engineering phrase(s) in .strings / localization files ({strings} candidate strings examined). These are UI copy clues, not a verdict.",
+      "ios_strings_unicode_phrase_review": "Read the attached original strings in context: do they ask for a seed phrase, promise an airdrop, demand a deposit to unfreeze funds, or instruct a fund sweep? Combine this with signature / baseline and load-chain evidence before concluding anything about intent.",
+      "ios_strings_unicode_phrase_limitation": "Only .strings / localization text files inside the archive were examined. Swift small-string constants, binary plists, runtime-downloaded copy and strings assembled at runtime are outside this scan."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -921,7 +960,15 @@
       "record_audio_description": "Record audio from the microphone.",
       "record_audio_risk_note": "A sensitive source: judge it together with where the recording goes (upload) and whether a visible recording feature exists. Recording + upload is covered by rule G.",
       "read_privileged_phone_state_description": "Read privileged phone state (signature-level permission).",
-      "read_privileged_phone_state_risk_note": "Signature-level: a third-party app cannot be granted this, so the declaration has no effect. Seeing it usually means the code came from a system app, a copy-pasted sample, or an obfuscated build."
+      "read_privileged_phone_state_risk_note": "Signature-level: a third-party app cannot be granted this, so the declaration has no effect. Seeing it usually means the code came from a system app, a copy-pasted sample, or an obfuscated build.",
+      "read_sms_description": "Read SMS messages.",
+      "read_sms_risk_note": "A high-sensitivity data source: SMS often contains verification codes and private messages. Judge it together with whether the app has a visible SMS feature and where the data goes.",
+      "read_call_log_description": "Read the call log.",
+      "read_call_log_risk_note": "A high-sensitivity data source: call history reveals contacts, timing and communication patterns. Judge it with the app features and upload behaviour.",
+      "read_calendar_description": "Read the calendar.",
+      "read_calendar_risk_note": "A sensitive data source: calendar entries reveal schedules and personal relationships. On its own it is not malicious; watch for it co-occurring with upload logic.",
+      "post_notifications_description": "Post notifications (runtime permission since Android 13).",
+      "post_notifications_risk_note": "A routine permission for most apps; it is not a risk by itself. Recorded as fact only."
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes could not be read ({reason}): the registered URL schemes are not covered.",
@@ -929,7 +976,7 @@
       "ios_executable_over_budget": "{path} is {bytes} bytes, over the {limit}-byte scan budget: only the first {limit} bytes were scanned, and the uncovered part may contain clues that were not found.",
       "ios_executable_none_readable": "No Mach-O executable content could be read: API usage clues cannot be checked. The usage-description and privacy-manifest conclusions are unaffected, but this is not a complete analysis.",
       "ios_executable_unscanned": "{count} executable(s) were not scanned ({names}): “no clues found” on these files means “not looked at”, not “none”.",
-      "ios_macho_scan_summary": "The Mach-O scan covered {bytes} bytes in total and only extracted printable ASCII strings: symbols in the dyld shared cache are outside the coverage, and non-ASCII literals are missed too.",
+      "ios_macho_scan_summary": "The Mach-O scan covered {bytes} bytes in total and extracted printable ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings: symbols in the dyld shared cache, Swift small-string constants and .strings / localization resources are outside the coverage.",
       "ios_privacy_info_unparsable": "A privacy manifest exists but failed to parse: {reason}. The declarations cannot be cross-checked.",
       "ios_privacy_info_absent": "No privacy manifest (PrivacyInfo.xcprivacy) was found: this is not anomalous by itself (only some apps provide one), but it means the declared data collection types cannot be cross-checked.",
       "ios_offline_static_analysis": "This is an offline static analysis: the app was not installed, not run, and no network traffic was observed. No runtime evidence exists, so this report must not be read as confirming behaviour.",
@@ -987,7 +1034,9 @@
       "android_signing_block_unreadable": "The APK Signing Block could not be read ({reason}): the v2+ signature schemes are unknown, so \"no signature block found\" is not a conclusion this run can make. This is not a verdict that the signature is invalid.",
       "ios_permission_request_no_methname": "No executable had a readable __objc_methname section, so active permission requests could not be determined. This is not a statement that the app requests no permissions.",
       "android_provider_exposed": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence.",
-      "ios_reference_tables_unsupported": "Class / selector reference tables could not be decoded ({reason}), so \"the code references this class\" cannot be distinguished from \"the string appears somewhere\"."
+      "ios_reference_tables_unsupported": "Class / selector reference tables could not be decoded ({reason}), so \"the code references this class\" cannot be distinguished from \"the string appears somewhere\".",
+      "android_split_apk_partial": "This is a split package. DEX, resource strings and native libraries from the split APKs were included, but the artifact inventory, load graph and payload probe are still computed from the base APK only.",
+      "android_split_apk_cert_mismatch": "The base APK and at least one split APK are signed with different certificates. Android normally rejects such an installation set; do not trust this package as a matching official set."
     },
     "findings": "Findings",
     "sdk_categories": {
@@ -1078,7 +1127,8 @@
       "android_nativeHardening": "Native library hardening",
       "android_sdkInventory": "Third-party SDK inventory",
       "android_signature": "Signature materials",
-      "ios_machoSites": "Mach-O call sites"
+      "ios_machoSites": "Mach-O call sites",
+      "ios_unicodeStrings": "Unicode strings"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",
@@ -1111,7 +1161,10 @@
       "android_cleartext_policy_target_sdk_unknown": "Neither android:usesCleartextTraffic nor targetSdkVersion could be read, so the platform default for cleartext traffic cannot be derived",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig is present, so android:usesCleartextTraffic is ignored; the config itself could not be expanded, so the cleartext policy is not judged",
       "ios_macho_call_sites": "Attributed {attributed} of {total} selector / class references to functions ({functions} functions in the binary). \"Referenced\" still does not mean \"called\": ADRP+ADD only loads the address, and what it is passed to is not visible statically. Note that `__objc_classrefs` mainly covers the app's **own** classes; system framework classes (`AVCaptureDevice`, `CNContactStore`) are usually reached through a direct `objc_msgSend` or `NSClassFromString`, so they are outside this dimension. This dimension only covers the executables that were scanned (see the \"executables\" dimension) - references inside unscanned binaries are not in the denominator.",
-      "ios_macho_call_sites_unavailable": "No selector reference could be attributed to a function (no ADRP+ADD/LDR pair targeted __objc_selrefs, or no LC_FUNCTION_STARTS). Clues are reported as \"referenced\", not \"called\"."
+      "ios_macho_call_sites_unavailable": "No selector reference could be attributed to a function (no ADRP+ADD/LDR pair targeted __objc_selrefs, or no LC_FUNCTION_STARTS). Clues are reported as \"referenced\", not \"called\".",
+      "ios_unicode_strings_scope": "The scan examined UTF-8 text and UTF-16 (LE/BE) literals in the executable bytes. Swift small-string constants, .strings / localization resources and symbols in the dyld shared cache are not visible.",
+      "ios_unicode_strings_truncated": "Some executables exceeded the scan budget or the __ustring cap; Unicode strings past that point were not examined.",
+      "ios_unicode_strings_no_content": "No executable content was available for Unicode string scanning."
     }
   },
   "diff": {
@@ -1231,5 +1284,51 @@
     "ios_info_plist_unparsable": "{path} could not be parsed: {message}",
     "ios_info_plist_not_a_dict": "{path} root is {actual}, expected a dictionary",
     "ios_info_plist_parsed": "parsed {path} ({keys} keys)"
+  },
+  "theft": {
+    "chain_title": "Evidence chain",
+    "level_capability": "capability lead",
+    "level_suspicious": "suspected",
+    "level_strong": "strong evidence",
+    "level_unknown": "cannot determine",
+    "score": "evidence coverage",
+    "stage_capability": "capability",
+    "stage_source": "source",
+    "stage_injection": "injection",
+    "stage_payload": "payload",
+    "stage_family": "official baseline",
+    "stage_supported": "present",
+    "stage_missing": "missing",
+    "missing_title": "Missing links",
+    "missing_noCapability": "no wallet / key / clipboard capability was found",
+    "missing_noSource": "no address or key input source was found",
+    "missing_noInjection": "no dynamic-loading / injection evidence was found",
+    "missing_noPayload": "no suspicious payload was found",
+    "missing_shellPacked": "the key content is packed/encrypted and could not be inspected",
+    "missing_noBaseline": "the package does not match a maintained official baseline",
+    "baseline_match": "matches official baseline",
+    "baseline_mismatch": "does not match official baseline",
+    "baseline_none": "no official baseline entry",
+    "baseline_unavailable": "official baseline unavailable",
+    "next_title": "Next steps",
+    "next_clipboard": "export the deduplicated address list",
+    "next_signature": "check the signature / seal verdict",
+    "next_official": "compare with the official channel package",
+    "not_a_verdict": "This is static evidence, not a malware verdict.",
+    "seal_title": "Seal check",
+    "seal_verified": "matches",
+    "seal_mismatch": "does not match",
+    "seal_entry_missing": "sealed entry missing",
+    "seal_unsealed": "no seal manifest",
+    "seal_not_checked": "not checked",
+    "seal_unknown": "unknown",
+    "seal_checked": "checked {checked}/{total}",
+    "baseline_title": "Official baseline",
+    "seal_mismatch_message": "Seal mismatch: {path} (expected {expected}, actual {actual}).",
+    "seal_mismatch_review": "Treat this as tampering until the package is re-signed or verified against an official baseline.",
+    "seal_mismatch_limitation": "A digest mismatch proves the content differs from the seal record; it does not identify what changed or who changed it.",
+    "baseline_mismatch_message": "Official baseline mismatch: {packageId} (expected {expected}, actual {actual}).",
+    "baseline_mismatch_review": "Verify this package against the official channel package or published fingerprint before trusting it.",
+    "baseline_mismatch_limitation": "A baseline mismatch means the package identity/fingerprint differs from the recorded official entry; it does not by itself prove malice."
   }
 }

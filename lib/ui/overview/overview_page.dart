@@ -18,7 +18,9 @@ import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/utils/recent_icon_cache.dart';
+import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
+import 'package:apk_info_tool/widgets/batch_rename_dialog.dart';
 import 'package:apk_info_tool/widgets/arch_badge.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
@@ -279,6 +281,12 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                       ),
                       _HeaderActionButton(
                         iconOnly: compact,
+                        onPressed: () => pickAndBatchRename(context),
+                        icon: Icons.playlist_add_check,
+                        label: t.rename.batch_title,
+                      ),
+                      _HeaderActionButton(
+                        iconOnly: compact,
                         onPressed: fileState.filePath == null
                             ? null
                             : () => ref
@@ -299,6 +307,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   ),
                   SizedBox(height: compact ? 8 : 18),
                   // Hero 区
+                  if (apkInfo?.parseFailureReason != null)
+                    ManifestPartialBanner(
+                      title: t.apk_info.partial_manifest_title,
+                      body: t.apk_info.partial_manifest_body,
+                    ),
                   if (fileState.filePath == null)
                     _buildWelcomeHero(context, compact)
                   else

@@ -195,7 +195,9 @@
       "diag_dll": "處理器 DLL：{path}",
       "diag_helper": "圖示擷取器：{present}",
       "diag_yes": "存在",
-      "diag_no": "缺少"
+      "diag_no": "缺少",
+      "machine_wide": "偵測到機器級註冊",
+      "machine_wide_detail": "舊版安裝把縮圖處理器寫進了 HKLM。應用停用只刪除 HKCU；要徹底移除請以管理員身份執行應用（或手動清理 HKLM）。"
     }
   },
   "signature": {
@@ -293,7 +295,9 @@
     "structure_directories": "頂層目錄",
     "structure_file_count": "{count} 個檔案",
     "text_info": "文本資訊",
-    "component_count": "{count} 個（見下方列表）"
+    "component_count": "{count} 個（見下方列表）",
+    "partial_manifest_title": "部分解析：Manifest 未讀到",
+    "partial_manifest_body": "AndroidManifest.xml 無法解析。包名來自 resources.arsc；版本、元件、權限未知。安全審計仍覆蓋 DEX 和資源，但無法評估清單聲明。"
   },
   "icon": {
     "switch_icon": "切換圖標",
@@ -318,7 +322,13 @@
     "name_cannot_be_empty": "文件名不能為空",
     "must_end_with_apk": "檔案名稱必須以 .apk/.xapk/.apkm/.apks/.ipa 結尾",
     "default_name": "預設名稱",
-    "not_ready": "請等待解析完成後再重新命名"
+    "not_ready": "請等待解析完成後再重新命名",
+    "batch_title": "批量重新命名",
+    "batch_preparing": "正在分析所選檔案…",
+    "batch_include_version": "包含版本",
+    "batch_done": "已重新命名 {count} 個檔案",
+    "batch_failed": "{count} 個檔案失敗",
+    "batch_apply": "全部重新命名"
   },
   "install": {
     "refresh_devices": "刷新設備列表",
@@ -399,7 +409,18 @@
     "pair_error_invalid_code": "配對碼不對（或已過期）。關掉這個對話框，在手機上重新打開「使用配對碼配對設備」—— 每次打開配對碼都會變。",
     "pair_error_not_pairing_port": "這個端口不響應配對 —— 你多半填了**連接端口**。配對端口在手機「使用配對碼配對設備」的彈窗裡。",
     "pair_error_already_paired": "這台設備已經配對過了，直接點「無線連接」就行。",
-    "pair_error_unreachable": "連不上那個配對端口。確認手機還停在「使用配對碼配對設備」的彈窗上，並且端口填的是彈窗裡那個。"
+    "pair_error_unreachable": "連不上那個配對端口。確認手機還停在「使用配對碼配對設備」的彈窗上，並且端口填的是彈窗裡那個。",
+    "adb_missing": "未找到 adb",
+    "adb_missing_hint": "安裝需要 adb。請在「設定 → 外部工具」裡設定 adb 路徑，或在那裡使用內建下載。",
+    "open_settings": "開啟設定",
+    "error_already_exists": "應用已安裝。請開啟「強制安裝」或先解除安裝。",
+    "error_insufficient_storage": "裝置儲存空間不足。",
+    "error_invalid_apk": "APK 無效或已損毀。",
+    "error_version_downgrade": "已安裝的版本較高。請開啟「允許降級」或先解除安裝。",
+    "error_update_incompatible": "更新與已安裝應用不相容。",
+    "error_no_matching_abis": "APK 裡沒有符合此裝置 ABI 的原生庫。",
+    "error_signature": "APK 簽名與已安裝應用不一致。請先解除安裝舊應用。",
+    "error_generic": "安裝失敗（{code}）。"
   },
   "ios_info": {
     "architectures": "架構",
@@ -488,7 +509,13 @@
     "certificate_count": "{count} 張憑證",
     "certificate_entry": "{subject}（簽發者 {issuer}）",
     "certificate_valid_until": "有效期至 {date}",
-    "certificate_material_note": "這些只是材料：只說明憑證自稱是誰簽的，不代表憑證可信，也不代表簽名有效。"
+    "certificate_material_note": "這些只是材料：只說明憑證自稱是誰簽的，不代表憑證可信，也不代表簽名有效。",
+    "profile_distribution": "分發類型",
+    "distribution_app_store": "App Store",
+    "distribution_ad_hoc": "Ad Hoc",
+    "distribution_enterprise": "企業 / 內部分發",
+    "distribution_development": "開發分發",
+    "distribution_unknown": "未知"
   },
   "report": {
     "android_section": "Android 專屬資訊",
@@ -626,7 +653,7 @@
       "ios_privacy_info_cross_check": "將聲明內容與 API 線索、隱私政策人工比對。",
       "ios_privacy_tracking_confirm_att": "確認追蹤用途與 ATT 授權流程是否符合預期。",
       "ios_url_schemes_limitation": "本次未檢查 scheme 的處理程式碼（未反組譯）；「入口存在」與「入口安全」是兩件事。",
-      "ios_scan_coverage_limitation": "掃描僅擷取可列印 ASCII 字串：dyld 共享快取裡的系統框架符號、非 ASCII 字面量以及被加密/加固的區段都會漏掉。",
+      "ios_scan_coverage_limitation": "掃描會擷取可列印 ASCII、UTF-8 Unicode 與 UTF-16（小端／大端）字串；dyld 共享快取裡的系統框架符號、Swift 小字串常數、.strings／本地化資源以及被加密／加固的區段仍會漏掉。",
       "ios_photo_library_limitation": "API 符號存在不等於執行時會呼叫；符號也可能來自未使用的框架引用。",
       "ios_rule_a_relationship": "「缺少選擇器路徑」是**靜態推斷**：選擇器也可能透過 SwiftUI 的 `PhotosPicker` 或動態載入使用，而它們不一定會留下可掃描的符號。",
       "ios_rule_a_limitation": "符號存在不等於執行時會呼叫；符號缺失也不等於功能不存在（動態載入、反射、SwiftUI 包裝）。",
@@ -638,7 +665,7 @@
       "ios_rule_e_limitation": "`UIBackgroundModes` 是**聲明**，不等於執行時的實際背景行為；未反組譯、未觀察流量。",
       "ios_rule_d_limitation": "設定允許明文不等同於實際使用明文；例外網域內的具體例外設定未展開。",
       "ios_privacy_info_limitation": "隱私清單不記錄實際行為；執行時的資料存取需依賴系統的 App Privacy Report（本版本不提供）。",
-      "ios_rule_f_limitation": "只掃描 ASCII 字串（主可執行檔 + 巢狀可執行檔）。共享 dyld 快取裡的程式碼、執行時載入的程式碼以及非 ASCII 字面量都不在覆蓋範圍內。",
+      "ios_rule_f_limitation": "掃描的是 ASCII、UTF-8 Unicode 與 UTF-16（小端／大端）字串（主執行檔 + 巢狀執行檔）。共享 dyld 快取裡的程式碼、執行時期載入的程式碼、Swift 小字串常數與 .strings／本地化資源都不在涵蓋範圍內。",
       "android_permission_uncategorized": "另有 {count} 項權限未納入風險目錄，僅作事實記錄：{names}",
       "android_permission_uncategorized_manual_review": "未編目不等於無風險：如需評估這些權限，請對照 Android 權限文件人工確認。",
       "android_permission_sdk23_conditional": "{name} 聲明於 <uses-permission-sdk-23>，只在裝置 API < 23 時授予；裝置版本無法從安裝包靜態判定。",
@@ -807,7 +834,19 @@
       "ios_repackaged_limitation": "只統計直接位於 .app 根目錄的 dylib。只改 bundle 名、或就地修改主二進位檔的重打包不會多出檔案，這裡看不到 —— 那種情況只能靠簽章結論。靜態分析也無法判斷注入的庫具體做了什麼。",
       "ios_upload_api": "代碼裡有上傳相關的實現：用於附加文件或二進制數據的 multipart/form-data 構造。這只證明「具備上傳能力」，不證明上傳了敏感數據。",
       "ios_upload_api_confirm_sink": "確認上傳的是什麼、由什麼觸發。崩潰日誌、日誌包、頭像上傳同樣走 multipart，單憑這項能力不構成發現。",
-      "verify_suspected_hint": "怎麼驗證：靜態分析到此為止。要在真機上確認，裝上之後觸發對應功能，同時用 `adb logcat`（iOS 用 Xcode 的 Devices 面板看系統日誌）觀察是否真的出現相應的網絡請求或文件讀取。這條結論說的是「這些能力同時存在」，不是「已經這樣用了」。"
+      "verify_suspected_hint": "怎麼驗證：靜態分析到此為止。要在真機上確認，裝上之後觸發對應功能，同時用 `adb logcat`（iOS 用 Xcode 的 Devices 面板看系統日誌）觀察是否真的出現相應的網絡請求或文件讀取。這條結論說的是「這些能力同時存在」，不是「已經這樣用了」。",
+      "ios_unicode_phrase": "在 Unicode 字串字面量裡命中 {count} 類中文錢包／社工話術。這些只是介面文案線索，不是風險結論：正規錢包也包含許多相同的詞。命中原文已附在證據裡。",
+      "ios_unicode_phrase_review": "結合上下文閱讀附帶的原文：是否在索取助記詞、以空投為餌、要求繳納保證金解凍資金，或引導資金歸集？下結論前請把它與簽章／官方基線、載入鏈證據一起看。",
+      "ios_unicode_phrase_limitation": "只檢查了已掃描位元組裡的 UTF-8 文字與 UTF-16 字面量。Swift 小字串常數、.strings／本地化資源、執行時期下發的文案以及 dyld 共享快取中的符號不在本次範圍內；僅憑中文措辭無法說明是否真的發生轉帳或上傳。",
+      "android_unicode_phrase": "在 DEX 字串常量裡發現 {count} 條中文錢包 / 社工話術線索。這些只是介面文案線索，不是定性：正規錢包也會包含很多相同的詞。命中的原文已作為證據附上。",
+      "android_unicode_phrase_review": "結合上下文閱讀命中的原文：它是在索要助記詞、承諾空投、要求先儲值才能解凍，還是指示歸集資金？把這條與簽名 / 官方基線、載入鏈證據放在一起再判斷意圖。",
+      "android_unicode_phrase_limitation": "只解碼了能透過 string_ids 存取的 DEX MUTF-8 字串常量；resources/、assets/、原生庫、加固或加殼層、執行時下發的文案和執行時拼接的字串都不在本次掃描範圍內。中文措辭本身不能說明是否真的發生了轉帳或上傳。",
+      "android_resource_unicode_phrase": "在資源字串中發現 {count} 條中文錢包 / 社工話術線索（檢查了 {strings} 條字串）。這些只是介面文案線索，不是定性。",
+      "android_resource_unicode_phrase_review": "結合上下文閱讀命中的原文：它是在索要助記詞、承諾空投、要求先儲值才能解凍，還是一條歸集資金的指令？把這條與簽名 / 官方基線、載入鏈證據放在一起再判斷意圖。",
+      "android_resource_unicode_phrase_limitation": "只檢查了 resources.arsc 與文字型 assets 裡的字串常量；二進位資源、原生庫、執行時下發文案與執行時拼接的字串不在掃描範圍內。",
+      "ios_strings_unicode_phrase": "在 .strings / 本地化檔案中發現 {count} 條中文錢包 / 社工話術線索（檢查了 {strings} 條候選字串）。這些只是介面文案線索，不是定性。",
+      "ios_strings_unicode_phrase_review": "結合上下文閱讀命中的原文：它是在索要助記詞、承諾空投、要求先儲值才能解凍，還是一條歸集資金的指令？把這條與簽名 / 官方基線、載入鏈證據放在一起再判斷意圖。",
+      "ios_strings_unicode_phrase_limitation": "只檢查了封存檔裡的 .strings / 本地化文字檔；Swift 小字串、二進位 plist、執行時下發文案與執行時拼接的字串不在掃描範圍內。"
     },
     "sources": {
       "photo_library": "完整相片庫（PhotoKit）",
@@ -921,7 +960,15 @@
       "record_audio_description": "錄製麥克風音訊。",
       "record_audio_risk_note": "屬於敏感資料來源：要結合錄音資料去向（是否上傳）以及有沒有可見的錄音功能判斷。錄音 + 上傳由組合規則 G 覆蓋。",
       "read_privileged_phone_state_description": "讀取特權電話狀態（signature 級權限）。",
-      "read_privileged_phone_state_risk_note": "signature 級：第三方應用拿不到這個授權，因此這條聲明**不會生效**。出現它通常說明代碼來自系統應用、抄來的樣本，或混淆產物。"
+      "read_privileged_phone_state_risk_note": "signature 級：第三方應用拿不到這個授權，因此這條聲明**不會生效**。出現它通常說明代碼來自系統應用、抄來的樣本，或混淆產物。",
+      "read_sms_description": "读取短信。",
+      "read_sms_risk_note": "高敏感数据源：短信里常有验证码与私密消息。要结合应用是否有可见的短信功能、数据最终去哪判断。",
+      "read_call_log_description": "读取通话记录。",
+      "read_call_log_risk_note": "高敏感数据源：通话记录会暴露联系人、时间与通信模式。要结合应用功能与上传行为判断。",
+      "read_calendar_description": "读取日历。",
+      "read_calendar_risk_note": "敏感数据源：日历条目会暴露日程与人际关系。单独出现不是恶意；注意与上传逻辑共现。",
+      "post_notifications_description": "发送通知（Android 13 起为运行时权限）。",
+      "post_notifications_risk_note": "大多数应用的常规权限，本身不是风险，只记录事实。"
     },
     "limitation_notes": {
       "ios_url_schemes_unreadable": "CFBundleURLTypes 讀不出來（{reason}）：註冊的 URL scheme 未覆蓋。",
@@ -929,7 +976,7 @@
       "ios_executable_over_budget": "{path} 有 {bytes} 位元組，超過 {limit} 位元組掃描預算：只掃描了前 {limit} 位元組，未覆蓋部分可能存在未被發現的線索。",
       "ios_executable_none_readable": "未能讀取任何 Mach-O 可執行檔的內容：API 使用線索無法檢查。用途說明與隱私清單結論不受影響，但不構成完整分析。",
       "ios_executable_unscanned": "{count} 個可執行檔未參與掃描（{names}）：這些檔案上的「沒發現線索」是「沒查到」，不是「沒有」。",
-      "ios_macho_scan_summary": "Mach-O 掃描共 {bytes} 位元組，且僅擷取可列印 ASCII 字串：dyld 共享快取中的符號不在覆蓋範圍內，非 ASCII 字面量也會漏掉。",
+      "ios_macho_scan_summary": "Mach-O 掃描共 {bytes} 位元組，擷取了可列印 ASCII、UTF-8 Unicode 與 UTF-16（小端／大端）字串；dyld 共享快取中的符號、Swift 小字串常數與 .strings／本地化資源不在涵蓋範圍內。",
       "ios_privacy_info_unparsable": "隱私清單存在但解析失敗：{reason}。聲明性內容無法核對。",
       "ios_privacy_info_absent": "未發現隱私清單（PrivacyInfo.xcprivacy）：這本身不是異常（僅部分應用提供），但意味著無法核對聲明的資料收集類型。",
       "ios_offline_static_analysis": "本次為離線靜態分析：未安裝、未執行、未觀察網路流量。因此不存在任何執行時證據，報告不得據此聲稱已完成行為確認。",
@@ -987,7 +1034,9 @@
       "android_signing_block_unreadable": "APK 簽章區塊讀取不到（{reason}）：v2+ 簽章方案未知，因此本次不能下「沒有簽章區塊」的結論。這不等於「簽章無效」。",
       "ios_permission_request_no_methname": "沒有任何可執行檔帶有可讀的 __objc_methname 節，因此無法判定是否主動請求權限。這不等於「沒有申請權限」。",
       "android_provider_exposed": "沒有權限的 provider 對本機任何應用程式都可達，但能否取到資料取決於它存了什麼。android:enabled=false 的 provider 也會列在這裡 —— 請看證據。",
-      "ios_reference_tables_unsupported": "類 / 選擇子引用表解不出來（{reason}），因此無法區分「程式碼引用了這個類」與「這個詞在包裏出現過」。"
+      "ios_reference_tables_unsupported": "類 / 選擇子引用表解不出來（{reason}），因此無法區分「程式碼引用了這個類」與「這個詞在包裏出現過」。",
+      "android_split_apk_partial": "這是分包安裝包。split APK 的 DEX、資源字串和原生庫已納入審計，但製品清單、載入鏈和載荷探測仍只基於 base APK 計算。",
+      "android_split_apk_cert_mismatch": "base APK 與至少一個 split APK 的簽名證書不一致。Android 通常會拒絕這種安裝組合；不要把這個包當成匹配的官方安裝集。"
     },
     "findings": "發現項",
     "sdk_categories": {
@@ -1078,7 +1127,8 @@
       "android_nativeHardening": "原生庫加固",
       "android_sdkInventory": "第三方 SDK 清單",
       "android_signature": "簽章材料",
-      "ios_machoSites": "Mach-O 調用點"
+      "ios_machoSites": "Mach-O 調用點",
+      "ios_unicodeStrings": "Unicode 字串"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 無法解析（{reason}）",
@@ -1111,7 +1161,10 @@
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 與 targetSdkVersion 都讀不到，無法推出平台對明文流量的預設策略",
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 沒能展開（資源、檔案路徑或 XML 本身讀不出來），因此未判定明文流量策略",
       "ios_macho_call_sites": "在 {total} 條選擇子 / 類引用中，{attributed} 條成功歸屬到函數（二進制共 {functions} 個函數）。「被引用」仍不等於「被調用」：ADRP+ADD 只是把地址裝進寄存器，之後傳給誰靜態看不到。 另外，類引用表（`__objc_classrefs`）主要覆蓋**應用自己的類**；系統框架類（`AVCaptureDevice`、`CNContactStore`）通常通過 `objc_msgSend` 直接調用或 `NSClassFromString` 取得，不在這一維的覆蓋範圍內。 這一維只覆蓋**實際掃描過的**可執行文件（見「可執行文件」那一維）—— 未掃描的二進制裡的引用不在分母內。",
-      "ios_macho_call_sites_unavailable": "沒有任何選擇子引用能歸屬到函數（沒有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令對，或缺少 LC_FUNCTION_STARTS）。線索只報「被引用」，不報「被調用」。"
+      "ios_macho_call_sites_unavailable": "沒有任何選擇子引用能歸屬到函數（沒有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令對，或缺少 LC_FUNCTION_STARTS）。線索只報「被引用」，不報「被調用」。",
+      "ios_unicode_strings_scope": "已檢查可執行檔位元組中的 UTF-8 文字與 UTF-16（小端／大端）字面量；Swift 小字串常數、.strings／本地化資源以及 dyld 共享快取中的符號不在可見範圍內。",
+      "ios_unicode_strings_truncated": "部分可執行檔超出掃描預算或 __ustring 節上限，其後的 Unicode 字串未被檢查。",
+      "ios_unicode_strings_no_content": "沒有可執行檔內容可供 Unicode 字串掃描。"
     }
   },
   "diff": {
@@ -1231,5 +1284,51 @@
     "ios_info_plist_unparsable": "{path} 解析失敗：{message}",
     "ios_info_plist_not_a_dict": "{path} 的根是 {actual}，期望字典",
     "ios_info_plist_parsed": "已解析 {path}（{keys} 個鍵）"
+  },
+  "theft": {
+    "chain_title": "證據鏈",
+    "level_capability": "能力線索",
+    "level_suspicious": "疑似關聯",
+    "level_strong": "強證據",
+    "level_unknown": "無法判斷",
+    "score": "證據完整度",
+    "stage_capability": "能力",
+    "stage_source": "來源",
+    "stage_injection": "注入",
+    "stage_payload": "載荷",
+    "stage_family": "官方基線",
+    "stage_supported": "已支撐",
+    "stage_missing": "缺失",
+    "missing_title": "缺失環節",
+    "missing_noCapability": "未發現錢包 / 密鑰 / 剪貼板能力",
+    "missing_noSource": "未發現地址或密鑰的輸入來源",
+    "missing_noInjection": "未發現動態載入 / 注入證據",
+    "missing_noPayload": "未發現可疑載荷",
+    "missing_shellPacked": "關鍵內容被加殼 / 加密，無法讀取",
+    "missing_noBaseline": "此包未命中已維護的官方基線",
+    "baseline_match": "與官方基線一致",
+    "baseline_mismatch": "與官方基線不一致",
+    "baseline_none": "無官方基線條目",
+    "baseline_unavailable": "官方基線不可用",
+    "next_title": "下一步",
+    "next_clipboard": "匯出去重後的地址清單",
+    "next_signature": "核對簽名 / 密封結論",
+    "next_official": "與官方渠道包比對",
+    "not_a_verdict": "這是靜態證據，不是惡意定性。",
+    "seal_title": "密封校驗",
+    "seal_verified": "一致",
+    "seal_mismatch": "不一致",
+    "seal_entry_missing": "密封條目缺失",
+    "seal_unsealed": "無密封清單",
+    "seal_not_checked": "未校驗",
+    "seal_unknown": "無法判斷",
+    "seal_checked": "已校驗 {checked}/{total}",
+    "baseline_title": "官方基線",
+    "seal_mismatch_message": "密封不一致：{path}（期望 {expected}，實際 {actual}）。",
+    "seal_mismatch_review": "在重新簽名或與官方基線核對之前，按篡改處理。",
+    "seal_mismatch_limitation": "摘要不一致只能證明內容與密封記錄不同，不能說明改了什麼、誰改的。",
+    "baseline_mismatch_message": "官方基線不一致：{packageId}（期望 {expected}，實際 {actual}）。",
+    "baseline_mismatch_review": "在信任這個包之前，與官方渠道包或官方公布的指紋核對。",
+    "baseline_mismatch_limitation": "基線不一致只說明包身份/指紋與記錄不同，本身不能證明惡意。"
   }
 }

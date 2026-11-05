@@ -57,6 +57,9 @@ lib/gen
 # OMC
 .omc
 
+# Local code-graph index (generated, 35 MB in this checkout; not a deliverable).
+.codegraph/
+
 # 应用包样本：体积大、且属于用户数据，不进版本库。
 # 集成测试用 APPINFOTOOL_SAMPLES 指向存放样本的目录。
 *.apk

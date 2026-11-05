@@ -418,12 +418,41 @@ void main() {
       expect(succeeded.first.analysis.mainApp!.path, 'Payload/Example.app');
     });
 
-    test('成功事件是最后一个事件', () async {
+    test('两阶段：静态成功先到，安全结果最后到', () async {
       final path = await writeIpa(_ipa());
       final task = await IpaParseTask.start(path);
 
       final events = await task.events.toList();
+      final successIndex =
+          events.indexWhere((event) => event is IpaParseSucceeded);
+      final securityIndex =
+          events.indexWhere((event) => event is IpaSecurityReady);
+
+      expect(successIndex, greaterThanOrEqualTo(0));
+      expect(securityIndex, greaterThan(successIndex));
+      expect(events.last, isA<IpaSecurityReady>());
+      expect(events.whereType<IpaParseSucceeded>(), hasLength(1));
+      expect(
+        events.whereType<IpaParseSucceeded>().single.analysis.security,
+        isNull,
+      );
+      expect(
+        events.whereType<IpaSecurityReady>().single.security,
+        isNotNull,
+      );
+    });
+
+    test('关闭安全审计时成功事件仍是最后一个事件', () async {
+      final path = await writeIpa(_ipa());
+      final task = await IpaParseTask.start(path, securityAudit: false);
+
+      final events = await task.events.toList();
       expect(events.last, isA<IpaParseSucceeded>());
+      expect(events.whereType<IpaSecurityReady>(), isEmpty);
+      expect(
+        events.whereType<IpaParseSucceeded>().single.analysis.security,
+        isNull,
+      );
     });
 
     test('不是 ZIP 的文件被归类为 notArchive，而不是「解析失败」', () async {

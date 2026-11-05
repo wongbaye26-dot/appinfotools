@@ -477,8 +477,8 @@ void main() {
   group('覆盖维度的呈现（COV-1 / COV-2 回归）', () {
     /// 引擎实际会产出的全部维度 id。
     ///
-    /// 取自两个审计引擎：`android_security_audit.dart` 8 个、
-    /// `ios_privacy_audit.dart` 7 个。**故意写死在这里** —— 新增维度时
+    /// 取自两个审计引擎的维度清单（Android 8 个、iOS 侧含新增的
+    /// `ios.unicodeStrings`）。**故意写死在这里** —— 新增维度时
     /// 这条断言会红，提醒补文案，而不是悄悄显示成机器标识。
     const allDimensionIds = <String>[
       'android.manifest',
@@ -494,6 +494,7 @@ void main() {
       'ios.privacyManifest',
       'ios.executables',
       'ios.macho.strings',
+      'ios.unicodeStrings',
       'ios.nativeSymbols',
       'ios.signature',
     ];

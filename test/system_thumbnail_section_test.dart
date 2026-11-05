@@ -20,6 +20,7 @@ SystemThumbnailStatus _status({
   bool dllPresent = true,
   bool helperPresent = true,
   bool registered = false,
+  bool machineWideRegistered = false,
   String dllPath = r'C:\App\appinfotool_thumbnail.dll',
   String registeredPath = '',
   List<ThumbnailExtensionStatus> extensions = const [
@@ -34,6 +35,7 @@ SystemThumbnailStatus _status({
       usable: dllPresent && helperPresent && registered,
       dllPath: dllPath,
       registeredPath: registeredPath,
+      machineWideRegistered: machineWideRegistered,
       extensions: extensions,
     );
 
@@ -173,6 +175,27 @@ void main() {
       expect(find.text(t.settings.system_icon.state_usable), findsOneWidget);
       expect(find.text(t.settings.system_icon.disable), findsOneWidget);
       expect(find.text(t.settings.system_icon.refresh), findsOneWidget);
+    });
+
+    testWidgets('机器级注册：显示 HKLM 警告，不显示成“可停用成功”', (tester) async {
+      await _pumpSection(
+        tester,
+        status: _status(
+          registered: true,
+          machineWideRegistered: true,
+          registeredPath: r'C:\App\appinfotool_thumbnail.dll',
+          extensions: const [
+            ThumbnailExtensionStatus(
+                extension: '.apk', registered: true, machineWide: true),
+          ],
+        ),
+      );
+
+      expect(find.text(t.settings.system_icon.machine_wide), findsOneWidget);
+      expect(
+        find.text(t.settings.system_icon.machine_wide_detail),
+        findsOneWidget,
+      );
     });
 
     testWidgets('DLL 缺失：说清缺的是 DLL，不出现「尚未启用」', (tester) async {

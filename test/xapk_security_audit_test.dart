@@ -105,6 +105,50 @@ void main() {
     });
   });
 
+  group('split DEX 纳入审计', () {
+    test('base + split 的 DEX 都进入 android.dex.structure 覆盖', () async {
+      final dir = Directory.systemTemp.createTempSync('xapk_split_dex');
+      addTearDown(() {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+      final fixture = File('test/fixtures/xapk/xapk-fixture.xapk');
+      final outer = ZipDecoder().decodeBytes(fixture.readAsBytesSync());
+      final manifestJson = outer.findFile('manifest.json')!;
+      final baseOriginal = outer.findFile('com.example.xapkfixture.apk')!;
+      final splitOriginal = outer.findFile('config.fr.apk')!;
+      final dex = File('test/fixtures/dex/real-netprobe.dex').readAsBytesSync();
+
+      Archive addDex(ArchiveFile source) {
+        final sourceZip = ZipDecoder().decodeBytes(source.content as List<int>);
+        final rebuilt = Archive();
+        for (final f in sourceZip.files) {
+          rebuilt.addFile(ArchiveFile(f.name, f.size, f.content as List<int>));
+        }
+        rebuilt.addFile(ArchiveFile('classes.dex', dex.length, dex));
+        return rebuilt;
+      }
+
+      final baseBytes = ZipEncoder().encode(addDex(baseOriginal));
+      final splitBytes = ZipEncoder().encode(addDex(splitOriginal));
+      final xapk = Archive()
+        ..addFile(ArchiveFile('manifest.json', manifestJson.size,
+            manifestJson.content as List<int>))
+        ..addFile(ArchiveFile('base.apk', baseBytes.length, baseBytes))
+        ..addFile(
+            ArchiveFile('split_config.dex.apk', splitBytes.length, splitBytes));
+      final xapkPath = path.join(dir.path, 'split-dex.xapk');
+      File(xapkPath).writeAsBytesSync(ZipEncoder().encode(xapk));
+
+      final info = await getApkInfo(xapkPath);
+      expect(info, isNotNull);
+      final security = info!.securityResult;
+      expect(security, isNotNull);
+      final coverage = security!.coverage.entry('android.dex.structure');
+      expect(coverage, isNotNull);
+      expect(coverage!.limit, 2, reason: 'base + split 两份 DEX 都要计入');
+    });
+  });
+
   group('分包一致性校验（阶段 2）', () {
     /// 造一个含 base.apk + 若干无法解析的分包的 XAPK。
     File makeXapkWithSplits(Directory dir, int splitCount) {

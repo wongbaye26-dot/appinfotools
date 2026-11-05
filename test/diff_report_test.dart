@@ -307,7 +307,7 @@ void main() {
       // 单文件报告本轮从 4 升到 5（JSON 新增 `fieldStatus`，见
       // `report_format_consistency_test.dart`）；`DiffReport.schemaVersion`
       // 仍是 1 —— 这条测试要守的正是「升了一个不会连带另一个」。
-      expect(AnalysisReport.reportSchemaVersion, 7);
+      expect(AnalysisReport.reportSchemaVersion, 8);
       expect(DiffReport.schemaVersion, 1);
     });
   });

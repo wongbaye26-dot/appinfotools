@@ -54,7 +54,12 @@ class IosReferenceTables {
   bool get isEmpty => selectors.isEmpty && classes.isEmpty;
 
   /// 解析一个镜像的引用表。
-  static IosReferenceTables resolve(Uint8List file, MachOImage image) {
+  static IosReferenceTables resolve(
+    Uint8List file,
+    MachOImage image, {
+    void Function(String stage)? onStage,
+  }) {
+    onStage?.call('resolve:start');
     final selrefs = _section(file, image, '__DATA', '__objc_selrefs') ??
         _section(file, image, '__DATA_CONST', '__objc_selrefs');
     final classrefs = _section(file, image, '__DATA', '__objc_classrefs') ??
@@ -65,7 +70,9 @@ class IosReferenceTables {
       );
     }
 
+    onStage?.call('resolve:sections');
     final fixups = image.chainedFixups;
+    onStage?.call('resolve:fixups');
     if (fixups == null) {
       return const IosReferenceTables(
         failure: 'no LC_DYLD_CHAINED_FIXUPS (pre-iOS 13 binary)',
@@ -73,6 +80,7 @@ class IosReferenceTables {
     }
 
     final decode = _PointerDecoder(file, image, fixups);
+    onStage?.call('resolve:decoder');
     if (decode.format == null) {
       return IosReferenceTables(failure: decode.unsupportedReason);
     }
@@ -117,7 +125,9 @@ class IosReferenceTables {
     }
 
     if (selrefs != null) collect(selrefs, selectors);
+    onStage?.call('resolve:selectors');
     if (classrefs != null) collect(classrefs, classes);
+    onStage?.call('resolve:classes');
 
     return IosReferenceTables(
       selectors: selectors,

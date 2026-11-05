@@ -126,6 +126,12 @@ class IosCallSiteScanner {
   /// 每个选择子最多保留几条证据样例。
   static const int maxSamplesPerSelector = 3;
 
+  /// 每个选择子最多保留多少个函数归属。
+  ///
+  /// 高频选择子（`init`、`isKindOfClass:`）可能有成千上万个调用点；
+  /// 全存函数地址只会抬高内存，UI 只展示样例，计数用精确值即可。
+  static const int maxRetainedFunctionsPerSelector = 32;
+
   /// 扫描一个 Mach-O 镜像。
   ///
   /// [file] 是整个文件字节，[image] 是其中的一个切片。
@@ -215,7 +221,8 @@ class IosCallSiteScanner {
     // 「按寄存器回溯」后覆盖率显著上升，而且仍然是线性扫描、不需要反汇编。
     // 按**名字**聚合（不是按槽位）：同一张表里槽位唯一，但 stub 那条路
     // 拿到的也是名字，两边要合并。
-    final hits = <String, List<int>>{};
+    final hits = <String, _SelectorHits>{};
+    final starts = image.functionStarts;
     final adrpOffset = List<int>.filled(32, -1);
     for (var offset = 0; offset + 4 <= scanLength; offset += 4) {
       final insn = _u32(textBytes, offset);
@@ -242,7 +249,21 @@ class IosCallSiteScanner {
       final slot = (target - base) ~/ 8;
       final name = selectorOfSlot[slot];
       if (name == null) continue;
-      (hits[name] ??= <int>[]).add(text.address + offset);
+      final hit = hits.putIfAbsent(name, _SelectorHits.new);
+      hit.count++;
+      final address = text.address + offset;
+      final function = _functionOf(starts, address);
+      if (function == null) continue;
+      hit.attributed++;
+      if (hit.functions.length < maxRetainedFunctionsPerSelector) {
+        hit.functions.add(function);
+      }
+      if (hit.samples.length < maxSamplesPerSelector) {
+        hit.samples.add(
+          '0x${function.toRadixString(16)} '
+          '+0x${(address - function).toRadixString(16)}',
+        );
+      }
     }
 
     // ---- 2b. `__objc_stubs`：试过，不划算 ----
@@ -257,44 +278,19 @@ class IosCallSiteScanner {
     // 真要提召回率，得先确认目标二进制确实用了 stubs，再考虑把 `BL` 检查
     // 融进主循环（避免二次扫描）。
 
-    // ---- 3. 归属到函数 ----
+    // ---- 3. 输出 ----
     var totalReferences = 0;
-    for (final list in hits.values) {
-      totalReferences += list.length;
-    }
-    final starts = image.functionStarts;
-    final bySelector = <String, IosSelectorCallSite>{};
     var attributed = 0;
-    final perSelector = <String, List<int>>{};
+    final bySelector = <String, IosSelectorCallSite>{};
     for (final entry in hits.entries) {
-      for (final address in entry.value) {
-        final function = _functionOf(starts, address);
-        if (function == null) continue;
-        attributed++;
-        (perSelector[entry.key] ??= <int>[]).add(address);
-      }
-    }
-
-    for (final entry in perSelector.entries) {
-      final addresses = entry.value..sort();
-      final functions = <int>{};
-      final samples = <String>[];
-      for (final address in addresses) {
-        final function = _functionOf(starts, address);
-        if (function == null) continue;
-        functions.add(function);
-        if (samples.length < maxSamplesPerSelector) {
-          samples.add(
-            '0x${function.toRadixString(16)} '
-            '+0x${(address - function).toRadixString(16)}',
-          );
-        }
-      }
+      final hit = entry.value;
+      totalReferences += hit.count;
+      attributed += hit.attributed;
       bySelector[entry.key] = IosSelectorCallSite(
         selector: entry.key,
-        callSites: addresses.length,
-        functions: functions,
-        samples: samples,
+        callSites: hit.count,
+        functions: hit.functions,
+        samples: hit.samples,
       );
     }
 
@@ -563,4 +559,11 @@ class IosCallSiteScanner {
     if (bytes.isEmpty) return null;
     return String.fromCharCodes(bytes);
   }
+}
+
+class _SelectorHits {
+  int count = 0;
+  int attributed = 0;
+  final Set<int> functions = {};
+  final List<String> samples = [];
 }

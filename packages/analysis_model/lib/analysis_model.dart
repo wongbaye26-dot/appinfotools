@@ -9,11 +9,18 @@
 // - `AnalysisDiagnostic`：解析过程中的诊断记录
 // - `SignatureStatus`：受信任工具给出的签名验证结论（Android 与 iOS 共用）
 // - `SecurityFinding` 等：安全检测引擎的平台中立发现项模型
-// - `AsciiStrings`：二进制 ASCII 字符串提取（Android 与 iOS 的安全扫描共用）
+// - `AsciiStrings` / `Utf8Strings` / `Utf16Strings`：二进制字符串提取
+//   （Android 与 iOS 的安全扫描共用；后两者覆盖非 ASCII 字面量）
 
 export 'src/ascii_strings.dart';
+export 'src/utf8_strings.dart';
+// 平台中立的中文话术词表（Android DEX / iOS Unicode 扫描共用）。
+export 'src/unicode_phrases.dart';
 export 'src/diagnostic.dart';
 export 'src/field_value.dart';
+export 'src/official_baseline.dart';
+export 'src/package_seal.dart';
+export 'src/utf16_strings.dart';
 export 'src/security_finding.dart';
 export 'src/crypto_address.dart';
 export 'src/signature_status.dart';
@@ -23,3 +30,7 @@ export 'src/network_facts.dart';
 export 'src/network_endpoints.dart';
 export 'src/split_consistency.dart';
 export 'src/package_diff.dart';
+export 'src/container_facts.dart';
+export 'src/artifact_inventory.dart';
+export 'src/load_graph.dart';
+export 'src/crypto_theft.dart';

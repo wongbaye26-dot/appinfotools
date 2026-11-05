@@ -7,12 +7,16 @@ class ThumbnailExtensionStatus {
   /// 扩展名，含点（`.apk`）。
   final String extension;
 
-  /// 该扩展名下是否挂着**我们的** CLSID。
+  /// 该扩展名下是否挂着**我们的** CLSID（HKCU）。
   final bool registered;
+
+  /// 该扩展名是否在 HKLM 下也挂着（安装版旧行为）。
+  final bool machineWide;
 
   const ThumbnailExtensionStatus({
     required this.extension,
     required this.registered,
+    this.machineWide = false,
   });
 }
 
@@ -53,6 +57,12 @@ class SystemThumbnailStatus {
   /// 注册表里**实际**记录的路径（可能指向旧目录，也可能为空）。
   final String registeredPath;
 
+  /// 是否存在机器级（HKLM）缩略图注册。
+  ///
+  /// 应用停用只删 HKCU；旧安装版写在 HKLM 时，Explorer 仍会调用处理器。
+  /// 这个字段让界面能明确说“机器级注册还在，需要管理员清理”。
+  final bool machineWideRegistered;
+
   /// 逐扩展名的注册状态。
   ///
   /// 分开报告而不是一个总开关：`.apk` 挂上了、`.ipa` 没挂上时，
@@ -67,6 +77,7 @@ class SystemThumbnailStatus {
     required this.dllPath,
     required this.registeredPath,
     required this.extensions,
+    this.machineWideRegistered = false,
   });
 
   /// 尚未查询过（或非 Windows）时的空状态。
@@ -79,6 +90,7 @@ class SystemThumbnailStatus {
         usable = false,
         dllPath = '',
         registeredPath = '',
+        machineWideRegistered = false,
         extensions = const [];
 
   /// 注册的路径与当前 DLL 不一致 —— 最典型的是「安装目录被移动/重命名」。
@@ -218,6 +230,7 @@ class SystemThumbnailManager {
             extensions.add(ThumbnailExtensionStatus(
               extension: ext,
               registered: entry['registered'] == true,
+              machineWide: entry['machineWide'] == true,
             ));
           }
         }
@@ -231,6 +244,7 @@ class SystemThumbnailManager {
       usable: flag('usable'),
       dllPath: text('dllPath'),
       registeredPath: text('registeredPath'),
+      machineWideRegistered: flag('machineWideRegistered'),
       extensions: extensions,
     );
   }

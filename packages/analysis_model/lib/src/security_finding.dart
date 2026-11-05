@@ -16,7 +16,10 @@
 library;
 
 import 'analysis_coverage.dart';
+import 'crypto_theft.dart';
 import 'network_facts.dart';
+import 'official_baseline.dart';
+import 'package_seal.dart';
 
 /// 平台。
 enum SecurityPlatform {
@@ -202,6 +205,21 @@ enum SecurityEvidenceSource {
   /// 运行时观察（本版本不产出，枚举先行占位）。
   runtime,
 
+  /// 制品清单条目（路径 / 类型 / 来源）。
+  artifactEntry,
+
+  /// 加载链边（谁加载了谁、目标是否在包内）。
+  loadGraph,
+
+  /// 密封摘要比对（APK v1/v2、iOS CodeResources）。
+  sealDigest,
+
+  /// 离线家族情报命中（本版本 deferred，枚举先占位）。
+  iocDatabase,
+
+  /// 官方包基线（证书 / Team 指纹）。
+  officialBaseline,
+
   /// 其它 / 未能归类。
   other;
 
@@ -219,6 +237,11 @@ enum SecurityEvidenceSource {
         SecurityEvidenceSource.zipEntry => 'archive entry',
         SecurityEvidenceSource.provisioning => 'provisioning / entitlements',
         SecurityEvidenceSource.runtime => 'runtime observation',
+        SecurityEvidenceSource.artifactEntry => 'artifact inventory',
+        SecurityEvidenceSource.loadGraph => 'load graph',
+        SecurityEvidenceSource.sealDigest => 'seal digest',
+        SecurityEvidenceSource.iocDatabase => 'threat intel (deferred)',
+        SecurityEvidenceSource.officialBaseline => 'official baseline',
         SecurityEvidenceSource.other => 'other',
       };
 }
@@ -374,6 +397,12 @@ class SecurityFinding {
   /// **不要用它来隐藏风险**，只用来区分「发现」与「我们查了什么」。
   final bool isMeta;
 
+  /// 本次**没能看清**的范围（稳定 code，例如 `dexPartial` / `nativePacked`）。
+  ///
+  /// 与 [limitation] 的自由文本分开：这是给程序读的，UI/报告用它决定是否
+  /// 把结论标成「不完整」。空列表表示没有已知盲区，**不是** `null`。
+  final List<String> blindSpots;
+
   const SecurityFinding({
     required this.ruleId,
     required this.platform,
@@ -397,6 +426,7 @@ class SecurityFinding {
     this.limitationCode,
     this.limitationArgs = const {},
     this.isMeta = false,
+    this.blindSpots = const [],
   });
 
   /// 去掉**本 finding 内**完全相同的证据条目，返回新的 finding。
@@ -438,6 +468,8 @@ class SecurityFinding {
       relationshipArgs: relationshipArgs,
       limitationCode: limitationCode,
       limitationArgs: limitationArgs,
+      isMeta: isMeta,
+      blindSpots: blindSpots,
     );
   }
 
@@ -511,6 +543,18 @@ class SecurityAnalysisResult {
   /// **空表示本次没有提取到（或没有做这一步）**，不表示「没有网络行为」。
   final NetworkFacts network;
 
+  /// 盗 U 证据链评估；`null` = 本次没做/该路径未接入（不是「没有风险」）。
+  ///
+  /// 与 [findings] 并列而不是藏在某条 finding 里：UI/报告要能回答
+  /// 「五段链走到哪、缺哪一环」，而不必解析单一发现的自由文本。
+  final CryptoTheftAssessment? cryptoTheft;
+
+  /// 密封/完整性校验；`null` = 本次未做（不是「密封正常」）。
+  final SealCheck? seal;
+
+  /// 官方基线匹配；`null` = 未做/无基线库。
+  final BaselineMatch? baseline;
+
   const SecurityAnalysisResult({
     required this.engineVersion,
     required this.rulesVersion,
@@ -519,6 +563,9 @@ class SecurityAnalysisResult {
     this.includesRuntimeEvidence = false,
     this.coverage = const AnalysisCoverage(),
     this.network = const NetworkFacts(),
+    this.cryptoTheft,
+    this.seal,
+    this.baseline,
   });
 
   /// 各等级发现数量。
@@ -544,6 +591,9 @@ class SecurityAnalysisResult {
       includesRuntimeEvidence: includesRuntimeEvidence,
       coverage: coverage,
       network: network,
+      cryptoTheft: cryptoTheft,
+      seal: seal,
+      baseline: baseline,
     );
   }
 

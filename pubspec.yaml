@@ -4,7 +4,7 @@ homepage: https://feng.to
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
 # Git release 时会自动从tag同步
-version: 2.8.7
+version: 2.9.0
 
 environment:
   sdk: ">=3.0.6 <4.0.0"
@@ -73,6 +73,7 @@ flutter:
   # README 用的图片放在 docs/assets/ 下，不进包。
   assets:
     - assets/image/icon.png
+    - assets/baseline/official_baseline_v1.json
 
 # 安装包不再由 `inno_bundle` 生成，脚本在 `windows/installer/appinfotool.iss`
 # 自己维护（CI 直接调 ISCC）。原因见那份文件头：它的生成器把「安装目录页 /

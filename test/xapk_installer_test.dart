@@ -49,6 +49,49 @@ void main() {
     if (tmp.existsSync()) await tmp.delete(recursive: true);
   });
 
+  test('XAPK 安装失败输出能提取 INSTALL_FAILED 码', () {
+    final installer = XapkInstaller()
+      ..lastOutput = 'Failure [INSTALL_FAILED_ALREADY_EXISTS: ...]';
+    expect(installer.lastFailureCode, 'INSTALL_FAILED_ALREADY_EXISTS');
+  });
+
+  group('APKS toc.pb 优先于目录枚举', () {
+    List<int> varint(int v) {
+      final out = <int>[];
+      while (v >= 0x80) {
+        out.add((v & 0x7f) | 0x80);
+        v >>= 7;
+      }
+      out.add(v);
+      return out;
+    }
+
+    List<int> tocBytes(List<String> paths) {
+      final out = <int>[];
+      for (final path in paths) {
+        final p = utf8.encode(path);
+        final entry = <int>[0x0a, ...varint(p.length), ...p];
+        out
+          ..add(0x0a)
+          ..addAll(varint(entry.length))
+          ..addAll(entry);
+      }
+      return out;
+    }
+
+    test('toc.pb 列出的分包优先，universal 不进入默认清单', () async {
+      final toc = tocBytes(['base.apk', 'split_config.arm64_v8a.apk']);
+      final apks = Archive()
+        ..addFile(ArchiveFile('toc.pb', toc.length, toc))
+        ..addFile(_entry('base.apk', 'base'))
+        ..addFile(_entry('split_config.arm64_v8a.apk', 'split'))
+        ..addFile(_entry('universal.apk', 'universal'));
+      final path = await _writeZip(tmp, 'app.apks', apks);
+      final splits = await XapkInstaller().getSplitApks(path);
+      expect(splits, ['base.apk', 'split_config.arm64_v8a.apk']);
+    });
+  });
+
   // -------------------------------------------------------------------
   // 接线：每个解包点都必须过守卫
   // -------------------------------------------------------------------

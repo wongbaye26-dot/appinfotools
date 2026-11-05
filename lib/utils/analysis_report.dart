@@ -7,7 +7,8 @@ import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
-import 'package:ipa_parser/ipa_parser.dart' show IosAuthorizationVerdict;
+import 'package:ipa_parser/ipa_parser.dart'
+    show IosAuthorizationVerdict, IosIconConfiguration;
 import 'package:path/path.dart' as path;
 
 /// 把统一分析结果渲染成一份可读、可归档的报告。
@@ -235,6 +236,14 @@ class AnalysisReport {
     _row(sb, t.apk_info.target_sdk, android.targetSdkVersion);
     _row(sb, t.apk_info.max_sdk, android.maxSdkVersion);
     _row(sb, t.apk_info.debuggable, android.debuggable);
+    _row(sb, t.apk_info.archive_type, android.archiveType);
+    _row(sb, t.apk_info.abi, android.nativeCodes);
+    _row(sb, t.apk_info.languages, android.locales);
+    _row(sb, t.apk_info.screen_density, android.densities);
+    _row(sb, t.apk_info.screen_size, android.supportsScreens);
+    _row(sb, t.apk_info.split_apks, android.splitApks);
+    _row(sb, t.apk_info.obb_files, android.obbFiles);
+    _row(sb, t.apk_info.icp_filing, android.icpFiling);
     // 组件在表格里**只写数量**：下面有「### 组件 (N)」把每一条完整列出。
     //
     // 此前这里用 `<br>` 把 18 个组件拼进单元格，紧接着又列一遍 —— 一份 274 行的
@@ -327,6 +336,11 @@ class AnalysisReport {
             : null);
     _row(sb, t.ios_info.queries_schemes, ios.queriesSchemes);
     _row(sb, t.ios_info.required_capabilities, ios.requiredDeviceCapabilities);
+    _row(sb, t.ios_info.url_schemes, ios.urlSchemes);
+    _row(sb, t.ios_info.background_modes, ios.backgroundModes);
+    _row(sb, t.ios_info.icon_section, ios.icons,
+        displayValue:
+            ios.icons.hasValue ? _iconConfigSummary(ios.icons.value!) : null);
 
     if (ios.unavailableReason != null) {
       sb
@@ -493,6 +507,18 @@ class AnalysisReport {
 
     _capabilityOverview(sb, security.findings, t);
 
+    if (security.cryptoTheft case final assessment?) {
+      _cryptoTheftSection(sb, assessment, t);
+    }
+
+    if (security.seal case final seal?) {
+      _sealSection(sb, seal, t);
+    }
+
+    if (security.baseline case final baseline?) {
+      _baselineSection(sb, baseline, t);
+    }
+
     for (final finding in security.findings) {
       sb.writeln('### ${finding.ruleId} [${finding.severity.name}]');
       sb.writeln();
@@ -545,6 +571,149 @@ class AnalysisReport {
       sb.writeln();
     }
   }
+
+  /// Markdown 的「盗 U 风险」小节。
+  ///
+  /// 与 JSON 的 `security.cryptoTheft` 同源：五段链、缺失环节、基线状态、
+  /// 下一步动作都来自同一个 [CryptoTheftAssessment]，不在报告里重新判级。
+  static void _cryptoTheftSection(
+    StringBuffer sb,
+    CryptoTheftAssessment assessment,
+    Translations t,
+  ) {
+    sb
+      ..writeln('## ${t.security.crypto_risk.title}')
+      ..writeln();
+    sb.writeln('- **${t.theft.chain_title}:** '
+        '${assessment.level.label} '
+        '(${assessment.severity.name}/${assessment.confidence.name})');
+    if (assessment.score != null) {
+      sb.writeln('- **${t.theft.score}:** '
+          '${assessment.score}/100');
+    }
+    sb.writeln('- ${t.theft.not_a_verdict}');
+    sb.writeln();
+    sb
+      ..writeln('### ${t.theft.chain_title}')
+      ..writeln();
+    for (final entry in assessment.chain) {
+      final supported =
+          entry.supported ? t.theft.stage_supported : t.theft.stage_missing;
+      sb.writeln('- **${_stageLabel(entry.stage, t)}:** $supported');
+      if (entry.ruleIds.isNotEmpty) {
+        sb.writeln('  - rules: ${entry.ruleIds.join(', ')}');
+      }
+      if (entry.evidence.isNotEmpty) {
+        for (final ev in entry.evidence.take(3)) {
+          sb.writeln('  - ${ev.source.name} (${locationText(ev, t)}): '
+              '${detailText(ev, t)}');
+        }
+      }
+    }
+    if (assessment.missing.isNotEmpty) {
+      sb
+        ..writeln()
+        ..writeln('### ${t.theft.missing_title}')
+        ..writeln();
+      for (final missing in assessment.missing) {
+        sb.writeln('- ${_stageLabel(missing.stage, t)}: '
+            '${_missingLabel(missing.whyCode, t)}');
+      }
+    }
+    sb
+      ..writeln()
+      ..writeln('### ${t.theft.stage_family}')
+      ..writeln();
+    final baseline = assessment.baselineEntryId;
+    sb.writeln(
+        '- ${baseline == null ? t.theft.baseline_none : '${t.theft.baseline_match} ($baseline)'}');
+    sb
+      ..writeln()
+      ..writeln('### ${t.theft.next_title}')
+      ..writeln();
+    sb.writeln('- ${t.theft.next_clipboard}');
+    sb.writeln('- ${t.theft.next_signature}');
+    sb.writeln('- ${t.theft.next_official}');
+    sb.writeln();
+  }
+
+  static String _stageLabel(ChainStage stage, Translations t) =>
+      switch (stage) {
+        ChainStage.capability => t.theft.stage_capability,
+        ChainStage.source => t.theft.stage_source,
+        ChainStage.injection => t.theft.stage_injection,
+        ChainStage.payload => t.theft.stage_payload,
+        ChainStage.family => t.theft.stage_family,
+      };
+
+  static String _missingLabel(String whyCode, Translations t) =>
+      switch (whyCode) {
+        'missing.noCapability' => t.theft.missing_noCapability,
+        'missing.noSource' => t.theft.missing_noSource,
+        'missing.noInjection' => t.theft.missing_noInjection,
+        'missing.noPayload' => t.theft.missing_noPayload,
+        'missing.shellPacked' => t.theft.missing_shellPacked,
+        'missing.noBaseline' => t.theft.missing_noBaseline,
+        final other => other,
+      };
+
+  /// Markdown 的密封校验小节。
+  static void _sealSection(StringBuffer sb, SealCheck seal, Translations t) {
+    sb
+      ..writeln('### ${t.theft.seal_title}')
+      ..writeln();
+    sb.writeln('- **${t.report.column_status}:** ${_sealLabel(seal.state, t)} '
+        '(${t.theft.seal_checked(checked: seal.entriesChecked, total: seal.entriesTotal)})');
+    for (final check in seal.checks.take(5)) {
+      if (check.state == SealState.verified) continue;
+      sb.writeln('- `${check.path}`: ${_sealLabel(check.state, t)} '
+          '(${check.algorithm})');
+    }
+    if (seal.noteCodes.isNotEmpty) {
+      sb.writeln('- ${seal.noteCodes.join(', ')}');
+    }
+    sb.writeln();
+  }
+
+  static String _sealLabel(SealState state, Translations t) => switch (state) {
+        SealState.verified => t.theft.seal_verified,
+        SealState.mismatch => t.theft.seal_mismatch,
+        SealState.entryMissing => t.theft.seal_entry_missing,
+        SealState.unsealed => t.theft.seal_unsealed,
+        SealState.notChecked => t.theft.seal_not_checked,
+        SealState.unknown => t.theft.seal_unknown,
+      };
+
+  /// Markdown 的官方基线小节。
+  static void _baselineSection(
+    StringBuffer sb,
+    BaselineMatch baseline,
+    Translations t,
+  ) {
+    sb
+      ..writeln('### ${t.theft.baseline_title}')
+      ..writeln();
+    sb.writeln('- **${t.report.column_status}:** '
+        '${_baselineLabel(baseline.status, t)}'
+        '${baseline.entryId == null ? '' : ' (${baseline.entryId})'}');
+    if (baseline.expectedFingerprintPrefixes.isNotEmpty) {
+      sb.writeln('- expected: '
+          '${baseline.expectedFingerprintPrefixes.join(', ')}');
+      sb.writeln('- actual: ${baseline.actualFingerprintPrefixes.join(', ')}');
+    }
+    if (baseline.noteCodes.isNotEmpty) {
+      sb.writeln('- ${baseline.noteCodes.join(', ')}');
+    }
+    sb.writeln();
+  }
+
+  static String _baselineLabel(BaselineStatus status, Translations t) =>
+      switch (status) {
+        BaselineStatus.match => t.theft.baseline_match,
+        BaselineStatus.mismatch => t.theft.baseline_mismatch,
+        BaselineStatus.noBaseline => t.theft.baseline_none,
+        BaselineStatus.unavailable => t.theft.baseline_unavailable,
+      };
 
   /// 明确列出**没做的检查**。
   ///
@@ -776,6 +945,7 @@ class AnalysisReport {
       'ios.privacyManifest' => d.ios_privacyManifest,
       'ios.executables' => d.ios_executables,
       'ios.macho.strings' => d.ios_macho_strings,
+      'ios.unicodeStrings' => d.ios_unicodeStrings,
       'ios.machoSites' => d.ios_machoSites,
       'ios.nativeSymbols' => d.ios_nativeSymbols,
       'ios.entitlements' => d.ios_entitlements,
@@ -873,6 +1043,34 @@ class AnalysisReport {
           if (dylibs == null) return null;
           return f.ios_repackaged(dylibs: dylibs);
         })(),
+      'baseline.mismatch' => (() {
+          final packageId = finding.messageArgs['packageId'];
+          final expected = finding.messageArgs['expected'];
+          final actual = finding.messageArgs['actual'];
+          if (packageId is! String ||
+              expected is! String ||
+              actual is! String) {
+            return null;
+          }
+          return t.theft.baseline_mismatch_message(
+            packageId: packageId,
+            expected: expected,
+            actual: actual,
+          );
+        })(),
+      'seal.mismatch' => (() {
+          final path = finding.messageArgs['path'];
+          final expected = finding.messageArgs['expected'];
+          final actual = finding.messageArgs['actual'];
+          if (path is! String || expected is! String || actual is! String) {
+            return null;
+          }
+          return t.theft.seal_mismatch_message(
+            path: path,
+            expected: expected,
+            actual: actual,
+          );
+        })(),
       'crypto.theft_risk' => signals == null
           ? null
           : '${f.crypto_theft_risk(
@@ -941,6 +1139,23 @@ class AnalysisReport {
                 bytes: bytes,
                 uncovered: uncovered,
               ),
+      // 中文话术只是线索，正文必须说清「不是判决」，命中原文在证据里。
+      'android.unicode_phrase' =>
+        count == null ? null : f.android_unicode_phrase(count: count),
+      'android.resource_unicode_phrase' => count == null
+          ? null
+          : f.android_resource_unicode_phrase(
+              count: count,
+              strings: finding.messageArgs['strings'] ?? '—',
+            ),
+      'ios.unicode_phrase' =>
+        count == null ? null : f.ios_unicode_phrase(count: count),
+      'ios.strings_unicode_phrase' => count == null
+          ? null
+          : f.ios_strings_unicode_phrase(
+              count: count,
+              strings: finding.messageArgs['strings'] ?? '—',
+            ),
       'ios.capability_no_usage' => (key == null || api == null)
           ? null
           : f.ios_capability_no_usage(key: key, api: api),
@@ -1131,6 +1346,8 @@ class AnalysisReport {
       'android.malware_indicators.review' =>
         f.android_malware_indicators_review,
       'crypto.theft_risk.review' => f.crypto_theft_risk_review,
+      'seal.mismatch.review' => t.theft.seal_mismatch_review,
+      'baseline.mismatch.review' => t.theft.baseline_mismatch_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
       'ios.capability_no_usage.add_usage' =>
@@ -1146,6 +1363,12 @@ class AnalysisReport {
       'ios.rule_f.runtime_traffic' => f.ios_rule_f_runtime_traffic,
       'ios.url_schemes.manual_review' => f.ios_url_schemes_manual_review,
       'ios.scan_coverage.manual_review' => f.ios_scan_coverage_manual_review,
+      'android.unicode_phrase.review' => f.android_unicode_phrase_review,
+      'android.resource_unicode_phrase.review' =>
+        f.android_resource_unicode_phrase_review,
+      'ios.unicode_phrase.review' => f.ios_unicode_phrase_review,
+      'ios.strings_unicode_phrase.review' =>
+        f.ios_strings_unicode_phrase_review,
       'ios.photo_library.review' => f.ios_photo_library_review,
       'ios.photo_library_no_usage.add_usage' =>
         f.ios_photo_library_no_usage_add_usage,
@@ -1277,8 +1500,17 @@ class AnalysisReport {
     final f = t.security.finding_texts;
     final targetSdk = finding.limitationArgs['targetSdk'];
     final String? localized = switch (code) {
+      'seal.mismatch.limitation' => t.theft.seal_mismatch_limitation,
+      'baseline.mismatch.limitation' => t.theft.baseline_mismatch_limitation,
       'ios.url_schemes.limitation' => f.ios_url_schemes_limitation,
       'ios.scan_coverage.limitation' => f.ios_scan_coverage_limitation,
+      'android.unicode_phrase.limitation' =>
+        f.android_unicode_phrase_limitation,
+      'android.resource_unicode_phrase.limitation' =>
+        f.android_resource_unicode_phrase_limitation,
+      'ios.unicode_phrase.limitation' => f.ios_unicode_phrase_limitation,
+      'ios.strings_unicode_phrase.limitation' =>
+        f.ios_strings_unicode_phrase_limitation,
       'ios.capability_no_usage.limitation' =>
         f.ios_capability_no_usage_limitation,
       'ios.usage_without_api.limitation' => f.ios_usage_without_api_limitation,
@@ -1688,6 +1920,22 @@ class AnalysisReport {
           description: p.record_audio_description,
           riskNote: p.record_audio_risk_note,
         ),
+      'READ_SMS' => (
+          description: p.read_sms_description,
+          riskNote: p.read_sms_risk_note,
+        ),
+      'READ_CALL_LOG' => (
+          description: p.read_call_log_description,
+          riskNote: p.read_call_log_risk_note,
+        ),
+      'READ_CALENDAR' => (
+          description: p.read_calendar_description,
+          riskNote: p.read_calendar_risk_note,
+        ),
+      'POST_NOTIFICATIONS' => (
+          description: p.post_notifications_description,
+          riskNote: p.post_notifications_risk_note,
+        ),
       _ => null,
     };
   }
@@ -1772,6 +2020,8 @@ class AnalysisReport {
           ? null
           : n.ios_reference_tables_unsupported(reason: reason),
       'android.split_apk.base_only' => n.android_split_apk_base_only,
+      'android.split_apk.partial' => n.android_split_apk_partial,
+      'android.split_apk.cert_mismatch' => n.android_split_apk_cert_mismatch,
       'android.sdk_inventory.no_dex' => n.android_sdk_inventory_no_dex,
       'android.sdk_inventory.incomplete' =>
         (truncated == null || failed == null)
@@ -2057,6 +2307,9 @@ class AnalysisReport {
         count == null ? null : n.ios_native_symbols_unreadable(count: count),
       'ios.native_symbols.stripped' => n.ios_native_symbols_stripped,
       'ios.signature.separate_step' => n.ios_signature_separate_step,
+      'ios.unicode_strings.scope' => n.ios_unicode_strings_scope,
+      'ios.unicode_strings.truncated' => n.ios_unicode_strings_truncated,
+      'ios.unicode_strings.no_content' => n.ios_unicode_strings_no_content,
       _ => null,
     };
     return localized ?? entry.note;
@@ -2136,6 +2389,19 @@ class AnalysisReport {
         '| ${_escape(reason)} |');
   }
 
+  static String _iconConfigSummary(IosIconConfiguration config) {
+    if (config.isEmpty) return '—';
+    final parts = <String>[
+      if (config.primary != null) 'primary',
+      if (config.primaryIpad != null) 'ipad',
+      if (config.alternate.isNotEmpty) '${config.alternate.length} alternate',
+      if (config.legacyIconFiles.isNotEmpty)
+        '${config.legacyIconFiles.length} legacy',
+      if (config.legacyIconFile != null) 'legacy file',
+    ];
+    return parts.join('<br>');
+  }
+
   /// 值单元格的**原始**文本（尚未转义）。
   ///
   /// 没有值时给一个破折号，**不填默认值** —— 状态列会说明为什么没有。
@@ -2193,7 +2459,9 @@ class AnalysisReport {
   ///    留着会让消费者继续误判；这是一次**破坏性**改名，所以必须升版本号。
   /// 7：新增 `platformFacts` —— 平台事实（组件、ABI、语言、密度、分包、ICP、
   ///    entitlements、URL scheme、嵌套 bundle…），每个字段自带 status / source。
-  static const int reportSchemaVersion = 7;
+  /// 8：新增顶层 `security`（盗 U 评估/制品清单/加载链/密封/官方基线）；
+  ///    既有键名/类型不变。
+  static const int reportSchemaVersion = 8;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -2390,6 +2658,23 @@ class AnalysisReport {
               'highestRiskSeverity': worst?.severity.name,
             },
 
+      // Phase C：顶层 `security` 对象。当前只有 cryptoTheft 有值；
+      // artifacts/loadGraph/seal/baseline 在 D/E 阶段接入（先保留 null，
+      // 让消费者可以稳定解析五个键）。
+      'security': security == null
+          ? null
+          : {
+              'cryptoTheft': security.cryptoTheft == null
+                  ? null
+                  : _cryptoTheftJson(security.cryptoTheft!),
+              'artifacts': null,
+              'loadGraph': null,
+              'seal': security.seal == null ? null : _sealJson(security.seal!),
+              'baseline': security.baseline == null
+                  ? null
+                  : _baselineJson(security.baseline!),
+            },
+
       // 网络端点：静态提取到的主机名与 IP。空表示本次没提取到（或没做），
       // 不表示「没有网络行为」。
       'network': {
@@ -2471,6 +2756,79 @@ class AnalysisReport {
     const encoder = JsonEncoder.withIndent('  ');
     return '${encoder.convert(map)}\n';
   }
+
+  static Map<String, dynamic> _cryptoTheftJson(
+    CryptoTheftAssessment assessment,
+  ) =>
+      {
+        'id': assessment.id,
+        'level': assessment.level.name,
+        'primaryTechnique': assessment.primaryTechnique?.name,
+        'chain': [
+          for (final entry in assessment.chain)
+            {
+              'technique': entry.technique.name,
+              'stage': entry.stage.code,
+              'signalId': entry.signalId,
+              'strength': entry.strength.name,
+              'supported': entry.supported,
+              'ruleIds': entry.ruleIds,
+              'evidence': [
+                for (final ev in entry.evidence)
+                  {
+                    'source': ev.source.name,
+                    'location': ev.location,
+                    'detail': ev.detail,
+                    'locationCode': ev.locationCode,
+                    'detailCode': ev.detailCode,
+                  },
+              ],
+              'noteCodes': entry.noteCodes,
+            },
+        ],
+        'missing': [
+          for (final missing in assessment.missing)
+            {
+              'stage': missing.stage.code,
+              'whyCode': missing.whyCode,
+              'args': missing.args,
+            },
+        ],
+        'confidence': assessment.confidence.name,
+        'severity': assessment.severity.name,
+        'score': assessment.score,
+        'scoringVersion': assessment.scoringVersion,
+        'baselineEntryId': assessment.baselineEntryId,
+      };
+
+  static Map<String, dynamic> _baselineJson(BaselineMatch baseline) => {
+        'status': baseline.status.name,
+        'dbVersion': baseline.dbVersion,
+        'entryId': baseline.entryId,
+        'packageId': baseline.packageId,
+        'expectedFingerprintPrefixes': baseline.expectedFingerprintPrefixes,
+        'actualFingerprintPrefixes': baseline.actualFingerprintPrefixes,
+        'noteCodes': baseline.noteCodes,
+      };
+
+  static Map<String, dynamic> _sealJson(SealCheck seal) => {
+        'scheme': seal.scheme,
+        'state': seal.state.name,
+        'entriesChecked': seal.entriesChecked,
+        'entriesTotal': seal.entriesTotal,
+        'checks': [
+          for (final check in seal.checks)
+            {
+              'path': check.path,
+              'state': check.state.name,
+              'algorithm': check.algorithm,
+              'expectedDigestPrefix': check.expectedDigestPrefix,
+              'actualDigestPrefix': check.actualDigestPrefix,
+            },
+        ],
+        'signatureVerified': seal.signatureVerified,
+        'noteCodes': seal.noteCodes,
+      };
 
   static String _reportId(PackageAnalysisResult result, DateTime at) {
     final sha = result.sha256.value ?? '';

@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.9.0 — 2026-11-05
+
+这一版把「盗 U」检测从单点字符串命中推进到**静态证据链**，同时补了 Unicode
+覆盖、分包审计、基线/密封和一批安装与关联修复。
+
+### 新增：盗 U 静态证据
+
+- 五段链 `capability → source → injection → payload → family`，每段带
+  `ruleIds`；JSON schema 升到 v8，Markdown/JSON/界面共用同一份事实。
+- APK 密封：v1 MANIFEST、v2/v3 内容摘要；iOS CodeResources v1/v2。
+- 官方基线：Android 证书 / iOS Team ID 匹配，支持 `match/mismatch/noBaseline/
+  unavailable`；基线文件带 SHA-256 完整性校验。
+- 中文话术：Android DEX MUTF-8、`resources.arsc`、文本 assets；iOS Mach-O
+  UTF-8/UTF-16、`.strings` / 本地化文件。
+- Split / XAPK：split DEX、资源字符串、原生库、制品清单、加载链、载荷探测和
+  密封校验纳入审计。
+- 内存/性能：IPA 安全审计约 5.8 s → 2.2 s；但峰值内存仍约 526–546 MB，
+  这是本版已知限制。
+
+### 风险呈现
+
+- 密封不一致、基线不一致产出 P1 事实级 finding，不做「恶意」判决。
+- 所有话术命中仍是 info 元线索；没有运行时/网络证据，不声称检出率。
+- `signatureVerified` 仍恒为 false（仅内容摘要，不做密码学验签）。
+
+### 修复
+
+- 修正原审计 6 条 P1：缩略图 HKCU/HKLM、adb 缺失提示、XAPK 元数据回退、
+  语言选择器 6 项、Markdown 字段、macOS 12 要求。
+- Windows 缩略图：安装器改 HKCU，状态同时读 HKLM，旧机器级注册显示警告并
+  尝试管理员清理。
+- 文件关联：启动时只登记候选，不再替用户写默认打开方式。
+- 安装失败：`INSTALL_FAILED_*` 映射为本地化文案，覆盖单 APK、XAPK/APKS。
+- APKS：解析 `toc.pb`，优先使用 bundletool 的分包清单。
+- 损坏 manifest：从 `resources.arsc` 回退包名并继续审计，界面显示“部分解析”。
+- 批量重命名：按应用名/应用名-版本多选重命名。
+- iOS 分发类型：App Store / Ad Hoc / Enterprise / Development / unknown。
+
+### 已知限制
+
+- 官方基线只有 2 条 Android，iOS 为 0 条；没有官方样本，不能据此判断官方性。
+- IPA 峰值内存约 526–546 MB；真实大包性能未压测。
+- iOS CodeResources 最多 64 条 / 64 MiB；大包会 `notChecked`。
+- 真实样本 E2E 在 CI 仍因无样本跳过。
+- C-4 维持“不拆 10 张重复 finding”，规则 id 挂在 `chain[].ruleIds`。
+
 ## 2.8.7 — 2026-10-22
 
 这一版全部来自对一个 Android 包和一个 iOS 包**导出的报告逐行核对**。四个 bug、

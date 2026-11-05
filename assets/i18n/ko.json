@@ -173,7 +173,9 @@
       "diag_dll": "처리기 DLL: {path}",
       "diag_helper": "아이콘 추출기: {present}",
       "diag_yes": "있음",
-      "diag_no": "없음"
+      "diag_no": "없음",
+      "machine_wide": "머신 전체 등록이 감지되었습니다",
+      "machine_wide_detail": "이전 설치가 썸네일 처리기를 HKLM에 등록했습니다. 이 앱의 비활성화는 HKCU만 삭제합니다. 완전히 제거하려면 관리자 권한으로 실행하거나 HKLM을 수동으로 정리하세요."
     }
   },
   "signature": {
@@ -265,7 +267,9 @@
     "structure_directories": "최상위 디렉터리",
     "structure_file_count": "파일 {count}개",
     "text_info": "텍스트 정보",
-    "component_count": "{count}개(아래 목록 참조)"
+    "component_count": "{count}개(아래 목록 참조)",
+    "partial_manifest_title": "부분 파싱: Manifest를 읽을 수 없음",
+    "partial_manifest_body": "AndroidManifest.xml을 파싱할 수 없습니다. 패키지 이름은 resources.arsc에서 가져왔습니다. 버전, 컴포넌트, 권한은 알 수 없습니다. 보안 감사는 DEX와 리소스를 다루지만 Manifest 선언은 평가할 수 없습니다."
   },
   "icon": {
     "switch_icon": "아이콘 전환",
@@ -290,7 +294,13 @@
     "name_cannot_be_empty": "파일 이름은 비워둘 수 없습니다",
     "must_end_with_apk": "파일 이름은 .apk/.xapk/.apkm/.apks/.ipa로 끝나야 합니다",
     "default_name": "기본 이름",
-    "not_ready": "분석이 끝난 후에 이름을 바꿔 주세요"
+    "not_ready": "분석이 끝난 후에 이름을 바꿔 주세요",
+    "batch_title": "일괄 이름 변경",
+    "batch_preparing": "선택한 파일을 분석하는 중…",
+    "batch_include_version": "버전 포함",
+    "batch_done": "{count}개 파일 이름을 변경했습니다",
+    "batch_failed": "{count}개 파일 실패",
+    "batch_apply": "모두 이름 변경"
   },
   "install": {
     "refresh_devices": "기기 목록 새로 고침",
@@ -371,7 +381,18 @@
     "pair_error_invalid_code": "페어링 코드가 틀렸거나 만료되었습니다. 이 대화상자를 닫고 기기에서 \"페어링 코드로 기기 페어링\"을 다시 여세요(코드는 매번 바뀝니다).",
     "pair_error_not_pairing_port": "이 포트는 페어링에 응답하지 않습니다. **연결용 포트**를 입력했을 가능성이 큽니다. 페어링 포트는 기기의 \"페어링 코드로 기기 페어링\" 대화상자에 표시됩니다.",
     "pair_error_already_paired": "이 기기는 이미 페어링되었습니다. \"Wi-Fi로 연결\"을 사용하세요.",
-    "pair_error_unreachable": "페어링 포트에 연결할 수 없습니다. 기기가 \"페어링 코드로 기기 페어링\" 대화상자에 있는지, 포트가 그곳에 표시된 번호인지 확인하세요."
+    "pair_error_unreachable": "페어링 포트에 연결할 수 없습니다. 기기가 \"페어링 코드로 기기 페어링\" 대화상자에 있는지, 포트가 그곳에 표시된 번호인지 확인하세요.",
+    "adb_missing": "adb를 찾을 수 없습니다",
+    "adb_missing_hint": "설치에는 adb가 필요합니다. 설정 → 외부 도구에서 adb 경로를 설정하거나 거기서 내장 다운로드를 사용하세요.",
+    "open_settings": "설정 열기",
+    "error_already_exists": "앱이 이미 설치되어 있습니다. \"강제 설치\"를 켜거나 먼저 삭제하세요.",
+    "error_insufficient_storage": "기기 저장 공간이 부족합니다.",
+    "error_invalid_apk": "APK가 유효하지 않거나 손상되었습니다.",
+    "error_version_downgrade": "설치된 버전이 더 최신입니다. \"다운그레이드 허용\"을 켜거나 먼저 삭제하세요.",
+    "error_update_incompatible": "업데이트가 설치된 앱과 호환되지 않습니다.",
+    "error_no_matching_abis": "이 기기 ABI와 일치하는 네이티브 라이브러리가 APK에 없습니다.",
+    "error_signature": "APK 서명이 설치된 앱과 일치하지 않습니다. 먼저 이전 앱을 삭제하세요.",
+    "error_generic": "설치에 실패했습니다({code})."
   },
   "about": {
     "features": {
@@ -496,7 +517,15 @@
       "record_audio_description": "마이크로 오디오 녹음",
       "record_audio_risk_note": "민감한 수집원입니다. 녹음 데이터의 행선지(업로드)와 눈에 보이는 녹음 기능이 있는지로 판단하세요. 녹음 + 업로드는 규칙 G 가 다룹니다.",
       "read_privileged_phone_state_description": "특권 전화 상태 읽기(signature 수준 권한).",
-      "read_privileged_phone_state_risk_note": "signature 수준: 서드파티 앱에는 부여되지 않으므로 이 선언은 **효력이 없습니다**. 포함되어 있다면 시스템 앱에서 온 코드, 복사된 샘플 또는 난독화된 빌드임을 뜻합니다."
+      "read_privileged_phone_state_risk_note": "signature 수준: 서드파티 앱에는 부여되지 않으므로 이 선언은 **효력이 없습니다**. 포함되어 있다면 시스템 앱에서 온 코드, 복사된 샘플 또는 난독화된 빌드임을 뜻합니다.",
+      "read_sms_description": "SMS를 읽습니다.",
+      "read_sms_risk_note": "고감도 데이터 소스입니다. SMS에는 인증 코드와 사적인 메시지가 포함될 수 있습니다. 앱에 보이는 SMS 기능이 있는지, 데이터가 어디로 가는지와 함께 판단하세요.",
+      "read_call_log_description": "통화 기록을 읽습니다.",
+      "read_call_log_risk_note": "고감도 데이터 소스입니다. 통화 기록은 연락처, 시간, 통신 패턴을 드러냅니다. 앱 기능과 업로드 동작을 함께 판단하세요.",
+      "read_calendar_description": "캘린더를 읽습니다.",
+      "read_calendar_risk_note": "민감한 데이터 소스입니다. 일정과 인간관계가 드러납니다. 단독으로는 악성이 아니지만 업로드 로직과의 동시 발생에 주의하세요.",
+      "post_notifications_description": "알림을 게시합니다(Android 13부터 런타임 권한).",
+      "post_notifications_risk_note": "대부분 앱에 일반적인 권한이며 그 자체로 위험하지 않습니다. 사실로만 기록합니다."
     },
     "sources": {
       "camera": "카메라",
@@ -546,7 +575,7 @@
       "ios_executable_none_readable": "Mach-O 실행 파일 내용을 읽을 수 없었습니다: API 사용 단서를 확인할 수 없습니다. 용도 설명과 개인정보 매니페스트 결론은 영향을 받지 않지만, 이것은 완전한 분석이 아닙니다.",
       "ios_executable_over_budget": "{path}는 {bytes}바이트로 스캔 예산 {limit}바이트를 초과합니다: 앞부분 {limit}바이트만 스캔했으므로, 스캔하지 않은 부분에 찾지 못한 단서가 있을 수 있습니다.",
       "ios_executable_unscanned": "{count}개의 실행 파일을 스캔하지 않았습니다 ({names}): 이 파일들에서 '단서를 찾지 못함'은 '보지 않음'이지 '없음'이 아닙니다.",
-      "ios_macho_scan_summary": "Mach-O 스캔은 총 {bytes}바이트를 대상으로 했으며 인쇄 가능한 ASCII 문자열만 추출했습니다: dyld 공유 캐시의 심볼은 커버리지 밖이고, 비 ASCII 리터럴도 놓칩니다.",
+      "ios_macho_scan_summary": "Mach-O 스캔은 총 {bytes}바이트를 대상으로 했으며 인쇄 가능한 ASCII 문자열, UTF-8 Unicode 텍스트, UTF-16(LE/BE) 문자열을 추출했습니다: dyld 공유 캐시의 심볼, Swift 소문자열 상수, .strings / 현지화 리소스는 커버리지 밖입니다.",
       "ios_native_symbols_semantics": "네이티브 심볼은 Mach-O의 `LC_SYMTAB`에서 얻어집니다: 바이너리가 어떤 시스템 기능을 가져오는지를 보여줄 뿐, 그 기능이 호출되었다는 것, 하물며 어떤 인자로 호출되었는지는 보여주지 않습니다. 네이티브 코드를 디스어셈블하지 않았습니다.",
       "ios_native_symbols_stripped": "일부 Mach-O 이미지에 `LC_SYMTAB`가 없습니다(심볼 테이블이 제거됨): 이들의 가져온 심볼은 확인할 수 없습니다. App Store에서 처리된 바이너리는 보통 제거됩니다.",
       "ios_native_symbols_unreadable": "{count}개의 Mach-O 이미지의 `LC_SYMTAB`가 범위를 벗어나 심볼을 읽지 않았습니다 ({names}): 이 이미지들에서 '가져온 심볼을 찾지 못함'은 '보지 않음'이지 '없음'이 아닙니다.",
@@ -581,7 +610,9 @@
       "android_signing_block_unreadable": "APK 서명 블록을 읽을 수 없습니다({reason}): v2+ 서명 방식을 알 수 없으므로 이번에 \"서명 블록이 없다\"고 결론 내릴 수 없습니다. 이것은 \"서명이 유효하지 않다\"는 뜻이 아닙니다.",
       "ios_permission_request_no_methname": "읽을 수 있는 __objc_methname 섹션이 있는 실행 파일이 없어 권한의 능동적 요청을 판정할 수 없습니다. \"권한을 요청하지 않는다\"는 뜻이 아닙니다.",
       "android_provider_exposed": "권한이 없는 provider는 기기의 어떤 앱에서도 접근할 수 있지만, 데이터가 반환되는지는 내용에 달려 있습니다. android:enabled=false인 provider도 여기 표시됩니다 — 증거를 확인하세요.",
-      "ios_reference_tables_unsupported": "클래스 / 선택자 참조 표를 디코딩하지 못했습니다({reason}). 따라서 \"코드가 이 클래스를 참조한다\"와 \"그 단어가 어딘가에 등장했다\"를 구분할 수 없습니다."
+      "ios_reference_tables_unsupported": "클래스 / 선택자 참조 표를 디코딩하지 못했습니다({reason}). 따라서 \"코드가 이 클래스를 참조한다\"와 \"그 단어가 어딘가에 등장했다\"를 구분할 수 없습니다.",
+      "android_split_apk_partial": "분할 패키지입니다. split APK의 DEX, 리소스 문자열, 네이티브 라이브러리는 감사에 포함했지만 아티팩트 목록, 로드 그래프, 페이로드 검사는 여전히 base APK만 기준으로 계산합니다.",
+      "android_split_apk_cert_mismatch": "base APK와 하나 이상의 split APK 서명 인증서가 다릅니다. Android는 일반적으로 이러한 설치 조합을 거부합니다. 일치하는 공식 설치 세트로 신뢰하지 마세요."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",
@@ -713,11 +744,11 @@
       "ios_rule_e_manual_review": "백그라운드에서 무엇이 업로드되고 무엇이 계기가 되는지 수동으로 검토하세요. 필요하면 격리된 환경에서 앱을 백그라운드로 둔 상태의 네트워크 동작을 관찰하세요.",
       "ios_rule_e_relationship": "백그라운드 실행 선언 → 민감한 데이터 읽기 → 네트워크 업로드: 세 단계 각각에 증거는 있지만 **어떤 도약도 증명되지 않았습니다** — 민감한 읽기가 백그라운드에서 일어나는 것도, 읽은 것이 요청 본문에 도달하는 것도 입증되지 않았습니다.",
       "ios_rule_f": "현재 분석 범위에서는 네트워크 업로드 특징을 찾지 못했습니다(NSURLSession, multipart, 일반적인 네트워킹 라이브러리 마커에 적중하지 않았습니다). 이것은 앱에 네트워크 동작이 없다는 뜻이 아닙니다 — 이 스캔에서 찾지 못했을 뿐입니다.",
-      "ios_rule_f_limitation": "ASCII 문자열만 스캔합니다(메인 실행 파일 + 중첩 실행 파일). 공유 dyld 캐시의 코드, 런타임에 로드되는 코드, 비 ASCII 리터럴은 커버리지 밖입니다.",
+      "ios_rule_f_limitation": "ASCII, UTF-8 Unicode, UTF-16(LE/BE) 문자열을 스캔합니다(주 실행 파일 + 중첩 실행 파일). 공유 dyld 캐시의 코드, 런타임에 로드되는 코드, Swift 소문자열 상수, .strings / 현지화 리소스는 커버리지 밖입니다.",
       "ios_rule_f_runtime_traffic": "확인하려면 런타임 트래픽 관찰과 함께 사용하세요(이 버전에서는 제공하지 않습니다).",
       "ios_scan_coverage": "API 사용 단서 스캔은 {total}개 중 {scanned}개 실행 파일, 총 {bytes}바이트를 대상으로 했습니다. 모든 실행 파일을 대상으로 했습니다.",
       "ios_scan_coverage_gap": "API 사용 단서 스캔은 {total}개 중 {scanned}개 실행 파일, 총 {bytes}바이트를 대상으로 했습니다. 대상이 아닌 실행 파일: {uncovered}.",
-      "ios_scan_coverage_limitation": "스캔은 인쇄 가능한 ASCII 문자열만 추출합니다: dyld 공유 캐시의 시스템 프레임워크 심볼, 비 ASCII 리터럴, 암호화/난독화된 섹션은 모두 놓칩니다.",
+      "ios_scan_coverage_limitation": "스캔은 인쇄 가능한 ASCII 문자열, UTF-8 Unicode 텍스트, UTF-16(LE/BE) 문자열을 추출합니다: dyld 공유 캐시의 시스템 프레임워크 심볼, Swift 소문자열 상수, .strings / 현지화 리소스, 암호화/난독화된 섹션은 모두 놓칩니다.",
       "ios_scan_coverage_manual_review": "더 완전한 결론을 얻으려면 대상이 아니었던 실행 파일을 수동으로 확인하세요.",
       "ios_url_schemes": "Info.plist가 {count}개의 사용자 정의 URL 스킴을 등록합니다: {schemes}. 이것들은 **외부 호출자가 이 앱을 실행할 수 있는** 진입점입니다 — 공격 표면에 관한 사실 서술이며, 스킴을 등록한다고 처리 로직에 결함이 있다는 뜻은 아닙니다.",
       "ios_url_schemes_limitation": "스킴 처리 코드는 확인하지 않았습니다(디스어셈블리 없음). 진입점이 존재한다는 것과 진입점이 안전하다는 것은 다른 것입니다.",
@@ -810,7 +841,19 @@
       "ios_repackaged_limitation": ".app 루트에 바로 있는 dylib만 집계합니다. 번들 이름만 바꾸거나 메인 바이너리를 직접 수정한 재패키징은 추가 파일을 남기지 않아 여기서 보이지 않습니다. 주입된 라이브러리의 동작도 정적 분석으로는 알 수 없습니다.",
       "ios_upload_api": "업로드 관련 구현이 발견되었습니다: 파일이나 바이너리 데이터를 첨부하는 multipart/form-data 구성입니다. 이는 업로드 능력이 있다는 것만 증명하며, 민감한 데이터가 전송되었다는 증거는 아닙니다.",
       "ios_upload_api_confirm_sink": "무엇을, 무엇으로 인해 업로드하는지 확인하세요. 크래시 리포트, 로그 묶음, 아바타 업로드도 multipart로 전송되므로 능력만으로는 지적이 되지 않습니다.",
-      "verify_suspected_hint": "확인 방법: 정적 분석은 여기까지입니다. 실제 기기에서 확인하려면 설치한 뒤 해당 기능을 실행하면서 `adb logcat`(iOS는 Xcode Devices 패널의 시스템 로그)을 관찰해 상응하는 네트워크 요청이나 파일 읽기가 실제로 발생하는지 보세요. 이 지적은 \"능력이 함께 존재한다\"는 뜻이며 \"그렇게 사용되었다\"는 뜻이 아닙니다."
+      "verify_suspected_hint": "확인 방법: 정적 분석은 여기까지입니다. 실제 기기에서 확인하려면 설치한 뒤 해당 기능을 실행하면서 `adb logcat`(iOS는 Xcode Devices 패널의 시스템 로그)을 관찰해 상응하는 네트워크 요청이나 파일 읽기가 실제로 발생하는지 보세요. 이 지적은 \"능력이 함께 존재한다\"는 뜻이며 \"그렇게 사용되었다\"는 뜻이 아닙니다.",
+      "ios_unicode_phrase": "Unicode 문자열 리터럴에서 중국어 지갑 / 사회공학 표현 {count}종을 찾았습니다. 이는 UI 문구의 단서일 뿐 판정이 아닙니다. 정상 지갑에도 같은 단어가 많이 들어 있습니다. 일치한 원문은 증거에 첨부했습니다.",
+      "ios_unicode_phrase_review": "첨부된 원문을 문맥과 함께 확인하세요: 니모닉을 요구하거나, 에어드랍을 미끼로 하거나, 동결 해제를 위해 보증금을 요구하거나, 자금 모으기를 지시하는지 살펴보고 서명 / 공식 기준선과 로드 체인 증거를 함께 검토하세요.",
+      "ios_unicode_phrase_limitation": "스캔한 실행 파일 바이트의 UTF-8 텍스트와 UTF-16 리터럴만 확인했습니다. Swift 소문자열 상수, .strings / 현지화 리소스, 런타임에 내려받는 문구, dyld 공유 캐시 심볼은 범위 밖입니다. 중국어 문구만으로 실제 송금이나 업로드가 있었는지는 알 수 없습니다.",
+      "android_unicode_phrase": "DEX 문자열 상수에서 중국어 지갑 / 사회공학 문구 {count}건을 발견했습니다. 이는 UI 문구 단서일 뿐 판정이 아닙니다. 정상 지갑에도 같은 단어가 많이 포함됩니다. 일치한 원문은 증거로 첨부합니다.",
+      "android_unicode_phrase_review": "일치한 원문을 문맥과 함께 읽어 보세요. 시드 구문을 요구하는지, 에어드롭을 약속하는지, 동결 해제를 위해 입금을 요구하는지, 자금 집결을 지시하는지 확인해야 합니다. 서명 / 공식 베이스라인, 로드 체인 증거와 함께 의도를 판단하세요.",
+      "android_unicode_phrase_limitation": "string_ids로 접근 가능한 DEX MUTF-8 문자열 상수만 디코딩했습니다. resources/, assets/, 네이티브 라이브러리,加固/패킹된 셸, 런타임에 내려받은 문구, 런타임에 조립되는 문자열은 이번 스캔 범위 밖입니다. 중국어 표현만으로 실제 송금이나 업로드가 일어났는지는 알 수 없습니다.",
+      "android_resource_unicode_phrase": "리소스 문자열에서 중국어 지갑 / 사회공학 문구 {count}개를 발견했습니다({strings}개 후보 문자열 검사). 이는 UI 문구 단서일 뿐 판정이 아닙니다.",
+      "android_resource_unicode_phrase_review": "일치한 원문을 문맥에서 읽어 보세요. 시드 구문을 요구하는지, 에어드롭을 약속하는지, 입금해야 동결이 해제된다고 하는지, 자금 집결을 지시하는지 확인하세요. 서명 / 공식 베이스라인, 로드 체인 증거와 함께 의도를 판단하세요.",
+      "android_resource_unicode_phrase_limitation": "resources.arsc와 텍스트 형식 assets의 문자열 상수만 확인했습니다. 바이너리 자산, 네이티브 라이브러리, 런타임에 받은 문구, 런타임에 조립되는 문자열은 범위 밖입니다.",
+      "ios_strings_unicode_phrase": ".strings / 로컬라이제이션 파일에서 중국어 지갑 / 사회공학 문구 {count}개를 발견했습니다({strings}개 후보 문자열 검사). 이는 UI 문구 단서일 뿐 판정이 아닙니다.",
+      "ios_strings_unicode_phrase_review": "일치한 원문을 문맥에서 읽어 보세요. 시드 구문을 요구하는지, 에어드롭을 약속하는지, 입금해야 동결이 해제된다고 하는지, 자금 집결을 지시하는지 확인하세요. 서명 / 공식 베이스라인, 로드 체인 증거와 함께 의도를 판단하세요.",
+      "ios_strings_unicode_phrase_limitation": "아카이브 안의 .strings / 로컬라이제이션 텍스트만 확인했습니다. Swift 작은 문자열 상수, 바이너리 plist, 런타임에 받은 문구, 런타임에 조립되는 문자열은 범위 밖입니다."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",
@@ -907,7 +950,8 @@
       "android_nativeHardening": "네이티브 라이브러리 강화",
       "android_sdkInventory": "서드파티 SDK 목록",
       "android_signature": "서명 자료",
-      "ios_machoSites": "Mach-O 호출 지점"
+      "ios_machoSites": "Mach-O 호출 지점",
+      "ios_unicodeStrings": "Unicode 문자열"
     },
     "gap_count": "{count}개 항목에 누락이 있습니다",
     "hint": "'누락'은 결론이 모든 것을 포괄하지 못한다는 뜻입니다. 여기서 '찾을 수 없음'은 '없음'이 아닙니다.",
@@ -945,7 +989,10 @@
       "android_cleartext_policy_unknown": "android:networkSecurityConfig 를 펼치지 못했기 때문에(리소스, 파일 경로, XML 자체 중 하나를 읽을 수 없음) 평문 통신 정책을 판정하지 않았습니다",
       "android_cleartext_policy_target_sdk_unknown": "android:usesCleartextTraffic 과 targetSdkVersion 을 모두 읽을 수 없어 평문 통신의 플랫폼 기본값을 도출할 수 없습니다",
       "ios_macho_call_sites": "선택자 / 클래스 참조 {total}건 중 {attributed}건을 함수에 귀속했습니다(바이너리의 함수 {functions}개). \"참조됨\"은 여전히 \"호출됨\"이 아닙니다: ADRP+ADD는 주소를 레지스터에 넣을 뿐이며 이후 전달 대상은 정적으로 보이지 않습니다. 또한 `__objc_classrefs`가 주로 다루는 것은 **앱 자체의 클래스**입니다. 시스템 프레임워크 클래스(`AVCaptureDevice`, `CNContactStore`)는 보통 `objc_msgSend` 직접 호출이나 `NSClassFromString`으로 얻어지므로 이 차원의 범위 밖입니다. 이 차원은 **실제로 스캔한** 실행 파일만 대상으로 합니다(\"실행 파일\" 차원 참조) — 스캔하지 않은 바이너리의 참조는 분모에 포함되지 않습니다.",
-      "ios_macho_call_sites_unavailable": "__objc_selrefs를 가리키는 ADRP+ADD/LDR 명령 쌍이 없거나 LC_FUNCTION_STARTS가 없어 선택자 참조를 함수에 귀속할 수 없었습니다. 단서는 \"참조됨\"으로만 보고됩니다."
+      "ios_macho_call_sites_unavailable": "__objc_selrefs를 가리키는 ADRP+ADD/LDR 명령 쌍이 없거나 LC_FUNCTION_STARTS가 없어 선택자 참조를 함수에 귀속할 수 없었습니다. 단서는 \"참조됨\"으로만 보고됩니다.",
+      "ios_unicode_strings_scope": "실행 파일 바이트의 UTF-8 텍스트와 UTF-16(LE/BE) 리터럴을 확인했습니다. Swift 소문자열 상수, .strings / 현지화 리소스, dyld 공유 캐시의 심볼은 확인할 수 없습니다.",
+      "ios_unicode_strings_truncated": "일부 실행 파일이 스캔 예산 또는 __ustring 상한을 초과해 그 이후의 Unicode 문자열은 확인하지 못했습니다.",
+      "ios_unicode_strings_no_content": "Unicode 문자열 스캔에 사용할 실행 파일 내용이 없습니다."
     },
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",
@@ -1124,6 +1171,12 @@
     "target_platform": "대상 플랫폼",
     "unavailable": "iOS 분석을 사용할 수 없습니다",
     "url_schemes": "등록된 URL 스킴",
-    "uuid": "UUID"
+    "uuid": "UUID",
+    "profile_distribution": "배포 유형",
+    "distribution_app_store": "App Store 배포",
+    "distribution_ad_hoc": "Ad Hoc 배포",
+    "distribution_enterprise": "엔터프라이즈 / 사내",
+    "distribution_development": "개발",
+    "distribution_unknown": "알 수 없음"
   }
 }

@@ -36,6 +36,9 @@ export 'src/security/android_security_audit.dart';
 // 测试要能逐条驱动它，应用层也可能要按 ruleId 反查规则说明。
 export 'src/security/android_security_rules.dart';
 export 'src/security/dex_clue_scanner.dart';
+// DEX `string_ids` 的 MUTF-8 中文话术扫描（不单独判级，词表与 iOS 共用）。
+export 'src/security/dex_unicode_phrases.dart';
+export 'src/security/resource_unicode_phrases.dart';
 export 'src/security/native_crypto_scan.dart';
 export 'src/security/dex_method_scanner.dart';
 export 'src/security/code_markers.dart';
@@ -49,6 +52,17 @@ export 'src/security/permission_catalog.dart';
 export 'src/security/sdk_catalog.dart';
 // SDK 盘点的扫描器：按 DEX `string_ids` 精确索引（不复用字节扫描）。
 export 'src/security/sdk_inventory_scanner.dart';
+
+// 盗 U 检测（Phase B）的 Android 事实层：
+// - 制品清单：归档条目 → 类型/来源/ABI（只读目录，不读内容）；
+// - 载荷探测：有界头部 → 魔数/熵/嵌套包信号（不执行、不解压）；
+// - 加载链：DEX 加载调用 × 包内制品（目标不在包内的边是悬空边）。
+// 三者都只产出事实与稳定 code，判级留给规则层。
+export 'src/security/artifact_inventory_scanner.dart';
+export 'src/security/payload_probe.dart';
+export 'src/security/android_load_graph.dart';
+export 'src/security/apk_seal_check.dart';
+export 'src/security/crypto_theft_chain.dart';
 
 // ZIP 容器安全原语已下沉到 `archive_safety` —— 它们与「里面装的是 APK 还是
 // IPA」无关，IPA 解析器也要用同一份实现（复制一份安全防护意味着两边的阈值

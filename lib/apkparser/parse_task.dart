@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:isolate';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
+import 'package:apk_info_tool/utils/content_digest.dart';
 import 'package:apk_info_tool/utils/logger.dart';
+import 'package:apk_info_tool/utils/official_baseline_store.dart';
 import 'package:apk_parser/apk_parser.dart';
 
 /// APK 解析任务发出的事件。
@@ -125,7 +129,10 @@ class ApkParseTask implements CancellableParseTask {
   ApkParseTask._(this._receive, this._controller) : events = _controller.stream;
 
   /// 启动一次解析。返回后 worker isolate 已在运行。
-  static Future<ApkParseTask> start(String filePath) async {
+  static Future<ApkParseTask> start(
+    String filePath, {
+    OfficialBaselineDb? baselineDb,
+  }) async {
     final receive = ReceivePort();
     final controller = StreamController<ParseEvent>();
     final task = ApkParseTask._(receive, controller);
@@ -136,7 +143,11 @@ class ApkParseTask implements CancellableParseTask {
 
     final isolate = await Isolate.spawn(
       _parseEntryPoint,
-      _ParseRequest(reply: receive.sendPort, filePath: filePath),
+      _ParseRequest(
+        reply: receive.sendPort,
+        filePath: filePath,
+        baselineDb: baselineDb,
+      ),
     );
     task._isolate = isolate;
 
@@ -191,8 +202,13 @@ class ApkParseTask implements CancellableParseTask {
 class _ParseRequest {
   final SendPort reply;
   final String filePath;
+  final OfficialBaselineDb? baselineDb;
 
-  const _ParseRequest({required this.reply, required this.filePath});
+  const _ParseRequest({
+    required this.reply,
+    required this.filePath,
+    required this.baselineDb,
+  });
 }
 
 /// worker isolate 的入口。
@@ -246,6 +262,16 @@ void _parseEntryPoint(_ParseRequest request) async {
       return;
     }
 
+    // Phase E：官方基线匹配（包名 + 证书 SHA-256）。
+    final certificate = meta.signingSchemes?.signingCertificate;
+    final certSha256 =
+        certificate == null ? null : contentDigest('sha256', certificate);
+    final baseline = OfficialBaselineStore.matchAndroid(
+      request.baselineDb,
+      packageId: meta.packageName,
+      actualCertSha256: [if (certSha256 != null) certSha256],
+    );
+
     // 安全分析：提取 DEX 字节并在 worker 中完成审计。
     // 这里不创建临时文件，只读内存中的 ZIP 条目，因此即使
     // [Isolate.immediate] 终止，也不会留下垃圾。
@@ -256,6 +282,29 @@ void _parseEntryPoint(_ParseRequest request) async {
     // 资源表只遍历一次：环检测与图标渲染器都用这一份。
     final arscResources =
         reader.arscParser?.getAllResources() ?? const <int, ResourceInfo>{};
+    final resourceStrings = _collectResourceStrings(reader);
+
+    // Phase B 事实层：清单、加载链、载荷探测。三者都只读目录/有界头部，
+    // 不执行、不解压额外内容；放在 worker 里做，避免新增 UI 卡顿。
+    final entryFacts = reader.entryFacts();
+    final artifactInventory = AndroidArtifactInventoryScanner.scan(entryFacts);
+    // 方法扫描只跑一次：加载链与安全审计共用同一份调用点结果。
+    final ocrMarkerIds = {
+      for (final marker in codeMarkers)
+        if (marker.category == SecurityCategory.ocrImage) marker.id,
+    };
+    final methodScan = DexMethodScanner.scan(
+      dexEntries,
+      deepChainFrom: ocrMarkerIds,
+      deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
+    );
+    final loadGraph = AndroidLoadGraphScanner.scan(
+      dexEntries: dexEntries,
+      inventory: artifactInventory,
+      methodScan: methodScan,
+    );
+    final payloadProbe = _probePayloads(reader, artifactInventory);
+    final seal = _checkSeal(reader, meta, request.filePath);
 
     // 原生库：**先按声明尺寸挑，再读** —— 读进来才知道大小就已经晚了。
     // `selectLibraries` 会按库名去重（同一个库只取一个 ABI）、跳过超大库、
@@ -277,6 +326,8 @@ void _parseEntryPoint(_ParseRequest request) async {
     final security = AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
+      manifestParsed: !meta.manifestUnparsed,
+      manifestFailureReason: meta.manifestParseFailure,
       containerAnomalyNotes: [
         for (final obs in hardeningObservations) obs.asNote,
         // 结构异常（EOCD 声明的条目数与实际不符）也要进覆盖说明 ——
@@ -297,6 +348,13 @@ void _parseEntryPoint(_ParseRequest request) async {
       // （文件不存在 / 被预算拒绝 / 解析失败），此时传 `null` 让它标「缺失」；
       // 解析成功但表是空的，传 0，措辞是「空表」而不是「缺失」。
       arscEntryCount: reader.arscParser == null ? null : arscResources.length,
+      resourceStrings: resourceStrings,
+      artifacts: artifactInventory,
+      loadGraph: loadGraph,
+      payloadProbe: payloadProbe,
+      methodScanResult: methodScan,
+      seal: seal,
+      baseline: baseline,
     );
 
     request.reply.send(ParseSucceeded(ParsedApkData(
@@ -316,4 +374,157 @@ void _parseEntryPoint(_ParseRequest request) async {
   } finally {
     reader.close();
   }
+}
+
+/// Android 密封校验：有 v2 块时优先 v2 内容摘要，否则退回 v1 MANIFEST。
+SealCheck? _checkSeal(ApkReader reader, ApkMeta? meta, String path) {
+  final schemes = meta?.signingSchemes;
+  if (schemes != null && schemes.hasV2 && schemes.v2Value != null) {
+    RandomAccessFile? raf;
+    try {
+      raf = File(path).openSync();
+      final length = raf.lengthSync();
+      return ApkSealCheck.checkV2(
+        schemes: schemes,
+        fileLength: length,
+        digest: contentDigest,
+        read: (offset, count) {
+          if (offset < 0 || count <= 0 || offset + count > length) {
+            return Uint8List(0);
+          }
+          raf!.setPositionSync(offset);
+          return raf.readSync(count);
+        },
+      );
+    } catch (_) {
+      // v2 读失败不阻断解析：尝试 v3，再退回 v1。
+    } finally {
+      raf?.closeSync();
+    }
+  }
+  if (schemes != null &&
+      (schemes.hasV3 || schemes.hasV31) &&
+      schemes.v3Value != null) {
+    RandomAccessFile? raf;
+    try {
+      raf = File(path).openSync();
+      final length = raf.lengthSync();
+      return ApkSealCheck.checkV3(
+        schemes: schemes,
+        fileLength: length,
+        digest: contentDigest,
+        read: (offset, count) {
+          if (offset < 0 || count <= 0 || offset + count > length) {
+            return Uint8List(0);
+          }
+          raf!.setPositionSync(offset);
+          return raf.readSync(count);
+        },
+      );
+    } catch (_) {
+      // 尝试 v1。
+    } finally {
+      raf?.closeSync();
+    }
+  }
+  final archive = reader.archive;
+  if (archive == null) return null;
+  return ApkSealCheck.check(archive: archive, digest: contentDigest);
+}
+
+/// 对 assets 下的代码类条目 / 非标准位置 DEX 做**有界头部**载荷探测。
+///
+/// 只读声明大小 ≤ 8 MiB 的条目，且最多 64 条；读取后只取前 4 KiB 交给
+/// `PayloadProbe`。这是「预算先于读」的同一纪律，避免为探测把整包解开。
+PayloadProbeResult _probePayloads(
+  ApkReader reader,
+  ArtifactInventory inventory,
+) {
+  const maxEntries = 64;
+  const maxEntryBytes = 8 * 1024 * 1024;
+  const headBytes = 4096;
+  final inputs = <PayloadProbeInput>[];
+  for (final entry in inventory.entries) {
+    if (inputs.length >= maxEntries) break;
+    final path = entry.path;
+    final candidate = path.startsWith('assets/') ||
+        entry.kind == ArtifactKind.dex ||
+        entry.kind == ArtifactKind.assetArchive ||
+        entry.kind == ArtifactKind.assetBinary ||
+        entry.kind == ArtifactKind.script;
+    if (!candidate) continue;
+    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) continue;
+    final bytes = reader.readFile(path);
+    if (bytes == null || bytes.isEmpty) continue;
+    final head =
+        bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
+    final dot = path.lastIndexOf('.');
+    inputs.add(PayloadProbeInput(
+      path: path,
+      sizeBytes: bytes.length,
+      headBytes: head,
+      declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
+    ));
+  }
+  return PayloadProbe.scan(inputs);
+}
+
+/// `resources.arsc` 全局字符串池 + 文本型 `assets/**` 的字符串。
+///
+/// 资源表字符串直接来自已经解析好的 StringPool；assets 只读文本型扩展名，
+/// 单文件 ≤2 MiB、最多 64 个、总字符 ≤2M，避免把大包拖慢或吃内存。
+List<String> _collectResourceStrings(ApkReader reader) {
+  final out = <String>[
+    ...?reader.arscParser?.globalStringPool?.strings,
+  ];
+  const textExtensions = {
+    '.json',
+    '.js',
+    '.html',
+    '.htm',
+    '.txt',
+    '.xml',
+    '.css',
+    '.properties',
+    '.csv',
+    '.md',
+    '.yaml',
+    '.yml',
+    '.strings',
+    '.plist',
+    '.conf',
+    '.ini',
+  };
+  var files = 0;
+  var chars = out.fold<int>(0, (a, b) => a + b.length);
+  for (final entry in reader.listFilesWithSize()) {
+    if (files >= 64 || chars >= 2 * 1024 * 1024) break;
+    final lower = entry.name.toLowerCase();
+    if (!lower.startsWith('assets/') || entry.size <= 0) continue;
+    if (entry.size > 2 * 1024 * 1024) continue;
+    final dot = lower.lastIndexOf('.');
+    if (dot >= 0 && !textExtensions.contains(lower.substring(dot))) continue;
+    final bytes = reader.readFile(entry.name);
+    if (bytes == null || bytes.isEmpty) continue;
+    files++;
+    for (final text in Utf8Strings.extract(
+      bytes,
+      minLength: 2,
+      minCjkChars: 2,
+    )) {
+      if (chars >= 2 * 1024 * 1024) break;
+      out.add(text);
+      chars += text.length;
+    }
+    for (final text in Utf16Strings.extract(
+      bytes,
+      minLength: 2,
+      requireWide: true,
+    )) {
+      if (chars >= 2 * 1024 * 1024) break;
+      out.add(text);
+      chars += text.length;
+    }
+  }
+  return out;
 }

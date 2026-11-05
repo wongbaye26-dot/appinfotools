@@ -9,7 +9,9 @@ import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
+import 'package:apk_info_tool/utils/content_digest.dart';
 import 'package:apk_info_tool/utils/logger.dart';
+import 'package:apk_info_tool/utils/official_baseline_store.dart';
 import 'package:apk_info_tool/utils/vector_to_svg.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:apk_parser/apk_parser.dart' as apk_parser;
@@ -388,7 +390,21 @@ Future<ApkInfo?> getApkInfo(
           //
           // **放在 aapt2 之前**：审计用内置解析器，不依赖 aapt2；放在后面
           // 会让「没装 aapt2」连带把审计也吞掉 —— 那正是本次要修的缺口。
-          apkInfo.securityResult = await _auditExtractedBaseApk(baseApkPath);
+          final splitPaths = <String>[];
+          final seenNames = <String>{path.basename(baseEntry)};
+          for (final entry in apkInfo.archiveApks) {
+            if (entry == baseEntry || splitPaths.length >= 50) continue;
+            final name = path.basename(entry);
+            if (!seenNames.add(name)) continue;
+            final splitPath = path.join(tempDir.path, name);
+            if (await zip.extractFile(entry, splitPath)) {
+              splitPaths.add(splitPath);
+            }
+          }
+          apkInfo.securityResult = await _auditExtractedBaseApk(
+            baseApkPath,
+            splitApkPaths: splitPaths,
+          );
           try {
             final aaptPath = CommandTools.findAapt2Path();
             if (aaptPath == null || aaptPath.isEmpty) {
@@ -430,6 +446,9 @@ Future<ApkInfo?> getApkInfo(
             rethrow;
           } catch (e) {
             log.warning("getApkInfo: base APK parse failed: $e");
+            // aapt2 缺失/失败时改用内置解析器补齐元数据，避免把
+            // 「解析器没运行」显示成组件/ABI/语言不可用。
+            await _applyBuiltInBaseMetadata(baseApkPath, apkInfo);
           }
         }
       }
@@ -612,6 +631,33 @@ Future<ApkInfo?> getApkInfo(
 /// 这些是同步 CPU 密集计算，跑在主 isolate 上会让大 APK 冻住界面，而且
 /// 无法取消。图标渲染必须留在主 isolate —— `ApkInfo` 持有 `dart:ui` 的
 /// `Image`，不能跨 isolate 传递。
+
+/// 用内置 `ApkReader` 给 XAPK base APK 补元数据（aapt2 缺失/失败时）。
+Future<void> _applyBuiltInBaseMetadata(
+  String baseApkPath,
+  ApkInfo apkInfo,
+) async {
+  final reader = apk_parser.ApkReader();
+  try {
+    final open = await reader.open(baseApkPath);
+    if (!open.isOk) return;
+    final meta = await reader.parse();
+    if (meta == null) return;
+    final originalPath = apkInfo.apkPath;
+    apkInfo.apkPath = baseApkPath;
+    _applyMetaToApkInfo(meta, apkInfo);
+    if (apkInfo.mainIconImage == null) {
+      final icon = await apkInfo.loadIcon();
+      if (icon != null) apkInfo.mainIconImage = icon;
+    }
+    apkInfo.apkPath = originalPath;
+  } catch (e) {
+    log.warning('_applyBuiltInBaseMetadata failed: $e');
+  } finally {
+    reader.close();
+  }
+}
+
 /// 对已提取到磁盘的 base APK 单独跑一次安全审计。
 ///
 /// 分包安装包（XAPK / APKM / APKS）此前**完全不跑安全审计**：审计的唯一
@@ -624,9 +670,12 @@ Future<ApkInfo?> getApkInfo(
 /// 失败时返回 `null` 而非抛异常：审计拿不到结果不该让整个解析失败，
 /// 上层会把 `null` 呈现为「未执行」。
 Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
-  String baseApkPath,
-) async {
+  String baseApkPath, {
+  List<String> splitApkPaths = const [],
+}) async {
   final reader = apk_parser.ApkReader();
+  final splitReaders = <apk_parser.ApkReader>[];
+  final splitReadersByName = <String, apk_parser.ApkReader>{};
   try {
     final openResult = await reader.open(baseApkPath);
     if (!openResult.isOk) {
@@ -644,18 +693,120 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
         if (reader.readFile(name) case final bytes?)
           apk_parser.DexBytes(name, bytes),
     ];
-    // 原生库与 DEX 一样**先挑再读**（同一个库只取一个 ABI、超限不读）。
-    final nativeCandidates = reader.listFilesWithSize(extension: '.so');
+    final resourceStrings = _collectResourceStringsFrom(reader);
+    final nativeCandidates = <({String name, int size})>[
+      ...reader.listFilesWithSize(extension: '.so'),
+    ];
+    final baseCert = meta.signingSchemes?.signingCertificate;
+    final baseCertSha =
+        baseCert == null ? null : contentDigest('sha256', baseCert);
+    var splitCertMismatch = false;
+    final splitSeals = <({String label, SealCheck seal})>[];
+
+    for (final splitPath in splitApkPaths) {
+      final splitReader = apk_parser.ApkReader();
+      try {
+        final open = await splitReader.open(splitPath);
+        if (!open.isOk) {
+          splitReader.close();
+          continue;
+        }
+        final splitMeta = await splitReader.parse();
+        if (splitMeta == null) {
+          splitReader.close();
+          continue;
+        }
+        final label = path.basename(splitPath);
+        final splitCert = splitMeta.signingSchemes?.signingCertificate;
+        final splitCertSha =
+            splitCert == null ? null : contentDigest('sha256', splitCert);
+        if (baseCertSha != null &&
+            splitCertSha != null &&
+            baseCertSha != splitCertSha) {
+          splitCertMismatch = true;
+        }
+        final splitSeal = _checkSealForBase(splitReader, splitMeta, splitPath);
+        if (splitSeal != null) {
+          splitSeals.add((label: label, seal: splitSeal));
+        }
+        for (final name in splitReader.listFiles(extension: '.dex')) {
+          final bytes = splitReader.readFile(name);
+          if (bytes != null) {
+            dexEntries.add(apk_parser.DexBytes('split:$label/$name', bytes));
+          }
+        }
+        resourceStrings.addAll(_collectResourceStringsFrom(splitReader));
+        for (final candidate
+            in splitReader.listFilesWithSize(extension: '.so')) {
+          nativeCandidates.add(
+              (name: 'split:$label/${candidate.name}', size: candidate.size));
+        }
+        splitReaders.add(splitReader);
+        splitReadersByName[label] = splitReader;
+      } catch (e) {
+        log.warning('_auditExtractedBaseApk: split $splitPath skipped: $e');
+        splitReader.close();
+      }
+    }
+
     final nativeSelection =
         apk_parser.NativeSymbolScanner.selectLibraries(nativeCandidates);
-    final nativeEntries = <apk_parser.NativeLibraryBytes>[
-      for (final name in nativeSelection.selected)
-        if (reader.readFile(name) case final bytes?)
-          apk_parser.NativeLibraryBytes(name, bytes),
-    ];
+    final nativeEntries = <apk_parser.NativeLibraryBytes>[];
+    for (final name in nativeSelection.selected) {
+      Uint8List? bytes;
+      if (name.startsWith('split:')) {
+        final slash = name.indexOf('/', 'split:'.length);
+        if (slash > 0) {
+          final splitName = name.substring('split:'.length, slash);
+          final inner = name.substring(slash + 1);
+          bytes = splitReadersByName[splitName]?.readFile(inner);
+        }
+      } else {
+        bytes = reader.readFile(name);
+      }
+      if (bytes != null) {
+        nativeEntries.add(apk_parser.NativeLibraryBytes(name, bytes));
+      }
+    }
+
+    final entryFacts = reader.entryFacts();
+    final inventory =
+        apk_parser.AndroidArtifactInventoryScanner.scan(entryFacts);
+    final ocrMarkerIds = {
+      for (final marker in apk_parser.codeMarkers)
+        if (marker.category == SecurityCategory.ocrImage) marker.id,
+    };
+    final methodScan = apk_parser.DexMethodScanner.scan(
+      dexEntries,
+      deepChainFrom: ocrMarkerIds,
+      deepChainTo: apk_parser.AndroidSecurityAudit.uploadMarkerIds,
+    );
+    final loadGraph = apk_parser.AndroidLoadGraphScanner.scan(
+      dexEntries: dexEntries,
+      inventory: inventory,
+      methodScan: methodScan,
+    );
+    final payloadProbe = _probePayloadsForBase(
+      reader,
+      inventory,
+      splitReaders: splitReadersByName,
+    );
+    final certificate = meta.signingSchemes?.signingCertificate;
+    final certSha256 =
+        certificate == null ? null : contentDigest('sha256', certificate);
+    final baseline = OfficialBaselineStore.matchAndroid(
+      await OfficialBaselineStore.load(),
+      packageId: meta.packageName,
+      actualCertSha256: [if (certSha256 != null) certSha256],
+    );
+    final seal = _checkSealForBase(reader, meta, baseApkPath);
+
+    final mergedSeal = _mergeSplitSeals(seal, splitSeals);
     final result = apk_parser.AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
+      manifestParsed: !meta.manifestUnparsed,
+      manifestFailureReason: meta.manifestParseFailure,
       nativeEntries: nativeEntries,
       nativeLibraryTotal:
           apk_parser.NativeSymbolScanner.uniqueLibraryCount(nativeCandidates),
@@ -663,24 +814,206 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       containerAnomalyNotes: [
         for (final obs in reader.scanHardeningSignals()) obs.asNote,
       ],
-      // 与内置解析路径同一个口径：资源表覆盖量用实际读到的条目数。
       arscEntryCount: reader.arscParser?.getAllResources().length,
+      resourceStrings: resourceStrings,
+      artifacts: inventory,
+      loadGraph: loadGraph,
+      payloadProbe: payloadProbe,
+      methodScanResult: methodScan,
+      seal: mergedSeal,
+      baseline: baseline,
     );
-    return result.withLimitation(const AnalysisNote(
-      'android.split_apk.base_only',
-      'This is a split package: the security audit **only covers the base '
-          'APK**; the DEX and resources carried by the split APKs (language '
-          '/ density / ABI) were not analysed, so this result does not '
-          'represent the whole installation set. Native libraries '
-          'especially — the ABI split usually holds the copy that is '
-          'actually loaded.',
-    ));
+    if (splitCertMismatch) {
+      return result.withLimitation(const AnalysisNote(
+        'android.split_apk.cert_mismatch',
+        'The base APK and at least one split APK are signed with different '
+            'certificates. Android normally rejects such an installation set; '
+            'do not trust this package as a matching official set.',
+      ));
+    }
+    return result;
   } catch (e) {
     log.warning('_auditExtractedBaseApk failed: $e');
     return null;
   } finally {
     reader.close();
+    for (final splitReader in splitReaders) {
+      splitReader.close();
+    }
   }
+}
+
+/// 见 `parse_task.dart` 的同名逻辑；这里保持同一口径，避免两条审计路径漂移。
+List<String> _collectResourceStringsFrom(apk_parser.ApkReader reader) {
+  final out = <String>[...?reader.arscParser?.globalStringPool?.strings];
+  const textExtensions = {
+    '.json',
+    '.js',
+    '.html',
+    '.htm',
+    '.txt',
+    '.xml',
+    '.css',
+    '.properties',
+    '.csv',
+    '.md',
+    '.yaml',
+    '.yml',
+    '.strings',
+    '.plist',
+    '.conf',
+    '.ini',
+  };
+  var files = 0;
+  var chars = out.fold<int>(0, (a, b) => a + b.length);
+  for (final entry in reader.listFilesWithSize()) {
+    if (files >= 64 || chars >= 2 * 1024 * 1024) break;
+    final lower = entry.name.toLowerCase();
+    if (!lower.startsWith('assets/') || entry.size <= 0) continue;
+    if (entry.size > 2 * 1024 * 1024) continue;
+    final dot = lower.lastIndexOf('.');
+    if (dot >= 0 && !textExtensions.contains(lower.substring(dot))) continue;
+    final bytes = reader.readFile(entry.name);
+    if (bytes == null || bytes.isEmpty) continue;
+    files++;
+    for (final text
+        in Utf8Strings.extract(bytes, minLength: 2, minCjkChars: 2)) {
+      if (chars >= 2 * 1024 * 1024) break;
+      out.add(text);
+      chars += text.length;
+    }
+    for (final text
+        in Utf16Strings.extract(bytes, minLength: 2, requireWide: true)) {
+      if (chars >= 2 * 1024 * 1024) break;
+      out.add(text);
+      chars += text.length;
+    }
+  }
+  return out;
+}
+
+/// 把 base 与 split 的密封校验合并成一份。
+///
+/// path 加 `split:<label>/` 前缀，避免不同分包的同名条目互相覆盖；
+/// 任一 mismatch 都让汇总状态为 mismatch，这样 `ANDROID-APK-SEAL-MISMATCH`
+/// 会照常产出 P1，并在证据里指出具体分包。
+SealCheck? _mergeSplitSeals(
+  SealCheck? base,
+  List<({String label, SealCheck seal})> splits,
+) {
+  if (splits.isEmpty) return base;
+  final checks = <SealEntryCheck>[
+    ...?base?.checks,
+    for (final entry in splits)
+      for (final check in entry.seal.checks)
+        SealEntryCheck(
+          path: 'split:${entry.label}/${check.path}',
+          state: check.state,
+          algorithm: check.algorithm,
+          expectedDigestPrefix: check.expectedDigestPrefix,
+          actualDigestPrefix: check.actualDigestPrefix,
+        ),
+  ];
+  final anyMismatch = (base?.state == SealState.mismatch) ||
+      splits.any((entry) => entry.seal.state == SealState.mismatch);
+  final scheme = base?.scheme ?? splits.first.seal.scheme;
+  final notes = <String>{
+    ...?base?.noteCodes,
+    for (final entry in splits) ...entry.seal.noteCodes,
+  }.toList()
+    ..sort();
+  return SealCheck(
+    scheme: scheme,
+    state: anyMismatch
+        ? SealState.mismatch
+        : (base?.state ?? splits.first.seal.state),
+    entriesChecked: (base?.entriesChecked ?? 0) +
+        splits.fold<int>(0, (sum, entry) => sum + entry.seal.entriesChecked),
+    entriesTotal: (base?.entriesTotal ?? 0) +
+        splits.fold<int>(0, (sum, entry) => sum + entry.seal.entriesTotal),
+    checks: checks,
+    noteCodes: notes,
+  );
+}
+
+/// base APK 的载荷探测：与 `parse_task.dart` 同一套预算。
+PayloadProbeResult _probePayloadsForBase(
+  apk_parser.ApkReader reader,
+  ArtifactInventory inventory, {
+  Map<String, apk_parser.ApkReader> splitReaders = const {},
+}) {
+  const maxEntries = 64;
+  const maxEntryBytes = 8 * 1024 * 1024;
+  const headBytes = 4096;
+  final inputs = <PayloadProbeInput>[];
+  for (final entry in inventory.entries) {
+    if (inputs.length >= maxEntries) break;
+    final path = entry.path;
+    final candidate = path.startsWith('assets/') ||
+        entry.kind == ArtifactKind.dex ||
+        entry.kind == ArtifactKind.assetArchive ||
+        entry.kind == ArtifactKind.assetBinary ||
+        entry.kind == ArtifactKind.script;
+    if (!candidate) continue;
+    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) continue;
+    var source = reader;
+    var sourcePath = path;
+    if (path.startsWith('split:')) {
+      final slash = path.indexOf('/', 'split:'.length);
+      if (slash <= 0) continue;
+      final label = path.substring('split:'.length, slash);
+      source = splitReaders[label] ?? reader;
+      if (source == reader) continue;
+      sourcePath = path.substring(slash + 1);
+    }
+    final bytes = source.readFile(sourcePath);
+    if (bytes == null || bytes.isEmpty) continue;
+    final head =
+        bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
+    final dot = path.lastIndexOf('.');
+    inputs.add(PayloadProbeInput(
+      path: path,
+      sizeBytes: bytes.length,
+      headBytes: head,
+      declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
+    ));
+  }
+  return apk_parser.PayloadProbe.scan(inputs);
+}
+
+/// base APK 的密封校验：有 v2 优先 v2，否则 v1。
+SealCheck? _checkSealForBase(
+  apk_parser.ApkReader reader,
+  apk_parser.ApkMeta meta,
+  String path,
+) {
+  final schemes = meta.signingSchemes;
+  if (schemes != null && schemes.hasV2 && schemes.v2Value != null) {
+    RandomAccessFile? raf;
+    try {
+      raf = File(path).openSync();
+      final length = raf.lengthSync();
+      return apk_parser.ApkSealCheck.checkV2(
+        schemes: schemes,
+        fileLength: length,
+        digest: contentDigest,
+        read: (offset, count) {
+          if (offset < 0 || count <= 0 || offset + count > length) {
+            return Uint8List(0);
+          }
+          raf!.setPositionSync(offset);
+          return raf.readSync(count);
+        },
+      );
+    } catch (_) {
+      // 退回 v1。
+    } finally {
+      raf?.closeSync();
+    }
+  }
+  final archive = reader.archive;
+  if (archive == null) return null;
+  return apk_parser.ApkSealCheck.check(archive: archive, digest: contentDigest);
 }
 
 /// 分包一致性校验的结果。
@@ -796,7 +1129,8 @@ Future<ApkInfo?> _getApkInfoBuiltin(
 }) async {
   final totalSw = Stopwatch()..start();
 
-  final task = await ApkParseTask.start(apk);
+  final baselineDb = await OfficialBaselineStore.load();
+  final task = await ApkParseTask.start(apk, baselineDb: baselineDb);
   onTaskStarted?.call(task);
 
   ParsedApkData? parsed;

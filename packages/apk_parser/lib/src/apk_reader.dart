@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
 import 'package:archive_safety/archive_safety.dart';
@@ -39,6 +40,9 @@ enum ApkParseStage {
 /// APK 文件读取和解析的统一入口
 class ApkReader {
   Archive? _archive;
+
+  /// 当前打开的归档；未打开时为 `null`。
+  Archive? get archive => _archive;
 
   /// [open] 传进来的路径；[openBytes] 时为 `null`。
   ///
@@ -259,6 +263,39 @@ class ApkReader {
   /// 最多读多少份 `pom.properties`。一个正常包通常是个位数；上限只防畸形归档。
   static const int maxMavenArtifacts = 200;
 
+  /// manifest 不可用时，从 `resources.arsc` 的包名给出**部分结果**。
+  ///
+  /// 恶意/加固包经常把 manifest 破坏成不可解析的字节（本例根 manifest 的
+  /// string pool 标识是 0x7ff4）。此时仍应拿到包名并继续审计 DEX，而不是
+  /// 整包拒绝；`manifestParseFailure` 会明确标出「清单没读到」。
+  ApkMeta? _fallbackFromResources(String reason) {
+    final archive = _archive;
+    if (archive == null) return null;
+    final arscFile = archive.findFile('resources.arsc');
+    if (arscFile == null) return null;
+    final read = ZipBudget.readEntry(arscFile, ledger: _ledger);
+    if (!read.isOk || read.bytes == null) return null;
+    final parser = ArscParser(read.bytes!);
+    if (parser.parseFailure != null) return null;
+    final packageName = parser.packageName;
+    if (packageName == null || packageName.isEmpty) return null;
+    _arscParser = parser;
+    final meta = ApkMeta()
+      ..packageName = packageName
+      ..manifestParseFailure = reason;
+    _resolveLabel(meta);
+    _resolveIconPaths(meta);
+    meta.locales = parser.getLocales().toList();
+    meta.densities = parser.getDensities().toList();
+    meta.hasNightMode = parser.hasNightModeResources;
+    meta.uiModeTypes = parser.getUiModeTypes();
+    meta.icpFilings = IcpFilingScanner.scan(parser.globalStringPool);
+    meta.signingSchemes = _readSigningSchemes();
+    meta.hasV1Signature = _detectV1Signature();
+    _meta = meta;
+    return meta;
+  }
+
   Future<ApkMeta?> parse({void Function(ApkParseStage stage)? onStage}) async {
     final archive = _archive;
     if (archive == null) return null;
@@ -270,7 +307,7 @@ class ApkReader {
       // 「文件里没有」与「我们没读到」要分得开：两者都会让 parse 返回 null，
       // 但原因不同，报告里的措辞也该不同。
       manifestFailure = 'AndroidManifest.xml not found in the archive';
-      return null;
+      return _fallbackFromResources(manifestFailure!);
     }
     // **有界读取**（V2.4.12）：manifest 也可能被零填充到几十 MB，
     // 而 `file.content` 是无上限的。
@@ -279,7 +316,7 @@ class ApkReader {
       manifestFailure = 'AndroidManifest.xml was refused: '
           '${manifestRead.failure?.describe()}';
       _log.warning('parse: $manifestFailure');
-      return null;
+      return _fallbackFromResources(manifestFailure!);
     }
     final rawManifestBytes = manifestRead.bytes!;
     final manifestBytes =
@@ -290,7 +327,7 @@ class ApkReader {
     if (meta.manifestUnparsed) {
       manifestFailure = 'AndroidManifest.xml could not be parsed: '
           '${meta.manifestParseFailure}';
-      return null;
+      return _fallbackFromResources(manifestFailure!);
     }
     manifestFailure = null;
     // 记下来供 scanHardeningSignals 使用 —— manifest 层的加固线索只能在
@@ -455,6 +492,73 @@ class ApkReader {
             (lowerExt == null || file.name.toLowerCase().endsWith(lowerExt)))
           (name: file.name, size: file.size),
     ];
+  }
+
+  /// 归档条目的**平台无关事实表**（一次遍历，不读内容）。
+  ///
+  /// 这是 `AndroidArtifactInventoryScanner` / `PayloadProbe` 的输入：它们
+  /// 需要「有哪些条目、多大、是不是目录」，但**不需要**解压内容。目录条目
+  /// 一并返回（`isDirectory = true`）—— 「清单只收文件」的口径由清单层决定，
+  /// 事实层不做取舍。
+  ///
+  /// 压缩字段的说法：
+  /// - `compressedBytes` 取自中央目录声明的压缩大小；拿不到时为 `null`
+  ///   （目录条目、非 ZIP 来源），**不**拿 `sizeBytes` 冒充；
+  /// - `compressionMethod` 是 ZIP 方法号（0 stored / 8 deflate / 12 bzip2）。
+  ///   优先读 `ZipFile` 里的**原始方法号**；退而用 `ArchiveFile.compression`
+  ///   时只映射 deflate/bzip2 —— `none` 既可能是 stored，也可能是未登记的
+  ///   压缩方法（解码器把未知方法也归成 `none`），映射成 0 就是猜；
+  /// - 目录条目没有可压缩内容，两个字段都给 `null`，免得下游把 0 当成
+  ///   「压缩率 0」参与比值计算。
+  ///
+  /// 需要在 [open] / [openBytes] 之后调用；未打开时返回空列表。
+  List<ContainerEntryFact> entryFacts() {
+    final archive = _archive;
+    if (archive == null) return const [];
+    final facts = <ContainerEntryFact>[];
+    for (final file in archive.files) {
+      final isDirectory = file.isDirectory;
+      facts.add(ContainerEntryFact(
+        path: normalizeArchivePath(file.name),
+        sizeBytes: file.size,
+        compressedBytes: isDirectory ? null : _compressedBytesOf(file),
+        compressionMethod: isDirectory ? null : _compressionMethodOf(file),
+        isDirectory: isDirectory,
+      ));
+    }
+    return facts;
+  }
+
+  /// 中央目录声明的压缩大小；非 ZIP 来源或读不到时为 `null`。
+  int? _compressedBytesOf(ArchiveFile file) {
+    final raw = file.rawContent;
+    if (raw is ZipFile) return raw.compressedSize;
+    return null;
+  }
+
+  /// ZIP 压缩方法号；读不到**确切**值时 `null`（见 [entryFacts] 的说明）。
+  int? _compressionMethodOf(ArchiveFile file) {
+    final raw = file.rawContent;
+    if (raw is ZipFile) {
+      final method = raw.header?.compressionMethod;
+      // 99 是 AES 加密条目的「方法占位符」，真实方法在 AES extra field 里，
+      // 由 `ZipFile` 解进了 `compressionMethod` 枚举 —— 只有非 99 时原始号
+      // 才是方法号。
+      if (method != null && method != ZipFile.zipCompressionAexEncryption) {
+        return method;
+      }
+      return _methodFromCompression(raw.compressionMethod);
+    }
+    return _methodFromCompression(file.compression);
+  }
+
+  static int? _methodFromCompression(CompressionType? type) {
+    return switch (type) {
+      CompressionType.deflate => 8,
+      CompressionType.bzip2 => 12,
+      // `none` 与「未知方法」不可区分，`null` / 未知 ⇒ 不猜。
+      _ => null,
+    };
   }
 
   void _resolveLabel(ApkMeta meta) {

@@ -333,7 +333,30 @@ std::string ThumbnailChannel::UnregisterProvider() {
   }
   DeleteKeyTree(HKEY_CURRENT_USER,
                 std::wstring(L"Software\\Classes\\CLSID\\") + kClsidString);
+  // 安装版旧行为可能把处理器写进 HKLM；只删 HKCU 会让 Explorer 继续调用。
+  // 有权限时一并清掉，没权限时明确告诉用户需要管理员。
+  bool machine_wide_failed = false;
+  auto delete_machine_key = [&machine_wide_failed](const std::wstring& key) {
+    const LSTATUS status = ::RegDeleteTreeW(HKEY_LOCAL_MACHINE, key.c_str());
+    if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND) {
+      machine_wide_failed = true;
+    }
+  };
+  delete_machine_key(std::wstring(L"Software\\Classes\\CLSID\\") +
+                     kClsidString);
+  if (!handler_guid.empty()) {
+    for (const wchar_t* ext : kSupportedExtensions) {
+      delete_machine_key(std::wstring(L"Software\\Classes\\") + ext +
+                         L"\\ShellEx\\" + handler_guid);
+      delete_machine_key(std::wstring(L"Software\\Classes\\") + ext +
+                         L"\\ShellEx\\" + kLegacyHandlerGuid);
+    }
+  }
   ::SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+  if (machine_wide_failed) {
+    return "machine-wide thumbnail registration exists; run AppInfoTool as "
+           "administrator to remove it";
+  }
   return std::string();
 }
 
@@ -354,18 +377,27 @@ flutter::EncodableMap ThumbnailChannel::CurrentStatus() {
   // 注册判据：**注册表里指向的正是当前目录下这个 DLL**。
   // 仅「键存在」不够 —— 用户可能移动过安装目录，那时键还在但指向一个
   // 不存在的路径，Explorer 会静默失败。
-  const std::wstring registered_path = ReadStringValue(
-      HKEY_CURRENT_USER,
+  const std::wstring clsid_key =
       std::wstring(L"Software\\Classes\\CLSID\\") + kClsidString +
-          L"\\InprocServer32",
-      nullptr);
-  const bool registered = !registered_path.empty() &&
-                          dll_present &&
-                          ::StrCmpIW(registered_path.c_str(), dll.c_str()) == 0;
+      L"\\InprocServer32";
+  const std::wstring registered_path =
+      ReadStringValue(HKEY_CURRENT_USER, clsid_key, nullptr);
+  const std::wstring machine_registered_path =
+      ReadStringValue(HKEY_LOCAL_MACHINE, clsid_key, nullptr);
+  const bool hkcu_registered = !registered_path.empty() && dll_present &&
+                               ::StrCmpIW(registered_path.c_str(),
+                                          dll.c_str()) == 0;
+  const bool machine_wide_registered =
+      !machine_registered_path.empty() && dll_present &&
+      ::StrCmpIW(machine_registered_path.c_str(), dll.c_str()) == 0;
+  // Explorer 只关心「有没有一个指向当前 DLL 的注册」；HKLM 也是有效注册。
+  const bool registered = hkcu_registered || machine_wide_registered;
   status[flutter::EncodableValue("registered")] =
       flutter::EncodableValue(registered);
   status[flutter::EncodableValue("registeredPath")] =
       flutter::EncodableValue(Utf8FromWide(registered_path));
+  status[flutter::EncodableValue("machineWideRegistered")] =
+      flutter::EncodableValue(machine_wide_registered);
 
   // 逐扩展名报告，而不是一个布尔：`.apk` 挂上了、`.ipa` 没挂上，
   // 用「已启用」概括会掩盖一半的问题。
@@ -377,12 +409,18 @@ flutter::EncodableMap ThumbnailChannel::CurrentStatus() {
         handler_guid;
     const std::wstring value = ReadStringValue(HKEY_CURRENT_USER, shell_ex,
                                                nullptr);
+    const std::wstring machine_value =
+        ReadStringValue(HKEY_LOCAL_MACHINE, shell_ex, nullptr);
     flutter::EncodableMap entry;
     entry[flutter::EncodableValue("extension")] =
         flutter::EncodableValue(Utf8FromWide(ext));
     entry[flutter::EncodableValue("registered")] =
         flutter::EncodableValue(!value.empty() &&
                                 ::StrCmpIW(value.c_str(), kClsidString) == 0);
+    entry[flutter::EncodableValue("machineWide")] =
+        flutter::EncodableValue(!machine_value.empty() &&
+                                ::StrCmpIW(machine_value.c_str(),
+                                           kClsidString) == 0);
     extensions.push_back(flutter::EncodableValue(entry));
   }
   status[flutter::EncodableValue("extensions")] =

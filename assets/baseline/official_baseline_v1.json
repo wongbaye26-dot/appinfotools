@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "dbVersion": "2026.11.0",
+  "generatedAt": "2026-11-04T00:00:00Z",
+  "reviewedBy": [
+    "caller-provided",
+    "official-site-url"
+  ],
+  "entries": [
+    {
+      "id": "android.com.pwtma.tgewuir.ddmw",
+      "platform": "android",
+      "packageId": "com.pwtma.tgewuir.ddmw",
+      "displayName": "17加固",
+      "certSha256": [
+        "ea5ff6c485d14b51f064479904231706dbcd243e9ef61d670cb59c24b92e919f"
+      ],
+      "sources": [
+        {
+          "type": "other",
+          "url": "https://appinfotool.local/baseline/provided-apk",
+          "retrievedAt": "2026-11-04T00:00:00Z",
+          "method": "caller-provided APK; signing certificate SHA-256 extracted with ApkReader"
+        }
+      ],
+      "status": "active",
+      "notes": "Candidate baseline extracted from a caller-provided APK (17加固.apk). Not independently verified against Google Play; replace/confirm with an official source before treating as authoritative."
+    },
+    {
+      "id": "android.com.trim.music",
+      "platform": "android",
+      "packageId": "com.trim.music",
+      "displayName": "飞牛音乐",
+      "certSha256": [
+        "863ffbb78fec1d01f37f39f35f572fd99e2cb1d58bdaae70b7e85d90dad07257"
+      ],
+      "sources": [
+        {
+          "type": "official-site",
+          "url": "https://iso.liveupdate.fnnas.com/x86_64/app/FN_Music_1.0.3_00610141147.apk",
+          "retrievedAt": "2026-11-04T00:00:00Z",
+          "method": "official update URL (signed query/token stripped); cert SHA-256 via ApkReader"
+        }
+      ],
+      "status": "active",
+      "notes": "FN Music 1.0.3 from the vendor update URL; packageId/cert extracted from the provided official package."
+    }
+  ],
+  "integritySha256": "b4b902d11fff1b00d43374907fb09130192f533783ca8657399c77a9528f7e23"
+}

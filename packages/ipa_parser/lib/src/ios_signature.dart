@@ -38,6 +38,18 @@ class IosEntitlement {
       };
 }
 
+/// 从描述文件能看出的分发类型。
+///
+/// 只根据描述文件里的静态字段分类；App Store 包通常**没有**描述文件，
+/// 此时分类是 [unknown]，不是 appStore —— 「没读到」不能当成「App Store」。
+enum IosDistributionType {
+  appStore,
+  adHoc,
+  enterprise,
+  development,
+  unknown,
+}
+
 /// `embedded.mobileprovision` 的**静态**内容。
 ///
 /// 这个文件是一个 CMS/PKCS#7 `SignedData`，里面裹着一段 plist。本类只把那段
@@ -75,6 +87,15 @@ class IosProvisioningProfile {
   /// 单独提出来是因为它正是「应用声明的 bundle id 是否被授权」的比较对象。
   final FieldValue<String> applicationIdentifier;
 
+  /// `ProvisionsAllDevices`：企业/内部分发描述文件为 true。
+  final FieldValue<bool> provisionsAllDevices;
+
+  /// `ProvisionedDevices` 的数量；不存在时为 `absent`，空数组为 0。
+  final FieldValue<int> provisionedDeviceCount;
+
+  /// `Entitlements.get-task-allow`：开发分发为 true。
+  final FieldValue<bool> getTaskAllow;
+
   /// 全部授权项，保持 plist 中的顺序。
   final List<IosEntitlement> entitlements;
 
@@ -101,9 +122,40 @@ class IosProvisioningProfile {
         source: FieldSource.signatureMaterials),
     this.applicationIdentifier =
         const FieldValue<String>.absent(source: FieldSource.signatureMaterials),
+    this.provisionsAllDevices =
+        const FieldValue<bool>.absent(source: FieldSource.signatureMaterials),
+    this.provisionedDeviceCount =
+        const FieldValue<int>.absent(source: FieldSource.signatureMaterials),
+    this.getTaskAllow =
+        const FieldValue<bool>.absent(source: FieldSource.signatureMaterials),
     this.entitlements = const [],
     this.entitlementsRaw,
   });
+
+  /// 从静态字段推断的分发类型。
+  ///
+  /// 判据顺序：
+  /// 1. `ProvisionsAllDevices == true` → 企业/内部分发；
+  /// 2. `ProvisionedDevices` 非空 → 有设备白名单；`get-task-allow` 为 true
+  ///    时是开发分发，否则是 Ad-Hoc；
+  /// 3. `get-task-allow == true` → 开发分发；
+  /// 4. 否则视为 App Store（无设备白名单、非开发/企业）。
+  ///
+  /// 描述文件字段缺失时返回 [IosDistributionType.unknown]，不猜。
+  IosDistributionType get distribution {
+    final allDevices = provisionsAllDevices.value;
+    if (allDevices == true) return IosDistributionType.enterprise;
+    final devices = provisionedDeviceCount.value;
+    final dev = getTaskAllow.value;
+    if (dev == true) return IosDistributionType.development;
+    if (devices != null) {
+      return devices > 0
+          ? IosDistributionType.adHoc
+          : IosDistributionType.appStore;
+    }
+    if (allDevices != null) return IosDistributionType.appStore;
+    return IosDistributionType.unknown;
+  }
 
   /// 描述文件在 [moment] 时点是否已过期。
   ///
@@ -128,6 +180,9 @@ class IosProvisioningProfile {
         creationDate,
         expirationDate,
         applicationIdentifier,
+        provisionsAllDevices,
+        provisionedDeviceCount,
+        getTaskAllow,
       ].any((f) => f.hasValue);
 }
 
@@ -766,8 +821,71 @@ class IpaSignatureMaterialReader {
       creationDate: PlistFields.date(root, 'CreationDate', source: source),
       expirationDate: PlistFields.date(root, 'ExpirationDate', source: source),
       applicationIdentifier: applicationIdentifier,
+      provisionsAllDevices: _boolField(
+        root,
+        'ProvisionsAllDevices',
+        source: source,
+      ),
+      provisionedDeviceCount: _intFromArray(
+        root,
+        'ProvisionedDevices',
+        source: source,
+      ),
+      getTaskAllow: _entitlementBool(
+        entitlementsDict,
+        'get-task-allow',
+        source: source,
+      ),
       entitlements: entitlements,
       entitlementsRaw: entitlementsDict,
+    );
+  }
+
+  static FieldValue<bool> _boolField(
+    PlistDict root,
+    String key, {
+    required FieldSource source,
+  }) {
+    final raw = root.value[key];
+    if (raw == null) return FieldValue<bool>.absent(source: source);
+    if (raw is PlistBoolean) {
+      return FieldValue<bool>.extracted(raw.value, source: source);
+    }
+    return FieldValue<bool>.wrongType(
+      diagnostic: '$key is not a boolean',
+      source: source,
+    );
+  }
+
+  static FieldValue<int> _intFromArray(
+    PlistDict root,
+    String key, {
+    required FieldSource source,
+  }) {
+    final raw = root.value[key];
+    if (raw == null) return FieldValue<int>.absent(source: source);
+    if (raw is PlistArray) {
+      return FieldValue<int>.extracted(raw.value.length, source: source);
+    }
+    return FieldValue<int>.wrongType(
+      diagnostic: '$key is not an array',
+      source: source,
+    );
+  }
+
+  static FieldValue<bool> _entitlementBool(
+    PlistDict? entitlements,
+    String key, {
+    required FieldSource source,
+  }) {
+    final raw = entitlements?.value[key];
+    if (raw == null) return FieldValue<bool>.absent(source: source);
+    if (raw is PlistBoolean) {
+      return FieldValue<bool>.extracted(raw.value, source: source);
+    }
+    return FieldValue<bool>.wrongType(
+      diagnostic: 'Entitlements.$key is not a boolean',
+      source: source,
     );
   }
 }

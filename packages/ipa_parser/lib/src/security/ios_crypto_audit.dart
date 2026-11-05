@@ -45,13 +45,22 @@ class IosCryptoSignals {
 
   /// 从一段字符串里收集信号。[source] 是可执行文件路径（证据位置）。
   void collect(String text, String source) {
-    final lower = text.toLowerCase();
-    for (final marker in iosCryptoMarkers) {
-      final haystack = marker.caseSensitive ? text : lower;
-      if (!haystack.contains(marker.literal)) continue;
-      final bucket = samples.putIfAbsent(marker.id, () => <String>{});
-      if (bucket.length < _maxSamplesPerMarker) bucket.add(text);
-      (sources[marker.id] ??= <String>{}).add(source);
+    // 快速预筛：绝大多数 ASCII 串既不含钱包/剪贴板字面量，也短于 34 字符
+    // （最短的链上地址形态）；这两种都不可能有命中，省掉全部标记匹配和
+    // 地址正则。`caseSensitive:false` 只用于预筛，真正的记录仍按各标记的
+    // 大小写规则走，因此不会把 `PrivateKey` 误记成 `privateKey`。
+    final markerHit = _anyMarkerPattern.hasMatch(text);
+    if (!markerHit && text.length < 34) return;
+
+    if (markerHit) {
+      final lower = text.toLowerCase();
+      for (final marker in iosCryptoMarkers) {
+        final haystack = marker.caseSensitive ? text : lower;
+        if (!haystack.contains(marker.literal)) continue;
+        final bucket = samples.putIfAbsent(marker.id, () => <String>{});
+        if (bucket.length < _maxSamplesPerMarker) bucket.add(text);
+        (sources[marker.id] ??= <String>{}).add(source);
+      }
     }
     if (addresses.length >= _maxAddresses) return;
     for (final hit in findCryptoAddresses(text)) {
@@ -61,6 +70,11 @@ class IosCryptoSignals {
       }
     }
   }
+
+  static final RegExp _anyMarkerPattern = RegExp(
+    iosCryptoMarkers.map((marker) => RegExp.escape(marker.literal)).join('|'),
+    caseSensitive: false,
+  );
 
   /// 某个组里命中了哪些标记 id。
   List<String> hitsOf(Set<String> group) => [
