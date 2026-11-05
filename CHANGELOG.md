@@ -37,6 +37,8 @@
 - 损坏 manifest：从 `resources.arsc` 回退包名并继续审计，界面显示“部分解析”。
 - 批量重命名：按应用名/应用名-版本多选重命名。
 - iOS 分发类型：App Store / Ad Hoc / Enterprise / Development / unknown。
+- 修正 iOS CodeResources 超过 64 条时把“已验部分”误标成 `notChecked`；现在保留
+  `verified` + `checked/total` + `entry_limit`，摘要函数不可用才标 `notChecked`。
 
 ### 已知限制
 

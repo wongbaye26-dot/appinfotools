@@ -114,7 +114,7 @@ class IosCodeResourcesCheck {
     var mismatch = false;
     var missing = false;
     var notChecked = false;
-    final notes = <String>['seal.digest_unavailable'];
+    final notes = <String>[];
     for (final item in ordered) {
       if (checks.length >= maxEntries) {
         // 只校验了前 64 个；不能把「没看完」说成「全部一致」。
@@ -165,10 +165,9 @@ class IosCodeResourcesCheck {
         continue;
       }
       final actual = digest(item.value.algorithm, data.bytes!);
-      checked++;
-      checkedBytes += target.size;
       if (actual == null) {
         notChecked = true;
+        notes.add('seal.digest_unavailable');
         checks.add(SealEntryCheck(
           path: archivePath,
           state: SealState.notChecked,
@@ -177,6 +176,8 @@ class IosCodeResourcesCheck {
         ));
         continue;
       }
+      checked++;
+      checkedBytes += target.size;
       final expected = _hex(item.value.expected);
       final normalizedActual = actual.toLowerCase();
       if (normalizedActual != expected) {
@@ -203,14 +204,19 @@ class IosCodeResourcesCheck {
       }
     }
 
+    // `notChecked` 只表示「**一条都没验成**」。超过 64 条预算时，已经验过
+    // 的条目仍然有效；把整个结果标成 notChecked 会让所有大包看起来像
+    // 「完全没做密封校验」—— 实测两个 >64 条 CodeResources 的企业包都被
+    // 误标成 notChecked。部分覆盖由 entriesChecked/entriesTotal + entry_limit
+    // 说明，不冒充全量。
     final state = mismatch
         ? SealState.mismatch
         : missing
             ? SealState.entryMissing
-            : notChecked
-                ? SealState.notChecked
-                : checked > 0
-                    ? SealState.verified
+            : checked > 0
+                ? SealState.verified
+                : notChecked
+                    ? SealState.notChecked
                     : SealState.unknown;
 
     return SealCheck(
@@ -221,8 +227,7 @@ class IosCodeResourcesCheck {
       entriesTotal: records.length,
       checks: checks,
       signatureVerified: false,
-      noteCodes:
-          state == SealState.notChecked ? notes.toSet().toList() : const [],
+      noteCodes: notChecked ? notes.toSet().toList() : const [],
     );
   }
 

@@ -136,4 +136,31 @@ void main() {
     expect(check.state, SealState.notChecked);
     expect(check.noteCodes, contains('seal.digest_unavailable'));
   });
+
+  test('超过 64 条且已验部分 → verified + entry_limit，不整包标 notChecked', () {
+    final files = <String, List<int>>{};
+    final entries = StringBuffer();
+    for (var i = 0; i < 65; i++) {
+      final name = 'f$i.bin';
+      files['$_bundlePath/$name'] = [i];
+      entries.write('<key>$name</key><dict><key>hash2</key><data>'
+          '${base64Encode(List<int>.filled(32, 0xaa))}</data></dict>');
+    }
+    final archive = _archive(
+      files: files,
+      codeResources: '<?xml version="1.0" encoding="UTF-8"?>'
+          '<plist version="1.0"><dict><key>files2</key><dict>'
+          '$entries'
+          '</dict></dict></plist>',
+    );
+    final check = IosCodeResourcesCheck.check(
+      archive: archive,
+      bundle: _bundle(),
+      digest: _fakeDigest,
+    );
+    expect(check.state, SealState.verified);
+    expect(check.entriesChecked, 64);
+    expect(check.entriesTotal, 65);
+    expect(check.noteCodes, contains('seal.entry_limit'));
+  });
 }
