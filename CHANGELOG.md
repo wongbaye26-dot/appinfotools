@@ -41,6 +41,8 @@
   `verified` + `checked/total` + `entry_limit`，摘要函数不可用才标 `notChecked`。
 - 主应用根目录下的独立 `.dylib` 纳入安全扫描目标（此前只报 `IOS-REPACKAGED`，
   不分析其 Mach-O/字符串/选择子）。
+- Android v1 MANIFEST 与 iOS CodeResources 采用同一部分覆盖语义：只有一条都
+  未验成才标 `notChecked`；已验部分保留 `verified` + `checked/total`。
 
 ### 已知限制
 

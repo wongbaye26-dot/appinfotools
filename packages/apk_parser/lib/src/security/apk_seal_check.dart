@@ -111,7 +111,6 @@ class ApkSealCheck {
         continue;
       }
       final actual = digest(record.value.algorithm, entryBytes);
-      checked++;
       if (actual == null) {
         notChecked = true;
         notes.add('seal.digest_unavailable');
@@ -123,6 +122,7 @@ class ApkSealCheck {
         ));
         continue;
       }
+      checked++;
       final expected = _hex(record.value.expected);
       final normalized = actual.toLowerCase();
       final verified = normalized == expected;
@@ -137,14 +137,17 @@ class ApkSealCheck {
       ));
     }
 
+    // 与 iOS CodeResources 同一语义：`notChecked` 只表示一条都没验成。
+    // MANIFEST 超过 64 条时已经验过的条目仍然有效；部分覆盖由
+    // entriesChecked/entriesTotal + seal.entry_limit 表达。
     final state = mismatch
         ? SealState.mismatch
         : missing
             ? SealState.entryMissing
-            : notChecked
-                ? SealState.notChecked
-                : checked > 0
-                    ? SealState.verified
+            : checked > 0
+                ? SealState.verified
+                : notChecked
+                    ? SealState.notChecked
                     : SealState.unknown;
 
     return SealCheck(
@@ -154,8 +157,7 @@ class ApkSealCheck {
       entriesTotal: records.length,
       checks: checks,
       signatureVerified: false,
-      noteCodes:
-          state == SealState.notChecked ? notes.toSet().toList() : const [],
+      noteCodes: notChecked ? notes.toSet().toList() : const [],
     );
   }
 

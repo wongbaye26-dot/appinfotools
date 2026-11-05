@@ -199,4 +199,21 @@ void main() {
     );
     expect(seal.state, SealState.mismatch);
   });
+
+  test('v1 MANIFEST 超过 64 条且已验部分 → verified + entry_limit', () {
+    final manifest = StringBuffer('Manifest-Version: 1.0\r\n\r\n');
+    final archive = Archive();
+    for (var i = 0; i < 65; i++) {
+      manifest.write('Name: f$i.bin\r\n'
+          'SHA-256-Digest: ${base64Encode(List<int>.filled(32, 0xaa))}\r\n\r\n');
+      archive.addFile(ArchiveFile('f$i.bin', 1, [i]));
+    }
+    final bytes = utf8.encode(manifest.toString());
+    archive.addFile(ArchiveFile('META-INF/MANIFEST.MF', bytes.length, bytes));
+    final seal = ApkSealCheck.check(archive: archive, digest: _fakeDigest);
+    expect(seal.state, SealState.verified);
+    expect(seal.entriesChecked, 64);
+    expect(seal.entriesTotal, 65);
+    expect(seal.noteCodes, contains('seal.entry_limit'));
+  });
 }
