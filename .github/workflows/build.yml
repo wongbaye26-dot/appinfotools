@@ -558,7 +558,7 @@ jobs:
           }
 
       - name: Installer smoke (silent install / registry / uninstall)
-        # 真机冒烟里能自动化的部分：静默安装到临时目录、检查文件与 HKCU
+        # 真机冒烟里能自动化的部分：静默安装到默认目录、检查文件与 HKCU
         # 缩略图注册、检查文件关联候选、再静默卸载。Explorer 的缩略图渲染
         # 仍需人工验证（CI 没有交互式桌面）。
         #
@@ -568,7 +568,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $log = Join-Path $env:RUNNER_TEMP 'installer-smoke.log'
-          $dir = Join-Path $env:RUNNER_TEMP 'AppInfoToolSmoke'
+          # 用默认安装目录（GitHub runner 是管理员，{autopf} 即 Program Files），
+          # 不传 /DIR：在管理员静默安装下 /DIR 的行为不足以作为稳定断言。
+          $dir = Join-Path $env:ProgramFiles 'AppInfoTool'
           try {
             $setup = Get-ChildItem 'build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe' |
               Select-Object -First 1
@@ -577,7 +579,7 @@ jobs:
 
             $installArgs = @(
               '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
-              '/TASKS=associate', "/DIR=$dir", "/LOG=$log"
+              '/TASKS=associate', "/LOG=$log"
             )
             $p = Start-Process -FilePath $setup.FullName -ArgumentList $installArgs -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "installer exited $($p.ExitCode)" }
