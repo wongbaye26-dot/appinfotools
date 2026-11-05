@@ -595,6 +595,25 @@ jobs:
             $dir = $dir.TrimEnd('\')
             Write-Host "install location: $dir"
 
+            # 真机/CI 的 Inno 安装目录偶尔与 InstallLocation 不一致（管理员
+            # 静默安装下见过）。最后再用可执行文件反查一次，避免把“安装成功
+            # 但目录猜错”误报成失败。
+            if (-not (Test-Path (Join-Path $dir 'AppInfoTool.exe'))) {
+              $found = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) |
+                Where-Object { $_ -and (Test-Path $_) } |
+                ForEach-Object {
+                  Get-ChildItem -Path $_ -Filter 'AppInfoTool.exe' -File -Recurse -ErrorAction SilentlyContinue
+                } | Select-Object -First 1
+              if ($found) { $dir = $found.DirectoryName }
+            }
+            Write-Host "resolved install location: $dir"
+
+            if (-not (Test-Path (Join-Path $dir 'AppInfoTool.exe'))) {
+              $listing = Get-ChildItem $dir -ErrorAction SilentlyContinue |
+                Select-Object -First 20 -ExpandProperty Name
+              throw "installed file missing: AppInfoTool.exe (dir=$dir; entries=$($listing -join ','))"
+            }
+
             foreach ($name in 'AppInfoTool.exe', 'appinfotool_thumbnail.dll', 'app_icon_extractor.exe') {
               if (-not (Test-Path (Join-Path $dir $name))) {
                 throw "installed file missing: $name"
