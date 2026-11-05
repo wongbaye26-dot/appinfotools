@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "dbVersion": "2026.11.0",
+  "generatedAt": "2026-11-04T00:00:00Z",
+  "reviewedBy": ["security", "architect"],
+  "entries": [
+    {
+      "id": "android.imtoken",
+      "platform": "android",
+      "packageId": "im.token.app",
+      "displayName": "imToken",
+      "certSha256": [
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      ],
+      "sources": [
+        {
+          "type": "google-play",
+          "url": "https://play.google.com/store/apps/details?id=im.token.app",
+          "retrievedAt": "2026-11-04T00:00:00Z",
+          "method": "apksigner verify --print-certs (official package)"
+        }
+      ],
+      "status": "active",
+      "notes": "Example only; fingerprint must be replaced with the real official certificate."
+    },
+    {
+      "id": "ios.metamask",
+      "platform": "ios",
+      "packageId": "io.metamask.MetaMask",
+      "displayName": "MetaMask",
+      "teamIds": ["ABCDE12345"],
+      "sources": [
+        {
+          "type": "app-store",
+          "url": "https://apps.apple.com/app/metamask/id1438144202",
+          "retrievedAt": "2026-11-04T00:00:00Z",
+          "method": "codesign -d --verbose (official package)"
+        }
+      ],
+      "status": "active",
+      "notes": "Example only; Team ID must be replaced with the real official TeamIdentifier."
+    }
+  ]
+}

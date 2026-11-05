@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://appinfotool.local/schemas/official-baseline-v1.schema.json",
+  "title": "AppInfoTool official app baseline v1",
+  "description": "Offline official certificate/Team fingerprint database. Only fingerprints and public source references are stored; never app binaries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "dbVersion", "generatedAt", "entries"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "dbVersion": {
+      "type": "string",
+      "pattern": "^\\d{4}\\.\\d{2}\\.\\d+$"
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "reviewedBy": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "integritySha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "url", "retrievedAt"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "google-play",
+            "app-store",
+            "official-site",
+            "public-fingerprint",
+            "other"
+          ]
+        },
+        "url": { "type": "string", "format": "uri" },
+        "retrievedAt": { "type": "string", "format": "date-time" },
+        "method": { "type": "string" }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "platform", "packageId", "displayName", "sources", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"
+        },
+        "platform": { "type": "string", "enum": ["android", "ios"] },
+        "packageId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255,
+          "description": "Android: applicationId; iOS: CFBundleIdentifier. Case-sensitive, exact match."
+        },
+        "displayName": { "type": "string", "minLength": 1 },
+        "certSha256": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "description": "Android signing certificate SHA-256, lowercase hex without colons. Multiple entries support Play App Signing rotation / historical certs."
+        },
+        "teamIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{10}$"
+          },
+          "description": "iOS Apple Team IDs from codesign -d (TeamIdentifier=), uppercase."
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "status": { "type": "string", "enum": ["active", "retired"] },
+        "retiredAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "platform": { "const": "android" } },
+            "required": ["platform"]
+          },
+          "then": { "required": ["certSha256"] }
+        },
+        {
+          "if": {
+            "properties": { "platform": { "const": "ios" } },
+            "required": ["platform"]
+          },
+          "then": { "required": ["teamIds"] }
+        }
+      ]
+    }
+  }
+}

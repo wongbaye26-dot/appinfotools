@@ -1,0 +1,788 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://appinfotool.local/schemas/crypto-theft-security-v8.schema.json",
+  "title": "AppInfoTool report.security (schema v8)",
+  "description": "Validates the new top-level `security` object introduced in reportSchemaVersion 8. The full report is report v7 + this object + findings[].blindSpots.",
+  "type": [
+    "object",
+    "null"
+  ],
+  "additionalProperties": false,
+  "required": [
+    "cryptoTheft",
+    "artifacts",
+    "loadGraph",
+    "seal",
+    "baseline"
+  ],
+  "properties": {
+    "cryptoTheft": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/cryptoTheft"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "artifacts": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/artifacts"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "loadGraph": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/loadGraph"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "seal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/seal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "baseline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/baseline"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "evidenceSource": {
+      "type": "string",
+      "enum": [
+        "manifest",
+        "networkSecurityConfig",
+        "infoPlist",
+        "privacyInfo",
+        "dexString",
+        "dexMethodReference",
+        "machoSymbol",
+        "nativeString",
+        "nativeSymbol",
+        "zipEntry",
+        "provisioning",
+        "runtime",
+        "other",
+        "artifactEntry",
+        "loadGraph",
+        "sealDigest",
+        "iocDatabase",
+        "officialBaseline"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "location",
+        "detail"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/evidenceSource"
+        },
+        "location": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "locationCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detailCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "techniqueEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "technique",
+        "stage",
+        "signalId",
+        "strength",
+        "supported",
+        "evidence",
+        "noteCodes",
+        "ruleIds"
+      ],
+      "properties": {
+        "technique": {
+          "type": "string",
+          "enum": [
+            "addressSwap",
+            "clipboardHijack",
+            "mnemonicPhish",
+            "keyExfiltration",
+            "approvalPhish",
+            "unknown"
+          ]
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "capability",
+            "source",
+            "injection",
+            "payload",
+            "family"
+          ]
+        },
+        "signalId": {
+          "type": "string"
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "stringOnly",
+            "codeReference",
+            "callSite",
+            "artifact",
+            "baseline",
+            "knownFamily"
+          ]
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "noteCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ruleIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "missingLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "whyCode",
+        "args"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "capability",
+            "source",
+            "injection",
+            "payload",
+            "family"
+          ]
+        },
+        "whyCode": {
+          "type": "string",
+          "pattern": "^missing\\.[A-Za-z0-9_.]+$"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "cryptoTheft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "level",
+        "primaryTechnique",
+        "chain",
+        "missing",
+        "confidence",
+        "severity",
+        "score",
+        "scoringVersion",
+        "baselineEntryId"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "android.crypto.theft",
+            "ios.crypto.theft"
+          ]
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "none",
+            "capabilityOnly",
+            "suspicious",
+            "strongEvidence",
+            "knownFamily",
+            "unknown"
+          ]
+        },
+        "primaryTechnique": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "addressSwap",
+            "clipboardHijack",
+            "mnemonicPhish",
+            "keyExfiltration",
+            "approvalPhish",
+            "unknown",
+            null
+          ]
+        },
+        "chain": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/techniqueEvidence"
+                },
+                {
+                  "properties": {
+                    "stage": {
+                      "const": "capability"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/techniqueEvidence"
+                },
+                {
+                  "properties": {
+                    "stage": {
+                      "const": "source"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/techniqueEvidence"
+                },
+                {
+                  "properties": {
+                    "stage": {
+                      "const": "injection"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/techniqueEvidence"
+                },
+                {
+                  "properties": {
+                    "stage": {
+                      "const": "payload"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/techniqueEvidence"
+                },
+                {
+                  "properties": {
+                    "stage": {
+                      "const": "family"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/missingLink"
+          }
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "suspected",
+            "independentCapability",
+            "unknown"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "p0",
+            "p1",
+            "p2",
+            "p3",
+            "info",
+            "unknown"
+          ]
+        },
+        "score": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "scoringVersion": {
+          "type": "string"
+        },
+        "baselineEntryId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "artifactEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "origin",
+        "sizeBytes",
+        "arch",
+        "sha256",
+        "contentScanned",
+        "skipCode",
+        "suspicionCodes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dex",
+            "elf",
+            "machO",
+            "dylib",
+            "framework",
+            "staticLibrary",
+            "nestedCodeBundle",
+            "assetArchive",
+            "assetBinary",
+            "assetText",
+            "script",
+            "resourceTable",
+            "manifest",
+            "signatureBlock",
+            "unknown"
+          ]
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "bundleRoot",
+            "frameworks",
+            "nestedBundle",
+            "assets",
+            "remoteReferenced",
+            "unknown"
+          ]
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "arch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "contentScanned": {
+          "type": "boolean"
+        },
+        "skipCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suspicionCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entries",
+        "totalEntries",
+        "inventoriedEntries",
+        "entriesComplete",
+        "skippedCodes"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactEntry"
+          }
+        },
+        "totalEntries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inventoriedEntries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entriesComplete": {
+          "type": "boolean"
+        },
+        "skippedCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "loadNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "resolvedPath",
+        "presentInPackage"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dex",
+            "elf",
+            "machO",
+            "dylib",
+            "framework",
+            "script",
+            "missing",
+            "unknown"
+          ]
+        },
+        "resolvedPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "presentInPackage": {
+          "type": "boolean"
+        }
+      }
+    },
+    "loadEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromId",
+        "toId",
+        "kind",
+        "source",
+        "location"
+      ],
+      "properties": {
+        "fromId": {
+          "type": "string"
+        },
+        "toId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "systemLoadLibrary",
+            "systemLoad",
+            "dexClassLoader",
+            "inMemoryDexLoader",
+            "nativeDlopen",
+            "nativeDlsym",
+            "machoLinkedLibrary",
+            "machoWeakLinked",
+            "machoRPath",
+            "bundleEntryReference",
+            "unknown"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/evidenceSource"
+        },
+        "location": {
+          "type": "string"
+        }
+      }
+    },
+    "loadGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "edges",
+        "danglingEdgeIds",
+        "complete"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/loadNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/loadEdge"
+          }
+        },
+        "danglingEdgeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sealEntryCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "state",
+        "algorithm",
+        "expectedDigestPrefix",
+        "actualDigestPrefix"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "mismatch",
+            "entryMissing",
+            "unsealed",
+            "notChecked",
+            "unknown"
+          ]
+        },
+        "algorithm": {
+          "type": "string"
+        },
+        "expectedDigestPrefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actualDigestPrefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "seal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "state",
+        "entriesChecked",
+        "entriesTotal",
+        "checks",
+        "signatureVerified",
+        "noteCodes"
+      ],
+      "properties": {
+        "scheme": {
+          "type": "string",
+          "enum": [
+            "apk.v1.manifest",
+            "apk.v2.content",
+            "apk.v3.content",
+            "ipa.codeResources.v1",
+            "ipa.codeResources.v2"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "mismatch",
+            "entryMissing",
+            "unsealed",
+            "notChecked",
+            "unknown"
+          ]
+        },
+        "entriesChecked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entriesTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sealEntryCheck"
+          }
+        },
+        "signatureVerified": {
+          "const": false
+        },
+        "noteCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "dbVersion",
+        "entryId",
+        "packageId",
+        "expectedFingerprintPrefixes",
+        "actualFingerprintPrefixes",
+        "noteCodes"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "match",
+            "mismatch",
+            "noBaseline",
+            "unavailable"
+          ]
+        },
+        "dbVersion": {
+          "type": "string"
+        },
+        "entryId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "packageId": {
+          "type": "string"
+        },
+        "expectedFingerprintPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          }
+        },
+        "actualFingerprintPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          }
+        },
+        "noteCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

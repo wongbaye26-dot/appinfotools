@@ -1,0 +1,162 @@
+{
+  "cryptoTheft": {
+    "id": "android.crypto.theft",
+    "level": "unknown",
+    "primaryTechnique": null,
+    "chain": [
+      {
+        "technique": "unknown",
+        "stage": "capability",
+        "signalId": "unknown",
+        "strength": "stringOnly",
+        "supported": false,
+        "evidence": [],
+        "noteCodes": [
+          "dexPartial"
+        ],
+        "ruleIds": []
+      },
+      {
+        "technique": "unknown",
+        "stage": "source",
+        "signalId": "unknown",
+        "strength": "stringOnly",
+        "supported": false,
+        "evidence": [],
+        "noteCodes": [
+          "dexPartial"
+        ],
+        "ruleIds": []
+      },
+      {
+        "technique": "unknown",
+        "stage": "injection",
+        "signalId": "unknown",
+        "strength": "stringOnly",
+        "supported": false,
+        "evidence": [],
+        "noteCodes": [
+          "nativePacked"
+        ],
+        "ruleIds": []
+      },
+      {
+        "technique": "unknown",
+        "stage": "payload",
+        "signalId": "unknown",
+        "strength": "stringOnly",
+        "supported": false,
+        "evidence": [],
+        "noteCodes": [
+          "payloadUnavailable"
+        ],
+        "ruleIds": []
+      },
+      {
+        "technique": "unknown",
+        "stage": "family",
+        "signalId": "unknown",
+        "strength": "stringOnly",
+        "supported": false,
+        "evidence": [],
+        "noteCodes": [
+          "baselineUnavailable"
+        ],
+        "ruleIds": []
+      }
+    ],
+    "missing": [
+      {
+        "stage": "capability",
+        "whyCode": "missing.notCovered.android.dex.strings",
+        "args": {
+          "covered": 7340032,
+          "limit": 8388608
+        }
+      },
+      {
+        "stage": "source",
+        "whyCode": "missing.notCovered.android.dex.callSites",
+        "args": {
+          "covered": 1024,
+          "limit": 4096
+        }
+      },
+      {
+        "stage": "injection",
+        "whyCode": "missing.shellPacked",
+        "args": {
+          "library": "libprotect.so"
+        }
+      },
+      {
+        "stage": "payload",
+        "whyCode": "missing.payloadEncrypted",
+        "args": {
+          "path": "lib/arm64-v8a/libprotect.so"
+        }
+      },
+      {
+        "stage": "family",
+        "whyCode": "missing.notCovered.crypto.theft.chain",
+        "args": {
+          "reason": "no baseline entry / intel deferred"
+        }
+      }
+    ],
+    "confidence": "unknown",
+    "severity": "unknown",
+    "score": null,
+    "scoringVersion": "theft-1.0",
+    "baselineEntryId": null
+  },
+  "artifacts": {
+    "entries": [
+      {
+        "path": "lib/arm64-v8a/libprotect.so",
+        "kind": "elf",
+        "origin": "embedded",
+        "sizeBytes": 4194304,
+        "arch": "arm64-v8a",
+        "sha256": null,
+        "contentScanned": false,
+        "skipCode": "budget.size",
+        "suspicionCodes": [
+          "payload.encrypted"
+        ]
+      }
+    ],
+    "totalEntries": 1,
+    "inventoriedEntries": 1,
+    "entriesComplete": true,
+    "skippedCodes": []
+  },
+  "loadGraph": {
+    "nodes": [],
+    "edges": [],
+    "danglingEdgeIds": [],
+    "complete": false
+  },
+  "seal": {
+    "scheme": "apk.v2.content",
+    "state": "notChecked",
+    "entriesChecked": 0,
+    "entriesTotal": 0,
+    "checks": [],
+    "signatureVerified": false,
+    "noteCodes": [
+      "seal.digest_unavailable"
+    ]
+  },
+  "baseline": {
+    "status": "noBaseline",
+    "dbVersion": "2026.11.0",
+    "entryId": null,
+    "packageId": "com.example.unknown",
+    "expectedFingerprintPrefixes": [],
+    "actualFingerprintPrefixes": [],
+    "noteCodes": [
+      "baseline.no_entry"
+    ]
+  }
+}

@@ -24,7 +24,7 @@ macOS 的 dmg 是 universal 包，同一份在 Intel 与 Apple Silicon 上都能
   xattr -dr com.apple.quarantine "/Applications/AppInfoTool.app"
   ```
 
-系统要求：macOS 11 或更高。
+系统要求：macOS 12 或更高。
 
 macOS 版**自带** `aapt2` 与 `adb`，装完就能用，不需要另外装 Android SDK。
 
@@ -53,14 +53,14 @@ chmod +x AppInfoTool-*-Linux-x86_64.AppImage
 
 ```sh
 # macOS / Linux
-V=1.1.0
+V=2.9.0
 curl -L -o "AppInfoTool-${V}-macOS-universal.dmg" \
   "https://github.com/wongbaye26-dot/appinfotools/releases/download/v${V}/AppInfoTool-${V}-macOS-universal.dmg"
 ```
 
 ```powershell
 # Windows（PowerShell）
-$V = "1.1.0"
+$V = "2.9.0"
 Invoke-WebRequest `
   "https://github.com/wongbaye26-dot/appinfotools/releases/download/v$V/AppInfoTool-$V-Windows-x86_64-Setup.exe" `
   -OutFile "AppInfoTool-$V-Windows-x86_64-Setup.exe"

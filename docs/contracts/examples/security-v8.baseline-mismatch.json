@@ -1,0 +1,202 @@
+{
+  "cryptoTheft": {
+    "id": "android.crypto.theft",
+    "level": "strongEvidence",
+    "primaryTechnique": "clipboardHijack",
+    "chain": [
+      {
+        "technique": "clipboardHijack",
+        "stage": "capability",
+        "signalId": "wallet-web3j",
+        "strength": "codeReference",
+        "supported": true,
+        "evidence": [
+          {
+            "source": "dexMethodReference",
+            "location": "Lcom/example/wallet/Wallet;.copyAddress()V",
+            "detail": "wallet-web3j (code reference): org.web3j.crypto",
+            "locationCode": null,
+            "detailCode": null
+          }
+        ],
+        "noteCodes": [],
+        "ruleIds": []
+      },
+      {
+        "technique": "clipboardHijack",
+        "stage": "source",
+        "signalId": "clipboard-write",
+        "strength": "callSite",
+        "supported": true,
+        "evidence": [
+          {
+            "source": "dexMethodReference",
+            "location": "Lcom/example/wallet/Wallet;.copyAddress()V @0x2a",
+            "detail": "clipboard-write (call site): ClipboardManager.setPrimaryClip",
+            "locationCode": null,
+            "detailCode": null
+          }
+        ],
+        "noteCodes": [],
+        "ruleIds": []
+      },
+      {
+        "technique": "clipboardHijack",
+        "stage": "injection",
+        "signalId": "load-graph-dangling",
+        "strength": "artifact",
+        "supported": true,
+        "evidence": [
+          {
+            "source": "loadGraph",
+            "location": "Lcom/example/wallet/Loader;.run()V @0x12",
+            "detail": "DexClassLoader -> payload.dex (not present in archive)",
+            "locationCode": null,
+            "detailCode": null
+          }
+        ],
+        "noteCodes": [],
+        "ruleIds": []
+      },
+      {
+        "technique": "clipboardHijack",
+        "stage": "payload",
+        "signalId": "artifact:assets/payload.dex",
+        "strength": "artifact",
+        "supported": false,
+        "evidence": [],
+        "noteCodes": [
+          "payloadUnavailable"
+        ],
+        "ruleIds": []
+      },
+      {
+        "technique": "clipboardHijack",
+        "stage": "family",
+        "signalId": "android.imtoken",
+        "strength": "baseline",
+        "supported": true,
+        "evidence": [
+          {
+            "source": "officialBaseline",
+            "location": "im.token.app / android.imtoken",
+            "detail": "package matches official baseline but certificate SHA-256 differs",
+            "locationCode": null,
+            "detailCode": null
+          }
+        ],
+        "noteCodes": [],
+        "ruleIds": []
+      }
+    ],
+    "missing": [
+      {
+        "stage": "payload",
+        "whyCode": "missing.payloadEncrypted",
+        "args": {
+          "path": "assets/payload.dex"
+        }
+      }
+    ],
+    "confidence": "confirmed",
+    "severity": "p1",
+    "score": 85,
+    "scoringVersion": "theft-1.0",
+    "baselineEntryId": "android.imtoken"
+  },
+  "artifacts": {
+    "entries": [
+      {
+        "path": "classes.dex",
+        "kind": "dex",
+        "origin": "embedded",
+        "sizeBytes": 123456,
+        "arch": null,
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentScanned": true,
+        "skipCode": null,
+        "suspicionCodes": []
+      },
+      {
+        "path": "assets/payload.dex",
+        "kind": "dex",
+        "origin": "assets",
+        "sizeBytes": 54321,
+        "arch": null,
+        "sha256": null,
+        "contentScanned": false,
+        "skipCode": "budget.size",
+        "suspicionCodes": [
+          "payload.encrypted"
+        ]
+      }
+    ],
+    "totalEntries": 120,
+    "inventoriedEntries": 2,
+    "entriesComplete": false,
+    "skippedCodes": [
+      "inventory.entries_truncated"
+    ]
+  },
+  "loadGraph": {
+    "nodes": [
+      {
+        "id": "artifact:classes.dex",
+        "kind": "dex",
+        "resolvedPath": "classes.dex",
+        "presentInPackage": true
+      },
+      {
+        "id": "runtime:payload.dex",
+        "kind": "missing",
+        "resolvedPath": null,
+        "presentInPackage": false
+      }
+    ],
+    "edges": [
+      {
+        "fromId": "artifact:classes.dex",
+        "toId": "runtime:payload.dex",
+        "kind": "dexClassLoader",
+        "source": "loadGraph",
+        "location": "Lcom/example/wallet/Loader;.run()V @0x12"
+      }
+    ],
+    "danglingEdgeIds": [
+      "artifact:classes.dex->runtime:payload.dex"
+    ],
+    "complete": false
+  },
+  "seal": {
+    "scheme": "apk.v1.manifest",
+    "state": "mismatch",
+    "entriesChecked": 1,
+    "entriesTotal": 120,
+    "checks": [
+      {
+        "path": "classes.dex",
+        "state": "mismatch",
+        "algorithm": "sha256",
+        "expectedDigestPrefix": "aabbccddeeff0011",
+        "actualDigestPrefix": "1122334455667788"
+      }
+    ],
+    "signatureVerified": false,
+    "noteCodes": [
+      "seal.entry_limit"
+    ]
+  },
+  "baseline": {
+    "status": "mismatch",
+    "dbVersion": "2026.11.0",
+    "entryId": "android.imtoken",
+    "packageId": "im.token.app",
+    "expectedFingerprintPrefixes": [
+      "0123456789abcdef"
+    ],
+    "actualFingerprintPrefixes": [
+      "fedcba9876543210"
+    ],
+    "noteCodes": []
+  }
+}
