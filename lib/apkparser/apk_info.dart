@@ -658,6 +658,37 @@ Future<void> _applyBuiltInBaseMetadata(
   }
 }
 
+/// base 与 split 证书不一致：安装集合是拼凑的，属于事实级 P1。
+SecurityFinding _splitCertMismatchFinding(String? packageId) {
+  final id = packageId ?? 'unknown';
+  return SecurityFinding(
+    ruleId: 'ANDROID-SPLIT-CERT-MISMATCH',
+    platform: SecurityPlatform.android,
+    category: SecurityCategory.other,
+    severity: SecuritySeverity.p1,
+    confidence: SecurityConfidence.confirmed,
+    finding: 'The base APK and at least one split APK are signed with '
+        'different certificates ($id).',
+    messageCode: 'split.cert_mismatch',
+    messageArgs: {'packageId': id},
+    evidence: [
+      SecurityEvidence(
+        source: SecurityEvidenceSource.other,
+        location: id,
+        detail: 'base and split signing certificate SHA-256 differ',
+      ),
+    ],
+    recommendation: 'Android normally rejects such an installation set. '
+        'Do not trust this package as a matching official set; re-download '
+        'it from the official channel.',
+    recommendationCode: 'split.cert_mismatch.review',
+    limitation: 'A certificate mismatch proves the installation set is '
+        'inconsistent; it does not by itself identify which split was '
+        'tampered with.',
+    limitationCode: 'split.cert_mismatch.limitation',
+  );
+}
+
 /// 对已提取到磁盘的 base APK 单独跑一次安全审计。
 ///
 /// 分包安装包（XAPK / APKM / APKS）此前**完全不跑安全审计**：审计的唯一
@@ -824,12 +855,14 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       baseline: baseline,
     );
     if (splitCertMismatch) {
-      return result.withLimitation(const AnalysisNote(
-        'android.split_apk.cert_mismatch',
-        'The base APK and at least one split APK are signed with different '
-            'certificates. Android normally rejects such an installation set; '
-            'do not trust this package as a matching official set.',
-      ));
+      return result
+          .withFinding(_splitCertMismatchFinding(meta.packageName))
+          .withLimitation(const AnalysisNote(
+            'android.split_apk.cert_mismatch',
+            'The base APK and at least one split APK are signed with different '
+                'certificates. Android normally rejects such an installation '
+                'set; do not trust this package as a matching official set.',
+          ));
     }
     return result;
   } catch (e) {

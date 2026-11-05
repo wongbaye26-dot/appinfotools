@@ -1058,6 +1058,11 @@ class AnalysisReport {
             actual: actual,
           );
         })(),
+      'split.cert_mismatch' => (() {
+          final packageId = finding.messageArgs['packageId'];
+          if (packageId is! String) return null;
+          return t.theft.split_cert_mismatch_message(packageId: packageId);
+        })(),
       'seal.mismatch' => (() {
           final path = finding.messageArgs['path'];
           final expected = finding.messageArgs['expected'];
@@ -1347,6 +1352,7 @@ class AnalysisReport {
         f.android_malware_indicators_review,
       'crypto.theft_risk.review' => f.crypto_theft_risk_review,
       'seal.mismatch.review' => t.theft.seal_mismatch_review,
+      'split.cert_mismatch.review' => t.theft.split_cert_mismatch_review,
       'baseline.mismatch.review' => t.theft.baseline_mismatch_review,
       'ios.entitlement_capability.review' =>
         f.ios_entitlement_capability_review,
@@ -1501,6 +1507,8 @@ class AnalysisReport {
     final targetSdk = finding.limitationArgs['targetSdk'];
     final String? localized = switch (code) {
       'seal.mismatch.limitation' => t.theft.seal_mismatch_limitation,
+      'split.cert_mismatch.limitation' =>
+        t.theft.split_cert_mismatch_limitation,
       'baseline.mismatch.limitation' => t.theft.baseline_mismatch_limitation,
       'ios.url_schemes.limitation' => f.ios_url_schemes_limitation,
       'ios.scan_coverage.limitation' => f.ios_scan_coverage_limitation,

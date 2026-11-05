@@ -17,7 +17,8 @@
 - 审计输入改为合并后的 DEX / resourceStrings / nativeEntries；
 - split 条目以 `split:<label>/` 前缀进入 artifact inventory、load graph 和
   payload probe；
-- base 与 split 的签名证书 SHA-256 做一致性比较，不一致时追加
+- base 与 split 的签名证书 SHA-256 做一致性比较，不一致时产出
+  `ANDROID-SPLIT-CERT-MISMATCH`（P1），并追加
   `android.split_apk.cert_mismatch` 限制说明；
 - 新增带 DEX 的合成 XAPK 回归：base + split 两份 DEX 都进入
   `android.dex.structure` 的 limit。

@@ -1329,6 +1329,9 @@
     "seal_mismatch_limitation": "摘要不一致只能证明内容与密封记录不同，不能说明改了什么、谁改的。",
     "baseline_mismatch_message": "官方基线不一致：{packageId}（期望 {expected}，实际 {actual}）。",
     "baseline_mismatch_review": "在信任这个包之前，与官方渠道包或官方公布的指纹核对。",
-    "baseline_mismatch_limitation": "基线不一致只说明包身份/指纹与记录不同，本身不能证明恶意。"
+    "baseline_mismatch_limitation": "基线不一致只说明包身份/指纹与记录不同，本身不能证明恶意。",
+    "split_cert_mismatch_message": "base APK 与至少一个 split APK 的签名证书不一致（{packageId}）。",
+    "split_cert_mismatch_review": "不要信任这个安装集合；请从官方渠道重新下载。Android 通常会拒绝签名不一致的分包。",
+    "split_cert_mismatch_limitation": "证书不一致只证明安装集合不完整/被拼凑，不能指出具体哪个分包被篡改。"
   }
 }

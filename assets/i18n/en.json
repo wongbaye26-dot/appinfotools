@@ -1329,6 +1329,9 @@
     "seal_mismatch_limitation": "A digest mismatch proves the content differs from the seal record; it does not identify what changed or who changed it.",
     "baseline_mismatch_message": "Official baseline mismatch: {packageId} (expected {expected}, actual {actual}).",
     "baseline_mismatch_review": "Verify this package against the official channel package or published fingerprint before trusting it.",
-    "baseline_mismatch_limitation": "A baseline mismatch means the package identity/fingerprint differs from the recorded official entry; it does not by itself prove malice."
+    "baseline_mismatch_limitation": "A baseline mismatch means the package identity/fingerprint differs from the recorded official entry; it does not by itself prove malice.",
+    "split_cert_mismatch_message": "The base APK and at least one split APK are signed with different certificates ({packageId}).",
+    "split_cert_mismatch_review": "Do not trust this installation set; re-download the package from the official channel. Android normally rejects inconsistent split signatures.",
+    "split_cert_mismatch_limitation": "A certificate mismatch proves the installation set is inconsistent; it does not identify which split was tampered with."
   }
 }

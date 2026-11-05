@@ -577,6 +577,25 @@ class SecurityAnalysisResult {
     return counts;
   }
 
+  /// 追加一条发现项，返回新的结果。
+  ///
+  /// 用于调用方在审计结果之上补充**已核实**的事实（例如 base/split 证书
+  /// 不一致）；与 [withLimitation] 一样不修改原对象。
+  SecurityAnalysisResult withFinding(SecurityFinding finding) {
+    return SecurityAnalysisResult(
+      engineVersion: engineVersion,
+      rulesVersion: rulesVersion,
+      findings: [...findings, finding],
+      limitations: limitations,
+      includesRuntimeEvidence: includesRuntimeEvidence,
+      coverage: coverage,
+      network: network,
+      cryptoTheft: cryptoTheft,
+      seal: seal,
+      baseline: baseline,
+    );
+  }
+
   /// 追加一条覆盖不足说明，返回新的结果。
   ///
   /// 用于「审计本身跑完了，但调用方知道还有没覆盖到的范围」—— 例如分包
