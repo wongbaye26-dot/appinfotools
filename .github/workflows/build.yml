@@ -568,21 +568,32 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $log = Join-Path $env:RUNNER_TEMP 'installer-smoke.log'
-          # 用默认安装目录（GitHub runner 是管理员，{autopf} 即 Program Files），
-          # 不传 /DIR：在管理员静默安装下 /DIR 的行为不足以作为稳定断言。
-          $dir = Join-Path $env:ProgramFiles 'AppInfoTool'
+          # 不猜安装目录：从安装器自己写的卸载键里取 InstallLocation。
+          # 管理员静默安装时 /DIR 的行为不稳定，之前因此把文件断言指向了
+          # 错误目录，安装实际是成功的。
+          $dir = $null
           try {
             $setup = Get-ChildItem 'build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe' |
               Select-Object -First 1
             if (-not $setup) { throw 'installer not found' }
-            Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-
             $installArgs = @(
               '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
               '/TASKS=associate', "/LOG=$log"
             )
             $p = Start-Process -FilePath $setup.FullName -ArgumentList $installArgs -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "installer exited $($p.ExitCode)" }
+
+            $uninstallRoot = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+            $entry = Get-ChildItem $uninstallRoot |
+              Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like '*AppInfoTool*' } |
+              Select-Object -First 1
+            if (-not $entry) { throw 'AppInfoTool uninstall entry not found after install' }
+            $dir = (Get-ItemProperty $entry.PSPath).InstallLocation
+            if ([string]::IsNullOrWhiteSpace($dir)) {
+              $dir = Join-Path $env:ProgramFiles 'AppInfoTool'
+            }
+            $dir = $dir.TrimEnd('\')
+            Write-Host "install location: $dir"
 
             foreach ($name in 'AppInfoTool.exe', 'appinfotool_thumbnail.dll', 'app_icon_extractor.exe') {
               if (-not (Test-Path (Join-Path $dir $name))) {
@@ -615,7 +626,11 @@ jobs:
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- association: ``$cmd``"
             Write-Host "installer smoke ok: $dir"
 
-            $unins = Join-Path $dir 'unins000.exe'
+            $unins = (Get-ItemProperty $entry.PSPath).UninstallString
+            if ([string]::IsNullOrWhiteSpace($unins)) {
+              $unins = Join-Path $dir 'unins000.exe'
+            }
+            $unins = $unins.Trim('"')
             if (-not (Test-Path $unins)) { throw "uninstaller missing: $unins" }
             $u = Start-Process -FilePath $unins -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
             if ($u.ExitCode -ne 0) { throw "uninstaller exited $($u.ExitCode)" }
