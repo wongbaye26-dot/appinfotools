@@ -44,6 +44,16 @@
 - Android v1 MANIFEST 与 iOS CodeResources 采用同一部分覆盖语义：只有一条都
   未验成才标 `notChecked`；已验部分保留 `verified` + `checked/total`。
 
+### 2026-11-06 追加修复
+
+- 加固 APK：AXML 字符串池前被塞入 78 个诱饵 chunk（真实偏移 0x10268）时，
+  按 AOSP / aapt2 的口径跳过未知 chunk 再定位字符串池，版本、权限、组件与
+  label 不再退化成「只有包名」。跳过的数量与偏移写进覆盖说明；逐块先验边界，
+  并有 256 块 / 8 MiB 上限。两条 AXML 解码入口（清单、矢量图/自适应图标）同时生效。
+- Windows 安装器冒烟：从卸载键解析实际安装目录、去掉不稳定的自动冒烟改走手动脚本；
+  带连字符的 tag 正确标记为 prerelease。
+- 期望值用 `aapt2 dump badging` 独立核对：31 条权限逐条一致。
+
 ### 已知限制
 
 - 官方基线只有 2 条 Android，iOS 为 0 条；没有官方样本，不能据此判断官方性。
