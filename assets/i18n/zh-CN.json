@@ -1037,7 +1037,8 @@
       "android_provider_exposed": "没有权限的 provider 对本机任何应用都可达，但能否取到数据取决于它存了什么。android:enabled=false 的 provider 也会列在这里 —— 请看证据。",
       "ios_reference_tables_unsupported": "类 / 选择子引用表解不出来（{reason}），因此无法区分「代码引用了这个类」与「这个词在包里出现过」。",
       "android_split_apk_partial": "这是分包安装包。split APK 的 DEX、资源字符串和原生库已纳入审计，但制品清单、加载链和载荷探测仍只基于 base APK 计算。",
-      "android_split_apk_cert_mismatch": "base APK 与至少一个 split APK 的签名证书不一致。Android 通常会拒绝这种安装组合；不要把这个包当成匹配的官方安装集。"
+      "android_split_apk_cert_mismatch": "base APK 与至少一个 split APK 的签名证书不一致。Android 通常会拒绝这种安装组合；不要把这个包当成匹配的官方安装集。",
+      "android_manifest_string_pool_prefix": "AXML 字符串池前有 {count} 个非标准 chunk（字符串池从字节 {offset} 开始，标准是 8）；已跳过它们，清单仍正常解析。"
     },
     "findings": "发现项",
     "sdk_categories": {

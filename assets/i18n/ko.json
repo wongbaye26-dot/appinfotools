@@ -612,7 +612,8 @@
       "android_provider_exposed": "권한이 없는 provider는 기기의 어떤 앱에서도 접근할 수 있지만, 데이터가 반환되는지는 내용에 달려 있습니다. android:enabled=false인 provider도 여기 표시됩니다 — 증거를 확인하세요.",
       "ios_reference_tables_unsupported": "클래스 / 선택자 참조 표를 디코딩하지 못했습니다({reason}). 따라서 \"코드가 이 클래스를 참조한다\"와 \"그 단어가 어딘가에 등장했다\"를 구분할 수 없습니다.",
       "android_split_apk_partial": "분할 패키지입니다. split APK의 DEX, 리소스 문자열, 네이티브 라이브러리는 감사에 포함했지만 아티팩트 목록, 로드 그래프, 페이로드 검사는 여전히 base APK만 기준으로 계산합니다.",
-      "android_split_apk_cert_mismatch": "base APK와 하나 이상의 split APK 서명 인증서가 다릅니다. Android는 일반적으로 이러한 설치 조합을 거부합니다. 일치하는 공식 설치 세트로 신뢰하지 마세요."
+      "android_split_apk_cert_mismatch": "base APK와 하나 이상의 split APK 서명 인증서가 다릅니다. Android는 일반적으로 이러한 설치 조합을 거부합니다. 일치하는 공식 설치 세트로 신뢰하지 마세요.",
+      "android_manifest_string_pool_prefix": "AXML 문자열 풀 앞에 비표준 청크 {count}개가 있었습니다(문자열 풀은 표준 8바이트가 아닌 {offset}바이트에서 시작). 해당 청크는 건너뛰었으며 매니페스트는 정상적으로 분석했습니다."
     },
     "finding_texts": {
       "android_native_symbols": "네이티브 라이브러리가 특정한 의미를 지닌 시스템 기능을 {count}개 가져옵니다: {symbols}. 이것은 이 라이브러리들이 그것들을 **사용할 능력이 있다**는 증명일 뿐이며, 호출되었다는 증명이 아니고 인자에 대해서도 아무것도 말하지 않습니다.",

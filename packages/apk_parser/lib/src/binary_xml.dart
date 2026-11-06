@@ -72,6 +72,17 @@ class AxmlLayoutAnomalies {
   /// 标准 AXML 的元素区只有 `0x0100`–`0x0104` 与 `0x0180` 这几种。
   final Map<int, int> unknownChunks = {};
 
+  /// 字符串池之前被跳过的**非标准 chunk 数**。
+  ///
+  /// 标准 AXML 的 string pool 紧跟 8 字节文件头（偏移 8）。加固包会在中间
+  /// 塞几十个等长的诱饵 chunk（实测 78 个 848 字节、类型 0x7fxx），
+  /// Android/aapt2 会跳过未知 chunk 继续找字符串池；严格要求「第一块
+  /// 必须是 string pool」的解析器则整份清单读不出来。
+  int skippedPrefixChunks = 0;
+
+  /// 真正字符串池的偏移；标准文件为 8。
+  int? stringPoolOffset;
+
   /// 声明了非标准尺寸的命名空间 chunk 数。
   ///
   /// `START_NAMESPACE` / `END_NAMESPACE` 的尺寸恒为 24（16 字节头 + 4 字节
@@ -87,7 +98,8 @@ class AxmlLayoutAnomalies {
       nonStandardAttributeStart == 0 &&
       nonStandardAttributeSize == 0 &&
       nonStandardNamespaceChunks == 0 &&
-      unknownChunks.isEmpty;
+      unknownChunks.isEmpty &&
+      skippedPrefixChunks == 0;
 
   /// 标准 AXML 里 `attributeStart` 与 `attributeSize` 的值。
   static const int standardAttributeLayout = 20;
@@ -117,6 +129,11 @@ class AxmlLayoutAnomalies {
 
   void observeUnknownChunk(int type) {
     unknownChunks[type] = (unknownChunks[type] ?? 0) + 1;
+  }
+
+  void observeStringPoolPrefix(int count, int offset) {
+    skippedPrefixChunks = count;
+    stringPoolOffset = offset;
   }
 
   void observeNamespaceChunk(int chunkSize) {
@@ -190,6 +207,19 @@ class AxmlLayoutAnomalies {
       ));
     }
 
+    if (skippedPrefixChunks > 0) {
+      out.add(AnalysisNote(
+        'android.manifest.string_pool_prefix',
+        '$skippedPrefixChunks non-standard chunk(s) preceded the AXML string '
+            'pool (which starts at byte ${stringPoolOffset ?? '?'} instead of '
+            '8); they were skipped and the manifest was still parsed',
+        {
+          'count': skippedPrefixChunks,
+          'offset': stringPoolOffset ?? 0,
+        },
+      ));
+    }
+
     return out;
   }
 
@@ -239,6 +269,14 @@ class AxmlLayoutAnomalies {
       lines.add(
         '${unknownChunks.length} chunk type(s) are not part of the standard '
         'AXML element range: $described',
+      );
+    }
+
+    if (skippedPrefixChunks > 0) {
+      lines.add(
+        '$skippedPrefixChunks non-standard chunk(s) preceded the AXML string '
+        'pool (at byte ${stringPoolOffset ?? '?'} instead of 8); a compliant '
+        'reader skips them and still reads the manifest',
       );
     }
 
@@ -355,6 +393,62 @@ class BinaryXmlDecompressor {
   bool appendNamespaces = false;
   bool appendCData = true;
 
+  /// 跳过字符串池前的诱饵 chunk 数上限（越界即拒绝，不让文件决定循环次数）。
+  static const int maxPrefixChunks = 256;
+
+  /// 字符串池前允许扫过的字节上限。
+  static const int maxPrefixBytes = 8 * 1024 * 1024;
+
+  /// 定位真正的 AXML 字符串池。
+  ///
+  /// 标准 AXML 里它紧跟 8 字节文件头。加固包会在中间塞几十个等长的诱饵
+  /// chunk（实测 `200_1106154007.apk` 是 78 个 848 字节、类型 0x7fxx 的块），
+  /// Android / aapt2 会跳过未知类型继续找字符串池；严格要求「第一块必须是
+  /// string pool」的解析器则直接抛 FormatException，整份清单读不出来。
+  ///
+  /// 这里与 AOSP 取同一口径：**跳过未知 chunk**，但每次都先验边界，且跳过
+  /// 数量与总字节有上限。「跳过了什么」由 [AxmlLayoutAnomalies] 记下来，
+  /// 不能悄悄当成没看见。
+  void _skipToStringPool(
+    ByteDataReader reader,
+    AxmlLayoutAnomalies? anomalies,
+  ) {
+    var skipped = 0;
+    int? firstType;
+    while (reader.remain >= 8) {
+      final start = reader.position;
+      final type = reader.readUint16();
+      firstType ??= type;
+      reader.readUint16(); // headerSize，跳过时不需要
+      final chunkSize = reader.readUint32();
+      if (type == RES_XML_STRING_TABLE) {
+        // parseStrings 自己会再读一遍这个头，回退到 chunk 起点。
+        reader.position = start;
+        if (skipped > 0) anomalies?.observeStringPoolPrefix(skipped, start);
+        return;
+      }
+      if (chunkSize < 8 || start + chunkSize > reader.length) {
+        // 沿用旧的「Invalid String table identifier」判词：上层靠它区分
+        // 「清单被破坏」与「根本没有清单」，换措辞会让诊断静默消失。
+        throw FormatException('Invalid String table identifier. Expecting '
+            '0x1, found 0x${type.toRadixString(16)} (invalid AXML chunk '
+            'size=$chunkSize at byte $start)');
+      }
+      if (skipped >= maxPrefixChunks || start > maxPrefixBytes) {
+        throw FormatException('Too many chunks before AXML string pool '
+            '(skipped $skipped chunks, at byte $start)');
+      }
+      reader.position = start + chunkSize;
+      skipped++;
+    }
+    // 保持旧的「Invalid String table identifier」判词：上层与既有测试靠它
+    // 区分「清单被破坏」与「根本没有清单」，换措辞会让那条诊断静默消失。
+    throw FormatException(
+        'Invalid String table identifier. Expecting 0x1, found 0x'
+        '${(firstType ?? 0).toRadixString(16)} (no string pool chunk after '
+        'skipping $skipped chunk(s))');
+  }
+
   String decompressXml(Uint8List bytes) {
     final reader = ByteDataReader.wrapUint8List(bytes, endian: Endian.little);
     StringBuffer result =
@@ -369,6 +463,7 @@ class BinaryXmlDecompressor {
 
     reader.skipBytes(4);
 
+    _skipToStringPool(reader, null);
     List<String> packedStrings = parseStrings(reader);
 
     // Resource ID Map: 字符串池索引 → 框架资源 ID
@@ -429,12 +524,12 @@ class BinaryXmlDecompressor {
       throw FormatException('Invalid packed XML identifier');
     }
     reader.skipBytes(4);
+    final doc = XmlDocument();
+    _skipToStringPool(reader, doc.layoutAnomalies);
     List<String> packedStrings = parseStrings(reader);
 
     // Resource ID Map: 字符串池索引 → 框架资源 ID
     List<int> resourceIdMap = [];
-
-    final doc = XmlDocument();
     final anomalies = doc.layoutAnomalies;
     final stack = <XmlElement>[doc];
 

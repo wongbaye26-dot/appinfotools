@@ -1037,7 +1037,8 @@
       "android_provider_exposed": "A provider with no permission is reachable by any app on the device, but whether it returns anything depends on the data it holds. Providers disabled by android:enabled=false are still listed here — check the evidence.",
       "ios_reference_tables_unsupported": "Class / selector reference tables could not be decoded ({reason}), so \"the code references this class\" cannot be distinguished from \"the string appears somewhere\".",
       "android_split_apk_partial": "This is a split package. DEX, resource strings and native libraries from the split APKs were included, but the artifact inventory, load graph and payload probe are still computed from the base APK only.",
-      "android_split_apk_cert_mismatch": "The base APK and at least one split APK are signed with different certificates. Android normally rejects such an installation set; do not trust this package as a matching official set."
+      "android_split_apk_cert_mismatch": "The base APK and at least one split APK are signed with different certificates. Android normally rejects such an installation set; do not trust this package as a matching official set.",
+      "android_manifest_string_pool_prefix": "{count} non-standard chunk(s) preceded the AXML string pool (which starts at byte {offset} instead of 8); they were skipped and the manifest was still parsed."
     },
     "findings": "Findings",
     "sdk_categories": {

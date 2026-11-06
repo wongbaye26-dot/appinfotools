@@ -1992,6 +1992,8 @@ class AnalysisReport {
     final chunks = a['chunks'];
     final header = a['header'];
     final size = a['size'];
+    // 字符串池实际偏移（标准 AXML 为 8；加固包会被诱饵 chunk 推后）。
+    final offset = a['offset'];
 
     final String? localized = switch (note.code) {
       'ios.url_schemes.unreadable' =>
@@ -2130,6 +2132,13 @@ class AnalysisReport {
       'android.manifest.unknown_chunk' => (count == null || chunks == null)
           ? null
           : n.android_manifest_unknown_chunk(count: count, chunks: chunks),
+      // 字符串池前的诱饵 chunk：跳过但仍如实记录（V2.4.16）。
+      'android.manifest.string_pool_prefix' => (count == null || offset == null)
+          ? null
+          : n.android_manifest_string_pool_prefix(
+              count: count,
+              offset: offset,
+            ),
       // 其余加固信号（V2.4.11 一次补完，否则面板里仍会剩英文尾巴）。
       'android.container.missing_primary_dex' =>
         n.android_container_missing_primary_dex,

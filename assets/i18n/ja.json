@@ -612,7 +612,8 @@
       "android_provider_exposed": "権限のない provider は端末上のどのアプリからも到達できますが、データが返るかは中身次第です。android:enabled=false の provider もここに表示されます — 証拠を確認してください。",
       "ios_reference_tables_unsupported": "クラス / セレクタ参照表を復号できませんでした（{reason}）。そのため「コードがこのクラスを参照している」と「その語がどこかに現れた」を区別できません。",
       "android_split_apk_partial": "これは分割パッケージです。split APK の DEX、リソース文字列、ネイティブライブラリは監査に含めましたが、アーティファクト一覧・ロードグラフ・ペイロード検査は引き続き base APK のみを対象に計算しています。",
-      "android_split_apk_cert_mismatch": "base APK と少なくとも 1 つの split APK の署名証明書が一致しません。Android は通常この組み合わせを拒否します。公式の一致するインストールセットとして扱わないでください。"
+      "android_split_apk_cert_mismatch": "base APK と少なくとも 1 つの split APK の署名証明書が一致しません。Android は通常この組み合わせを拒否します。公式の一致するインストールセットとして扱わないでください。",
+      "android_manifest_string_pool_prefix": "AXML の文字列プールの前に {count} 個の非標準チャンクがありました（文字列プールは標準の 8 ではなくバイト {offset} から開始）。これらは読み飛ばし、マニフェストは解析できました。"
     },
     "finding_texts": {
       "android_native_symbols": "ネイティブライブラリは特定の意味を持つシステム機能を {count} 個インポートしています: {symbols}。これはこれらのライブラリがそれらを**使う能力がある**ことの証明にすぎず、呼ばれたことの証明ではなく、引数についても何も語りません。",
