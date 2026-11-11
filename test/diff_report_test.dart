@@ -28,6 +28,7 @@ PackageAnalysisResult _android({
   int? maxSdk,
   List<String> permissions = const [],
   FieldSource source = FieldSource.builtinParser,
+  SecurityAnalysisResult? security,
 }) =>
     AnalysisBuilder.buildAndroid(
       filePath: '/tmp/$fileName',
@@ -40,6 +41,38 @@ PackageAnalysisResult _android({
       targetSdkVersion: targetSdk,
       maxSdkVersion: maxSdk,
       permissions: permissions,
+      security: security,
+    );
+
+/// 一条只带人读文本的发现项（不填 `messageCode`，`findingText` 会原样返回
+/// `finding`）—— 这样断言不必依赖语言包里某个具体键的措辞。
+SecurityFinding _finding(
+  String ruleId,
+  String text, {
+  SecuritySeverity severity = SecuritySeverity.p2,
+}) =>
+    SecurityFinding(
+      ruleId: ruleId,
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.backgroundTask,
+      severity: severity,
+      confidence: SecurityConfidence.confirmed,
+      finding: text,
+      evidence: const [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.nativeSymbol,
+          location: 'lib/arm64-v8a/libx.so',
+          detail: 'system (imported)',
+        ),
+      ],
+      recommendation: 'review',
+    );
+
+SecurityAnalysisResult _security(List<SecurityFinding> findings) =>
+    SecurityAnalysisResult(
+      engineVersion: 'e',
+      rulesVersion: 'r',
+      findings: findings,
     );
 
 void main() {
@@ -96,6 +129,66 @@ void main() {
       // 未变的成员不列出来（差异报告关心的是变化）。
       expect(md, contains(t.diff.common_count(count: 1)));
       expect(md, isNot(contains('`B`')));
+    });
+
+    test('安全集合的成员显示成规则结论，不是机器 id', () {
+      final md = DiffReport.render(
+        _android(
+          security: _security([
+            _finding('ANDROID-DEBUGGABLE', 'Debug build is allowed'),
+          ]),
+        ),
+        _android(
+          fileName: 'demo-2.0.0.apk',
+          security: _security([
+            _finding('ANDROID-DEBUGGABLE', 'Debug build is allowed'),
+            _finding('ANDROID-ALLOW-BACKUP', 'Backup is allowed'),
+          ]),
+        ),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(md, contains('### ${t.diff.sets.security_findings}'));
+      // 成员是规则 id，但报告里要读得懂：换成那条发现的结论句。
+      expect(md, contains('Backup is allowed'));
+      expect(md, isNot(contains('`ANDROID-ALLOW-BACKUP`')));
+      // 未变的成员只报条数，不铺进报告。
+      expect(md, isNot(contains('`Debug build is allowed`')));
+    });
+
+    test('安全等级与条数用同一张字段表', () {
+      final md = DiffReport.render(
+        _android(
+          security: _security([
+            _finding('A', 'x', severity: SecuritySeverity.p3),
+          ]),
+        ),
+        _android(
+          fileName: 'demo-2.0.0.apk',
+          security: _security([
+            _finding('A', 'x', severity: SecuritySeverity.p1),
+            _finding('B', 'y'),
+          ]),
+        ),
+        t,
+        generatedAt: _at,
+      );
+
+      expect(md, contains(t.diff.fields.security_highestSeverity));
+      // 等级名是语言中立的（与详情页的严重度 chip 一致）。
+      expect(md, contains('P3'));
+      expect(md, contains('P1'));
+      expect(md, contains(t.diff.fields.security_findingCount));
+    });
+
+    test('安全审计没开时进「无法比较」，并说明原因', () {
+      final md = DiffReport.render(_android(), _android(), t, generatedAt: _at);
+
+      expect(md, contains('## ${t.diff.section_unknown}'));
+      // 「这次没查」必须带原因，不能只留一片空白。
+      expect(md, contains(t.field_diagnostic.security_disabled));
+      expect(md, contains(t.diff.fields.security_highestSeverity));
     });
 
     test('「我们没读到」进「无法比较」区，而不是被算成新增', () {

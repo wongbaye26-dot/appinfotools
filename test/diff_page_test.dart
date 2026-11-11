@@ -45,6 +45,7 @@ ApkInfo android({
   bool? debuggable,
   List<String> permissions = const [],
   FieldSource source = FieldSource.builtinParser,
+  SecurityAnalysisResult? security,
 }) =>
     ApkInfo()
       ..packageName = packageName
@@ -56,7 +57,38 @@ ApkInfo android({
       ..maxSdkVersion = maxSdk
       ..applicationDebuggable = debuggable
       ..usesPermissions = permissions
-      ..manifestSource = source;
+      ..manifestSource = source
+      ..securityResult = security;
+
+/// 一条只带人读文本的发现项 —— 断言因此不依赖语言包里某个键的措辞。
+SecurityFinding _finding(
+  String ruleId,
+  String text, {
+  SecuritySeverity severity = SecuritySeverity.p2,
+}) =>
+    SecurityFinding(
+      ruleId: ruleId,
+      platform: SecurityPlatform.android,
+      category: SecurityCategory.backgroundTask,
+      severity: severity,
+      confidence: SecurityConfidence.confirmed,
+      finding: text,
+      evidence: const [
+        SecurityEvidence(
+          source: SecurityEvidenceSource.nativeSymbol,
+          location: 'lib/arm64-v8a/libx.so',
+          detail: 'system (imported)',
+        ),
+      ],
+      recommendation: 'review',
+    );
+
+SecurityAnalysisResult _security(List<SecurityFinding> findings) =>
+    SecurityAnalysisResult(
+      engineVersion: 'e',
+      rulesVersion: 'r',
+      findings: findings,
+    );
 
 FileState androidState(String path, int size, ApkInfo info) =>
     FileState(filePath: path, fileSize: size, apkInfo: info);
@@ -194,6 +226,38 @@ void main() {
       // 成员本身要列出来 —— 只说「删了 1 项」等于没说。
       expect(text, contains('C'));
       expect(text, contains('A'));
+    });
+
+    testWidgets('安全检测差异：命中的规则按结论句显示，不是机器 id', (tester) async {
+      await pumpDiff(tester, [
+        androidState(
+          '/tmp/demo-1.0.apk',
+          1024,
+          android(
+            security: _security([
+              _finding('ANDROID-DEBUGGABLE', 'Debug build is allowed'),
+            ]),
+          ),
+        ),
+        androidState(
+          '/tmp/demo-2.0.apk',
+          2048,
+          android(
+            security: _security([
+              _finding('ANDROID-DEBUGGABLE', 'Debug build is allowed'),
+              _finding('ANDROID-ALLOW-BACKUP', 'Backup is allowed'),
+            ]),
+          ),
+        ),
+      ]);
+
+      final text = visibleText(tester);
+      expect(text, contains(t.diff.sets.security_findings));
+      // 规则 id 是稳定身份（JSON 用它），界面上必须换成人话。
+      expect(text, contains('Backup is allowed'));
+      expect(text, isNot(contains('ANDROID-ALLOW-BACKUP')));
+      // 未变的成员不进新增/删除两组。
+      expect(text, isNot(contains('Debug build is allowed')));
     });
 
     testWidgets('左侧「没读到」不算新增：显示为无法比较并带原因', (tester) async {
