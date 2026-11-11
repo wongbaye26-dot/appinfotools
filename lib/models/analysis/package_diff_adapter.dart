@@ -37,6 +37,12 @@ DiffSubject diffSubjectOf(PackageAnalysisResult result) {
       // 但对用户只有「通过 / 不通过 / 无法确认 / 没查」四种结论），
       // 因此放在通用字段里而不是某一侧的专属字段里。
       (id: 'signature.verdict', value: _verdictValue(result.signatureVerdict)),
+      // --- 安全检测结论（平台中立）---
+      //
+      // 与上面那些「文件里写了什么」是两个问题：这里比的是**审计给出的
+      // 结论**。放通用字段是因为两侧都有安全结果，只是判据不同；逐条规则
+      // 的去留是集合 `security.findings`，不在这里。
+      ..._securityFields(security),
       // --- Android 专属 ---
       if (android != null) ...[
         (id: 'android.minSdkVersion', value: android.minSdkVersion),
@@ -56,6 +62,8 @@ DiffSubject diffSubjectOf(PackageAnalysisResult result) {
       ],
     ],
     sets: {
+      // --- 安全检测（平台中立，排在平台集合之前：它是差异页上最该先看到的）---
+      ..._securitySets(security),
       // --- Android 集合 ---
       if (android != null) ...{
         'android.permissions': android.permissions,
@@ -133,6 +141,146 @@ bool samePlatform(PackageAnalysisResult a, PackageAnalysisResult b) =>
 /// [PackageDiff]。
 PackageDiff diffOf(PackageAnalysisResult left, PackageAnalysisResult right) =>
     diffSubjects(diffSubjectOf(left), diffSubjectOf(right));
+
+// ---------------------------------------------------------------------------
+// 安全检测结论
+// ---------------------------------------------------------------------------
+
+/// 安全结论的**标量**对比：最严重等级、发现条数、五段链等级。
+///
+/// ## 为什么 `security == null` 也要产出
+///
+/// `null` 表示**本次没做安全审计**（设置里关掉了 `enableSecurityAudit`，
+/// 或解析在安全阶段之前就失败了）。此时记 `notRequested` 而不是「不产出」：
+/// 不产出的话，另一侧的成员会整片落进 `added` / `removed`，把「这次没查」
+/// 读成「新版本多了这些漏洞」—— 那正是这个工具最不该犯的错。
+///
+/// 代价是两侧都没审计时会多出几条「无法比较」。这是**有意的噪音**：
+/// 它们诚实地说明「安全这一块这次说不清」，而差异页本来就把「无法比较」
+/// 与「没有差异」分开呈现。
+List<({String id, FieldValue<Object?> value})> _securityFields(
+  SecurityAnalysisResult? security,
+) {
+  if (security == null) {
+    return [
+      for (final id in _securityFieldIds)
+        (id: id, value: _securityNotRequested),
+    ];
+  }
+
+  final theft = security.cryptoTheft;
+  return [
+    (
+      id: 'security.highestSeverity',
+      // 机器值：`p0`…`info`，以及 `none`（查了、一条发现都没有）。
+      // `none` 与 `notRequested` 是相反的两个结论，不能压成同一个空值。
+      value: FieldValue<Object?>.extracted(
+        _highestSeverity(security.findings),
+        source: FieldSource.unknown,
+      ),
+    ),
+    (
+      id: 'security.findingCount',
+      value: FieldValue<Object?>.extracted(
+        security.findings.length,
+        source: FieldSource.unknown,
+      ),
+    ),
+    (
+      id: 'security.cryptoTheftLevel',
+      // `cryptoTheft == null` = 五段链没跑（不是「没有风险」）。
+      value: theft == null
+          ? const FieldValue<Object?>.notRequested(
+              diagnostic: 'crypto theft chain was not assessed',
+              diagnosticCode: 'security.crypto_theft_not_assessed',
+            )
+          : FieldValue<Object?>.extracted(
+              theft.level.name,
+              source: FieldSource.unknown,
+            ),
+    ),
+  ];
+}
+
+const List<String> _securityFieldIds = [
+  'security.highestSeverity',
+  'security.findingCount',
+  'security.cryptoTheftLevel',
+];
+
+/// 安全结论的**集合**对比：命中了哪些规则、哪些覆盖维度有缺口。
+Map<String, FieldValue<List<String>>> _securitySets(
+  SecurityAnalysisResult? security,
+) {
+  if (security == null) {
+    return {
+      for (final id in _securitySetIds)
+        id: const FieldValue<List<String>>.notRequested(
+          diagnostic: 'security audit is disabled in settings',
+          diagnosticCode: 'security.disabled',
+        ),
+    };
+  }
+  return {
+    'security.findings': _asFieldValue(_ruleIds(security.findings)),
+    'security.coverageGaps': _coverageGaps(security),
+  };
+}
+
+const List<String> _securitySetIds = [
+  'security.findings',
+  'security.coverageGaps',
+];
+
+/// 集合成员用**规则级身份**：同一规则命中多条只算一条。
+///
+/// 口径：这个集合回答「哪些规则命中了」，不回答「命中了几次」——
+/// 次数变化由 `security.findingCount` 承担。把次数拼进身份会让「同一条
+/// 规则多命中两次」表现成一删一增，读起来像换了一条规则（与组件身份串
+/// 同一条原则，见 [_componentIdentities]）。
+List<String> _ruleIds(List<SecurityFinding> findings) {
+  final ids = <String>{for (final f in findings) f.ruleId};
+  return ids.toList()..sort();
+}
+
+/// 有缺口的覆盖维度（部分覆盖 + 完全没覆盖）。
+///
+/// **空 `entries` 不是「没有缺口」**：那是「本引擎没有产出结构化覆盖」，
+/// 与「全覆盖」结论相反，因此记 `unsupported` 而不是 `absent`。
+FieldValue<List<String>> _coverageGaps(SecurityAnalysisResult security) {
+  final entries = security.coverage.entries;
+  if (entries.isEmpty) {
+    return const FieldValue<List<String>>.unsupported(
+      diagnostic: 'this engine did not produce structured coverage',
+      diagnosticCode: 'security.coverage_not_structured',
+    );
+  }
+  return _asFieldValue([
+    for (final entry in entries)
+      if (entry.isGap) entry.id
+  ]);
+}
+
+/// 最严重的那条发现；没有发现时为 `none`。
+///
+/// 用 `rank` 而不是 `index`：枚举顺序是声明顺序，语义上不可靠。
+String _highestSeverity(List<SecurityFinding> findings) {
+  SecuritySeverity? highest;
+  for (final f in findings) {
+    if (highest == null || f.severity.rank < highest.rank) {
+      highest = f.severity;
+    }
+  }
+  return highest?.name ?? 'none';
+}
+
+/// 「本次没做安全审计」的统一状态 —— 三个标量字段共用同一个诊断 code，
+/// 呈现层只翻一处。
+const FieldValue<Object?> _securityNotRequested =
+    FieldValue<Object?>.notRequested(
+  diagnostic: 'security audit is disabled in settings',
+  diagnosticCode: 'security.disabled',
+);
 
 /// 签名结论 → 带状态的字段值。
 ///

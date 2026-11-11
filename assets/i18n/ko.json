@@ -1029,7 +1029,10 @@
       "ios_executableName": "실행 파일",
       "ios_minimumOSVersion": "최소 OS 버전",
       "ios_shortVersion": "단축 버전",
-      "signature_verdict": "서명"
+      "signature_verdict": "서명",
+      "security_highestSeverity": "최고 심각도",
+      "security_findingCount": "발견 건수",
+      "security_cryptoTheftLevel": "암호화폐 탈취 체인 등급"
     },
     "go_analysis": "분석으로 이동",
     "kind_added": "추가",
@@ -1046,7 +1049,7 @@
     "report_left": "왼쪽",
     "report_note": "'비교할 수 없음'은 '차이 없음'이 아닙니다. 한쪽을 읽지 못했기 때문에 그 항목들은 변경 여부를 말해주지 않습니다.",
     "report_right": "오른쪽",
-    "report_scope_note": "이 보고서는 필드 단위와 집합 단위 차이만 다룹니다. 보안 탐지 결과는 비교하지 않습니다.",
+    "report_scope_note": "이 보고서는 필드 및 컬렉션 단위 차이를 비교하며, 보안 발견은 규칙 단위로 비교합니다. 같은 규칙의 발견 횟수만 늘어난 경우 '발견 건수' 필드를 참고하세요. 런타임 동작은 비교하지 않습니다.",
     "report_title": "버전 비교 보고서",
     "section_fields": "필드 차이",
     "section_scope": "범위",
@@ -1071,7 +1074,9 @@
       "android_allowBackup": "자동 백업(발견 항목에서 도출)",
       "android_cleartextPolicy": "평문 통신 정책(규칙 D에서 도출)",
       "android_thirdPartySdk": "서드파티 서비스 SDK",
-      "ios_entitlements": "엔타이틀먼트"
+      "ios_entitlements": "엔타이틀먼트",
+      "security_findings": "일치한 보안 규칙",
+      "security_coverageGaps": "커버리지 공백"
     },
     "slot_left": "왼쪽 패키지",
     "slot_right": "오른쪽 패키지",
@@ -1083,7 +1088,8 @@
     "truncated_members": "{count}개 더 표시되지 않음",
     "unknown_field_hint": "한쪽을 읽지 못했기 때문에 이 필드들은 변경 여부를 말해주지 않습니다.",
     "unknown_set_hint": "한쪽을 읽지 못했기 때문에 이 집합들의 구성원은 비교할 수 없습니다.",
-    "value_absent": "파일에 없음"
+    "value_absent": "파일에 없음",
+    "severity_none": "없음"
   },
   "ios_info": {
     "architectures": "아키텍처",
@@ -1180,5 +1186,10 @@
     "distribution_development": "개발",
     "distribution_unknown": "알 수 없음",
     "bundle_kind_dylib": "동적 라이브러리"
+  },
+  "field_diagnostic": {
+    "security_disabled": "설정에서 보안 감사가 꺼져 있습니다",
+    "security_crypto_theft_not_assessed": "이 패키지에서는 암호화폐 탈취 체인 평가를 실행하지 않았습니다",
+    "security_coverage_not_structured": "이 엔진은 구조화된 커버리지를 산출하지 않았습니다"
   }
 }

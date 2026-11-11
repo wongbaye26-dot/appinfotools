@@ -288,6 +288,11 @@ class _DiffPageState extends ConsumerState<DiffPage> {
         diff.sets.where((s) => s.comparable && !s.isSame).toList();
     final setUnknown = diff.sets.where((s) => !s.comparable).toList();
 
+    // 安全集合的成员是**稳定身份**（规则 id / 覆盖维度 id）。显示时换成
+    // 人话：规则 id 没有语言包（引擎不依赖 slang），只能从本侧那条发现
+    // 的结论句反查。两侧合并一次，避免每个成员各查一遍。
+    final ruleTitles = DiffLabels.findingTitles(leftAnalysis, rightAnalysis, t);
+
     return [
       _buildSummary(diff, fieldChanges.length, setChanges.length),
       if (fieldChanges.isNotEmpty) ...[
@@ -296,14 +301,14 @@ class _DiffPageState extends ConsumerState<DiffPage> {
       ],
       if (setChanges.isNotEmpty) ...[
         _sectionHeader(t.diff.section_sets),
-        for (final s in setChanges) _buildSetCard(s),
+        for (final s in setChanges) _buildSetCard(s, ruleTitles),
       ],
       if (fieldUnknown.isNotEmpty || setUnknown.isNotEmpty) ...[
         _sectionHeader(t.diff.section_unknown),
         _note(t.diff.unknown_field_hint),
         for (final f in fieldUnknown) _buildFieldCard(f),
         if (setUnknown.isNotEmpty) _note(t.diff.unknown_set_hint),
-        for (final s in setUnknown) _buildSetCard(s),
+        for (final s in setUnknown) _buildSetCard(s, ruleTitles),
       ],
     ];
   }
@@ -369,7 +374,7 @@ class _DiffPageState extends ConsumerState<DiffPage> {
     );
   }
 
-  Widget _buildSetCard(SetDiff s) {
+  Widget _buildSetCard(SetDiff s, Map<String, String> ruleTitles) {
     final theme = Theme.of(context);
     return Card(
       child: Padding(
@@ -400,6 +405,8 @@ class _DiffPageState extends ConsumerState<DiffPage> {
             if (s.added.isNotEmpty) ...[
               const SizedBox(height: 10),
               _memberGroup(
+                setId: s.id,
+                ruleTitles: ruleTitles,
                 title: t.diff.added_count(count: s.added.length),
                 kind: DiffKind.added,
                 members: s.added,
@@ -408,6 +415,8 @@ class _DiffPageState extends ConsumerState<DiffPage> {
             if (s.removed.isNotEmpty) ...[
               const SizedBox(height: 10),
               _memberGroup(
+                setId: s.id,
+                ruleTitles: ruleTitles,
                 title: t.diff.removed_count(count: s.removed.length),
                 kind: DiffKind.removed,
                 members: s.removed,
@@ -421,6 +430,8 @@ class _DiffPageState extends ConsumerState<DiffPage> {
 
   /// 一组集合成员（新增或删除），带自己的标题与条数。
   Widget _memberGroup({
+    required String setId,
+    required Map<String, String> ruleTitles,
     required String title,
     required DiffKind kind,
     required List<String> members,
@@ -452,7 +463,12 @@ class _DiffPageState extends ConsumerState<DiffPage> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: SelectableText(
-                    m,
+                    DiffLabels.member(
+                      setId,
+                      m,
+                      t,
+                      ruleTitles: ruleTitles,
+                    ),
                     style: theme.textTheme.bodyMedium,
                     minLines: 1,
                   ),

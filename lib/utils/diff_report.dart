@@ -83,10 +83,13 @@ class DiffReport {
     }
 
     if (setChanges.isNotEmpty) {
+      // 安全集合的成员是稳定身份（规则 id / 覆盖维度 id），报告里换成
+      // 人话 —— 与界面共用同一份映射，否则「界面说中文、报告说 ANDROID-XXX」。
+      final ruleTitles = DiffLabels.findingTitles(left, right, t);
       sb.writeln('## ${t.diff.section_sets}');
       sb.writeln();
       for (final s in setChanges) {
-        _setSection(sb, s, t);
+        _setSection(sb, s, t, ruleTitles);
       }
     }
 
@@ -258,7 +261,12 @@ class DiffReport {
         '| ${_escape(DiffLabels.kind(f.kind, t))} |');
   }
 
-  static void _setSection(StringBuffer sb, SetDiff s, Translations t) {
+  static void _setSection(
+    StringBuffer sb,
+    SetDiff s,
+    Translations t,
+    Map<String, String> ruleTitles,
+  ) {
     sb
       ..writeln('### ${_escape(DiffLabels.set(s.id, t))}')
       ..writeln()
@@ -266,11 +274,11 @@ class DiffReport {
       ..writeln('| --- | --- |');
     if (s.added.isNotEmpty) {
       sb.writeln('| ${_escape(t.diff.added_count(count: s.added.length))} '
-          '| ${_escape(_members(s.added))} |');
+          '| ${_escape(_members(s.added, s.id, ruleTitles, t))} |');
     }
     if (s.removed.isNotEmpty) {
       sb.writeln('| ${_escape(t.diff.removed_count(count: s.removed.length))} '
-          '| ${_escape(_members(s.removed))} |');
+          '| ${_escape(_members(s.removed, s.id, ruleTitles, t))} |');
     }
     sb.writeln();
     if (s.common.isNotEmpty) {
@@ -295,8 +303,19 @@ class DiffReport {
       DiffLabels.value(id, value, t);
 
   /// 集合成员单元格：Markdown 表格里不能有裸换行，用 `<br>` 分隔。
-  static String _members(List<String> members) =>
-      members.map((m) => '`$m`').join('<br>');
+  ///
+  /// 成员先经 [DiffLabels.member] 换成显示文本（安全集合存的是机器 id），
+  /// 再包成行内代码 —— 那条约定由 `diff_report_test.dart` 盯着。
+  static String _members(
+    List<String> members,
+    String setId,
+    Map<String, String> ruleTitles,
+    Translations t,
+  ) =>
+      members
+          .map((m) =>
+              '`${DiffLabels.member(setId, m, t, ruleTitles: ruleTitles)}`')
+          .join('<br>');
 
   /// 转义竖线，避免把表格结构撑破。
   static String _escape(String value) =>

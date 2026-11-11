@@ -109,6 +109,12 @@ class FieldValueText {
         d.plist_expected_array(key: arg('key'), actual: arg('actual')),
       'plist.expected_boolean' => d.plist_expected_boolean(key: arg('key')),
       'privacy_manifest.too_large' => d.privacy_manifest_too_large,
+      // 安全检测的三个「没做」：差异页上它们回答的是「这次为什么说不清」。
+      // 与 `signature.disabled` 同一类 —— 都是设置或能力边界，不是错误。
+      'security.disabled' => d.security_disabled,
+      'security.crypto_theft_not_assessed' =>
+        d.security_crypto_theft_not_assessed,
+      'security.coverage_not_structured' => d.security_coverage_not_structured,
       'plist.parse_failed' =>
         d.plist_parse_failed(path: arg('path'), message: arg('message')),
       'plist.root_not_dictionary' => d.plist_root_not_dictionary(

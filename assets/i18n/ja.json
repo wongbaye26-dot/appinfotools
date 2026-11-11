@@ -1029,7 +1029,10 @@
       "ios_executableName": "実行ファイル",
       "ios_minimumOSVersion": "最低 OS バージョン",
       "ios_shortVersion": "短縮バージョン",
-      "signature_verdict": "署名"
+      "signature_verdict": "署名",
+      "security_highestSeverity": "最も高い重大度",
+      "security_findingCount": "検出件数",
+      "security_cryptoTheftLevel": "暗号資産窃取チェーンのレベル"
     },
     "go_analysis": "分析へ移動",
     "kind_added": "追加",
@@ -1046,7 +1049,7 @@
     "report_left": "左",
     "report_note": "「比較できません」は「違いがない」ではありません。片側を読み取れていないため、それらの項目は変更の有無を何も語りません。",
     "report_right": "右",
-    "report_scope_note": "このレポートはフィールド単位と集合単位の差異のみを扱います。セキュリティの検出結果は比較していません。",
+    "report_scope_note": "本書はフィールド単位とコレクション単位の差分を比較し、セキュリティ検出はルール単位で比較します。同じルールの検出回数だけが増えた場合は「検出件数」を参照してください。実行時の挙動は比較しません。",
     "report_title": "バージョン比較レポート",
     "section_fields": "フィールドの差異",
     "section_scope": "対象範囲",
@@ -1071,7 +1074,9 @@
       "android_allowBackup": "自動バックアップ（検出項目から導出）",
       "android_cleartextPolicy": "平文通信ポリシー（ルール D から導出）",
       "android_thirdPartySdk": "サードパーティのサービス SDK",
-      "ios_entitlements": "エンタイトルメント"
+      "ios_entitlements": "エンタイトルメント",
+      "security_findings": "一致したセキュリティルール",
+      "security_coverageGaps": "カバレッジの不足"
     },
     "slot_left": "左のパッケージ",
     "slot_right": "右のパッケージ",
@@ -1083,7 +1088,8 @@
     "truncated_members": "他 {count} 件は非表示",
     "unknown_field_hint": "片側を読み取れていないため、これらのフィールドは変更の有無を何も語りません。",
     "unknown_set_hint": "片側を読み取れていないため、これらの集合のメンバーは比較できません。",
-    "value_absent": "ファイルに存在しません"
+    "value_absent": "ファイルに存在しません",
+    "severity_none": "なし"
   },
   "ios_info": {
     "architectures": "アーキテクチャ",
@@ -1180,5 +1186,10 @@
     "distribution_development": "開発",
     "distribution_unknown": "不明",
     "bundle_kind_dylib": "ダイナミックライブラリ"
+  },
+  "field_diagnostic": {
+    "security_disabled": "設定でセキュリティ監査が無効になっています",
+    "security_crypto_theft_not_assessed": "このパッケージでは暗号資産窃取チェーンの評価を実行していません",
+    "security_coverage_not_structured": "このエンジンは構造化されたカバレッジ情報を出力していません"
   }
 }

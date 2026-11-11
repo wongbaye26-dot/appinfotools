@@ -1,6 +1,7 @@
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:apk_info_tool/utils/format.dart';
@@ -27,6 +28,9 @@ class DiffLabels {
         'app.version' => t.diff.fields.app_version,
         'app.buildNumber' => t.diff.fields.app_buildNumber,
         'signature.verdict' => t.diff.fields.signature_verdict,
+        'security.highestSeverity' => t.diff.fields.security_highestSeverity,
+        'security.findingCount' => t.diff.fields.security_findingCount,
+        'security.cryptoTheftLevel' => t.diff.fields.security_cryptoTheftLevel,
         'android.minSdkVersion' => t.diff.fields.android_minSdkVersion,
         'android.targetSdkVersion' => t.diff.fields.android_targetSdkVersion,
         'android.maxSdkVersion' => t.diff.fields.android_maxSdkVersion,
@@ -43,6 +47,8 @@ class DiffLabels {
 
   /// 集合 id → 本地化名字。
   static String set(String id, Translations t) => switch (id) {
+        'security.findings' => t.diff.sets.security_findings,
+        'security.coverageGaps' => t.diff.sets.security_coverageGaps,
         'android.permissions' => t.diff.sets.android_permissions,
         'android.components' => t.diff.sets.android_components,
         'android.nativeCodes' => t.diff.sets.android_nativeCodes,
@@ -107,6 +113,83 @@ class DiffLabels {
     if (value is SignatureVerdict) {
       return DetailRenderer.signatureVerdictLabel(value, t);
     }
+    // 安全结论存的是**机器值**（`p0` / `strongEvidence`），直接 `toString`
+    // 会把枚举名甩给用户。映射与详情页共用同一份实现，另写一份必然漂移。
+    if (id == 'security.highestSeverity' && value is String) {
+      return _severityText(value, t);
+    }
+    if (id == 'security.cryptoTheftLevel' && value is String) {
+      final level = _levelByName(value);
+      if (level != null) {
+        return DetailRenderer.cryptoTheftLevelLabel(level, t);
+      }
+    }
     return '$value';
+  }
+
+  /// 集合成员的**显示文本**。
+  ///
+  /// 集合里存的是**稳定身份**（规则 id、覆盖维度 id），JSON 原样保留；
+  /// 界面与 Markdown 要换成人话。两个安全集合之外原样返回。
+  ///
+  /// [ruleTitles] 由 [findingTitles] 生成 —— 规则 id 本身没有语言包
+  /// （引擎不依赖 slang），只有本侧那条发现的结论句能翻。
+  static String member(
+    String setId,
+    String member,
+    Translations t, {
+    Map<String, String> ruleTitles = const {},
+  }) =>
+      switch (setId) {
+        'security.findings' => ruleTitles[member] ?? member,
+        'security.coverageGaps' =>
+          AnalysisReport.coverageDimensionLabel(member, t),
+        _ => member,
+      };
+
+  /// 规则 id → 本侧发现的中文结论（`security.findings` 成员的显示用）。
+  ///
+  /// 两侧同名规则取**左侧**的措辞：同一句文案在同一份报告里出现两种写法
+  /// 比缺一句更让人怀疑。
+  static Map<String, String> findingTitles(
+    PackageAnalysisResult? left,
+    PackageAnalysisResult? right,
+    Translations t,
+  ) {
+    final titles = <String, String>{};
+    for (final result in [left, right]) {
+      for (final finding
+          in result?.security?.findings ?? const <SecurityFinding>[]) {
+        titles.putIfAbsent(
+          finding.ruleId,
+          () => AnalysisReport.findingText(finding, t),
+        );
+      }
+    }
+    return titles;
+  }
+
+  /// `p0`…`info` / `none` → 界面文本。
+  ///
+  /// 等级名是**语言中立**的（`P0` / `INFO` 与详情页的严重度 chip 一致），
+  /// 只有「一条都没有」需要翻译。
+  static String _severityText(String name, Translations t) => switch (name) {
+        'p0' => 'P0',
+        'p1' => 'P1',
+        'p2' => 'P2',
+        'p3' => 'P3',
+        'info' => 'INFO',
+        'unknown' => '?',
+        'none' => t.diff.severity_none,
+        _ => name,
+      };
+
+  /// 枚举名 → 枚举值。认不出时返回 `null`（新引擎 + 旧界面），由调用方
+  /// 退回原始机器值，而不是显示一个空白。
+  static CryptoTheftLevel? _levelByName(String name) {
+    for (final level in CryptoTheftLevel.values) {
+      if (level.name == name) return level;
+    }
+    return null;
   }
 }

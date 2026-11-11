@@ -1218,7 +1218,10 @@
       "ios_buildNumber": "构建号",
       "ios_minimumOSVersion": "最低系统版本",
       "ios_executableName": "可执行文件",
-      "signature_verdict": "签名结论"
+      "signature_verdict": "签名结论",
+      "security_highestSeverity": "最高风险等级",
+      "security_findingCount": "发现条数",
+      "security_cryptoTheftLevel": "盗 U 证据链等级"
     },
     "sets": {
       "android_permissions": "权限",
@@ -1237,7 +1240,9 @@
       "android_allowBackup": "自动备份（按发现项推导）",
       "android_cleartextPolicy": "明文流量策略（按规则 D 推导）",
       "android_thirdPartySdk": "第三方服务类 SDK",
-      "ios_entitlements": "授权项"
+      "ios_entitlements": "授权项",
+      "security_findings": "命中的安全规则",
+      "security_coverageGaps": "覆盖缺口"
     },
     "truncated_members": "还有 {count} 项未显示",
     "report_title": "版本差异报告",
@@ -1246,13 +1251,14 @@
     "section_summary": "摘要",
     "section_scope": "范围说明",
     "report_note": "「无法比较」不等于「没有差异」：那一侧没读到，这些条目说明不了改了什么。",
-    "report_scope_note": "本报告只覆盖字段级与集合级差异；发现项差异不在范围内。",
+    "report_scope_note": "本报告对比字段级与集合级差异，安全发现按规则级对比；同一条规则只是命中次数变多时，请看「发现条数」字段。本报告不对比运行时行为。",
     "column_kind": "结论",
     "column_change": "变化",
     "column_members": "成员",
     "export_action": "导出对比报告",
     "export_success": "对比报告已保存。",
-    "export_failed": "导出失败：{error}"
+    "export_failed": "导出失败：{error}",
+    "severity_none": "无"
   },
   "field_diagnostic": {
     "hashing_disabled": "设置里关闭了哈希计算",
@@ -1269,7 +1275,10 @@
     "plist_expected_boolean": "{key} 不是布尔值",
     "privacy_manifest_too_large": "PrivacyInfo.xcprivacy 超过体积上限",
     "plist_parse_failed": "{path} 解析失败：{message}",
-    "plist_root_not_dictionary": "{path} 的根是 {actual}，期望字典"
+    "plist_root_not_dictionary": "{path} 的根是 {actual}，期望字典",
+    "security_disabled": "设置中已关闭安全审计",
+    "security_crypto_theft_not_assessed": "本次没有对该包做盗 U 证据链评估",
+    "security_coverage_not_structured": "本次分析没有产出结构化覆盖数据"
   },
   "analysis_diagnostic": {
     "android_manifest_unparsed": "AndroidManifest.xml 未能解析：{failure}",

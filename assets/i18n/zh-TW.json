@@ -1218,7 +1218,10 @@
       "ios_buildNumber": "建置編號",
       "ios_minimumOSVersion": "最低系統版本",
       "ios_executableName": "可執行檔",
-      "signature_verdict": "簽名結論"
+      "signature_verdict": "簽名結論",
+      "security_highestSeverity": "最高風險等級",
+      "security_findingCount": "發現筆數",
+      "security_cryptoTheftLevel": "盜 U 證據鏈等級"
     },
     "sets": {
       "android_permissions": "權限",
@@ -1237,7 +1240,9 @@
       "android_allowBackup": "自動備份（依發現項推導）",
       "android_cleartextPolicy": "明文流量策略（依規則 D 推導）",
       "android_thirdPartySdk": "第三方服務類 SDK",
-      "ios_entitlements": "授權項"
+      "ios_entitlements": "授權項",
+      "security_findings": "命中的安全規則",
+      "security_coverageGaps": "覆蓋缺口"
     },
     "truncated_members": "還有 {count} 項未顯示",
     "report_title": "版本差異報告",
@@ -1246,13 +1251,14 @@
     "section_summary": "摘要",
     "section_scope": "範圍說明",
     "report_note": "「無法比較」不等於「沒有差異」：那一側沒讀到，這些條目說明不了改了什麼。",
-    "report_scope_note": "本報告只涵蓋欄位級與集合級差異；發現項差異不在範圍內。",
+    "report_scope_note": "本報告對比欄位級與集合級差異，安全發現按規則級對比；同一條規則只是命中次數變多時，請看「發現筆數」欄位。本報告不對比執行時期行為。",
     "column_kind": "結論",
     "column_change": "變更",
     "column_members": "成員",
     "export_action": "匯出對比報告",
     "export_success": "對比報告已儲存。",
-    "export_failed": "匯出失敗：{error}"
+    "export_failed": "匯出失敗：{error}",
+    "severity_none": "無"
   },
   "field_diagnostic": {
     "hashing_disabled": "設定裡關閉了雜湊計算",
@@ -1269,7 +1275,10 @@
     "plist_expected_boolean": "{key} 不是布林值",
     "privacy_manifest_too_large": "PrivacyInfo.xcprivacy 超過體積上限",
     "plist_parse_failed": "{path} 解析失敗：{message}",
-    "plist_root_not_dictionary": "{path} 的根是 {actual}，期望字典"
+    "plist_root_not_dictionary": "{path} 的根是 {actual}，期望字典",
+    "security_disabled": "設定中已關閉安全稽核",
+    "security_crypto_theft_not_assessed": "本次沒有對該套件做盜 U 證據鏈評估",
+    "security_coverage_not_structured": "本次分析沒有產出結構化覆蓋資料"
   },
   "analysis_diagnostic": {
     "android_manifest_unparsed": "AndroidManifest.xml 未能解析：{failure}",

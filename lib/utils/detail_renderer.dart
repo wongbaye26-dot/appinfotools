@@ -110,6 +110,24 @@ class DetailRenderer {
     };
   }
 
+  /// 五段链等级的文案。
+  ///
+  /// 从 `crypto_theft_card.dart` 抽出来的**唯一一份**实现：差异页要拿同一个
+  /// 等级说「可疑 → 强证据」，两处各写一份映射必然漂移（`knownFamily` 与
+  /// `strongEvidence` 共用一句话这种细节尤其容易被漏掉）。
+  static String cryptoTheftLevelLabel(CryptoTheftLevel level, Translations t) {
+    return switch (level) {
+      CryptoTheftLevel.none => t.security.crypto_risk.state_none,
+      CryptoTheftLevel.capabilityOnly => t.theft.level_capability,
+      CryptoTheftLevel.suspicious => t.theft.level_suspicious,
+      CryptoTheftLevel.strongEvidence => t.theft.level_strong,
+      // 「已知家族」与「强证据」用同一句话：前者是我们**没有**能力证实的
+      // 更强结论，多造一个词只会让人以为两者可信度不同。
+      CryptoTheftLevel.knownFamily => t.theft.level_strong,
+      CryptoTheftLevel.unknown => t.theft.level_unknown,
+    };
+  }
+
   /// 把签名分析结果渲染为多行文本。
   static String signature(SignatureAnalysis? analysis, Translations t) {
     if (analysis == null) return '';

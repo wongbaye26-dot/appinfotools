@@ -1,5 +1,6 @@
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:flutter/material.dart';
 
 /// 安全 Tab 的「盗 U」证据链卡片。
@@ -40,14 +41,10 @@ class CryptoTheftCard extends StatelessWidget {
     };
   }
 
-  String get _levelLabel => switch (assessment.level) {
-        CryptoTheftLevel.none => t.security.crypto_risk.state_none,
-        CryptoTheftLevel.capabilityOnly => t.theft.level_capability,
-        CryptoTheftLevel.suspicious => t.theft.level_suspicious,
-        CryptoTheftLevel.strongEvidence => t.theft.level_strong,
-        CryptoTheftLevel.knownFamily => t.theft.level_strong,
-        CryptoTheftLevel.unknown => t.theft.level_unknown,
-      };
+  // 映射抽到 `DetailRenderer` 的唯一一份实现：差异页要用同一句话描述
+  // 「等级从 A 变成 B」，两处各写一遍必然漂移。
+  String get _levelLabel =>
+      DetailRenderer.cryptoTheftLevelLabel(assessment.level, t);
 
   String _stageLabel(ChainStage stage) => switch (stage) {
         ChainStage.capability => t.theft.stage_capability,
