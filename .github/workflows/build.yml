@@ -9,6 +9,25 @@ on:
   pull_request:
   workflow_dispatch:
 
+# **锁定 Flutter 版本，不用 `channel: stable`。**
+#
+# 2.10.1 的 CI 就是这么红的：2026-11-11 时 stable 还是 3.47.7，11-19 已经是
+# 3.50.0（Dart 3.14.0）。新 SDK 把 `test` / `analyzer` 的下限抬到了
+# `analyzer ^13`，而锁文件里的 `freezed 3.2.3` 要求 `analyzer >=7.5.9 <9.0.0`
+# —— `flutter pub get --enforce-lockfile` 直接解不出来：
+#
+#   Because freezed >=3.2.3 <4.0.0-dev.1 requires analyzer >=7.5.9 <9.0.0 …
+#   You can try … flutter pub add dev:freezed:^4.0.3
+#
+# 本地开发用的是 3.47.7，而 CI 是唯一的产物构建方 —— 两边版本必须一致，
+# 否则「本地全绿」这句话对发布没有意义。
+#
+# **升级这个版本是一次独立的依赖升级任务**：要先在本地装上新 Flutter、
+# 跑 `flutter pub upgrade --major-versions`（freezed / riverpod_generator
+# 的 analyzer 约束会一起变）、重跑全量门禁，再改这里。
+env:
+  FLUTTER_VERSION: '3.47.7'
+
 jobs:
   # 代码质量闸门：格式化、静态分析、单元测试。
   # 放在最前面并被所有打包任务依赖，避免把坏代码打成 Release。
@@ -19,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       # 打印工具链版本：`channel: stable` 会随时间漂移，出现「本地过、CI 挂」
@@ -136,7 +155,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Install Dependencies
@@ -172,7 +191,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Sync pubspec version from tag
@@ -606,7 +625,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Sync pubspec version from tag
@@ -698,7 +717,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Sync pubspec version from tag
