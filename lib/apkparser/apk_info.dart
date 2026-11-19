@@ -978,6 +978,9 @@ PayloadProbeResult _probePayloadsForBase(
   const maxEntries = 64;
   const maxEntryBytes = 8 * 1024 * 1024;
   const headBytes = 4096;
+  // 只解压到「够拿一个头部」为止。`PayloadProbe` 只消费前 4 KiB，
+  // 整条读取会让 64 条 8 MiB 的资源包白解压 512 MiB。
+  const probeBytes = 64 * 1024;
   final inputs = <PayloadProbeInput>[];
   for (final entry in inventory.entries) {
     if (inputs.length >= maxEntries) break;
@@ -999,14 +1002,16 @@ PayloadProbeResult _probePayloadsForBase(
       if (source == reader) continue;
       sourcePath = path.substring(slash + 1);
     }
-    final bytes = source.readFile(sourcePath);
+    final bytes = source.readFilePrefix(sourcePath, maxBytes: probeBytes);
     if (bytes == null || bytes.isEmpty) continue;
     final head =
         bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
     final dot = path.lastIndexOf('.');
     inputs.add(PayloadProbeInput(
       path: path,
-      sizeBytes: bytes.length,
+      // 用**声明**大小：与 `PayloadProbe` 的注释一致（中央目录可伪造，
+      // 信号里标注来源是「声明」）。此前传的是解压后的实际长度。
+      sizeBytes: entry.sizeBytes,
       headBytes: head,
       declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
     ));

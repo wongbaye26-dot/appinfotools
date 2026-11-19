@@ -436,6 +436,10 @@ SealCheck? _checkSeal(ApkReader reader, ApkMeta? meta, String path) {
 ///
 /// 只读声明大小 ≤ 8 MiB 的条目，且最多 64 条；读取后只取前 4 KiB 交给
 /// `PayloadProbe`。这是「预算先于读」的同一纪律，避免为探测把整包解开。
+///
+/// **只解压到 64 KiB 就停**（`readFilePrefix`）：此前用 `readFile` 把整条
+/// 条目解压出来再取前 4 KiB，64 条 8 MiB 的资源包因此白解压 512 MiB。
+/// `HardeningScanner` 早已改为有界前缀读，这条路径此前漏了。
 PayloadProbeResult _probePayloads(
   ApkReader reader,
   ArtifactInventory inventory,
@@ -443,6 +447,7 @@ PayloadProbeResult _probePayloads(
   const maxEntries = 64;
   const maxEntryBytes = 8 * 1024 * 1024;
   const headBytes = 4096;
+  const probeBytes = 64 * 1024;
   final inputs = <PayloadProbeInput>[];
   for (final entry in inventory.entries) {
     if (inputs.length >= maxEntries) break;
@@ -454,14 +459,16 @@ PayloadProbeResult _probePayloads(
         entry.kind == ArtifactKind.script;
     if (!candidate) continue;
     if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) continue;
-    final bytes = reader.readFile(path);
+    final bytes = reader.readFilePrefix(path, maxBytes: probeBytes);
     if (bytes == null || bytes.isEmpty) continue;
     final head =
         bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
     final dot = path.lastIndexOf('.');
     inputs.add(PayloadProbeInput(
       path: path,
-      sizeBytes: bytes.length,
+      // 声明值，与 `PayloadProbe` 的口径一致（中央目录可伪造，信号里
+      // 标注来源是「声明」）。
+      sizeBytes: entry.sizeBytes,
       headBytes: head,
       declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
     ));

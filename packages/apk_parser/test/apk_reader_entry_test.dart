@@ -292,4 +292,64 @@ void main() {
       expect(() => reader.scanHardeningSignals(), returnsNormally);
     });
   });
+
+  // -------------------------------------------------------------------
+  // 有界前缀读取
+  // -------------------------------------------------------------------
+  group('readFilePrefix', () {
+    /// 造一个含 `assets/big.bin`（[size] 字节、可压缩）的归档。
+    Future<String> heavyArchive(int size) async {
+      final archive = Archive();
+      final payload = Uint8List(size);
+      for (var i = 0; i < size; i++) {
+        payload[i] = (i * 37 + 11) & 0xFF;
+      }
+      archive.addFile(ArchiveFile('assets/big.bin', size, payload));
+      return _tempFile(tmp, 'heavy.apk', ZipEncoder().encode(archive));
+    }
+
+    test('只返回前 maxBytes 字节，不把整条条目解压出来', () async {
+      final path = await heavyArchive(4 * 1024 * 1024);
+      final reader = ApkReader();
+      expect(await reader.open(path), ArchiveOpenResult.ok);
+
+      final prefix = reader.readFilePrefix('assets/big.bin', maxBytes: 4096);
+      expect(prefix, isNotNull);
+      expect(prefix!.length, 4096);
+      // 前缀内容必须与整条读取的开头一致 —— 截断不能改内容。
+      final full = reader.readFile('assets/big.bin')!;
+      expect(prefix, equals(full.sublist(0, 4096)));
+      reader.close();
+    });
+
+    test('条目比上限短时返回整条', () async {
+      final path = await heavyArchive(1024);
+      final reader = ApkReader();
+      expect(await reader.open(path), ArchiveOpenResult.ok);
+
+      final prefix = reader.readFilePrefix('assets/big.bin', maxBytes: 4096);
+      expect(prefix!.length, 1024);
+      reader.close();
+    });
+
+    test('条目不存在时返回 null', () async {
+      final path = await heavyArchive(1024);
+      final reader = ApkReader();
+      expect(await reader.open(path), ArchiveOpenResult.ok);
+
+      expect(reader.readFilePrefix('assets/none.bin', maxBytes: 4096), isNull);
+      reader.close();
+    });
+
+    test('maxBytes 为 0 时返回空而不是 null', () async {
+      final path = await heavyArchive(1024);
+      final reader = ApkReader();
+      expect(await reader.open(path), ArchiveOpenResult.ok);
+
+      final prefix = reader.readFilePrefix('assets/big.bin', maxBytes: 0);
+      expect(prefix, isNotNull);
+      expect(prefix, isEmpty);
+      reader.close();
+    });
+  });
 }

@@ -467,6 +467,30 @@ class ApkReader {
     return read.bytes;
   }
 
+  /// 只读条目**开头**最多 [maxBytes] 字节。
+  ///
+  /// 用途是「只看文件头」的场景（载荷嗅探只要前 4 KiB）。**不要**用它读取
+  /// 需要完整内容的条目 —— 它不保证内容完整。
+  ///
+  /// 存在的理由是省掉无谓的解压：`readFile` 会把整条条目解压出来，
+  /// 而 `assets/` 下的资源包动辄 8 MiB —— 64 条就是 512 MiB 的纯浪费。
+  /// `HardeningScanner` 早在 V2.4.12 就踩过同一个坑（343 MB 的包
+  /// 30ms → 896ms），这里补齐同一纪律。
+  ///
+  /// 与 [readFile] 共用同一个 [_ledger]，因此前缀读取同样计入本次会话预算。
+  Uint8List? readFilePrefix(String fileName, {required int maxBytes}) {
+    final file = _archive?.findFile(fileName);
+    if (file == null) return null;
+    if (maxBytes <= 0) return Uint8List(0);
+    final read = readEntryPrefix(file, maxBytes: maxBytes, ledger: _ledger);
+    final bytes = read.bytes;
+    if (bytes == null) {
+      _log.warning('readFilePrefix refused: ${read.failure?.describe()}');
+      return null;
+    }
+    return bytes;
+  }
+
   List<String> listFiles({String? extension}) {
     final files = _archive?.files ?? [];
     final lowerExt = extension?.toLowerCase();
