@@ -29,6 +29,9 @@ jobs:
         run: |
           flutter --version
           dart --version
+          # 同时写成 annotation：日志 403，但 annotation 匿名可读。
+          machine=$(flutter --version --machine 2>/dev/null | tr -d '\n' | tr -d '%' | tr -s ' ')
+          echo "::notice::toolchain $machine"
 
       # **拆成两步**：合成一步时「依赖解析失败」与「代码生成失败」的结论
       # 完全一样（Install Dependencies 红），而这两件事的修法毫不相干。
@@ -42,7 +45,7 @@ jobs:
           status=$?
           echo "$output"
           if [ "$status" -ne 0 ]; then
-            reason=$(printf '%s' "$output" | tail -n 8 | tr '\n' '|' | tr -d '%')
+            reason=$(printf '%s' "$output" | tail -n 30 | tr '\n' '|' | tr -d '%')
             echo "::error::flutter pub get --enforce-lockfile failed: $reason"
             exit "$status"
           fi
