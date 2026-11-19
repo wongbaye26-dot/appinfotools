@@ -22,10 +22,21 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install Dependencies
+      # 打印工具链版本：`channel: stable` 会随时间漂移，出现「本地过、CI 挂」
+      # 时第一个要回答的问题就是「CI 用的是哪个版本」—— 而 job 日志对匿名
+      # 读者是 403，只有 annotations 可读。
+      - name: Toolchain versions
         run: |
-          flutter pub get --enforce-lockfile
-          dart run build_runner build --delete-conflicting-outputs
+          flutter --version
+          dart --version
+
+      # **拆成两步**：合成一步时「依赖解析失败」与「代码生成失败」的结论
+      # 完全一样（Install Dependencies 红），而这两件事的修法毫不相干。
+      - name: Resolve dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Check formatting
         # 只检查项目**自己拥有**的文件。
