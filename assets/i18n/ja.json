@@ -300,7 +300,13 @@
     "batch_include_version": "バージョンを含める",
     "batch_done": "{count} 件のファイル名を変更しました",
     "batch_failed": "{count} 件のファイルが失敗しました",
-    "batch_apply": "すべて名前変更"
+    "batch_apply": "すべて名前変更",
+    "batch_progress": "読み取り中 {done}/{total}…",
+    "batch_fallback": "{count} 件はアプリ名を取得できないため、ファイル名を使用します",
+    "batch_failure_title": "{count} 件が失敗しました",
+    "batch_fail_missing": "元のファイルが存在しません",
+    "batch_fail_exists": "同名のファイルが既に存在します（上書きしません）",
+    "batch_fail_io": "名前を変更できませんでした：{detail}"
   },
   "install": {
     "refresh_devices": "デバイスリストを更新",

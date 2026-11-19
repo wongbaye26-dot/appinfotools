@@ -328,7 +328,13 @@
     "batch_include_version": "包含版本",
     "batch_done": "已重命名 {count} 个文件",
     "batch_failed": "{count} 个文件失败",
-    "batch_apply": "全部重命名"
+    "batch_apply": "全部重命名",
+    "batch_progress": "正在读取 {done}/{total}…",
+    "batch_fallback": "{count} 个文件读不到应用名，将按文件名重命名",
+    "batch_failure_title": "{count} 个文件失败",
+    "batch_fail_missing": "源文件已不存在",
+    "batch_fail_exists": "目标文件名已被占用，未覆盖",
+    "batch_fail_io": "重命名失败：{detail}"
   },
   "install": {
     "refresh_devices": "刷新设备列表",

@@ -328,7 +328,13 @@
     "batch_include_version": "包含版本",
     "batch_done": "已重新命名 {count} 個檔案",
     "batch_failed": "{count} 個檔案失敗",
-    "batch_apply": "全部重新命名"
+    "batch_apply": "全部重新命名",
+    "batch_progress": "正在讀取 {done}/{total}…",
+    "batch_fallback": "{count} 個檔案讀不到應用名，將按檔名重新命名",
+    "batch_failure_title": "{count} 個檔案失敗",
+    "batch_fail_missing": "來源檔案已不存在",
+    "batch_fail_exists": "目標檔名已被佔用，未覆蓋",
+    "batch_fail_io": "重新命名失敗：{detail}"
   },
   "install": {
     "refresh_devices": "刷新設備列表",

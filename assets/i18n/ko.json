@@ -300,7 +300,13 @@
     "batch_include_version": "버전 포함",
     "batch_done": "{count}개 파일 이름을 변경했습니다",
     "batch_failed": "{count}개 파일 실패",
-    "batch_apply": "모두 이름 변경"
+    "batch_apply": "모두 이름 변경",
+    "batch_progress": "읽는 중 {done}/{total}…",
+    "batch_fallback": "{count}개 파일의 앱 이름을 읽을 수 없어 파일 이름을 사용합니다",
+    "batch_failure_title": "{count}개 파일 실패",
+    "batch_fail_missing": "원본 파일이 존재하지 않습니다",
+    "batch_fail_exists": "같은 이름의 파일이 이미 있습니다(덮어쓰지 않음)",
+    "batch_fail_io": "이름을 바꾸지 못했습니다: {detail}"
   },
   "install": {
     "refresh_devices": "기기 목록 새로 고침",

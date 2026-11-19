@@ -328,7 +328,13 @@
     "batch_include_version": "Include version",
     "batch_done": "Renamed {count} file(s)",
     "batch_failed": "{count} file(s) failed",
-    "batch_apply": "Rename all"
+    "batch_apply": "Rename all",
+    "batch_progress": "Reading {done}/{total}…",
+    "batch_fallback": "{count} file(s) have no readable app name; the file name will be used",
+    "batch_failure_title": "{count} file(s) failed",
+    "batch_fail_missing": "source file no longer exists",
+    "batch_fail_exists": "a file with the target name already exists (not overwritten)",
+    "batch_fail_io": "could not rename: {detail}"
   },
   "install": {
     "refresh_devices": "Refresh Devices",
