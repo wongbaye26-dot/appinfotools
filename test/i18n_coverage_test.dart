@@ -20,6 +20,8 @@ import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/diff_labels.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/coverage_code_guard.dart';
+
 Future<void> _use(String locale) => LocaleSettings.setLocaleRaw(locale);
 
 void main() {
@@ -108,28 +110,14 @@ void main() {
   // 引擎产出的是**机器 id**（`android.dex.strings` 这类，JSON 里保留它给程序读），
   // 但 UI 与 Markdown 必须显示可读文案。下面是两个引擎的维度清单。
   group('覆盖维度名', () {
-    /// 引擎产出的全部维度 id。新增维度时**必须**同步这里 ——
-    /// 这条测试的意义正是「新增了维度却忘了补文案」会红。
-    const ids = [
-      'android.manifest',
-      'android.permissions',
-      'android.dex.structure',
-      'android.dex.strings',
-      'android.dex.methodReferences',
-      'android.dex.callSites',
-      'android.nativeSymbols',
-      'android.arsc',
-      'ios.infoPlist',
-      'ios.usageDescriptions',
-      'ios.executables',
-      'ios.macho.strings',
-      'ios.unicodeStrings',
-      'ios.nativeSymbols',
-      'ios.signature',
-      'ios.privacyManifest',
-    ];
+    /// 引擎产出的全部维度 id —— **从引擎源码提取**，不维护手写清单。
+    ///
+    /// 手写清单写死过 16 个（实际 23 个），新增维度漏文案时守卫不会红。
+    final ids = engineCoverageDimensionIds();
 
     test('每个维度在四个维护中的语言包里都有名字，且不留占位符', () async {
+      // 提取器失效会得到 0 个 id，循环一次都不跑 —— 先守住这一点。
+      expect(ids.length, greaterThan(20), reason: '从引擎源码提取到的维度 id 太少，提取器可能已失效');
       for (final locale in ['en', 'zh-CN', 'zh-HK', 'zh-TW']) {
         await _use(locale);
         for (final id in ids) {

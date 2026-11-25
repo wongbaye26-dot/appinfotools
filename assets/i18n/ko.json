@@ -436,8 +436,9 @@
       "dex_strings_location": "{count}개 DEX 파일의 문자열",
       "native_symbol_imported": "{symbol} (가져옴): {description}",
       "native_symbol_imported_raw": "{symbol} (가져옴): {description} | 원시 심볼: {rawNames}",
-      "android_rule_f_scope": "이 부정 결론의 범위: DEX {dex}개와 호출 지점 {callSites}개를 스캔했으며 업로드 마커는 발견되지 않았습니다.",
-      "permission_declared_without_api": "선언되었지만 스캔한 DEX에서 대응하는 API 마커를 찾지 못했습니다"
+      "android_rule_f_scope": "이 부정 결론의 범위: DEX {dex}개와 호출 지점 {callSites}개를 스캔했으며 {scannedBytes} / {totalBytes} 바이트({percent}%)를 포함했습니다. 업로드 마커는 발견되지 않았습니다.",
+      "permission_declared_without_api": "선언되었지만 스캔한 DEX에서 대응하는 API 마커를 찾지 못했습니다",
+      "ios_rule_f_scope": "이 부정 결론의 범위: 실행 파일 {executables}개(중첩 {nested}개)를 스캔했으며 {scannedBytes} / {totalBytes} 바이트({percent}%)를 포함했습니다. 업로드 마커는 발견되지 않았습니다."
     },
     "list_join": ", ",
     "native_symbols": {
@@ -577,7 +578,6 @@
       "android_native_symbols_truncated": "일부 네이티브 라이브러리의 심볼 테이블 읽기가 예산 한도에 도달해, 항목의 일부만 분석했습니다.",
       "android_native_symbols_unstripped": "{count}개의 네이티브 라이브러리가 심볼 테이블을 제거하지 않았습니다 ({names}): 내부 함수 이름을 읽을 수 있습니다. 릴리스 빌드는 보통 제거됩니다. 이것은 사실이며 위험 판정이 아닙니다.",
       "android_offline_static_analysis": "이것은 오프라인 정적 분석입니다: 앱을 설치하거나 실행하지 않았고 네트워크 트래픽도 관찰하지 않았습니다. 따라서 런타임 증거는 존재하지 않으며, 이를 근거로 동작이 확인되었다고 보고해서는 안 됩니다.",
-      "android_split_apk_base_only": "이것은 분할 패키지입니다: 보안 감사는 base APK만 대상으로 하며, 분할 APK(언어/밀도/ABI)가 가진 DEX와 리소스는 분석하지 않았습니다. 따라서 이 결과는 전체 설치 집합을 대표하지 않습니다. 특히 네이티브 라이브러리는 실제로 로드되는 사본이 ABI 분할 쪽에 있는 것이 보통입니다.",
       "ios_executable_none_readable": "Mach-O 실행 파일 내용을 읽을 수 없었습니다: API 사용 단서를 확인할 수 없습니다. 용도 설명과 개인정보 매니페스트 결론은 영향을 받지 않지만, 이것은 완전한 분석이 아닙니다.",
       "ios_executable_over_budget": "{path}는 {bytes}바이트로 스캔 예산 {limit}바이트를 초과합니다: 앞부분 {limit}바이트만 스캔했으므로, 스캔하지 않은 부분에 찾지 못한 단서가 있을 수 있습니다.",
       "ios_executable_unscanned": "{count}개의 실행 파일을 스캔하지 않았습니다 ({names}): 이 파일들에서 '단서를 찾지 못함'은 '보지 않음'이지 '없음'이 아닙니다.",
@@ -860,7 +860,11 @@
       "android_resource_unicode_phrase_limitation": "resources.arsc와 텍스트 형식 assets의 문자열 상수만 확인했습니다. 바이너리 자산, 네이티브 라이브러리, 런타임에 받은 문구, 런타임에 조립되는 문자열은 범위 밖입니다.",
       "ios_strings_unicode_phrase": ".strings / 로컬라이제이션 파일에서 중국어 지갑 / 사회공학 문구 {count}개를 발견했습니다({strings}개 후보 문자열 검사). 이는 UI 문구 단서일 뿐 판정이 아닙니다.",
       "ios_strings_unicode_phrase_review": "일치한 원문을 문맥에서 읽어 보세요. 시드 구문을 요구하는지, 에어드롭을 약속하는지, 입금해야 동결이 해제된다고 하는지, 자금 집결을 지시하는지 확인하세요. 서명 / 공식 베이스라인, 로드 체인 증거와 함께 의도를 판단하세요.",
-      "ios_strings_unicode_phrase_limitation": "아카이브 안의 .strings / 로컬라이제이션 텍스트만 확인했습니다. Swift 작은 문자열 상수, 바이너리 plist, 런타임에 받은 문구, 런타임에 조립되는 문자열은 범위 밖입니다."
+      "ios_strings_unicode_phrase_limitation": "아카이브 안의 .strings / 로컬라이제이션 텍스트만 확인했습니다. Swift 작은 문자열 상수, 바이너리 plist, 런타임에 받은 문구, 런타임에 조립되는 문자열은 범위 밖입니다.",
+      "android_rule_f_truncated": "이번 스캔이 확인한 DEX 범위에서는 업로드 관련 특징이 발견되지 않았지만, 그 범위는 완전하지 않습니다: {scannedBytes} / {totalBytes} 바이트({percent}%), DEX {skippedDex}개가 스캔 예산을 초과했고 {unanalysedDex}개는 완전히 분석되지 않았습니다. 검사하지 않은 부분에 업로드 마커가 있을 수 있으므로 앱이 업로드하지 않는다는 근거가 될 수 없습니다.",
+      "android_rule_f_limitation_incomplete": "DEX의 일부가 검사되지 않았습니다(스캔 예산 또는 순회할 수 없는 구조). 따라서 이 \"발견되지 않음\" 결론은 스캔한 범위에만 해당합니다.",
+      "ios_rule_f_truncated": "이번 스캔이 확인한 실행 파일 범위에서는 네트워크 업로드 특징이 발견되지 않았지만, 그 범위는 완전하지 않습니다: {scannedBytes} / {totalBytes} 바이트({percent}%), 실행 파일 {overBudget}개가 스캔 예산을 초과했고 {unread}개는 읽을 수 없었습니다. 검사하지 않은 부분에 업로드 마커가 있을 수 있으므로 앱에 네트워크 동작이 없다는 근거가 될 수 없습니다.",
+      "ios_rule_f_limitation_incomplete": "실행 파일의 일부가 검사되지 않았습니다(스캔 예산 또는 읽을 수 없는 중첩 바이너리). 따라서 이 \"발견되지 않음\" 결론은 스캔한 범위에만 해당합니다."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",
@@ -958,7 +962,8 @@
       "android_sdkInventory": "서드파티 SDK 목록",
       "android_signature": "서명 자료",
       "ios_machoSites": "Mach-O 호출 지점",
-      "ios_unicodeStrings": "Unicode 문자열"
+      "ios_unicodeStrings": "Unicode 문자열",
+      "android_dex_unicodeStrings": "DEX Unicode 문자열"
     },
     "gap_count": "{count}개 항목에 누락이 있습니다",
     "hint": "'누락'은 결론이 모든 것을 포괄하지 못한다는 뜻입니다. 여기서 '찾을 수 없음'은 '없음'이 아닙니다.",
@@ -999,7 +1004,11 @@
       "ios_macho_call_sites_unavailable": "__objc_selrefs를 가리키는 ADRP+ADD/LDR 명령 쌍이 없거나 LC_FUNCTION_STARTS가 없어 선택자 참조를 함수에 귀속할 수 없었습니다. 단서는 \"참조됨\"으로만 보고됩니다.",
       "ios_unicode_strings_scope": "실행 파일 바이트의 UTF-8 텍스트와 UTF-16(LE/BE) 리터럴을 확인했습니다. Swift 소문자열 상수, .strings / 현지화 리소스, dyld 공유 캐시의 심볼은 확인할 수 없습니다.",
       "ios_unicode_strings_truncated": "일부 실행 파일이 스캔 예산 또는 __ustring 상한을 초과해 그 이후의 Unicode 문자열은 확인하지 못했습니다.",
-      "ios_unicode_strings_no_content": "Unicode 문자열 스캔에 사용할 실행 파일 내용이 없습니다."
+      "ios_unicode_strings_no_content": "Unicode 문자열 스캔에 사용할 실행 파일 내용이 없습니다.",
+      "android_dex_unicode_strings_no_content": "Unicode 스캔에 사용할 수 있는 DEX string_ids 항목이 없습니다",
+      "android_dex_unicode_strings_untrusted": "DEX 파일 {count}개의 구조를 신뢰할 수 없어 문자열 상수를 디코딩하지 않았습니다",
+      "android_dex_unicode_strings_truncated": "일부 string_ids 항목을 디코딩할 수 없거나 Unicode 스캔 예산을 초과했습니다. 검사하지 않은 부분의 내용은 알 수 없습니다",
+      "android_dex_unicode_strings_scope": "DEX string_ids로 접근할 수 있는 MUTF-8 문자열 상수를 디코딩했습니다. resources/ 및 assets/의 텍스트, 네이티브 라이브러리, 난독화 셸, 런타임에 조립되는 문자열은 여기서 확인할 수 없습니다."
     },
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",

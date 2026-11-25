@@ -932,6 +932,10 @@ class AnalysisReport {
       'android.permissions' => d.android_permissions,
       'android.dex.structure' => d.android_dex_structure,
       'android.dex.strings' => d.android_dex_strings,
+      // 与 `android.dex.strings` 是两个维度：那个是「裸字节里扫了多少」，
+      // 这个是「string_ids 里解出了多少」。此前漏了这一格，6 种语言的界面
+      // 与 Markdown 都直接显示 `android.dex.unicodeStrings`。
+      'android.dex.unicodeStrings' => d.android_dex_unicodeStrings,
       'android.dex.methodReferences' => d.android_dex_methodReferences,
       'android.dex.callSites' => d.android_dex_callSites,
       'android.nativeSymbols' => d.android_nativeSymbols,
@@ -989,6 +993,16 @@ class AnalysisReport {
     final total = finding.messageArgs['total'];
     final scanned = finding.messageArgs['scanned'];
     final bytes = finding.messageArgs['bytes'];
+    // 规则 F 的「扫了多少」：截断时必须写进正文，否则读者会把
+    // 「只扫了 47%」读成「这个应用不上传」。
+    final scannedBytes = finding.messageArgs['scannedBytes'];
+    final totalBytes = finding.messageArgs['totalBytes'];
+    final percent = finding.messageArgs['percent'];
+    final skippedDex = finding.messageArgs['skippedDex'];
+    final unanalysedDex = finding.messageArgs['unanalysedDex'];
+    // iOS 规则 F 的同类参数：超预算的可执行文件数、完全没读到的个数。
+    final overBudget = finding.messageArgs['overBudget'];
+    final unread = finding.messageArgs['unread'];
     final uncovered = finding.messageArgs['uncovered'];
     final modes = finding.messageArgs['modes'];
     final name = finding.messageArgs['name'];
@@ -1129,6 +1143,20 @@ class AnalysisReport {
       'ios.ocr_capability' => f.ios_ocr_capability,
       'ios.rule_c' => f.ios_rule_c,
       'ios.rule_f' => f.ios_rule_f,
+      // 截断时的否定结论（与 Android 的 `android.rule_f_truncated` 同构）。
+      'ios.rule_f_truncated' => (scannedBytes == null ||
+              totalBytes == null ||
+              percent == null ||
+              overBudget == null ||
+              unread == null)
+          ? null
+          : f.ios_rule_f_truncated(
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+              overBudget: overBudget,
+              unread: unread,
+            ),
       'ios.url_schemes' => (count == null || schemes == null)
           ? null
           : f.ios_url_schemes(count: count, schemes: schemes),
@@ -1190,6 +1218,21 @@ class AnalysisReport {
       'android.rule_d_escalated' => f.android_rule_d_escalated,
       'android.rule_e' => f.android_rule_e,
       'android.rule_f' => f.android_rule_f,
+      // 截断时的否定结论：必须带上「扫了多少 / 一共多少」，否则这句话会被
+      // 读成「这个应用不上传」。
+      'android.rule_f_truncated' => (scannedBytes == null ||
+              totalBytes == null ||
+              percent == null ||
+              skippedDex == null ||
+              unanalysedDex == null)
+          ? null
+          : f.android_rule_f_truncated(
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+              skippedDex: skippedDex,
+              unanalysedDex: unanalysedDex,
+            ),
       'ios.native_symbols' => (count == null || symbols == null)
           ? null
           : f.ios_native_symbols(count: count, symbols: symbols),
@@ -1530,6 +1573,7 @@ class AnalysisReport {
       'ios.rule_e.limitation' => f.ios_rule_e_limitation,
       'ios.privacy_info.limitation' => f.ios_privacy_info_limitation,
       'ios.rule_f.limitation' => f.ios_rule_f_limitation,
+      'ios.rule_f.limitation_incomplete' => f.ios_rule_f_limitation_incomplete,
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
       'android.debuggable.limitation' => f.android_debuggable_limitation,
@@ -1560,6 +1604,8 @@ class AnalysisReport {
       'android.rule_e.limitation' => f.android_rule_e_limitation,
       'android.rule_f.limitation_no_dex' => f.android_rule_f_limitation_no_dex,
       'android.rule_f.limitation_scope' => f.android_rule_f_limitation_scope,
+      'android.rule_f.limitation_incomplete' =>
+        f.android_rule_f_limitation_incomplete,
       'android.ocr_capability.limitation' =>
         f.android_ocr_capability_limitation,
       'android.network_endpoints.limitation' =>
@@ -1680,14 +1726,44 @@ class AnalysisReport {
     final rawNames = evidence.detailArgs['rawNames'];
     final dex = evidence.detailArgs['dex'];
     final callSites = evidence.detailArgs['callSites'];
+    // 规则 F 的证据要回答「扫了多少字节」，而不只是「扫了几个 DEX」。
+    final scannedBytes = evidence.detailArgs['scannedBytes'];
+    final totalBytes = evidence.detailArgs['totalBytes'];
+    final percent = evidence.detailArgs['percent'];
+    // iOS 规则 F 的证据还带「几个可执行文件 / 其中几个嵌套」。
+    final executables = evidence.detailArgs['executables'];
+    final nested = evidence.detailArgs['nested'];
 
     final String? localized = switch (code) {
       'code.reference' => (marker == null || samples == null)
           ? null
           : e.code_reference(marker: marker, samples: samples),
-      'rule_f.scope' => (dex == null || callSites == null)
+      'rule_f.scope' => (dex == null ||
+              callSites == null ||
+              scannedBytes == null ||
+              totalBytes == null ||
+              percent == null)
           ? null
-          : e.android_rule_f_scope(dex: dex, callSites: callSites),
+          : e.android_rule_f_scope(
+              dex: dex,
+              callSites: callSites,
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+            ),
+      'ios.rule_f.scope' => (executables == null ||
+              nested == null ||
+              scannedBytes == null ||
+              totalBytes == null ||
+              percent == null)
+          ? null
+          : e.ios_rule_f_scope(
+              executables: executables,
+              nested: nested,
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+            ),
       'permission.declared_without_api' => e.permission_declared_without_api,
       'code.call_site' => (marker == null || samples == null)
           ? null
@@ -2029,7 +2105,6 @@ class AnalysisReport {
       'ios.reference_tables.unsupported' => reason == null
           ? null
           : n.ios_reference_tables_unsupported(reason: reason),
-      'android.split_apk.base_only' => n.android_split_apk_base_only,
       'android.split_apk.partial' => n.android_split_apk_partial,
       'android.split_apk.cert_mismatch' => n.android_split_apk_cert_mismatch,
       'android.sdk_inventory.no_dex' => n.android_sdk_inventory_no_dex,
@@ -2091,6 +2166,10 @@ class AnalysisReport {
           ? null
           : n.android_dex_desynced_bodies(count: count, names: names),
       'android.dex.method_semantics' => n.android_dex_method_semantics,
+      // 这条说明是「DexClassLoader 加载进来的代码不在归档里」—— 静态结论对
+      // 那部分代码不成立。文案早就在 6 个语言包里，只是这个 switch 没有 case，
+      // 于是 6 种语言都退回英文原文。
+      'android.dex.dynamic_loading' => n.android_dex_dynamic_loading,
       'android.dex.invoke_custom' =>
         count == null ? null : n.android_dex_invoke_custom(count: count),
       'android.container.anomaly' =>
@@ -2264,6 +2343,9 @@ class AnalysisReport {
     final total = entry.noteArgs['total'];
     final functions = entry.noteArgs['functions'];
     final attributed = entry.noteArgs['attributed'];
+    // SDK 盘点的覆盖说明要用「截断几个 / 读不出几个」。
+    final truncated = entry.noteArgs['truncated'];
+    final failed = entry.noteArgs['failed'];
 
     final String? localized = switch (code) {
       'android.manifest.unparsed' =>
@@ -2276,6 +2358,17 @@ class AnalysisReport {
       'android.dex.strings_not_fully_scanned' => count == null
           ? null
           : n.android_dex_strings_not_fully_scanned(count: count),
+      // Unicode 维度的 4 条说明。iOS 同名 3 条早已注册，Android 这 4 条一直
+      // 只在 `coverageNote` 之外，中文界面上是英文原文。
+      'android.dex.unicode_strings.no_content' =>
+        n.android_dex_unicode_strings_no_content,
+      'android.dex.unicode_strings.untrusted' => count == null
+          ? null
+          : n.android_dex_unicode_strings_untrusted(count: count),
+      'android.dex.unicode_strings.truncated' =>
+        n.android_dex_unicode_strings_truncated,
+      'android.dex.unicode_strings.scope' =>
+        n.android_dex_unicode_strings_scope,
       'android.dex.no_traversable_dex' => n.android_dex_no_traversable_dex,
       'android.dex.method_entries_unreadable' => count == null
           ? null
@@ -2304,6 +2397,31 @@ class AnalysisReport {
       'android.cleartext_policy_unknown' => n.android_cleartext_policy_unknown,
       'android.cleartext_policy_target_sdk_unknown' =>
         n.android_cleartext_policy_target_sdk_unknown,
+      // 同一类错：这两条只注册在 limitationNoteText 里，而引擎把它们当作
+      // **覆盖说明**产出，覆盖网格因此一直是英文原文。
+      //
+      // 文案取自 `security.limitation_notes` —— 两条通道说的是同一件事，
+      // 复制一份到 `coverage.notes` 只会让措辞日后漂移。
+      'android.sdk_inventory.no_dex' =>
+        t.security.limitation_notes.android_sdk_inventory_no_dex,
+      'android.sdk_inventory.incomplete' =>
+        (truncated == null || failed == null)
+            ? null
+            : t.security.limitation_notes.android_sdk_inventory_incomplete(
+                truncated: truncated, failed: failed),
+      // 同源的第二批：四条在 limitationNoteText 里注册过、覆盖网格里没有。
+      'android.native_hardening.not_provided' =>
+        t.security.limitation_notes.android_native_hardening_not_provided,
+      'android.native_hardening.some_without_relro' =>
+        (count == null || total == null)
+            ? null
+            : t.security.limitation_notes
+                .android_native_hardening_some_without_relro(
+                    count: count, total: total),
+      'ios.entitlements.empty' =>
+        t.security.limitation_notes.ios_entitlements_empty,
+      'ios.entitlements.no_profile' =>
+        t.security.limitation_notes.ios_entitlements_no_profile,
       'android.signature.not_read' => n.android_signature_not_read,
       'android.signature.unreadable' =>
         reason == null ? null : n.android_signature_unreadable(reason: reason),

@@ -853,7 +853,11 @@
       "android_resource_unicode_phrase_limitation": "只检查了 resources.arsc 与文本型 assets 里的字符串常量；二进制资源、原生库、运行时下发文案与运行时拼接的字符串不在扫描范围内。",
       "ios_strings_unicode_phrase": "在 .strings / 本地化文件中发现 {count} 条中文钱包 / 社工话术线索（检查了 {strings} 条候选字符串）。这些只是界面文案线索，不是定性。",
       "ios_strings_unicode_phrase_review": "结合上下文阅读命中的原文：它是在索要助记词、承诺空投、要求先储值才能解冻，还是一条归集资金的指令？把这条与签名 / 官方基线、加载链证据放在一起再判断意图。",
-      "ios_strings_unicode_phrase_limitation": "只检查了归档里的 .strings / 本地化文本文件；Swift 小字符串、二进制 plist、运行时下发文案与运行时拼接的字符串不在扫描范围内。"
+      "ios_strings_unicode_phrase_limitation": "只检查了归档里的 .strings / 本地化文本文件；Swift 小字符串、二进制 plist、运行时下发文案与运行时拼接的字符串不在扫描范围内。",
+      "android_rule_f_truncated": "本次扫描所检查的那部分 DEX 内容里未发现上传相关特征，但覆盖并不完整：{scannedBytes} / {totalBytes} 字节（{percent}%），{skippedDex} 个 DEX 超出扫描预算，{unanalysedDex} 个未能完整分析。未检查的部分可能含有上传标记，因此不能据此认为该应用不上传。",
+      "android_rule_f_limitation_incomplete": "部分 DEX 内容未被检查（扫描预算或结构不可遍历），因此这条「未发现」结论只覆盖已扫描的部分。",
+      "ios_rule_f_truncated": "本次扫描所检查的那部分可执行文件内容里未发现网络上传特征，但覆盖并不完整：{scannedBytes} / {totalBytes} 字节（{percent}%），{overBudget} 个可执行文件超出扫描预算，{unread} 个未能读取。未检查的部分可能含有上传标记，因此不能据此认为该应用没有网络行为。",
+      "ios_rule_f_limitation_incomplete": "部分可执行文件内容未被检查（扫描预算或嵌套二进制读取失败），因此这条「未发现」结论只覆盖已扫描的部分。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -876,8 +880,9 @@
       "native_symbol_imported": "{symbol}（导入）: {description}",
       "native_symbol_imported_raw": "{symbol}（导入）: {description} ｜ 符号：{rawNames}",
       "dex_strings_location": "{count} 个 DEX 的字符串",
-      "android_rule_f_scope": "这条否定结论的范围：扫描了 {dex} 个 DEX、{callSites} 个调用点，未命中任何上传标记。",
-      "permission_declared_without_api": "已声明，但扫描到的 DEX 里没有对应的 API 标记"
+      "android_rule_f_scope": "这条否定结论的范围：扫描了 {dex} 个 DEX、{callSites} 个调用点，覆盖 {scannedBytes} / {totalBytes} 字节（{percent}%）；未命中任何上传标记。",
+      "permission_declared_without_api": "已声明，但扫描到的 DEX 里没有对应的 API 标记",
+      "ios_rule_f_scope": "这条否定结论的范围：扫描了 {executables} 个可执行文件（其中 {nested} 个嵌套），覆盖 {scannedBytes} / {totalBytes} 字节（{percent}%）；未命中任何上传标记。"
     },
     "native_symbols": {
       "line": "{text}（{symbol}）",
@@ -991,7 +996,6 @@
       "ios_native_symbols_unreadable": "{count} 个 Mach-O 镜像的 `LC_SYMTAB` 越界，未读出符号（{names}）：这些镜像上的「没发现导入符号」是「没查到」，不是「没有」。",
       "ios_native_symbols_stripped": "部分 Mach-O 镜像没有 `LC_SYMTAB`（符号表被剥离）：这些镜像的导入符号无法检查。App Store 处理的二进制通常会剥离符号表。",
       "ios_native_symbols_semantics": "原生符号来自 Mach-O 的 `LC_SYMTAB`：它说明二进制导入了哪些系统能力，不说明这些能力被调用过、更不说明调用的参数。本次未反汇编原生代码。",
-      "android_split_apk_base_only": "这是分包安装包，安全审计仅覆盖 base APK；各分包（语言 / 密度 / ABI）携带的 DEX 与资源未参与分析，因此本结果不代表整个安装集合。原生库尤其如此 —— ABI 分包里往往才是真正被加载的那份。",
       "android_manifest_unparsed": "AndroidManifest.xml 未能解析（{reason}）：权限与组件审计无法进行，本次结果仅包含可读取的部分，不能作为完整结论。",
       "android_dex_budget": "DEX 扫描预算：{name} 只扫描了前 {scannedBytes} 字节（文件共 {totalBytes} 字节，约 {percent}%）—— 剩余字节没有搜过，里面的线索不会被发现。这是主动设的上限，不是解析失败。",
       "android_dex_no_content": "未读取到任何 classes.dex 内容：OCR、上传、网络域名等代码线索无法检查。权限与配置结论不受影响，但不构成完整分析。",
@@ -1136,7 +1140,8 @@
       "android_sdkInventory": "第三方 SDK 清单",
       "android_signature": "签名材料",
       "ios_machoSites": "Mach-O 调用点",
-      "ios_unicodeStrings": "Unicode 字符串"
+      "ios_unicodeStrings": "Unicode 字符串",
+      "android_dex_unicodeStrings": "DEX Unicode 字符串"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",
@@ -1172,7 +1177,11 @@
       "ios_macho_call_sites_unavailable": "没有任何选择子引用能归属到函数（没有指向 __objc_selrefs 的 ADRP+ADD/LDR 指令对，或缺少 LC_FUNCTION_STARTS）。线索只报「被引用」，不报「被调用」。",
       "ios_unicode_strings_scope": "已检查可执行文件字节中的 UTF-8 文本与 UTF-16（小端/大端）字面量；Swift 小字符串常量、.strings / 本地化资源以及 dyld 共享缓存中的符号不在可见范围内。",
       "ios_unicode_strings_truncated": "部分可执行文件超出扫描预算或 __ustring 节上限，其后的 Unicode 字符串未被检查。",
-      "ios_unicode_strings_no_content": "没有可执行文件内容可供 Unicode 字符串扫描。"
+      "ios_unicode_strings_no_content": "没有可执行文件内容可供 Unicode 字符串扫描。",
+      "android_dex_unicode_strings_no_content": "没有可供 Unicode 扫描的 DEX string_ids 条目",
+      "android_dex_unicode_strings_untrusted": "{count} 个 DEX 文件结构不可信，其字符串常量未解码",
+      "android_dex_unicode_strings_truncated": "部分 string_ids 条目无法解码或超出 Unicode 扫描预算；未检查的部分内容未知",
+      "android_dex_unicode_strings_scope": "已解码可通过 DEX string_ids 访问的 MUTF-8 字符串常量；resources/ 与 assets/ 中的文本、原生库、加固壳以及运行时拼接的字符串不在可见范围内。"
     }
   },
   "diff": {

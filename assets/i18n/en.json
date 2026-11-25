@@ -853,7 +853,11 @@
       "android_resource_unicode_phrase_limitation": "Only string constants from resources.arsc and text-like assets were examined. Binary assets, native libraries, runtime-downloaded copy and strings assembled at runtime are outside this scan.",
       "ios_strings_unicode_phrase": "Found {count} Chinese wallet / social-engineering phrase(s) in .strings / localization files ({strings} candidate strings examined). These are UI copy clues, not a verdict.",
       "ios_strings_unicode_phrase_review": "Read the attached original strings in context: do they ask for a seed phrase, promise an airdrop, demand a deposit to unfreeze funds, or instruct a fund sweep? Combine this with signature / baseline and load-chain evidence before concluding anything about intent.",
-      "ios_strings_unicode_phrase_limitation": "Only .strings / localization text files inside the archive were examined. Swift small-string constants, binary plists, runtime-downloaded copy and strings assembled at runtime are outside this scan."
+      "ios_strings_unicode_phrase_limitation": "Only .strings / localization text files inside the archive were examined. Swift small-string constants, binary plists, runtime-downloaded copy and strings assembled at runtime are outside this scan.",
+      "android_rule_f_truncated": "No upload-related code characteristics were found in the part of the DEX content this scan examined, but that part is incomplete: {scannedBytes} of {totalBytes} bytes ({percent}%), {skippedDex} DEX file(s) exceeded the scan budget and {unanalysedDex} could not be fully analysed. The unexamined part could contain upload markers, so this does not mean the app has no upload behaviour.",
+      "android_rule_f_limitation_incomplete": "Part of the DEX content was not examined (scan budget or an untraversable structure), so this “not found” conclusion covers only the scanned part.",
+      "ios_rule_f_truncated": "No network upload characteristics were found in the part of the executable content this scan examined, but that part is incomplete: {scannedBytes} of {totalBytes} bytes ({percent}%), {overBudget} executable(s) exceeded the scan budget and {unread} could not be read. The unexamined part could contain upload markers, so this does not mean the app has no network behaviour.",
+      "ios_rule_f_limitation_incomplete": "Part of the executable content was not examined (scan budget or unreadable nested binaries), so this “not found” conclusion covers only the scanned part."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -876,8 +880,9 @@
       "native_symbol_imported": "{symbol} (imported): {description}",
       "native_symbol_imported_raw": "{symbol} (imported): {description} | raw symbol: {rawNames}",
       "dex_strings_location": "strings of {count} DEX file(s)",
-      "android_rule_f_scope": "Scope of this negative result: {dex} DEX file(s) and {callSites} call site(s) were scanned; no upload marker matched.",
-      "permission_declared_without_api": "declared, but no matching API marker was found in the scanned DEX"
+      "android_rule_f_scope": "Scope of this negative result: {dex} DEX file(s) and {callSites} call site(s) were scanned, covering {scannedBytes} of {totalBytes} bytes ({percent}%); no upload marker matched.",
+      "permission_declared_without_api": "declared, but no matching API marker was found in the scanned DEX",
+      "ios_rule_f_scope": "Scope of this negative result: {executables} executable(s) scanned ({nested} nested), covering {scannedBytes} of {totalBytes} bytes ({percent}%); no upload marker matched."
     },
     "native_symbols": {
       "line": "{text} ({symbol})",
@@ -991,7 +996,6 @@
       "ios_native_symbols_unreadable": "The `LC_SYMTAB` of {count} Mach-O image(s) is out of bounds, so no symbols were read ({names}): “no imported symbols found” on these images means “not looked at”, not “none”.",
       "ios_native_symbols_stripped": "Some Mach-O images have no `LC_SYMTAB` (the symbol table was stripped): their imported symbols cannot be checked. Binaries processed by the App Store are usually stripped.",
       "ios_native_symbols_semantics": "The native symbols come from the Mach-O `LC_SYMTAB`: they show which system capabilities the binary imports, and do not show that those capabilities were called, let alone with what arguments. The native code was not disassembled.",
-      "android_split_apk_base_only": "This is a split package: the security audit only covers the base APK; the DEX and resources carried by the split APKs (language / density / ABI) were not analysed, so this result does not represent the whole installation set. Native libraries especially — the ABI split usually holds the copy that is actually loaded.",
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason}): the permission and component audit cannot run, so this result only contains the readable part and is not a complete conclusion.",
       "android_dex_budget": "DEX scan budget: {name} was only scanned for {scannedBytes} of {totalBytes} bytes ({percent}%). The remaining bytes were not searched, so clues inside them were not found. This is a deliberate upper limit, not a parse failure.",
       "android_dex_no_content": "No classes.dex content was read: OCR, upload and network-domain code clues cannot be checked. The permission and configuration conclusions are unaffected, but this is not a complete analysis.",
@@ -1136,7 +1140,8 @@
       "android_sdkInventory": "Third-party SDK inventory",
       "android_signature": "Signature materials",
       "ios_machoSites": "Mach-O call sites",
-      "ios_unicodeStrings": "Unicode strings"
+      "ios_unicodeStrings": "Unicode strings",
+      "android_dex_unicodeStrings": "DEX Unicode strings"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",
@@ -1172,7 +1177,11 @@
       "ios_macho_call_sites_unavailable": "No selector reference could be attributed to a function (no ADRP+ADD/LDR pair targeted __objc_selrefs, or no LC_FUNCTION_STARTS). Clues are reported as \"referenced\", not \"called\".",
       "ios_unicode_strings_scope": "The scan examined UTF-8 text and UTF-16 (LE/BE) literals in the executable bytes. Swift small-string constants, .strings / localization resources and symbols in the dyld shared cache are not visible.",
       "ios_unicode_strings_truncated": "Some executables exceeded the scan budget or the __ustring cap; Unicode strings past that point were not examined.",
-      "ios_unicode_strings_no_content": "No executable content was available for Unicode string scanning."
+      "ios_unicode_strings_no_content": "No executable content was available for Unicode string scanning.",
+      "android_dex_unicode_strings_no_content": "No DEX string_ids entries were available for Unicode scanning",
+      "android_dex_unicode_strings_untrusted": "{count} DEX file(s) had an untrustworthy structure; their string constants were not decoded",
+      "android_dex_unicode_strings_truncated": "Some string_ids entries could not be decoded or exceeded the Unicode scan budget; the unexamined part is unknown",
+      "android_dex_unicode_strings_scope": "MUTF-8 string constants reachable through DEX string_ids were decoded. Text in resources/ and assets/, native libraries, hardened shells and runtime-assembled strings are not visible here"
     }
   },
   "diff": {

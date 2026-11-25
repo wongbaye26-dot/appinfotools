@@ -561,7 +561,6 @@ void main() {
       }),
       AnalysisNote('android.offline_static_analysis', 'f'),
       AnalysisNote('android.analysis.based_on_cooccurrence', 'f'),
-      AnalysisNote('android.split_apk.base_only', 'f'),
     ];
 
     test('每个 code 在四个语言包里都能取到，且不留占位符', () async {

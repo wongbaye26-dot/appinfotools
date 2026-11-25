@@ -695,8 +695,10 @@ SecurityFinding _splitCertMismatchFinding(String? packageId) {
 /// 生产调用点在只被内置引擎使用的 worker 里，而这条路径走 aapt2，其输出
 /// 喂不了审计（审计要 `ApkMeta` + DEX 字节）。
 ///
-/// 覆盖范围**仅限 base APK** —— 各分包自己的 DEX 与资源不参与分析。
-/// 这一点会作为 limitation 写进结果，避免把部分覆盖说成完整结论。
+/// 覆盖范围：**清单、权限与资源表取自 base APK**（分包清单不合并），但各分包
+/// 自己的 DEX、原生库、资源字符串、签名证书与密封校验都参与分析（见
+/// `docs/plans/2026-11-05-split-apk-audit.md`）。「分包清单未合并」这一点会作为
+/// limitation 写进结果，避免把部分覆盖说成完整结论。
 ///
 /// 失败时返回 `null` 而非抛异常：审计拿不到结果不该让整个解析失败，
 /// 上层会把 `null` 呈现为「未执行」。

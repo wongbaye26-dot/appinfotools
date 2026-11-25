@@ -22,6 +22,8 @@ import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipa_parser/ipa_parser.dart';
 
+import 'support/coverage_code_guard.dart';
+
 const String _dexDir = 'test/fixtures/dex';
 
 Uint8List _fixture(String name) => File('$_dexDir/$name').readAsBytesSync();
@@ -475,29 +477,11 @@ void main() {
   // 「UI 用它映射到本地化文案」，但那个映射此前并不存在。
   // 另一处是汇总句用中文全角「；」硬拼接，英文报告里会出现中文标点。
   group('覆盖维度的呈现（COV-1 / COV-2 回归）', () {
-    /// 引擎实际会产出的全部维度 id。
+    /// 引擎实际会产出的全部维度 id —— **从引擎源码提取**，不维护手写清单。
     ///
-    /// 取自两个审计引擎的维度清单（Android 8 个、iOS 侧含新增的
-    /// `ios.unicodeStrings`）。**故意写死在这里** —— 新增维度时
-    /// 这条断言会红，提醒补文案，而不是悄悄显示成机器标识。
-    const allDimensionIds = <String>[
-      'android.manifest',
-      'android.permissions',
-      'android.dex.structure',
-      'android.dex.strings',
-      'android.dex.methodReferences',
-      'android.dex.callSites',
-      'android.nativeSymbols',
-      'android.arsc',
-      'ios.infoPlist',
-      'ios.usageDescriptions',
-      'ios.privacyManifest',
-      'ios.executables',
-      'ios.macho.strings',
-      'ios.unicodeStrings',
-      'ios.nativeSymbols',
-      'ios.signature',
-    ];
+    /// 手写清单在 2.9.0 就失效过：清单写 16 个、引擎实际 23 个，
+    /// `android.dex.unicodeStrings` 因此长期显示机器 id 而守卫全绿。
+    final allDimensionIds = engineCoverageDimensionIds();
 
     const sample = AnalysisCoverage(entries: [
       CoverageEntry(id: 'android.manifest', status: CoverageStatus.covered),
@@ -512,6 +496,13 @@ void main() {
     ]);
 
     test('每一个引擎维度 id 都有本地化名字，且不等于 id 本身', () {
+      // 提取器本身也要有守卫：正则失效时会提取到 0 个 id，下面的循环
+      // 一次都不跑，测试照样「通过」。
+      expect(allDimensionIds.length, greaterThan(20),
+          reason: '从引擎源码提取到的维度 id 太少，提取器可能已失效');
+      expect(allDimensionIds, contains('android.dex.unicodeStrings'));
+      expect(allDimensionIds, contains('ios.unicodeStrings'));
+
       for (final id in allDimensionIds) {
         final label = AnalysisReport.coverageDimensionLabel(id, t);
         expect(label, isNotEmpty, reason: '$id 没有文案');
@@ -638,49 +629,55 @@ void main() {
   // slang —— 结果英文/日文/韩文报告里混进中文。现在引擎只产出
   // 「稳定 code + 英文回退 + 参数」，本地化交给呈现层。
   group('覆盖说明的本地化（COV-3 回归）', () {
-    /// 两个引擎实际会产出的全部 note code。**故意写死**：新增 code 时这条会红，
-    /// 提醒补语言包，而不是让界面悄悄显示英文。
-    const allNoteCodes = <String>[
-      'android.manifest.unparsed',
-      'android.permissions.manifest_unparsed',
-      'android.dex.no_content',
-      'android.dex.structure_untrusted',
-      'android.dex.strings_not_fully_scanned',
-      'android.dex.no_traversable_dex',
-      'android.dex.method_entries_unreadable',
-      'android.dex.no_traversable_bodies',
-      'android.dex.desynced_bodies',
-      'android.native_symbols.not_provided',
-      'android.native_symbols.skipped_for_budget',
-      'android.arsc.missing',
-      'android.arsc.empty',
-      'ios.info_plist.unparsed',
-      'ios.usage_descriptions.not_read',
-      'ios.privacy_manifest.absent',
-      'ios.executables.unscanned',
-      'ios.executables.truncated',
-      'ios.macho.no_content',
-      'ios.macho.truncated',
-      'ios.native_symbols.no_symtab',
-      'ios.native_symbols.unreadable',
-      'ios.native_symbols.stripped',
-      'ios.signature.separate_step',
-    ];
+    /// 两个引擎实际会产出的全部 note code —— 从源码提取，不写死清单。
+    ///
+    /// 这份清单此前写死 24 条（实际 38 条），于是新增的 14 条从未被这条
+    /// 测试覆盖过：`android.dex.unicode_strings.*` 就这样在 6 种语言里
+    /// 一直显示英文。
+    final allNoteCodes = engineCoverageNoteCodes().toList()..sort();
 
     /// 带参数的两个：`count` 与 `reason`（`total` 给截断那条用）。
     const codeWithCount = 'android.dex.desynced_bodies';
     const codeWithReason = 'android.manifest.unparsed';
+
+    /// 一份「所有占位符都在」的实参超集。
+    ///
+    /// 用超集而不是按 code 逐个配：模板只读自己需要的键，多传的键不影响
+    /// 结果；而漏传任何一个键都会让 `coverageNote` 回退英文，测试报错。
+    const noteArgs = <String, Object>{
+      'count': 3,
+      'reason': 'boom',
+      'total': 4,
+      'functions': 2,
+      'attributed': 2,
+      'name': 'libfoo.so',
+      'names': ['libfoo.so'],
+      'bytes': 1024,
+      'limit': 2048,
+      'limitMiB': 8,
+      'scannedBytes': 512,
+      'totalBytes': 1024,
+      'percent': '50%',
+      'dexCount': 2,
+      'code': 'bad',
+      'message': 'malformed',
+      'anomaly': 'detail',
+      'samples': ['assets/x'],
+      'largest': 'assets/x',
+      'element': 'application',
+      'standard': 4,
+      'truncated': 1,
+      'failed': 1,
+      'path': 'assets/x',
+      'size': 64,
+    };
 
     CoverageEntry entryWith(String code) => CoverageEntry(
           id: 'android.manifest',
           status: CoverageStatus.partial,
           noteCode: code,
           note: 'ENGLISH FALLBACK',
-          noteArgs: {
-            'count': 3,
-            'reason': 'boom',
-            'total': 4,
-          },
+          noteArgs: noteArgs,
         );
 
     test('每个 note code 都能取到本地化文案，且不留未替换的占位符', () {
@@ -754,8 +751,18 @@ void main() {
             jsonDecode(File('assets/i18n/$locale.json').readAsStringSync())
                 as Map<String, dynamic>;
         final coverage = json['coverage'] as Map<String, dynamic>? ?? const {};
-        return (coverage['notes'] as Map<String, dynamic>?) ?? const {};
+        final security = json['security'] as Map<String, dynamic>? ?? const {};
+        // 少数说明两条通道共用同一句措辞（例如 SDK 盘点、原生库加固），
+        // 文案放在 `security.limitation_notes` 里；只要有一处能取到即可。
+        return {
+          ...((coverage['notes'] as Map<String, dynamic>?) ?? const {}),
+          ...((security['limitation_notes'] as Map<String, dynamic>?) ??
+              const {}),
+        };
       }
+
+      expect(allNoteCodes.length, greaterThan(30),
+          reason: '从引擎源码提取到的说明 code 太少，提取器可能已失效');
 
       final en = readNotes('en');
       for (final code in allNoteCodes) {

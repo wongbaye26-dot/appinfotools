@@ -436,8 +436,9 @@
       "dex_strings_location": "{count} 個の DEX ファイルの文字列",
       "native_symbol_imported": "{symbol}（インポート）: {description}",
       "native_symbol_imported_raw": "{symbol}（インポート）: {description} | 生のシンボル: {rawNames}",
-      "android_rule_f_scope": "この否定結論の範囲：{dex} 個の DEX と {callSites} 個の呼び出し箇所をスキャンし、アップロードのマーカーは見つかりませんでした。",
-      "permission_declared_without_api": "宣言されていますが、スキャンした DEX に対応する API マーカーが見つかりません"
+      "android_rule_f_scope": "この否定結論の範囲：DEX {dex} 個と呼び出し箇所 {callSites} 個をスキャンし、{scannedBytes} / {totalBytes} バイト（{percent}%）をカバーしました。アップロードのマーカーは見つかりませんでした。",
+      "permission_declared_without_api": "宣言されていますが、スキャンした DEX に対応する API マーカーが見つかりません",
+      "ios_rule_f_scope": "この否定結論の範囲：実行ファイル {executables} 個（うちネスト {nested} 個）をスキャンし、{scannedBytes} / {totalBytes} バイト（{percent}%）をカバーしました。アップロードのマーカーは見つかりませんでした。"
     },
     "list_join": "、",
     "native_symbols": {
@@ -577,7 +578,6 @@
       "android_native_symbols_truncated": "一部のネイティブライブラリのシンボルテーブル読み取りが予算上限に達したため、エントリの一部しか分析していません。",
       "android_native_symbols_unstripped": "{count} 個のネイティブライブラリがシンボルテーブルを削除していません（{names}）: 内部関数名を読み取れます。リリースビルドは通常削除されます。これは事実であり、リスク判定ではありません。",
       "android_offline_static_analysis": "これはオフラインの静的解析です: アプリはインストールも実行もされておらず、ネットワーク通信も観測していません。そのため実行時の証拠は存在せず、これに基づいて挙動が確認できたと報告してはいけません。",
-      "android_split_apk_base_only": "これは分割パッケージです: セキュリティ監査はbase APK のみを対象としており、分割 APK（言語／密度／ABI）が持つ DEX とリソースは分析していません。したがってこの結果はインストール一式を代表するものではありません。特にネイティブライブラリは、実際に読み込まれるものが ABI 分割側にあるのが普通です。",
       "ios_executable_none_readable": "Mach-O 実行ファイルの内容を読み取れませんでした: API 使用の手がかりを確認できません。用途の説明とプライバシーマニフェストの結論は影響を受けませんが、これは完全な分析ではありません。",
       "ios_executable_over_budget": "{path} は {bytes} バイトで、走査予算の {limit} バイトを超えています: 先頭の {limit} バイトだけを走査したため、未走査の部分に未検出の手がかりが含まれている可能性があります。",
       "ios_executable_unscanned": "{count} 個の実行ファイルを走査していません（{names}）: これらのファイルでの「手がかりが見つからない」は「見ていない」であって「存在しない」ではありません。",
@@ -860,7 +860,11 @@
       "android_resource_unicode_phrase_limitation": "resources.arsc とテキスト形式の assets にある文字列定数のみを確認しました。バイナリ資産、ネイティブライブラリ、実行時に取得した文言、実行時に組み立てられる文字列は対象外です。",
       "ios_strings_unicode_phrase": ".strings / ローカリゼーションファイルに中国語のウォレット / ソーシャルエンジニアリング表現が {count} 件見つかりました（{strings} 件の候補文字列を確認）。これらは UI 文言の手がかりであり、判定ではありません。",
       "ios_strings_unicode_phrase_review": "ヒットした原文を文脈で読んでください。シードフレーズを要求しているのか、エアドロップを約束しているのか、入金しないと凍結解除できないと言っているのか、資金の集約を指示しているのか。署名 / 公式ベースライン、ロードチェーン証拠と合わせて意図を判断してください。",
-      "ios_strings_unicode_phrase_limitation": "アーカイブ内の .strings / ローカリゼーションテキストのみを確認しました。Swift の小さな文字列定数、バイナリ plist、実行時に取得した文言、実行時に組み立てられる文字列は対象外です。"
+      "ios_strings_unicode_phrase_limitation": "アーカイブ内の .strings / ローカリゼーションテキストのみを確認しました。Swift の小さな文字列定数、バイナリ plist、実行時に取得した文言、実行時に組み立てられる文字列は対象外です。",
+      "android_rule_f_truncated": "今回のスキャンが確認した範囲の DEX にはアップロード関連の特徴は見つかりませんでしたが、その範囲は不完全です：{scannedBytes} / {totalBytes} バイト（{percent}%）、{skippedDex} 個の DEX がスキャン予算を超え、{unanalysedDex} 個は完全には解析できませんでした。未検査の部分にアップロードのマーカーがある可能性があるため、アプリがアップロードしない根拠にはなりません。",
+      "android_rule_f_limitation_incomplete": "DEX の一部は検査されていません（スキャン予算または走査できない構造）。そのため、この「見つからない」という結論はスキャン済みの範囲にのみ当てはまります。",
+      "ios_rule_f_truncated": "今回のスキャンが確認した範囲の実行ファイルにはネットワーク経由のアップロード特徴は見つかりませんでしたが、その範囲は不完全です：{scannedBytes} / {totalBytes} バイト（{percent}%）、{overBudget} 個の実行ファイルがスキャン予算を超え、{unread} 個は読み込めませんでした。未検査の部分にアップロードのマーカーがある可能性があるため、アプリにネットワーク動作がない根拠にはなりません。",
+      "ios_rule_f_limitation_incomplete": "実行ファイルの一部は検査されていません（スキャン予算または読み込めないネストされたバイナリ）。そのため、この「見つからない」という結論はスキャン済みの範囲にのみ当てはまります。"
     },
     "sdk_categories": {
       "analytics": "分析 / アトリビューション",
@@ -958,7 +962,8 @@
       "android_sdkInventory": "サードパーティ SDK 一覧",
       "android_signature": "署名素材",
       "ios_machoSites": "Mach-O 呼び出し箇所",
-      "ios_unicodeStrings": "Unicode 文字列"
+      "ios_unicodeStrings": "Unicode 文字列",
+      "android_dex_unicodeStrings": "DEX Unicode 文字列"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",
@@ -999,7 +1004,11 @@
       "ios_macho_call_sites_unavailable": "__objc_selrefs を指す ADRP+ADD/LDR の命令対がないか、LC_FUNCTION_STARTS がないため、セレクタ参照を関数に帰属できませんでした。手がかりは「参照されている」として報告されます。",
       "ios_unicode_strings_scope": "実行ファイルのバイト列から UTF-8 テキストと UTF-16（LE/BE）リテラルを調べました。Swift の小文字列最適化定数、.strings / ローカライズリソース、dyld 共有キャッシュ内のシンボルは対象外です。",
       "ios_unicode_strings_truncated": "一部の実行ファイルが走査予算または __ustring の上限を超えたため、その先の Unicode 文字列は調べていません。",
-      "ios_unicode_strings_no_content": "Unicode 文字列の走査に使える実行ファイルの内容がありませんでした。"
+      "ios_unicode_strings_no_content": "Unicode 文字列の走査に使える実行ファイルの内容がありませんでした。",
+      "android_dex_unicode_strings_no_content": "Unicode スキャンに利用できる DEX string_ids のエントリがありませんでした",
+      "android_dex_unicode_strings_untrusted": "{count} 個の DEX ファイルは構造が信頼できないため、文字列定数をデコードしていません",
+      "android_dex_unicode_strings_truncated": "一部の string_ids エントリはデコードできないか、Unicode スキャンの予算を超えています。未検査部分の内容は不明です",
+      "android_dex_unicode_strings_scope": "DEX string_ids から到達できる MUTF-8 文字列定数をデコードしました。resources/ と assets/ 内のテキスト、ネイティブライブラリ、難読化シェル、実行時に組み立てられる文字列はここでは確認できません。"
     },
     "partial": "一部カバー",
     "summary": "{applicable} 件中 {covered} 件の項目を完全にカバーしています",
