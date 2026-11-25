@@ -1,5 +1,58 @@
 # Changelog
 
+## 2.10.2 — 2026-11-25
+
+这一版修**安全检测报告的可信度缺口**：12 条说明 code 没有在呈现层注册（中文
+界面显示英文原文或机器 id），以及规则 F 的否定结论超出了实际扫描范围。
+
+### 覆盖维度与说明
+
+- `android.dex.unicodeStrings` 补上维度名 —— 此前 6 种语言的界面与 Markdown
+  都直接显示 `android.dex.unicodeStrings` 这个机器标识。
+- Android 的 4 条 Unicode 覆盖说明（`no_content` / `untrusted` / `truncated` /
+  `scope`）补上本地化；iOS 同名 3 条早已注册，属于两平台不对称漏接。
+- `android.dex.dynamic_loading` 补上 case ——「运行时加载的 DEX 不在本次分析
+  范围」这条最关键的警告，此前在 6 种语言里都是英文。
+- 守卫第一次跑又抓出 **6 条同类遗漏**：`android.sdk_inventory.*`、
+  `android.native_hardening.*`、`ios.entitlements.*` 的覆盖说明只注册在
+  「局限说明」通道，覆盖网格里一直是英文。文案复用 `security.limitation_notes`，
+  不再复制一份（两条通道说的是同一件事，复制只会让措辞漂移）。
+
+### 守卫
+
+- 新增 `test/coverage_note_registration_test.dart`：从引擎源码提取全部 code，
+  用哨兵字符串断言呈现层没有回退英文；zh-CN 还要求不等于英文原文（只复制
+  英文也算没翻译）。
+- 两个既有测试里写死的 **16 个维度清单**改为从源码提取（实际 23 个）。写死
+  清单正是上一轮漏检的原因：新增维度漏文案时守卫全绿。
+- 覆盖说明清单同样从写死的 24 条改为动态提取（实际 38 条）。
+
+### 规则 F：否定结论不再超出实际扫描范围（Android + iOS）
+
+- `ANDROID-RULE-F` / `IOS-RULE-F`（「本次未发现上传特征」）此前只要读到
+  DEX / 可执行字节就给 `confidence: confirmed`。加固包单个文件超过扫描预算、
+  只扫到前一段时，报告仍说「未发现」—— 读者会理解成「这个应用不上传」。
+- 现在按实际覆盖判定完整性：Android 看 `scan.skippedForBudget` /
+  `methodScan.truncatedForBudget` / `methodScan.notTraversable`；iOS 看
+  单文件超预算与「嵌套二进制根本没读到」。不完整时置信度降为 `unknown`，
+  正文换成 `*_rule_f_truncated` 并写明「扫了 X / Y 字节（Z%），N 个超出预算」。
+- 证据（`rule_f.scope`）也带上字节数与比例 —— 完整扫描时同样显示，读者能
+  直接看到这条否定结论的底数。iOS 这条证据此前**完全没有本地化**（纯英文），
+  现在与 Android 同构。
+- 不完整时**仍然产出这一条**：不产出会留下空列表，正是规则 F 要避免的
+  「没查」与「没有」分不清。
+
+### 清理
+
+- `android.split_apk.base_only` 已无生产者，删除 switch case、6 个语言包的键
+  与测试引用。
+- `_auditExtractedBaseApk` 的注释不再声称「仅覆盖 base APK」：split 的 DEX、
+  原生库、资源字符串、证书与密封都参与分析，只有清单与资源表取自 base。
+
+### 测试
+
+- 根 1,827 通过 / 16 跳过；五包 677 通过；analyze 与 format 零问题。
+
 ## 2.10.1 — 2026-11-19
 
 这一版修**批量重命名**，并砍掉解析流程里一段无谓的解压。
