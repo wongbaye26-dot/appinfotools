@@ -1161,7 +1161,13 @@ void main() {
           ],
         ),
         dexEntries: [
-          DexBytes('classes.dex', _blob(['okhttp3.OkHttpClient']))
+          // 用**真实** DEX 而不是手拼字符串：非 DEX 字节会让方法引用扫描
+          // 判成「结构不可遍历」，规则 F 就会走「扫描不完整」分支（这正是
+          // P1-4 新加的行为），这条测试原本想验的是常规路径。
+          DexBytes(
+            'classes.dex',
+            File('test/fixtures/dex/real-netprobe.dex').readAsBytesSync(),
+          ),
         ],
       );
 

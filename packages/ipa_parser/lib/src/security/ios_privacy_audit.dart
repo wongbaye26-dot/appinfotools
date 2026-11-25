@@ -604,6 +604,9 @@ class IosPrivacyAudit {
     // 多少」；此前这一格只有 covered、没有 limit，比例无从计算。
     var attempted = 0;
     var truncated = false;
+    // 超出单文件预算的可执行文件**个数**。`truncated` 只回答「有没有」，
+    // 而规则 F 的否定结论要写出「几个超预算 / 几个没读到」。
+    var overBudgetCount = 0;
 
     // 「盗 U」信号：在下面那次字符串遍历里顺带收集，不额外解码一遍。
     final cryptoSignals = IosCryptoSignals();
@@ -629,6 +632,7 @@ class IosPrivacyAudit {
 
       if (bytes.length > budgetBytes) {
         truncated = true;
+        overBudgetCount++;
         limitations.add(AnalysisNote(
           'ios.executable.over_budget',
           '${target.path} is ${bytes.length} bytes, over the '
@@ -1891,19 +1895,44 @@ class IosPrivacyAudit {
 
     // ---- 规则 F：未发现上传/网络特征 ----
     if (!hasUpload) {
+      final noExecutable = executableBytes == null || executableBytes.isEmpty;
+      // **否定结论的强度跟着实际扫描范围走**（与 Android 规则 F 同一纪律）。
+      // 此前只判「有没有可执行字节」：单个可执行文件超过预算、只扫了前
+      // 一段时，报告仍然给 `confirmed` +「未发现」，读者会理解成「这个应用
+      // 不联网/不上传」。
+      final incomplete = overBudgetCount > 0 || unscanned.isNotEmpty;
+      final percent = attempted <= 0 ? 0 : (scanned * 100 ~/ attempted);
       findings.add(SecurityFinding(
         ruleId: 'IOS-RULE-F',
         platform: SecurityPlatform.ios,
         category: SecurityCategory.dataExfiltration,
         severity: SecuritySeverity.info,
-        confidence: executableBytes == null || executableBytes.isEmpty
+        confidence: (noExecutable || incomplete)
             ? SecurityConfidence.unknown
             : SecurityConfidence.confirmed,
-        finding: 'No network upload characteristics were found within the '
-            'current analysis scope (no hits for NSURLSession, multipart or '
-            'common networking library markers). This does not mean the app '
-            'has no network behaviour; it only means this scan found none.',
-        messageCode: 'ios.rule_f',
+        finding: incomplete
+            ? 'No network upload characteristics were found in the part of '
+                'the executable content this scan examined, but that part is '
+                'incomplete: $scanned of $attempted bytes ($percent%), '
+                '$overBudgetCount executable(s) exceeded the scan budget and '
+                '${unscanned.length} could not be read. The unexamined part '
+                'could contain upload markers, so this does not mean the app '
+                'has no network behaviour.'
+            : 'No network upload characteristics were found within the '
+                'current analysis scope (no hits for NSURLSession, multipart '
+                'or common networking library markers). This does not mean the '
+                'app has no network behaviour; it only means this scan found '
+                'none.',
+        messageCode: incomplete ? 'ios.rule_f_truncated' : 'ios.rule_f',
+        messageArgs: incomplete
+            ? {
+                'scannedBytes': scanned,
+                'totalBytes': attempted,
+                'percent': percent,
+                'overBudget': overBudgetCount,
+                'unread': unscanned.length,
+              }
+            : const {},
         // 证据不能为空：模型约定每条发现都要能指回「在哪里看的」。
         // 此前这里是 `const []`，于是「未发现上传」在报告里没有任何可核对
         // 的范围说明 —— 读者无法判断那是在多大范围内得出的。
@@ -1915,17 +1944,34 @@ class IosPrivacyAudit {
               nestedCount:
                   scannedPaths.length > 1 ? scannedPaths.length - 1 : 0,
             ),
-            detail:
-                'scanned $scanned byte(s) of ASCII / UTF-8 / UTF-16 strings; no '
-                'NSURLSession / multipart / networking-library markers were found',
+            detail: 'scanned $scanned of $attempted byte(s) of ASCII / UTF-8 / '
+                'UTF-16 strings (${scannedPaths.length} executable(s)); no '
+                'NSURLSession / multipart / networking-library markers were '
+                'found',
+            // 与 Android 的 `rule_f.scope` 对齐：中文界面上这条证据此前
+            // 一直是英文原文。
+            detailCode: 'ios.rule_f.scope',
+            detailArgs: {
+              'executables': scannedPaths.length,
+              'nested': scannedPaths.length > 1 ? scannedPaths.length - 1 : 0,
+              'scannedBytes': scanned,
+              'totalBytes': attempted,
+              'percent': percent,
+            },
           ),
         ],
-        limitation: 'ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings are '
-            'scanned (main executable plus nested executables). Code in the '
-            'shared dyld cache, code loaded at runtime, Swift small-string '
-            'constants and .strings / localization resources are outside the '
-            'coverage.',
-        limitationCode: 'ios.rule_f.limitation',
+        limitation: incomplete
+            ? 'Part of the executable content was not examined (scan budget '
+                'or unreadable nested binaries), so this "not found" '
+                'conclusion covers only the scanned part.'
+            : 'ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings are '
+                'scanned (main executable plus nested executables). Code in the '
+                'shared dyld cache, code loaded at runtime, Swift small-string '
+                'constants and .strings / localization resources are outside '
+                'the coverage.',
+        limitationCode: incomplete
+            ? 'ios.rule_f.limitation_incomplete'
+            : 'ios.rule_f.limitation',
         recommendation: 'To confirm, combine this with runtime traffic '
             'observation (not provided in this version).',
         recommendationCode: 'ios.rule_f.runtime_traffic',

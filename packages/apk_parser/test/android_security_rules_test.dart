@@ -596,4 +596,75 @@ void main() {
       expect(combos.single.confidence, SecurityConfidence.unknown);
     });
   });
+
+  // P1-4（2026-11-09 审计）：否定结论不能超出**实际扫描范围**。
+  //
+  // 此前 `_matchesRuleF` 只看 `uploadClues.isEmpty`，`_buildRuleF` 只要读到
+  // DEX 就给 `confirmed`。加固包单个 DEX 超过 8 MiB 预算、只扫到前一段时，
+  // 报告仍然说「未发现上传特征」，读者会理解成「这个应用不上传」。
+  group('规则 F 的否定结论不能超出实际扫描范围', () {
+    SecurityFinding ruleF(SecurityAnalysisResult r) =>
+        r.findings.singleWhere((f) => f.ruleId == 'ANDROID-RULE-F');
+
+    test('扫全了才是 confirmed，且证据里带「扫了多少字节」', () {
+      final result =
+          _auditWithDex(buildDexWithClassPrefix('com/example/app', 1));
+      final f = ruleF(result);
+
+      expect(f.confidence, SecurityConfidence.confirmed);
+      expect(f.messageCode, 'android.rule_f');
+      expect(f.limitationCode, 'android.rule_f.limitation_scope');
+      final args = f.evidence.single.detailArgs;
+      expect(args['scannedBytes'], greaterThan(0));
+      expect(args['percent'], 100);
+    });
+
+    test('DEX 超出扫描预算时降为 unknown，正文写明只扫了百分之多少', () {
+      // 在**合法** DEX 后面补 9 MiB 零字节：字符串扫描按文件长度判预算，
+      // 因此会记一条 skippedForBudget，而方法体仍可正常遍历 —— 这样断言
+      // 到的是「字节没扫全」，不是「结构坏了」。
+      final dex = buildDexWithClassPrefix('com/example/app', 1);
+      final padded = Uint8List.fromList([
+        ...dex,
+        ...List<int>.filled(9 * 1024 * 1024, 0),
+      ]);
+      final f = ruleF(_auditWithDex(padded));
+
+      expect(f.confidence, SecurityConfidence.unknown,
+          reason: '只扫了一部分时，「没找到」不是结论');
+      expect(f.messageCode, 'android.rule_f_truncated');
+      expect(f.limitationCode, 'android.rule_f.limitation_incomplete');
+
+      final args = f.messageArgs;
+      expect(args['skippedDex'], 1);
+      expect(args['percent'], lessThan(100));
+      expect(args['totalBytes'], greaterThan(args['scannedBytes'] as int));
+      expect(f.evidence.single.detailArgs['percent'], lessThan(100));
+    });
+
+    test('结构不可遍历也算不完整 —— 字节读完了不等于分析完整', () {
+      // 非 DEX 字节：字符串扫描读完了 100% 的字节，但方法引用一条也解不出。
+      final f = ruleF(_audit(strings: ['unrelated']));
+
+      expect(f.confidence, SecurityConfidence.unknown);
+      expect(f.messageCode, 'android.rule_f_truncated');
+      // 这条输入**没有**超出预算：不完整来自结构，而不是字节。
+      expect(f.messageArgs['skippedDex'], 0);
+      expect(f.messageArgs['unanalysedDex'], greaterThanOrEqualTo(1));
+    });
+
+    test('不完整时仍然产出这一条，不退回空列表', () {
+      final dex = buildDexWithClassPrefix('com/example/app', 1);
+      final result = _auditWithDex([
+        ...dex,
+        ...List<int>.filled(9 * 1024 * 1024, 0),
+      ]);
+
+      expect(
+        result.findings.where((f) => f.ruleId == 'ANDROID-RULE-F'),
+        hasLength(1),
+        reason: '「没查全」不等于「不用说」—— 空列表会让读者以为查过了',
+      );
+    });
+  });
 }

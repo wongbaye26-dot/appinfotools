@@ -149,5 +149,33 @@ void main() {
       expect(ruleF.confidence, SecurityConfidence.unknown,
           reason: '没读到 DEX 时「没发现」只能是 unknown');
     });
+
+    // P1-4：否定结论必须说明「扫了多少」，否则会被读成「这个应用不上传」。
+    test('扫描被预算截断时，中文正文写明字节数与比例', () {
+      // 超过单文件 8 MiB 预算 → 记一条 skippedForBudget。
+      final padded = Uint8List.fromList([
+        ..._blob(['unrelated']),
+        ...List<int>.filled(9 * 1024 * 1024, 0),
+      ]);
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(const [], targetSdk: 34),
+        dexEntries: [DexBytes('classes.dex', padded)],
+      );
+      final ruleF = _byId(result, 'ANDROID-RULE-F').single;
+
+      expect(ruleF.confidence, SecurityConfidence.unknown,
+          reason: '只扫了一部分时不能给 confirmed 的否定结论');
+
+      final text = AnalysisReport.findingText(ruleF, t);
+      expect(text, isNot(contains('{')), reason: '占位符必须被替换：$text');
+      expect(text, contains('字节'), reason: '正文要写出扫了多少：$text');
+      expect(text, contains('%'), reason: '正文要写出覆盖比例：$text');
+      expect(text, contains('不能据此认为'), reason: '截断时不得暗示「这个应用不上传」：$text');
+      // 规格红线：任何情况下都不出现「安全」这类结论。
+      expect(text, isNot(contains('安全')));
+
+      final limitation = AnalysisReport.limitationText(ruleF, t);
+      expect(limitation, contains('只覆盖已扫描的部分'), reason: limitation);
+    });
   });
 }

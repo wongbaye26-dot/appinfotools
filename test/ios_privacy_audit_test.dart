@@ -8,6 +8,7 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:archive/archive.dart';
@@ -298,6 +299,99 @@ void main() {
       expect(ruleFText, contains('No network upload characteristics'));
       expect(ruleFText, contains('does not mean'));
       expect(ruleFText, isNot(contains('is safe')));
+    });
+
+    // 与 Android 规则 F 同一纪律（P1-4 的 iOS 对应项）：
+    // 否定结论的强度必须跟着**实际扫描范围**走。此前只判「有没有可执行
+    // 字节」，单个文件超预算只扫了前一段时仍然给 confirmed。
+    test('扫全了才是 confirmed，证据带字节数与比例', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: const Utf8Encoder().convert('nothing here\n'),
+      );
+      final ruleF = _byId(result, 'IOS-RULE-F')!;
+
+      expect(ruleF.confidence, SecurityConfidence.confirmed);
+      expect(ruleF.messageCode, 'ios.rule_f');
+      expect(ruleF.limitationCode, 'ios.rule_f.limitation');
+
+      final evidence = ruleF.evidence.single;
+      expect(evidence.detailCode, 'ios.rule_f.scope');
+      expect(evidence.detailArgs['percent'], 100);
+      expect(evidence.detailArgs['scannedBytes'], greaterThan(0));
+    });
+
+    test('超出扫描预算时降为 unknown，正文写明只扫了百分之多少', () {
+      final bytes = Uint8List.fromList(List<int>.filled(64, 120));
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: bytes,
+        // 故意把预算压到 16 字节：64 字节的主可执行文件必然被截断。
+        scanBudgetBytes: 16,
+      );
+      final ruleF = _byId(result, 'IOS-RULE-F')!;
+
+      expect(ruleF.confidence, SecurityConfidence.unknown,
+          reason: '只扫了一部分时，「没找到」不是结论');
+      expect(ruleF.messageCode, 'ios.rule_f_truncated');
+      expect(ruleF.limitationCode, 'ios.rule_f.limitation_incomplete');
+      expect(ruleF.messageArgs['overBudget'], 1);
+      expect(ruleF.messageArgs['percent'], lessThan(100));
+      expect(ruleF.evidence.single.detailArgs['percent'], lessThan(100));
+    });
+
+    test('嵌套二进制没读到也算不完整', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: const Utf8Encoder().convert('nothing here\n'),
+        nestedExecutables: const [
+          IosNestedExecutableInput(
+            path: '$_bundlePath/PlugIns/Share.appex/Share',
+            bundlePath: '$_bundlePath/PlugIns/Share.appex',
+            kind: IosBundleKind.appExtension,
+            bytes: null,
+            failure: 'bytes not retained (nested budget reached)',
+          ),
+        ],
+      );
+      final ruleF = _byId(result, 'IOS-RULE-F')!;
+
+      expect(ruleF.confidence, SecurityConfidence.unknown);
+      expect(ruleF.messageCode, 'ios.rule_f_truncated');
+      expect(ruleF.messageArgs['unread'], 1);
+      expect(ruleF.messageArgs['overBudget'], 0,
+          reason: '这条输入没有超预算，不完整来自「没读到」');
+    });
+
+    test('中文界面下截断正文写明字节数，且不下「不联网」的结论', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+      await LocaleSettings.setLocaleRaw('zh-CN');
+
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: Uint8List.fromList(List<int>.filled(64, 120)),
+        scanBudgetBytes: 16,
+      );
+      final ruleF = _byId(result, 'IOS-RULE-F')!;
+
+      final text = AnalysisReport.findingText(ruleF, t);
+      expect(text, isNot(contains('{')));
+      expect(text, contains('字节'));
+      expect(text, contains('%'));
+      expect(text, contains('不能据此认为'));
+
+      final evidence = AnalysisReport.detailText(ruleF.evidence.single, t);
+      expect(RegExp(r'[\u4e00-\u9fff]').hasMatch(evidence), isTrue,
+          reason: '中文界面下证据不能是英文回退：$evidence');
+      expect(evidence, isNot(contains('{')));
     });
   });
 

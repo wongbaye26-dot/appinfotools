@@ -1898,7 +1898,61 @@ bool _matchesRuleG(AndroidRuleFacts f) =>
 
 /// 规格规则 F：**没有上传线索时必须显式产出这一条**，而不是留一个空列表
 /// 让人以为查过了就等于安全。
+///
+/// 注意这里**故意不看**扫描是否完整：不完整时结论仍然要产出，只是置信度降到
+/// `unknown` 并在正文里写清「扫了多少 / 一共多少」（见 [_ruleFScope]）。
+/// 若改成「不完整就不产出」，读者看到的会是一个空列表 —— 那正是本规则要
+/// 避免的「没查」与「没有」分不清。
 bool _matchesRuleF(AndroidRuleFacts f) => f.uploadClues.isEmpty;
+
+/// 规则 F 的否定结论**实际覆盖了多少**。
+///
+/// 加固包最常见的形态是单个 DEX 超过 8 MiB 的扫描预算，只扫到前一段；
+/// 此时 `uploadClues` 为空只说明「扫过的那段没有」，不是「没有」。
+/// 2026-10-22 的 `docs/notes/report-quality-review.md` 就点名过这一点。
+class _RuleFScope {
+  const _RuleFScope({
+    required this.scannedBytes,
+    required this.totalBytes,
+    required this.skippedDex,
+    required this.unanalysedDex,
+  });
+
+  /// 字符串扫描实际读过的字节数。
+  final int scannedBytes;
+
+  /// 所有 DEX 的字节总数（含因预算未扫的部分）。
+  final int totalBytes;
+
+  /// 因单文件预算被截断的 DEX 数。
+  final int skippedDex;
+
+  /// 结构不可遍历、或方法体遍历被预算截断的 DEX 数。
+  final int unanalysedDex;
+
+  bool get incomplete => skippedDex > 0 || unanalysedDex > 0;
+
+  /// 向下取整 —— 部分扫描绝不给 100%。
+  int get percent => totalBytes <= 0 ? 0 : (scannedBytes * 100 ~/ totalBytes);
+}
+
+_RuleFScope _ruleFScope(AndroidRuleFacts f) {
+  var unscannedBytes = 0;
+  for (final skip in f.scan.skippedForBudget) {
+    // 防御声明值：`totalBytes` 可能小于 `scannedBytes`（伪造的头部）。
+    final remaining = skip.totalBytes - skip.scannedBytes;
+    if (remaining > 0) unscannedBytes += remaining;
+  }
+  return _RuleFScope(
+    scannedBytes: f.scan.scannedBytes,
+    totalBytes: f.scan.scannedBytes + unscannedBytes,
+    skippedDex: f.scan.skippedForBudget.length,
+    unanalysedDex: {
+      ...f.methodScan.truncatedForBudget,
+      ...f.methodScan.notTraversable,
+    }.length,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 各规则的构造
@@ -2287,6 +2341,13 @@ SecurityFinding _buildSpecialAccess(AndroidRuleFacts f) {
 
 SecurityFinding _buildRuleF(AndroidRuleFacts f) {
   final noDex = !f.hasDexContent;
+  final scope = _ruleFScope(f);
+  // **只有扫全了才敢说 confirmed。** 加固包只扫到前 8 MiB 时，`uploadClues`
+  // 为空说明的是「扫过的那段没有」；把它呈现成 confirmed 的否定结论，读者
+  // 会理解成「这个应用不上传」。
+  final confidence = (noDex || scope.incomplete)
+      ? SecurityConfidence.unknown
+      : SecurityConfidence.confirmed;
   return SecurityFinding(
     ruleId: 'ANDROID-RULE-F',
     platform: SecurityPlatform.android,
@@ -2295,37 +2356,65 @@ SecurityFinding _buildRuleF(AndroidRuleFacts f) {
     // 才不会被「能力视图」算成「数据外发 1 条」。
     isMeta: true,
     severity: SecuritySeverity.info,
-    confidence:
-        noDex ? SecurityConfidence.unknown : SecurityConfidence.confirmed,
-    finding: 'No upload-related code characteristics were found within '
-        'the current analysis scope (no hits for multipart upload, file '
-        'upload APIs or similar markers). This does not mean the app has '
-        'no upload behaviour — it only means this static scan found none.',
-    messageCode: 'android.rule_f',
+    confidence: confidence,
+    finding: scope.incomplete
+        ? 'No upload-related code characteristics were found in the part of '
+            'the DEX content this scan examined, but that part is incomplete: '
+            '${scope.scannedBytes} of ${scope.totalBytes} bytes '
+            '(${scope.percent}%), ${scope.skippedDex} DEX file(s) exceeded the '
+            'scan budget and ${scope.unanalysedDex} could not be fully '
+            'analysed. The unexamined part could contain upload markers, so '
+            'this does not mean the app has no upload behaviour.'
+        : 'No upload-related code characteristics were found within '
+            'the current analysis scope (no hits for multipart upload, file '
+            'upload APIs or similar markers). This does not mean the app has '
+            'no upload behaviour — it only means this static scan found none.',
+    messageCode:
+        scope.incomplete ? 'android.rule_f_truncated' : 'android.rule_f',
+    // 截断时正文要把「扫了多少」写出来，参数单独给，界面按语言拼。
+    messageArgs: scope.incomplete
+        ? {
+            'scannedBytes': scope.scannedBytes,
+            'totalBytes': scope.totalBytes,
+            'percent': scope.percent,
+            'skippedDex': scope.skippedDex,
+            'unanalysedDex': scope.unanalysedDex,
+          }
+        : const {},
     // **否定结论也要有依据。** 空证据会让它与「根本没查」在数据上无法区分；
-    // 这条证据回答「查了什么」：几个 DEX、多少个调用点、结论从哪来。
+    // 这条证据回答「查了什么」：几个 DEX、多少个调用点、多少字节。
     evidence: [
       SecurityEvidence(
         source: SecurityEvidenceSource.dexMethodReference,
         location: 'classes*.dex (${f.methodScan.walkedDexCount} DEX)',
         detail: '${f.methodScan.walkedDexCount} DEX / '
-            '${f.methodScan.callSiteCount} call site(s) scanned; no upload '
-            'marker matched',
+            '${f.methodScan.callSiteCount} call site(s) scanned, '
+            '${scope.scannedBytes} of ${scope.totalBytes} bytes '
+            '(${scope.percent}%); no upload marker matched',
         detailCode: 'rule_f.scope',
         detailArgs: {
           'dex': f.methodScan.walkedDexCount,
           'callSites': f.methodScan.callSiteCount,
+          'scannedBytes': scope.scannedBytes,
+          'totalBytes': scope.totalBytes,
+          'percent': scope.percent,
         },
       ),
     ],
     limitation: noDex
         ? 'No DEX content was read this time, so the confidence of the '
             '"not found" conclusion is incomplete.'
-        : 'String scanning does not cover native libraries, resources or '
-            'code inside a hardened shell.',
+        : scope.incomplete
+            ? 'Part of the DEX content was not examined (scan budget or an '
+                'untraversable structure), so this "not found" conclusion '
+                'covers only the scanned part.'
+            : 'String scanning does not cover native libraries, resources or '
+                'code inside a hardened shell.',
     limitationCode: noDex
         ? 'android.rule_f.limitation_no_dex'
-        : 'android.rule_f.limitation_scope',
+        : scope.incomplete
+            ? 'android.rule_f.limitation_incomplete'
+            : 'android.rule_f.limitation_scope',
     recommendation: 'To rule out upload behaviour, combine this with '
         'dynamic traffic observation (not provided in this version).',
     recommendationCode: 'android.rule_f.runtime_traffic',
