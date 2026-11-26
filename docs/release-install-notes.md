@@ -53,14 +53,14 @@ chmod +x AppInfoTool-*-Linux-x86_64.AppImage
 
 ```sh
 # macOS / Linux
-V=2.9.0
+V={版本}
 curl -L -o "AppInfoTool-${V}-macOS-universal.dmg" \
   "https://github.com/wongbaye26-dot/appinfotools/releases/download/v${V}/AppInfoTool-${V}-macOS-universal.dmg"
 ```
 
 ```powershell
 # Windows（PowerShell）
-$V = "2.9.0"
+$V = "{版本}"
 Invoke-WebRequest `
   "https://github.com/wongbaye26-dot/appinfotools/releases/download/v$V/AppInfoTool-$V-Windows-x86_64-Setup.exe" `
   -OutFile "AppInfoTool-$V-Windows-x86_64-Setup.exe"
