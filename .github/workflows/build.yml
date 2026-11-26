@@ -961,6 +961,17 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           NOTES=$(cat docs/release-install-notes.md)
 
+          # 命令行下载示例必须在**替换前**检查：历史上这里写死过 V=1.1.0，
+          # 后来改成 V=2.9.0，每个 Release 的下载命令都在教用户装旧版本。
+          # 写死的版本号不会被下面的 {版本} 守卫发现（它根本没有占位符）。
+          # 注意顺序：必须在替换后版本号的赋值之前，否则合法的 V=2.10.5
+          # 会被这条守卫当成写死版本，把自己判失败。
+          if printf '%s\n' "$NOTES" | grep -Eq '\$?V[[:space:]]*=.*[0-9]'; then
+            echo "::error::安装说明的命令行下载示例写死了版本号，请用 {版本} 占位符"
+            printf '%s\n' "$NOTES" | grep -nE '\$?V[[:space:]]*=.*[0-9]' || true
+            exit 1
+          fi
+
           BEFORE=$(printf '%s\n' "$NOTES" | grep -c '{版本}' || true)
           NOTES="${NOTES//\{版本\}/$VERSION}"
           AFTER=$(printf '%s\n' "$NOTES" | grep -c '{版本}' || true)
@@ -972,16 +983,6 @@ jobs:
           if [ "$AFTER" != "0" ]; then
             echo "::error::安装说明里还有未替换的 {版本}"
             printf '%s\n' "$NOTES" | grep -n '{版本}'
-            exit 1
-          fi
-
-          # 命令行下载示例必须在**替换前**检查：历史上这里写死过 V=1.1.0，
-          # 后来改成 V=2.9.0，每个 Release 的下载命令都在教用户装旧版本。
-          # 写死的版本号不会被上面的 {版本} 守卫发现（它根本没有占位符）。
-          # 注意检查对象是替换前的 NOTES —— 替换后每个示例本来就该是数字。
-          if printf '%s\n' "$NOTES" | grep -Eq '\$?V[[:space:]]*=.*[0-9]'; then
-            echo "::error::安装说明的命令行下载示例写死了版本号，请用 {版本} 占位符"
-            printf '%s\n' "$NOTES" | grep -nE '\$?V[[:space:]]*=.*[0-9]' || true
             exit 1
           fi
 
