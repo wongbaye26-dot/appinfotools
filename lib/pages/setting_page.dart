@@ -986,7 +986,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           onTap: () {
             final logPath = LoggerInit.instance.logFilePath;
             if (logPath != null) {
-              openFileInExplorer(logPath);
+              // 这一项要打开的是目录；此前误传了文件本身，两个入口行为
+              // 完全一样，用户没法自己翻 debug.log.1 之类的轮换文件。
+              openFileInExplorer(File(logPath).parent.path);
             }
           },
         ),

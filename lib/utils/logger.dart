@@ -34,28 +34,42 @@ class LoggerInit {
     return _timeFormat.format(time);
   }
 
+  /// 注册根监听。可重复调用：已有监听时只调整级别，不重复订阅。
+  ///
+  /// 此前这里直接给 `_logSubscription` 赋值，而设置页切换调试开关的流程是
+  /// `dispose()`（取消订阅）→ `init()`（只开文件、不重新订阅）。结果是用户
+  /// 一打开「调试日志」，日志就永久停止写入 —— 2.10.4 拿不到 `[PERF]` 分段
+  /// 行是日志管线断掉了，不是计时代码没打。
   static Future<void> initLogger() async {
-    Logger.root.level = Level.INFO;
-    instance._logSubscription = Logger.root.onRecord.listen((record) {
+    instance._ensureListening();
+  }
+
+  void _ensureListening() {
+    Logger.root.level = Config.enableDebug.value ? Level.FINE : Level.INFO;
+    if (_logSubscription != null) return;
+    _logSubscription = Logger.root.onRecord.listen((record) {
       if (!kReleaseMode) {
         developer.log(
             '${record.level.name}: ${_formatTime(record.time)}: ${record.message}');
       }
-      LoggerInit.instance.log(record);
+      instance.log(record);
     });
   }
 
-  Future<void> init() async {
-    if (Config.enableDebug.value) {
-      // 调试模式下开启详细日志
-      Logger.root.level = Level.FINE;
-      final appDir = await getApplicationSupportDirectory();
-      final logPath = path.join(appDir.path, 'debug.log');
-      _logFile = File(logPath);
-      await _rotateIfNeeded();
-      _logSink = _logFile?.openWrite(mode: FileMode.append);
-    }
+  /// [logDirectory] 只给测试注入；正式运行始终用应用数据目录。
+  Future<void> init({Directory? logDirectory}) async {
+    // dispose() 会取消订阅，所以每次 init 都要确保监听器重新在场。
+    _ensureListening();
+    if (!Config.enableDebug.value) return;
+    final appDir = logDirectory ?? await getApplicationSupportDirectory();
+    final logPath = path.join(appDir.path, 'debug.log');
+    _logFile = File(logPath);
+    await _rotateIfNeeded();
+    _logSink = _logFile?.openWrite(mode: FileMode.append);
   }
+
+  /// 测试 / 退出前把缓冲的日志落盘。
+  Future<void> flush() => _logSink?.flush() ?? Future<void>.value();
 
   /// 检查日志文件大小，必要时进行轮换
   Future<void> _rotateIfNeeded() async {
