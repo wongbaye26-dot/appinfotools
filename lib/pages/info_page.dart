@@ -32,6 +32,7 @@ import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/official_baseline_store.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
+import 'package:apk_info_tool/utils/parse_request_gate.dart';
 import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
@@ -83,6 +84,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   /// `finally` 清理，因此不会留下临时目录。
   bool _iosCodeSignCancelled = false;
 
+  /// 同一个文件的重复触发去重。
+  ///
+  /// 双击包启动时路径会从命令行参数与文件关联事件**两条入口**同时到达，
+  /// 不去重就会把同一个大包并行解析两遍（实测 Windows 上 75 MB 的包被
+  /// 解析两次，各约 19 s，前一份结果被代际号丢弃）。
+  final ParseRequestGate _requestGate = ParseRequestGate();
+
+  /// 取消上一次仍在进行的解析。
+  ///
+  /// 换文件时新请求只把代际号加一，旧任务要等**它自己跑完**才在 `finally`
+  /// 里被取消 —— 那时它已经白跑了整个解析。这里提前停掉。
+  void _cancelInFlightTask() {
+    final task = _currentTask;
+    if (task == null || task.isFinished) return;
+    log.info('loadApkInfo: 取消上一次仍在进行的解析');
+    task.cancel();
+  }
+
   void openFilePicker() async {
     var result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -128,10 +147,26 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   }
 
   Future<void> loadApkInfo(String filePath) async {
+    // 同一个文件已经在解析：直接返回，复用那一次的结果。
+    //
+    // 双击包启动时路径会从命令行参数与文件关联事件两条入口同时到达
+    // （见 [ParseRequestGate]）。不拦的话两份都跑到完成，前一份被代际号
+    // 丢弃 —— 大包上那是白烧十几秒。
+    if (_requestGate.isDuplicate(filePath)) {
+      log.info('loadApkInfo: 同一文件已在解析中，跳过重复触发: $filePath');
+      return;
+    }
+    _cancelInFlightTask();
+    _requestGate.begin(filePath);
+
     // IPA 走自己的解析流水线。分支点放在这里而不是更深处：两条流水线的
     // 阶段、工具、结论语义都不同，混在一个方法里只会让两边都难读。
     if (_looksLikeIpa(filePath)) {
-      await _loadIpaInfo(filePath);
+      try {
+        await _loadIpaInfo(filePath);
+      } finally {
+        _requestGate.finish(filePath);
+      }
       return;
     }
 
@@ -299,6 +334,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         // 子进程）会白跑到底，而结果只会被丢掉。
         taskForThisRun?.cancel();
       }
+      // 只清自己那一条：换文件后闸门已经指向新文件了（见 [ParseRequestGate]）。
+      _requestGate.finish(filePath);
     }
   }
 
