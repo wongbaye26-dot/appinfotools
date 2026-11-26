@@ -1,5 +1,78 @@
 # Changelog
 
+## 2.10.3 — 2026-11-26
+
+这一版压**打开一个包的等待时间**，重点在 Windows：那里进程启动、`PATH` 探测
+与文件 IO 都比 macOS 贵一个量级，而此前的实现把这些成本乘了十几倍。
+
+### 三段独立扫描并行
+
+`ApkParseTask` 的 worker 里，以下三段本来串行、彼此又完全不依赖：
+
+- DEX 方法扫描（加载链与审计共用）；
+- DEX 字符串线索扫描（`audit` 内部原本自己再算一遍）；
+- v2/v3 内容摘要（整包 SHA-256）。
+
+现在它们在三个 isolate 里并行跑，结果再一起交给审计。`audit()` 新增
+`clueScan` 参数复用已算好的字符串扫描 —— **同一份 DEX 不再扫两遍**。
+
+- 68.8 MB / 2 个 DEX 的样本上，这三段串行约 1.7 s；并行后是其中最慢一段
+  的耗时。
+- 9.2 MB 样本实测端到端 **374 → 335 ms**（`audit` 从 70 降到 51 ms）。
+- **核数 < 3 或 DEX 总量 < 4 MiB 时自动退回串行**：子 isolate 要各复制一份
+  DEX 字节，小包上那笔开销换不回收益（实测小包净收益只有 40 ms）。
+- 代价：峰值 RSS 上升约一份 DEX 的体量；取消时子 isolate 不会被连带杀掉，
+  会把自己那段扫完（受扫描预算约束）才退出。
+
+### 工具路径不再重复扫盘
+
+`CommandTools` 的 `findAapt2Path` / `findApkSignerPath` / `findAdbPath` 此前
+**每次调用**都会走一遍 `PATH` × `PATHEXT` 的同步 `File.existsSync`，而
+`ApkInfo.renderIcon` 是**为每个图标候选调一次**。现在按
+「工具名 + 三个设置项 + 数据目录」缓存，设置变更自然失效；下载工具后由
+`downloadDependencies` 显式调用 `invalidateCache()`。
+
+- `builtin` 档且内置工具确实存在时，不再探测系统环境 —— 那一档的结论本来
+  就是内置路径，探测纯属白付一次全盘 stat。
+- Windows 上 `PATH` 里只要有一条连不通的网络路径，单次探测就可能卡数秒；
+  这条路径现在从「每个图标候选一次」变成「每次解析最多一次」。
+
+### 可诊断性
+
+`ParsedApkData` 新增 `stageTimings`，worker 回传
+`open / parse / dex / resources / facts / scan / native / audit` 各段耗时，
+主 isolate 打成一行：
+
+```
+[PERF] getApkInfo(builtin): total=335ms | icon=23ms | worker=259ms
+  [open=18 parse=38 dex=47 resources=11 facts=6 scan=85 parallelIsolates=1 native=2 audit=51]
+  | spawn+transfer=53ms
+```
+
+此前 builtin 路径只有 `total` 与 `icon` 两个数，分不清慢在解压、DEX 扫描
+还是封签 —— 「Windows 上很慢」只能靠猜。现在打开设置里的「调试日志」再解析
+一个包，日志里就有可对照的分布。
+
+新增 `tool/perf_probe_getapk_test.dart`：测的是**用户实际等待**（`getApkInfo`
+全链路 + 三条并行线），与既有的 `perf_probe_apk_test.dart`（worker 内部分段）
+互补。
+
+### 修掉一个跨 isolate 的隐患
+
+`Isolate.run` 的闭包会连同**所在作用域**一起被发送。worker 的作用域里有
+`ApkReader`（持归档与文件句柄），内联闭包写法会抛
+「Illegal argument in isolate message」。并行段因此改为顶层函数，作用域里
+只有参数 —— 这个问题是在 `perf_probe_apk_test.dart` 里真实踩到的，
+生产代码当时只是恰好没被共享上下文波及。
+
+### 测试
+
+- 根 1,832 通过 / 16 跳过；五包 677 通过；analyze 与 format 零问题。
+- 新增：`clueScan` 传入与内部自算**逐条结论一致**、传入值真的被采用；
+  工具路径缓存的命中/失效/设置变更。
+
+---
+
 ## 2.10.2 — 2026-11-25
 
 这一版修**安全检测报告的可信度缺口**：12 条说明 code 没有在呈现层注册（中文
