@@ -1548,4 +1548,65 @@ void main() {
           AnalysisReport.recommendationText(f, t), 'fallback recommendation');
     });
   });
+
+  // 对应 `parse_task` 里的并行扫描：worker 把「字符串线索扫描」与「方法扫描」
+  // 并行跑，再把结果传进 `audit`（`clueScan` 参数）。传与不传必须得到
+  // **同一份结论** —— 否则「并行」就成了「换一套判据」。
+  group('预扫描结果复用（clueScan）', () {
+    /// 只取对结论有意义的字段：规则、定级、置信度、正文与说明 code。
+    List<String> projection(SecurityAnalysisResult r) => [
+          for (final f in r.findings)
+            '${f.ruleId}|${f.severity.name}|${f.confidence.name}|${f.finding}',
+          for (final n in r.limitations) 'note|${n.code}',
+        ];
+
+    test('传入 clueScan 与内部自算的结论逐条一致', () {
+      final dex = [
+        DexBytes(
+          'classes.dex',
+          _blob([
+            'com/google/mlkit/vision/text/TextRecognizer',
+            'android/media/MediaRecorder',
+            'multipart/form-data',
+            'https://api.example.com/upload',
+            'com/tencent/mm/opensdk/openapi/IWXAPI',
+          ]),
+        ),
+      ];
+      final meta = _meta(
+        permissions: [_perm('android.permission.CAMERA')],
+        targetSdk: 34,
+      );
+
+      final internal = AndroidSecurityAudit.audit(meta: meta, dexEntries: dex);
+      final reused = AndroidSecurityAudit.audit(
+        meta: meta,
+        dexEntries: dex,
+        clueScan: DexClueScanner.scan(dex),
+      );
+
+      expect(projection(reused), projection(internal));
+      expect(projection(internal), isNotEmpty, reason: '样本必须真的产出结论');
+    });
+
+    test('传入的 clueScan 真的被使用，不会被内部再扫一遍覆盖', () {
+      final dex = [
+        DexBytes('classes.dex',
+            _blob(['com/google/mlkit/vision/text/TextRecognizer'])),
+      ];
+      // 空结果冒充「扫过了但没线索」：若内部又扫一遍，OCR 标记会重新出现。
+      final empty = DexClueScanner.scan(const []);
+      final result = AndroidSecurityAudit.audit(
+        meta: _meta(permissions: [_perm('android.permission.CAMERA')]),
+        dexEntries: dex,
+        clueScan: empty,
+      );
+
+      expect(
+        result.findings.where((f) => f.ruleId == 'ANDROID-RULE-B'),
+        isEmpty,
+        reason: '调用方给的 clueScan 是权威输入，不该被内部扫描覆盖',
+      );
+    });
+  });
 }

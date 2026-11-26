@@ -12,6 +12,7 @@ import 'package:analysis_model/analysis_model.dart';
 // 打出来 —— 「解析慢」是个笼统的抱怨，只有拆到阶段才能知道该动哪里。
 
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -197,11 +198,17 @@ void main() {
         ];
         final arscRes = e2eReader.arscParser?.getAllResources() ??
             const <int, ResourceInfo>{};
-        final method = DexMethodScanner.scan(
-          dex,
-          deepChainFrom: ocrMarkerIds,
-          deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
-        );
+        // 与 `parse_task.dart` 的 worker 同构：方法扫描与字符串扫描并行，
+        // 扫完的结果一起交给 `audit`（它不再自己扫第二遍）。
+        //
+        // 走顶层函数而不是内联闭包：闭包会连同所在作用域一起被发送，而这个
+        // 作用域里有 `ApkReader`（持文件句柄），跨 isolate 发送会直接抛错。
+        final scans = await Future.wait<Object?>([
+          _scanMethodsInIsolate(dex, ocrMarkerIds),
+          _scanCluesInIsolate(dex),
+        ]);
+        final method = scans[0] as DexMethodScanResult;
+        final clueScan = scans[1] as DexScanResult;
         final sel = NativeSymbolScanner.selectLibraries(
           e2eReader.listFilesWithSize(extension: '.so'),
         );
@@ -229,6 +236,7 @@ void main() {
           ],
           nativeEntries: native,
           methodScanResult: method,
+          clueScan: clueScan,
           artifacts: inv,
           loadGraph: graph,
           payloadProbe: probe,
@@ -259,6 +267,25 @@ void main() {
       reader.close();
     }
   }, timeout: const Timeout(Duration(minutes: 20)));
+}
+
+/// 顶层：方法扫描跑在独立 isolate 里（与 worker 的并行段同构）。
+///
+/// 顶层函数的上下文只有自己的参数 —— 内联闭包会连 `ApkReader` 一起被发送。
+Future<DexMethodScanResult> _scanMethodsInIsolate(
+  List<DexBytes> dexEntries,
+  Set<String> ocrMarkerIds,
+) {
+  return Isolate.run(() => DexMethodScanner.scan(
+        dexEntries,
+        deepChainFrom: ocrMarkerIds,
+        deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
+      ));
+}
+
+/// 顶层：字符串线索扫描跑在独立 isolate 里。
+Future<DexScanResult> _scanCluesInIsolate(List<DexBytes> dexEntries) {
+  return Isolate.run(() => DexClueScanner.scan(dexEntries));
 }
 
 /// 复刻 `parse_task` 的载荷探测：只读 assets/非标准 DEX 的有界头部。

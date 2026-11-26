@@ -98,6 +98,18 @@ class ParsedApkData {
   /// 同一个库只取一个 ABI，超限的库不读。因此这里的数量少于归档里的实际数量。
   final List<NativeLibraryBytes> nativeLibraries;
 
+  /// worker 内部各阶段的耗时（毫秒）。
+  ///
+  /// **为什么要在结果里回传**：worker 是独立 isolate，`log` 的监听器
+  /// 只注册在主 isolate 上 —— worker 里写日志既不到控制台也不到文件。
+  /// 而「解析慢」恰恰只能在 worker 内部拆开看：外层的
+  /// `[PERF] getApkInfo(builtin)` 只有一个 total 和一个 icon，
+  /// 分不清慢在解压、DEX 扫描还是封签校验。
+  ///
+  /// 键是稳定的英文标识（`open` / `parse` / `dex` / `seal` / `audit` …），
+  /// 只进日志，不进界面，因此不需要本地化。
+  final Map<String, int> stageTimings;
+
   const ParsedApkData({
     required this.meta,
     required this.arscResources,
@@ -106,6 +118,7 @@ class ParsedApkData {
     this.security,
     this.referenceCycles = const ReferenceCycleReport(),
     this.nativeLibraries = const [],
+    this.stageTimings = const {},
   });
 }
 
@@ -220,10 +233,15 @@ class _ParseRequest {
 /// 用的是立即终止，`finally` 不保证执行。
 void _parseEntryPoint(_ParseRequest request) async {
   final reader = ApkReader();
+  // 各段耗时。只回传给主 isolate 打日志（见 `ParsedApkData.stageTimings`）——
+  // worker 里写日志没有监听器，写了也看不到。
+  final timings = <String, int>{};
   try {
     request.reply.send(const ParseStageReached(ApkParseStage.openContainer));
 
+    final openSw = Stopwatch()..start();
     final openResult = await reader.open(request.filePath);
+    timings['open'] = openSw.elapsedMilliseconds;
     if (!openResult.isOk) {
       request.reply.send(
         ParseOpenFailed(openResult, detail: reader.budgetFailure),
@@ -231,9 +249,11 @@ void _parseEntryPoint(_ParseRequest request) async {
       return;
     }
 
+    final parseSw = Stopwatch()..start();
     final meta = await reader.parse(
       onStage: (stage) => request.reply.send(ParseStageReached(stage)),
     );
+    timings['parse'] = parseSw.elapsedMilliseconds;
     if (meta == null) {
       // Manifest 读不出来时**仍然跑一次审计**，把「没查」明确说出来。
       // 早先这里只回一个 reason，界面上安全 Tab 就是一片空白 —— 用户分不清
@@ -275,40 +295,90 @@ void _parseEntryPoint(_ParseRequest request) async {
     // 安全分析：提取 DEX 字节并在 worker 中完成审计。
     // 这里不创建临时文件，只读内存中的 ZIP 条目，因此即使
     // [Isolate.immediate] 终止，也不会留下垃圾。
+    final dexSw = Stopwatch()..start();
     final dexEntries = <DexBytes>[
       for (final name in reader.listFiles(extension: '.dex'))
         if (reader.readFile(name) case final bytes?) DexBytes(name, bytes),
     ];
+    timings['dex'] = dexSw.elapsedMilliseconds;
+
     // 资源表只遍历一次：环检测与图标渲染器都用这一份。
+    final arscSw = Stopwatch()..start();
     final arscResources =
         reader.arscParser?.getAllResources() ?? const <int, ResourceInfo>{};
     final resourceStrings = _collectResourceStrings(reader);
+    timings['resources'] = arscSw.elapsedMilliseconds;
 
     // Phase B 事实层：清单、加载链、载荷探测。三者都只读目录/有界头部，
     // 不执行、不解压额外内容；放在 worker 里做，避免新增 UI 卡顿。
+    final factsSw = Stopwatch()..start();
     final entryFacts = reader.entryFacts();
     final artifactInventory = AndroidArtifactInventoryScanner.scan(entryFacts);
-    // 方法扫描只跑一次：加载链与安全审计共用同一份调用点结果。
+    timings['facts'] = factsSw.elapsedMilliseconds;
+    // ---- 三段独立扫描并行跑 ----
+    //
+    // 这三段的输入相同、输出互不依赖，串行只是实现上的顺手：
+    // - 方法扫描（`methodScan`）：加载链与审计共用；
+    // - 字符串线索扫描（`clueScan`）：`audit` 内部原本自己再算一遍；
+    // - v2/v3 内容摘要（`seal`）：整包 SHA-256，纯 IO + CPU。
+    //
+    // 真实大包（68.8 MB / 2 个 DEX）上三者串行约 1.7 s，是「打开一个包要等
+    // 多久」的主要部分。并行只是把同一批函数换个地方跑，**输入输出完全不变**。
+    //
+    // **核数不足或扫描量太小都退回串行**：每个子 isolate 都要复制一份 DEX
+    // 字节并付出一次启动开销（Windows 上单次 20–30 ms）。9 MB 的小包上
+    // 实测净收益只有 40 ms，再小就变成负的；大包上才有意义。
+    //
+    // **已知代价**：`ApkParseTask.cancel` 用 `Isolate.immediate` 终止 worker，
+    // 而 worker 派生的子 isolate 不会被连带杀掉 —— 它们会把自己那段扫完
+    // （受 DEX 扫描预算约束，通常一两秒）才退出。取消后结果不再被采用，
+    // 只是多烧一点 CPU。
     final ocrMarkerIds = {
       for (final marker in codeMarkers)
         if (marker.category == SecurityCategory.ocrImage) marker.id,
     };
-    final methodScan = DexMethodScanner.scan(
-      dexEntries,
-      deepChainFrom: ocrMarkerIds,
-      deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
-    );
+    final parallelIsolates = Platform.numberOfProcessors >= 3 &&
+        dexEntries.fold<int>(0, (sum, e) => sum + e.bytes.length) >=
+            4 * 1024 * 1024;
+    final scanSw = Stopwatch()..start();
+    late final DexMethodScanResult methodScan;
+    late final DexScanResult clueScan;
+    SealCheck? seal;
+    if (parallelIsolates) {
+      final results = await Future.wait<Object?>([
+        _scanMethodRefsInIsolate(dexEntries, ocrMarkerIds),
+        _scanClueStringsInIsolate(dexEntries),
+        _sealV2V3InIsolate(request.filePath, meta.signingSchemes),
+      ]);
+      methodScan = results[0] as DexMethodScanResult;
+      clueScan = results[1] as DexScanResult;
+      seal = results[2] as SealCheck?;
+    } else {
+      methodScan = DexMethodScanner.scan(
+        dexEntries,
+        deepChainFrom: ocrMarkerIds,
+        deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
+      );
+      clueScan = DexClueScanner.scan(dexEntries);
+      seal = _checkSealV2V3(request.filePath, meta.signingSchemes);
+    }
+    // v1 兜底必须在**本 isolate**：它要读归档条目，而 `Archive` 不可跨
+    // isolate 传递。
+    seal ??= _checkSealV1(reader);
+    timings['scan'] = scanSw.elapsedMilliseconds;
+    timings['parallelIsolates'] = parallelIsolates ? 1 : 0;
+
     final loadGraph = AndroidLoadGraphScanner.scan(
       dexEntries: dexEntries,
       inventory: artifactInventory,
       methodScan: methodScan,
     );
     final payloadProbe = _probePayloads(reader, artifactInventory);
-    final seal = _checkSeal(reader, meta, request.filePath);
 
     // 原生库：**先按声明尺寸挑，再读** —— 读进来才知道大小就已经晚了。
     // `selectLibraries` 会按库名去重（同一个库只取一个 ABI）、跳过超大库、
     // 并受数量与总体积上限约束；被跳过的都会记进覆盖范围说明。
+    final nativeSw = Stopwatch()..start();
     final nativeCandidates = reader.listFilesWithSize(extension: '.so');
     final nativeSelection =
         NativeSymbolScanner.selectLibraries(nativeCandidates);
@@ -317,12 +387,14 @@ void _parseEntryPoint(_ParseRequest request) async {
         if (reader.readFile(name) case final bytes?)
           NativeLibraryBytes(name, bytes),
     ];
+    timings['native'] = nativeSw.elapsedMilliseconds;
 
     // 容器结构扫描**只做一次**：它要遍历整张条目表（几千条），而
     // `AndroidSecurityAudit.audit` 与结果对象都要用它。此前这里调了两次
     // `scanHardeningSignals()`，同一份结果算两遍。
     final hardeningObservations = reader.scanHardeningSignals();
 
+    final auditSw = Stopwatch()..start();
     final security = AndroidSecurityAudit.audit(
       meta: meta,
       dexEntries: dexEntries,
@@ -353,9 +425,13 @@ void _parseEntryPoint(_ParseRequest request) async {
       loadGraph: loadGraph,
       payloadProbe: payloadProbe,
       methodScanResult: methodScan,
+      // 字符串线索扫描已经在上面的并行段里算过 —— 不传的话 `audit` 会
+      // 自己再扫一遍（那是它此前唯一的行为，也是这轮要省掉的那一遍）。
+      clueScan: clueScan,
       seal: seal,
       baseline: baseline,
     );
+    timings['audit'] = auditSw.elapsedMilliseconds;
 
     request.reply.send(ParseSucceeded(ParsedApkData(
       meta: meta,
@@ -367,6 +443,7 @@ void _parseEntryPoint(_ParseRequest request) async {
       // 一遍整张资源表。
       referenceCycles: ResourceReferenceGraph.findCycles(arscResources),
       nativeLibraries: nativeLibraries,
+      stageTimings: timings,
     )));
   } catch (e) {
     log.warning('ApkParseTask: worker failed: $e');
@@ -376,9 +453,13 @@ void _parseEntryPoint(_ParseRequest request) async {
   }
 }
 
-/// Android 密封校验：有 v2 块时优先 v2 内容摘要，否则退回 v1 MANIFEST。
-SealCheck? _checkSeal(ApkReader reader, ApkMeta? meta, String path) {
-  final schemes = meta?.signingSchemes;
+/// v2 / v3 内容摘要校验 —— **可跨 isolate**（只依赖路径与签名块）。
+///
+/// 拆出来是为了能跟方法扫描、字符串扫描并行跑：整包 SHA-256 在 68.8 MB
+/// 样本上要 461 ms，串行时它纯粹是在等。
+///
+/// 返回 `null` 表示没有可用的 v2/v3 块（或块读失败），调用方据此退回 v1。
+SealCheck? _checkSealV2V3(String path, ApkSigningSchemes? schemes) {
   if (schemes != null && schemes.hasV2 && schemes.v2Value != null) {
     RandomAccessFile? raf;
     try {
@@ -427,9 +508,47 @@ SealCheck? _checkSeal(ApkReader reader, ApkMeta? meta, String path) {
       raf?.closeSync();
     }
   }
+  return null;
+}
+
+/// v1（`META-INF/MANIFEST.MF`）兜底校验。
+///
+/// **必须在持有归档的那个 isolate 里跑**：它要读归档条目，而 `Archive`
+/// 不可跨 isolate 传递。
+SealCheck? _checkSealV1(ApkReader reader) {
   final archive = reader.archive;
   if (archive == null) return null;
   return ApkSealCheck.check(archive: archive, digest: contentDigest);
+}
+
+/// 在独立 isolate 里跑方法扫描。
+///
+/// **必须是顶层函数，不能写成内联闭包**：闭包会连同它所在作用域一起被发送，
+/// 而同作用域里还有 `ApkReader`（持有归档与文件句柄，不可跨 isolate 传递）。
+/// 内联写法在 `perf_probe_apk_test.dart` 里实测会直接抛
+/// 「Illegal argument in isolate message」；放在顶层，作用域里只有参数。
+Future<DexMethodScanResult> _scanMethodRefsInIsolate(
+  List<DexBytes> dexEntries,
+  Set<String> ocrMarkerIds,
+) {
+  return Isolate.run(() => DexMethodScanner.scan(
+        dexEntries,
+        deepChainFrom: ocrMarkerIds,
+        deepChainTo: AndroidSecurityAudit.uploadMarkerIds,
+      ));
+}
+
+/// 在独立 isolate 里跑 DEX 字符串线索扫描。理由同上（必须是顶层函数）。
+Future<DexScanResult> _scanClueStringsInIsolate(List<DexBytes> dexEntries) {
+  return Isolate.run(() => DexClueScanner.scan(dexEntries));
+}
+
+/// 在独立 isolate 里做 v2/v3 内容摘要校验。理由同上。
+Future<SealCheck?> _sealV2V3InIsolate(
+  String path,
+  ApkSigningSchemes? schemes,
+) {
+  return Isolate.run(() => _checkSealV2V3(path, schemes));
 }
 
 /// 对 assets 下的代码类条目 / 非标准位置 DEX 做**有界头部**载荷探测。

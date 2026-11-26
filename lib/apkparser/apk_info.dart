@@ -1242,8 +1242,21 @@ Future<ApkInfo?> _getApkInfoBuiltin(
   final iconMs = iconSw.elapsedMilliseconds;
 
   totalSw.stop();
+  // worker 内部分段 + 差值的含义：
+  // `total - workerSum - icon` 就是 isolate 启动与结果跨 isolate 传输的成本。
+  // 没有这一段的话，「Windows 上慢」只能看到一个总数，分不清是解压、
+  // DEX 扫描还是封签 —— 那正是这个字段存在的理由。
+  final stages = data.stageTimings;
+  // `parallelIsolates` 是开关不是耗时，不能算进总和。
+  final workerSum = stages.entries
+      .where((e) => e.key != 'parallelIsolates')
+      .fold<int>(0, (sum, e) => sum + e.value);
+  final overheadMs = totalSw.elapsedMilliseconds - workerSum - iconMs;
   log.info("[PERF] getApkInfo(builtin): total=${totalSw.elapsedMilliseconds}ms"
-      " | icon=${iconMs}ms (parsing ran in a worker isolate)");
+      " | icon=${iconMs}ms"
+      " | worker=${workerSum}ms"
+      ' [${stages.entries.map((e) => '${e.key}=${e.value}').join(' ')}]'
+      " | spawn+transfer=${overheadMs}ms");
 
   return apkInfo;
 }

@@ -179,6 +179,16 @@ class AndroidSecurityAudit {
     required List<DexBytes> dexEntries,
     DexMethodScanResult? methodScanResult,
 
+    /// 已经算好的 DEX 字符串线索扫描结果。
+    ///
+    /// `null` 时内部自己扫一遍（此前的唯一行为，向后兼容）。调用方**已经**
+    /// 扫过就传进来 —— 同一份 DEX 扫两遍在 68.8 MB 样本上是 683 ms，而
+    /// 那正是「打开一个包要等多久」里最大的一段。
+    ///
+    /// 契约：必须与 [dexEntries] 是同一批字节。传别的包的结果不会报错，
+    /// 只会让线索与结论对不上 —— 因此只在同一次解析内部传。
+    DexScanResult? clueScan,
+
     /// 原生库（`lib/**.so`）的名字与字节。空表示没有原生库或未提供。
     List<NativeLibraryBytes> nativeEntries = const [],
     bool manifestParsed = true,
@@ -280,7 +290,8 @@ class AndroidSecurityAudit {
     }
 
     // ---- DEX 字符串扫描（第一层取证）----
-    final scan = DexClueScanner.scan(dexEntries);
+    // 调用方已经扫过就复用，不再扫第二遍。
+    final scan = clueScan ?? DexClueScanner.scan(dexEntries);
     for (final skip in scan.skippedForBudget) {
       // 参数分开给：界面要按语言拼「只扫了前 8 MiB（共 17.5 MB，约 47%）」，
       // 而拼接好的整句没法再拆回数字。
