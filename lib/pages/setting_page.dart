@@ -14,6 +14,7 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/system_thumbnail.dart';
 import 'package:apk_info_tool/widgets/system_icon_section.dart';
 import 'package:apk_info_tool/utils/command_tools.dart';
+import 'package:apk_info_tool/utils/diagnostics_report.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
 import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/tool_downloader.dart';
@@ -23,6 +24,7 @@ import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:apk_info_tool/widgets/title_width_setting.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
@@ -990,6 +992,40 @@ class _SettingPageState extends ConsumerState<SettingPage> {
               // 完全一样，用户没法自己翻 debug.log.1 之类的轮换文件。
               openFileInExplorer(File(logPath).parent.path);
             }
+          },
+        ),
+        ListTile(
+          enabled: enableDebug,
+          title: Text(t.settings.copy_diagnostics),
+          leading: const Icon(Icons.content_copy),
+          onTap: () async {
+            final logPath = LoggerInit.instance.logFilePath;
+            if (logPath == null || !File(logPath).existsSync()) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(t.settings.diagnostics_none)),
+              );
+              return;
+            }
+            // 刚打开的包可能还停在 IOSink 缓冲里，先落盘再读。
+            await LoggerInit.instance.flush();
+            final file = File(logPath);
+            final report = collectDiagnostics(file.readAsStringSync());
+            if (!mounted) return;
+            if (report.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(t.settings.diagnostics_none)),
+              );
+              return;
+            }
+            // 头部带版本、平台与日志修改时间：旧日志一眼可辨，不用再来回猜。
+            final header = 'AppInfoTool ${packageInfo.version}'
+                ' | platform=${Platform.operatingSystem}'
+                ' | logModified=${file.lastModifiedSync().toIso8601String()}';
+            await Clipboard.setData(ClipboardData(text: '$header\n$report'));
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(t.settings.diagnostics_copied)),
+            );
           },
         ),
       ],
