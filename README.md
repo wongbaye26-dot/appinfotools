@@ -242,7 +242,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
 
 ### 质量与验证
 
-- **1,832 个根测试 + 677 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
+- **1,836 个根测试 + 677 个包内测试**（`analysis_model` / `archive_safety` / `apk_parser` / `ipa_parser` / `app_icon_extractor`），`flutter analyze --fatal-infos --fatal-warnings` 零问题，`dart format` 干净；CI 在三个平台各跑一遍同款门禁
 - **期望值一律来自独立实现**，不取自本项目解析器：
   `aapt2` 核对清单与资源、`apksigner` / `codesign` 核对签名、`assetutil` 核对 iOS 资产目录、
   `libcompression`（Apple 系统库）核对 LZFSE、`actool`（Xcode 自带）生成资产目录夹具
