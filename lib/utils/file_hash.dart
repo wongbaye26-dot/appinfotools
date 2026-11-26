@@ -93,12 +93,17 @@ Digest _digestInIsolate(String filePath, String algorithm) {
 ///
 /// 内存占用恒定 O([_chunkSize]) × 3，不随文件大小增长。
 Future<FileHashes> computeFileHashes(String filePath) async {
+  // 计时进日志：这条线与解析**并行**跑，会抢 IO 与核。
+  // 没有这个数就无法回答「解析慢是不是被哈希拖的」。
+  final sw = Stopwatch()..start();
   try {
     final results = await Future.wait([
       Isolate.run(() => _digestInIsolate(filePath, 'md5').toString()),
       Isolate.run(() => _digestInIsolate(filePath, 'sha1').toString()),
       Isolate.run(() => _digestInIsolate(filePath, 'sha256').toString()),
     ]);
+    log.info('[PERF] computeFileHashes: ${sw.elapsedMilliseconds}ms '
+        '(3 isolates, file read 3×)');
     return FileHashes(
       md5: results[0],
       sha1: results[1],
