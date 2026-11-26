@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
@@ -204,6 +205,10 @@ class ToolDownloader {
       for (final dir in tempDirs) {
         await _deleteQuietly(dir);
       }
+      // 安装目录里刚落了新文件，而工具路径解析是有缓存的（见
+      // `CommandTools` 的说明）—— 不通知的话，用户点完「下载」仍然会看到
+      // 「未找到」，直到改一次设置或重启。
+      CommandTools.invalidateCache();
     }
   }
 
