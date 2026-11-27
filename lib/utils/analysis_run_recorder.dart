@@ -52,8 +52,20 @@ class AnalysisRunRecorder {
 
     if (result != null && status != AnalysisRunStatus.failed) {
       try {
+        final snapshotRun = run.copyWith(
+          status: status,
+          completedAt: completedAt,
+          appName: result.appName.value,
+          packageSha256: packageSha256,
+          platform: result.platform,
+        );
         snapshot = jsonDecode(
-          AnalysisReport.renderJson(result, generatedAt: completedAt, t: t),
+          AnalysisReport.renderJson(
+            result,
+            generatedAt: completedAt,
+            t: t,
+            analysisRun: snapshotRun,
+          ),
         ) as Map<String, dynamic>;
       } catch (error) {
         // 快照失败不能把解析结果本身判成失败；但必须在 run 上留痕。

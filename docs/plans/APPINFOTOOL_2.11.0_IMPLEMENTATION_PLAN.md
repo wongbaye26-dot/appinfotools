@@ -142,3 +142,11 @@ flutter test
 - [x] Stage 3 Artifact Inventory / Load Graph
 - [x] Stage 4 Network
 - [x] Stage 5 Report / History（commit `975dc66`；未升 report schema，HTML/历史基于 v8 快照）
+
+## 10. 2.11.0 收口后补充（2026-11-28）
+
+- [x] Step 1 report schema v9：`reportSchemaVersion=9`，新增 `analysisRun` 头、finding `evidenceIds`、`security.evidence[]`、证据条目稳定 `id`；契约 `docs/contracts/analysis-report-v9.schema.json`。
+- 证据 ID 规则：`SecurityEvidence.evidenceId` FNV-1a 64（`ev_<12 hex>`），finding 直接引用该 ID。
+- 旧报告：历史 v8 快照仍可读取/展示；新生成报告为 v9，未做自动迁移。
+- 门禁：`flutter test` 1899 passed / 20 skipped；analyze 干净；format 473 文件 0 变化；build bundle 0。
+- 剩余顺序不变：历史页 widget 测试/快照语义 → Windows/Linux 实机 → CI 样本门禁 → 版本/CHANGELOG/发布验收。

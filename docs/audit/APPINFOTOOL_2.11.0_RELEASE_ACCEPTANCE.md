@@ -141,3 +141,14 @@ CI：
   4. 补历史页 widget 测试；
   5. 决定 report schema v9 迁移是否纳入 2.11.0。
 - 不移动 tag、不发布 release。
+
+## 7. 2026-11-28 追加：report schema v9
+
+- 已完成 `reportSchemaVersion = 9`：
+  - `analysisRun` 头（id/toolVersion/appName/platform/packageSha256/startedAt/completedAt/status）；
+  - finding `evidenceIds`；
+  - 聚合 `security.evidence[]`，条目带稳定 `ev_<12 hex>` ID；
+  - 契约 `docs/contracts/analysis-report-v9.schema.json`。
+- 历史 v8 快照保留可读；新报告写 v9。
+- 因此原第 4 项阻断（“report schema 仍为 v8”）已解除。
+- 发布结论仍为 **NO-GO**：Windows/Linux 实机、CI 样本门禁、历史页 widget 测试、全量手工验收仍未完成。

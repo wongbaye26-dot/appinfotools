@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://appinfotool.local/contracts/analysis-report-v9.schema.json",
+  "title": "AppInfoTool Analysis Report v9",
+  "description": "2.11 report schema additions: analysis run header, stable evidence IDs, and finding-to-evidence links. This schema intentionally describes the v9 additions; consumers must still treat unknown fields as forward-compatible.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["reportSchemaVersion", "findings", "security"],
+  "properties": {
+    "reportSchemaVersion": { "const": 9 },
+    "analysisRun": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/analysisRun" }
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["ruleId", "evidenceIds"],
+        "properties": {
+          "ruleId": { "type": "string" },
+          "evidenceIds": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/evidenceId" }
+          }
+        }
+      }
+    },
+    "security": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "evidence": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/evidence" }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "evidenceId": {
+      "type": "string",
+      "pattern": "^ev_[0-9a-f]{12}$"
+    },
+    "analysisRun": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "status", "startedAt"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^analysis_[0-9]+_[A-Za-z0-9]+$" },
+        "toolVersion": { "type": "string" },
+        "appName": { "type": ["string", "null"] },
+        "platform": { "type": "string" },
+        "packageSha256": { "type": ["string", "null"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": ["string", "null"], "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "running", "success", "partial", "failed", "cancelled"]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "source", "location"],
+      "properties": {
+        "id": { "$ref": "#/$defs/evidenceId" },
+        "source": { "type": "string" },
+        "location": { "type": "string" },
+        "detail": { "type": "string" },
+        "locationCode": { "type": ["string", "null"] },
+        "detailCode": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

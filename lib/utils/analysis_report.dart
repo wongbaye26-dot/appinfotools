@@ -4,6 +4,7 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/analysis_diagnostic_text.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
+import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/html_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
@@ -2677,7 +2678,7 @@ class AnalysisReport {
   ///    entitlements、URL scheme、嵌套 bundle…），每个字段自带 status / source。
   /// 8：新增顶层 `security`（盗 U 评估/制品清单/加载链/密封/官方基线）；
   ///    既有键名/类型不变。
-  static const int reportSchemaVersion = 8;
+  static const int reportSchemaVersion = 9;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -2697,6 +2698,7 @@ class AnalysisReport {
     Translations t, {
     required DateTime generatedAt,
     bool securityOnly = false,
+    AnalysisRun? analysisRun,
   }) =>
       HtmlReport.render(
         jsonDecode(renderJson(
@@ -2704,6 +2706,7 @@ class AnalysisReport {
           generatedAt: generatedAt,
           t: t,
           securityOnly: securityOnly,
+          analysisRun: analysisRun,
         )) as Map<String, dynamic>,
         t,
       );
@@ -2713,6 +2716,7 @@ class AnalysisReport {
     required DateTime generatedAt,
     required Translations t,
     bool securityOnly = false,
+    AnalysisRun? analysisRun,
   }) {
     final security = result.security;
     final findings = <Map<String, dynamic>>[
@@ -2725,17 +2729,9 @@ class AnalysisReport {
             'severity': f.severity.name,
             'confidence': f.confidence.name,
             'finding': f.finding,
+            'evidenceIds': f.evidenceIds,
             'evidence': [
-              for (final e in f.evidence)
-                {
-                  'source': e.source.name,
-                  'location': e.location,
-                  'detail': e.detail,
-                  // 与 findings 的 `*Code` 同构：程序按 code 取本地化文案，
-                  // `location` / `detail` 是英文回退。
-                  'locationCode': e.locationCode,
-                  'detailCode': e.detailCode,
-                },
+              for (final e in f.evidence) _evidenceJson(e),
             ],
             'dataSource': f.dataSource,
             'dataTransform': f.dataTransform,
@@ -2764,6 +2760,18 @@ class AnalysisReport {
       // 对齐。用文件 SHA-256 前 16 位 + 生成时间戳。
       'reportId': _reportId(result, generatedAt),
       'generatedAt': generatedAt.toUtc().toIso8601String(),
+      'analysisRun': analysisRun == null
+          ? null
+          : {
+              'id': analysisRun.id,
+              'toolVersion': analysisRun.toolVersion,
+              'appName': analysisRun.appName,
+              'platform': analysisRun.platform.name,
+              'packageSha256': analysisRun.packageSha256,
+              'startedAt': analysisRun.startedAt.toUtc().toIso8601String(),
+              'completedAt': analysisRun.completedAt?.toUtc().toIso8601String(),
+              'status': analysisRun.status.code,
+            },
 
       // 输入文件身份。SHA-256 缺失时是 null 而不是空串 —— 空串会被读成
       // 「哈希就是空的」。
@@ -2899,6 +2907,17 @@ class AnalysisReport {
       'security': security == null
           ? null
           : {
+              'evidence': [
+                for (final ev in security.evidence)
+                  {
+                    'id': ev.evidenceId,
+                    'source': ev.source.name,
+                    'location': ev.location,
+                    'detail': ev.detail,
+                    'locationCode': ev.locationCode,
+                    'detailCode': ev.detailCode,
+                  },
+              ],
               'cryptoTheft': security.cryptoTheft == null
                   ? null
                   : _cryptoTheftJson(security.cryptoTheft!),
@@ -3007,6 +3026,15 @@ class AnalysisReport {
     return '${encoder.convert(map)}\n';
   }
 
+  static Map<String, dynamic> _evidenceJson(SecurityEvidence evidence) => {
+        'id': evidence.evidenceId,
+        'source': evidence.source.name,
+        'location': evidence.location,
+        'detail': evidence.detail,
+        'locationCode': evidence.locationCode,
+        'detailCode': evidence.detailCode,
+      };
+
   static Map<String, dynamic> _cryptoTheftJson(
     CryptoTheftAssessment assessment,
   ) =>
@@ -3024,14 +3052,7 @@ class AnalysisReport {
               'supported': entry.supported,
               'ruleIds': entry.ruleIds,
               'evidence': [
-                for (final ev in entry.evidence)
-                  {
-                    'source': ev.source.name,
-                    'location': ev.location,
-                    'detail': ev.detail,
-                    'locationCode': ev.locationCode,
-                    'detailCode': ev.detailCode,
-                  },
+                for (final ev in entry.evidence) _evidenceJson(ev),
               ],
               'noteCodes': entry.noteCodes,
             },
