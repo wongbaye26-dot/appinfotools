@@ -278,6 +278,7 @@ class AppSidebar extends StatelessWidget {
     return [
       byId('overview'),
       byId('analysis'),
+      byId('history'),
       byId('diff'),
       byId('install'),
       byId('settings'),

@@ -1,3 +1,4 @@
+import 'package:apk_info_tool/pages/history_page.dart';
 import 'package:apk_info_tool/pages/home_page.dart';
 import 'package:apk_info_tool/pages/install_page.dart';
 import 'package:apk_info_tool/pages/setting_page.dart';
@@ -38,6 +39,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   static const _pageKeys = [
     'overview',
     'analysis',
+    'history',
     'install',
     'diff',
     'settings'
@@ -51,6 +53,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     _pages = [
       const OverviewPage(),
       const HomePage(),
+      const HistoryPage(),
       const InstallPage(),
       const DiffPage(),
       const SettingPage(),
@@ -82,6 +85,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < kSidebarCompactBreakpoint;
     final collapsed = _collapsed || compact;
+    final selectedIndex = _pageKeys.indexOf(_selectedNavId);
 
     return Scaffold(
       body: Stack(
@@ -119,8 +123,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                         const SizedBox(height: 4),
                         Expanded(
                           child: IndexedStack(
-                            index: _pageKeys.indexOf(_selectedNavId),
-                            children: _pages,
+                            index: selectedIndex,
+                            children: [
+                              for (var i = 0; i < _pages.length; i++)
+                                TickerMode(
+                                  enabled: i == selectedIndex,
+                                  child: _pages[i],
+                                ),
+                            ],
                           ),
                         ),
                       ],

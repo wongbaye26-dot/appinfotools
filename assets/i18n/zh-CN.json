@@ -14,7 +14,8 @@
     "analysis": "分析",
     "install": "安装",
     "settings": "设置",
-    "diff": "对比"
+    "diff": "对比",
+    "history": "历史"
   },
   "overview": {
     "subtitle": "解析 Android 与 iOS 应用包，并给出安全洞察",
@@ -1443,5 +1444,38 @@
     "search_hint": "搜索或跳转…",
     "command_title": "跳转到",
     "command_empty": "没有匹配的页面"
+  },
+  "history": {
+    "title": "分析历史",
+    "subtitle": "保存在这台电脑上的分析记录。可重新打开原包或删除记录。",
+    "empty_title": "还没有分析历史",
+    "empty_body": "完成的分析会自动保存在这里。",
+    "open": "重新打开",
+    "delete": "删除",
+    "delete_title": "删除这条记录？",
+    "delete_body": "只删除已保存的报告快照，不会改动原始安装包。",
+    "missing": "原始安装包已不存在。",
+    "refresh": "刷新"
+  },
+  "html_report": {
+    "title": "AppInfoTool · 静态检查报告",
+    "findings": "发现",
+    "coverage": "覆盖范围",
+    "network": "静态网络线索",
+    "structure": "结构证据",
+    "no_findings": "本次没有结构化发现。",
+    "no_coverage": "没有覆盖记录。",
+    "no_network": "没有提取到网络线索；这不表示没有网络行为。",
+    "network_limitation": "仅静态字符串提取，不代表运行时访问过。",
+    "static_note": "仅静态证据，未执行样本代码、未访问网络。",
+    "runtime_note": "包含运行时证据。",
+    "footer": "本报告由真实静态解析结果生成。发现是静态线索，不是恶意软件判定；证据不足处已在覆盖范围与发现中标注。",
+    "unnamed": "未命名安装包",
+    "generated": "生成时间",
+    "schema": "SCHEMA",
+    "file": "FILE",
+    "sha": "SHA-256",
+    "no_evidence": "无逐条证据",
+    "more_evidence": "还有 {count} 条"
   }
 }

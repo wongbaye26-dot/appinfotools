@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
 /// 导出格式。
-enum ExportFormat { markdown, json }
+enum ExportFormat { markdown, json, html }
 
 /// 导出范围。
 enum ExportScope { full, securityOnly }
@@ -34,6 +34,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
   String get _fileExtension => switch (_format) {
         ExportFormat.markdown => 'md',
         ExportFormat.json => 'json',
+        ExportFormat.html => 'html',
       };
 
   String get _suggestedFileName {
@@ -64,6 +65,12 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
           widget.analysis,
           generatedAt: now,
           t: t,
+          securityOnly: securityOnly,
+        ),
+      ExportFormat.html => AnalysisReport.renderHtml(
+          widget.analysis,
+          t,
+          generatedAt: now,
           securityOnly: securityOnly,
         ),
     };
@@ -139,6 +146,11 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                         value: ExportFormat.json,
                         label: Text('JSON'),
                         icon: Icon(Icons.code),
+                      ),
+                      ButtonSegment(
+                        value: ExportFormat.html,
+                        label: Text('HTML'),
+                        icon: Icon(Icons.language),
                       ),
                     ],
                     selected: {_format},

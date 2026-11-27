@@ -102,6 +102,8 @@ V4 UI 与 2.10.7 整改已冻结到 `feature/2.11.0` 的基线 commit（`7dc863b
 
 ## 6. Stage 5：报告 + 历史复查
 
+> 实际实现：HTML 导出 + 历史列表/打开原包/删除快照；report schema 仍为 v8，未做 AnalysisRun 头/evidence[] 迁移，列入 2.11 遗留。
+
 - 2.11 report schema（AnalysisRun 头、evidence[]、graph、networkClues、artifacts）。
 - 保留 v8 旧报告读取；新报告从 AnalysisRun 渲染。
 - HTML 报告：全量 HTML escape，禁止不可信字符串拼 script。
@@ -139,4 +141,4 @@ flutter test
 - [x] Stage 2 Evidence / Finding / Coverage
 - [x] Stage 3 Artifact Inventory / Load Graph
 - [x] Stage 4 Network
-- [ ] Stage 5 Report / History
+- [x] Stage 5 Report / History（commit `975dc66`；未升 report schema，HTML/历史基于 v8 快照）

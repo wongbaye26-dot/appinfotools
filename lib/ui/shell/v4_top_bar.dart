@@ -28,6 +28,7 @@ class V4TopBar extends ConsumerWidget {
     final label = switch (selectedId) {
       'overview' => t.nav.overview,
       'analysis' => t.nav.analysis,
+      'history' => t.nav.history,
       'install' => t.nav.install,
       'diff' => t.nav.diff,
       'settings' => t.nav.settings,

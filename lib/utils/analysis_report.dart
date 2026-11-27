@@ -5,6 +5,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/analysis_diagnostic_text.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/html_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
 import 'package:ipa_parser/ipa_parser.dart'
@@ -2689,6 +2690,23 @@ class AnalysisReport {
         if (value.diagnosticCode != null)
           'diagnosticCode': value.diagnosticCode,
       };
+
+  /// 自包含 HTML 报告。渲染同一份 JSON 数据，避免三种格式结论漂移。
+  static String renderHtml(
+    PackageAnalysisResult result,
+    Translations t, {
+    required DateTime generatedAt,
+    bool securityOnly = false,
+  }) =>
+      HtmlReport.render(
+        jsonDecode(renderJson(
+          result,
+          generatedAt: generatedAt,
+          t: t,
+          securityOnly: securityOnly,
+        )) as Map<String, dynamic>,
+        t,
+      );
 
   static String renderJson(
     PackageAnalysisResult result, {

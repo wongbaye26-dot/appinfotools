@@ -50,6 +50,14 @@ class AppNavigation {
   /// 这个导航项**曾经被删掉过**（当时对应的 `APKInstallPage` 只是个「开发中」
   /// 占位，点进去什么也做不了）。现在它是真的能装 —— 选包、USB/无线连设备、
   /// 安装都在这一页完成。
+  /// 分析历史：本机保存的 AnalysisRun。
+  static NavigationItem history() => NavigationItem(
+        id: 'history',
+        label: t.nav.history,
+        icon: Icons.history_outlined,
+        selectedIcon: Icons.history,
+      );
+
   static NavigationItem install() => NavigationItem(
         id: 'install',
         label: t.nav.install,
@@ -78,6 +86,7 @@ class AppNavigation {
   static List<NavigationItem> items() => [
         overview(),
         analysis(),
+        history(),
         install(),
         diff(),
         settings(),

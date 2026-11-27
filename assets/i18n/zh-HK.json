@@ -14,7 +14,8 @@
     "analysis": "分析",
     "install": "安裝",
     "settings": "設定",
-    "diff": "對比"
+    "diff": "對比",
+    "history": "歷史"
   },
   "overview": {
     "subtitle": "解析 Android 與 iOS 應用程式套件，並提供安全洞察",
@@ -1443,5 +1444,38 @@
     "search_hint": "搜尋或跳轉…",
     "command_title": "跳轉到",
     "command_empty": "沒有符合的頁面"
+  },
+  "history": {
+    "title": "分析歷史",
+    "subtitle": "保存在這台電腦上的分析記錄。可重新打開原包或刪除記錄。",
+    "empty_title": "還沒有分析歷史",
+    "empty_body": "完成的分析會自動保存在這裡。",
+    "open": "重新打開",
+    "delete": "刪除",
+    "delete_title": "刪除這條記錄？",
+    "delete_body": "只刪除已保存的報告快照，不會改動原始安裝包。",
+    "missing": "原始安裝包已不存在。",
+    "refresh": "刷新"
+  },
+  "html_report": {
+    "title": "AppInfoTool · 靜態檢查報告",
+    "findings": "發現",
+    "coverage": "覆蓋範圍",
+    "network": "靜態網絡線索",
+    "structure": "結構證據",
+    "no_findings": "本次沒有結構化發現。",
+    "no_coverage": "沒有覆蓋紀錄。",
+    "no_network": "沒有擷取到網絡線索；這不代表沒有網絡行為。",
+    "network_limitation": "僅靜態字串擷取，不代表執行時曾存取。",
+    "static_note": "僅靜態證據，未執行樣本程式碼、未存取網絡。",
+    "runtime_note": "包含執行時證據。",
+    "footer": "本報告由真實靜態解析結果產生。發現是靜態線索，不是惡意軟件判定；證據不足處已在覆蓋範圍與發現中標註。",
+    "unnamed": "未命名安裝包",
+    "generated": "產生時間",
+    "schema": "SCHEMA",
+    "file": "FILE",
+    "sha": "SHA-256",
+    "no_evidence": "無逐條證據",
+    "more_evidence": "還有 {count} 條"
   }
 }

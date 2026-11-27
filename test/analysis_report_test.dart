@@ -952,4 +952,15 @@ void main() {
       expect(report, isNot(contains('## ${t.report.split_section}')));
     });
   });
+  group('HTML 报告', () {
+    test('HTML 报告包含真实字段、覆盖与静态声明', () {
+      final html = AnalysisReport.renderHtml(_android(), t, generatedAt: _at);
+      expect(html, startsWith('<!doctype html>'));
+      expect(html, contains('AppInfoTool'));
+      expect(html, contains('com.example.app'));
+      expect(html, contains('COVERAGE GAPS'));
+      expect(html, contains(t.html_report.static_note));
+      expect(html, isNot(contains('<script')));
+    });
+  });
 }

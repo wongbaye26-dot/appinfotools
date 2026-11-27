@@ -14,7 +14,8 @@
     "analysis": "분석",
     "install": "설치",
     "settings": "설정",
-    "diff": "비교"
+    "diff": "비교",
+    "history": "기록"
   },
   "overview": {
     "subtitle": "Android 및 iOS 앱 패키지를 분석하고 보안 인사이트를 제공합니다",
@@ -1290,5 +1291,38 @@
     "search_hint": "검색 또는 이동…",
     "command_title": "이동",
     "command_empty": "일치하는 페이지가 없습니다"
+  },
+  "history": {
+    "title": "분석 기록",
+    "subtitle": "이 컴퓨터에 저장된 분석 기록입니다. 원본 패키지를 다시 열거나 기록을 삭제할 수 있습니다.",
+    "empty_title": "아직 분석 기록이 없습니다",
+    "empty_body": "완료된 분석은 여기에 자동으로 저장됩니다.",
+    "open": "다시 열기",
+    "delete": "삭제",
+    "delete_title": "이 기록을 삭제할까요?",
+    "delete_body": "저장된 보고서 스냅샷만 삭제하며 원본 패키지는 변경하지 않습니다.",
+    "missing": "원본 패키지가 더 이상 존재하지 않습니다.",
+    "refresh": "새로 고침"
+  },
+  "html_report": {
+    "title": "AppInfoTool · 정적 검사 보고서",
+    "findings": "발견 항목",
+    "coverage": "커버리지",
+    "network": "정적 네트워크 단서",
+    "structure": "구조 증거",
+    "no_findings": "이번 분석에는 구조화된 발견 항목이 없습니다.",
+    "no_coverage": "커버리지 기록이 없습니다.",
+    "no_network": "네트워크 단서가 추출되지 않았습니다. 네트워크 동작이 없다는 뜻은 아닙니다.",
+    "network_limitation": "정적 문자열 추출만 수행했습니다. 실행 중 접속했다는 뜻은 아닙니다.",
+    "static_note": "정적 증거만 포함합니다. 샘플을 실행하지 않았고 네트워크에 접근하지 않았습니다.",
+    "runtime_note": "실행 시점 증거를 포함합니다.",
+    "footer": "실제 정적 분석 결과로 생성되었습니다. 발견 항목은 정적 단서이며 악성코드 판정이 아닙니다. 증거 부족은 커버리지와 발견 항목에 표시했습니다.",
+    "unnamed": "이름 없는 패키지",
+    "generated": "생성 시각",
+    "schema": "SCHEMA",
+    "file": "FILE",
+    "sha": "SHA-256",
+    "no_evidence": "항목별 증거 없음",
+    "more_evidence": "{count}건 더"
   }
 }

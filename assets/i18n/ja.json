@@ -14,7 +14,8 @@
     "analysis": "分析",
     "install": "インストール",
     "settings": "設定",
-    "diff": "比較"
+    "diff": "比較",
+    "history": "履歴"
   },
   "overview": {
     "subtitle": "Android と iOS のアプリケーションパッケージを解析し、セキュリティの洞察を提供します",
@@ -1290,5 +1291,38 @@
     "search_hint": "検索または移動…",
     "command_title": "移動先",
     "command_empty": "一致するページがありません"
+  },
+  "history": {
+    "title": "分析履歴",
+    "subtitle": "このコンピューターに保存された分析記録です。元のパッケージを開き直すか、記録を削除できます。",
+    "empty_title": "分析履歴はまだありません",
+    "empty_body": "完了した分析は自動的にここへ保存されます。",
+    "open": "再度開く",
+    "delete": "削除",
+    "delete_title": "この記録を削除しますか？",
+    "delete_body": "保存済みのレポートスナップショットのみ削除します。元のパッケージは変更しません。",
+    "missing": "元のパッケージが見つかりません。",
+    "refresh": "更新"
+  },
+  "html_report": {
+    "title": "AppInfoTool · 静的検査レポート",
+    "findings": "検出項目",
+    "coverage": "カバレッジ",
+    "network": "静的なネットワーク手がかり",
+    "structure": "構造証拠",
+    "no_findings": "この解析には構造化された検出項目がありません。",
+    "no_coverage": "カバレッジ記録がありません。",
+    "no_network": "ネットワーク手がかりは抽出されませんでした。ネットワーク動作がないことを意味しません。",
+    "network_limitation": "静的な文字列抽出のみです。実行時に接続したことを意味しません。",
+    "static_note": "静的な証拠のみです。サンプルは実行せず、ネットワークにもアクセスしていません。",
+    "runtime_note": "実行時の証拠を含みます。",
+    "footer": "実際の静的解析結果から生成されました。検出項目は静的な手がかりであり、マルウェア判定ではありません。証拠の不足はカバレッジと検出項目に明記しています。",
+    "unnamed": "名称未設定のパッケージ",
+    "generated": "生成日時",
+    "schema": "SCHEMA",
+    "file": "FILE",
+    "sha": "SHA-256",
+    "no_evidence": "項目別の証拠なし",
+    "more_evidence": "ほか {count} 件"
   }
 }
