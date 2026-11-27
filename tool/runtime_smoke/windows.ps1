@@ -11,12 +11,23 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $ExePath)) { throw "windows runtime smoke: exe not found: $ExePath" }
 
-$p = Start-Process -FilePath $ExePath -PassThru
+$work = Split-Path -Parent $ExePath
+$p = Start-Process -FilePath $ExePath -WorkingDirectory $work -PassThru
 try {
   Start-Sleep -Seconds 10
   $p.Refresh()
   if ($p.HasExited) {
-    throw "windows runtime smoke: app exited during startup (exit $($p.ExitCode))"
+    $code = $p.ExitCode
+    $eventDetail = ''
+    try {
+      $events = Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-2)} -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match 'AppInfoTool|apk_info_tool' } |
+        Select-Object -First 3
+      $eventDetail = ($events | ForEach-Object { $_.Message }) -join ' | '
+    } catch { }
+    if ($eventDetail.Length -gt 1200) { $eventDetail = $eventDetail.Substring(0, 1200) }
+    Write-Host "::error title=Windows runtime smoke failed::exit=$code; $eventDetail"
+    throw "windows runtime smoke: app exited during startup (exit $code)"
   }
   Write-Host 'windows runtime smoke: OK (app stayed alive for 10s; launch-only scope)'
 }

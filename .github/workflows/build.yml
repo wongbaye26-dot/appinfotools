@@ -633,6 +633,14 @@ jobs:
           cd build/windows/x64/runner/Release
           7z a "../../installer/Release/AppInfoTool-${V}-Windows-x86_64.zip" *
 
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe
+            build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64.zip
+
       - name: Runtime smoke (portable package, launch only)
         # 只验证打包产物能启动；APK 分析、报告导出、Explorer 缩略图/关联、
         # 安装器与卸载需要交互式桌面，见 tool/runtime_smoke/README.md 的人工
@@ -647,14 +655,6 @@ jobs:
           Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
           Expand-Archive -Path $zip -DestinationPath $dir -Force
           & tool/runtime_smoke/windows.ps1 -ExePath (Join-Path $dir 'AppInfoTool.exe')
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-release
-          path: |
-            build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe
-            build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64.zip
 
   build-macos:
     needs: quality
