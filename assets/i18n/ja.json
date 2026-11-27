@@ -925,7 +925,12 @@
     "evidence_artifacts_truncated": "一覧は項目上限で切り詰められています",
     "evidence_load_graph_summary": "ノード {nodes} 件、エッジ {edges} 件",
     "evidence_load_graph_dangling": "うち {count} 本のエッジはパッケージ外を参照",
-    "evidence_load_graph_incomplete": "走査は不完全です"
+    "evidence_load_graph_incomplete": "走査は不完全です",
+    "evidence_center_title": "証拠",
+    "evidence_center_count": "{count} 件",
+    "evidence_center_view_all": "すべて表示",
+    "evidence_center_close": "閉じる",
+    "evidence_center_empty": "この分析には表示できる証拠がありません。"
   },
   "report": {
     "export_json_action": "JSON セキュリティレポートをエクスポート",
@@ -1058,7 +1063,9 @@
     "partial": "一部カバー",
     "summary": "{applicable} 件中 {covered} 件の項目を完全にカバーしています",
     "summary_join": "；",
-    "title": "分析カバレッジ"
+    "title": "分析カバレッジ",
+    "not_scanned": "未実行",
+    "failed": "実行失敗"
   },
   "diff": {
     "added_count": "追加: {count}",

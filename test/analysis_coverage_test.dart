@@ -360,7 +360,7 @@ void main() {
       expect(result.hasActualGaps, isTrue);
     });
 
-    test('制品清单与加载链未提供时标 notCovered，而不是伪造空结果', () {
+    test('制品清单与加载链未提供时标 notScanned，而不是伪造空结果', () {
       final result = auditWith(
         dexEntries: [DexBytes('classes.dex', _fixture('real-netprobe.dex'))],
       );
@@ -369,11 +369,11 @@ void main() {
       expect(result.loadGraph, isNull);
       expect(
         result.coverage.entry('android.artifacts')!.status,
-        CoverageStatus.notCovered,
+        CoverageStatus.notScanned,
       );
       expect(
         result.coverage.entry('android.loadGraph')!.status,
-        CoverageStatus.notCovered,
+        CoverageStatus.notScanned,
       );
     });
 
@@ -575,14 +575,16 @@ void main() {
       expect(text, isNot(contains(t.coverage.all_covered)));
     });
 
-    test('coverageStatusText 覆盖四态且互不相同', () {
+    test('coverageStatusText 覆盖六态且互不相同', () {
       final texts = [
         for (final status in CoverageStatus.values)
           AnalysisReport.coverageStatusText(status, t),
       ];
 
-      expect(texts.toSet(), hasLength(4), reason: '四态必须能分开渲染');
+      expect(texts.toSet(), hasLength(6), reason: '六态必须能分开渲染');
       expect(texts, contains(t.coverage.not_applicable));
+      expect(texts, contains(t.coverage.not_scanned));
+      expect(texts, contains(t.coverage.failed));
     });
 
     test('没有 coverage 时 summary 不崩、返回「没有缺口」', () {

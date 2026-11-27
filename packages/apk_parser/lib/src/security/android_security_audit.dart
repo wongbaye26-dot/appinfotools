@@ -1839,7 +1839,7 @@ class AndroidSecurityAudit {
       CoverageEntry.noted(
         id: 'android.artifacts',
         status: artifacts == null
-            ? CoverageStatus.notCovered
+            ? CoverageStatus.notScanned
             : (artifacts.entriesComplete
                 ? CoverageStatus.covered
                 : CoverageStatus.partial),
@@ -1872,7 +1872,7 @@ class AndroidSecurityAudit {
       CoverageEntry.noted(
         id: 'android.payloadProbe',
         status: payloadProbe == null
-            ? CoverageStatus.notCovered
+            ? CoverageStatus.notScanned
             : (payloadProbe.entriesTotal == 0
                 ? CoverageStatus.notApplicable
                 : (payloadProbe.complete
@@ -1910,7 +1910,7 @@ class AndroidSecurityAudit {
       CoverageEntry.noted(
         id: 'android.loadGraph',
         status: loadGraph == null
-            ? CoverageStatus.notCovered
+            ? CoverageStatus.notScanned
             : (loadGraph.complete
                 ? CoverageStatus.covered
                 : CoverageStatus.partial),

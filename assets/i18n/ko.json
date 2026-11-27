@@ -925,7 +925,12 @@
     "evidence_artifacts_truncated": "목록이 항목 한도에서 잘렸습니다",
     "evidence_load_graph_summary": "노드 {nodes}개, 엣지 {edges}개",
     "evidence_load_graph_dangling": "그중 {count}개 엣지가 패키지 밖을 가리킵니다",
-    "evidence_load_graph_incomplete": "순회가 불완전합니다"
+    "evidence_load_graph_incomplete": "순회가 불완전합니다",
+    "evidence_center_title": "증거",
+    "evidence_center_count": "{count}건",
+    "evidence_center_view_all": "전체 보기",
+    "evidence_center_close": "닫기",
+    "evidence_center_empty": "이 분석에는 표시할 증거가 없습니다."
   },
   "report": {
     "export_json_action": "JSON 보안 보고서 낳출",
@@ -1058,7 +1063,9 @@
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",
     "summary_join": "; ",
-    "title": "분석 커버리지"
+    "title": "분석 커버리지",
+    "not_scanned": "미실행",
+    "failed": "실행 실패"
   },
   "diff": {
     "added_count": "추가: {count}",

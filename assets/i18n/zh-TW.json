@@ -1110,7 +1110,12 @@
     "evidence_artifacts_truncated": "清單在項目上限處遭截斷",
     "evidence_load_graph_summary": "{nodes} 個節點，{edges} 條邊",
     "evidence_load_graph_dangling": "其中 {count} 條邊指向封存檔外",
-    "evidence_load_graph_incomplete": "遍歷不完整"
+    "evidence_load_graph_incomplete": "遍歷不完整",
+    "evidence_center_title": "證據",
+    "evidence_center_count": "{count} 條",
+    "evidence_center_view_all": "查看全部",
+    "evidence_center_close": "關閉",
+    "evidence_center_empty": "本次分析沒有可展示的證據。"
   },
   "detail_tab": {
     "overview": "概覽",
@@ -1227,7 +1232,9 @@
       "android_native_libraries_not_provided": "沒有可用於內容掃描的原生庫",
       "android_native_libraries_partial": "已開啟 {covered}/{total} 個唯一原生庫進行內容掃描",
       "android_split_sampling_truncated": "已稽核 {audited}/{total} 個分包 APK"
-    }
+    },
+    "not_scanned": "未執行",
+    "failed": "執行失敗"
   },
   "diff": {
     "title": "版本對比",

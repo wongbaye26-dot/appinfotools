@@ -1110,7 +1110,12 @@
     "evidence_artifacts_truncated": "Inventory truncated at the entry limit",
     "evidence_load_graph_summary": "{nodes} node(s), {edges} edge(s)",
     "evidence_load_graph_dangling": "{count} edge(s) point outside the package",
-    "evidence_load_graph_incomplete": "Traversal incomplete"
+    "evidence_load_graph_incomplete": "Traversal incomplete",
+    "evidence_center_title": "Evidence",
+    "evidence_center_count": "{count} items",
+    "evidence_center_view_all": "View all",
+    "evidence_center_close": "Close",
+    "evidence_center_empty": "No evidence to display for this run."
   },
   "detail_tab": {
     "overview": "Overview",
@@ -1227,7 +1232,9 @@
       "android_native_libraries_not_provided": "No native library content was provided for scanning",
       "android_native_libraries_partial": "{covered} of {total} unique native library(ies) were opened for content scanning",
       "android_split_sampling_truncated": "{audited} of {total} split APK(s) were audited"
-    }
+    },
+    "not_scanned": "Not scanned",
+    "failed": "Failed"
   },
   "diff": {
     "title": "Version comparison",

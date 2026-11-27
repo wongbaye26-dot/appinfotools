@@ -2548,6 +2548,8 @@ class AnalysisReport {
         CoverageStatus.partial => t.coverage.partial,
         CoverageStatus.notCovered => t.coverage.not_covered,
         CoverageStatus.notApplicable => t.coverage.not_applicable,
+        CoverageStatus.notScanned => t.coverage.not_scanned,
+        CoverageStatus.failed => t.coverage.failed,
       };
 
   static void _diagnostics(

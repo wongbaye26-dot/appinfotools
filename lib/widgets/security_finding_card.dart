@@ -462,6 +462,14 @@ class _EvidenceTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              evidence.evidenceId,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontFamily: 'monospace',
+                fontSize: 9,
+                color: theme.colorScheme.primary,
+              ),
+            ),
             // 位置信息
             if (evidence.location.isNotEmpty)
               Text(

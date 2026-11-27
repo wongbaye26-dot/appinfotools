@@ -18,13 +18,24 @@ enum CoverageStatus {
   /// 本次**不适用**（例如 Android 报告里的 iOS 维度）。
   ///
   /// 不计入缺口 —— 它不是「没查到」，是「这件事在这个平台上不存在」。
-  notApplicable;
+  notApplicable,
+
+  /// **未执行**：该扫描器本次没有运行（缺少输入、被跳过、尚未接入）。
+  ///
+  /// 与 [notCovered] 分开：notCovered 是「跑了但没覆盖到」，notScanned 是
+  /// 「根本没跑」，补救动作不同。
+  notScanned,
+
+  /// **执行失败**：扫描器运行了但异常结束。
+  failed;
 
   String get label => switch (this) {
         CoverageStatus.covered => 'covered',
         CoverageStatus.partial => 'partially covered',
         CoverageStatus.notCovered => 'not covered',
         CoverageStatus.notApplicable => 'not applicable',
+        CoverageStatus.notScanned => 'not scanned',
+        CoverageStatus.failed => 'failed',
       };
 }
 
@@ -113,9 +124,15 @@ class CoverageEntry {
         noteArgs: note?.$3 ?? const {},
       );
 
-  /// 该维度是否是**缺口**（部分覆盖或完全没覆盖）。
-  bool get isGap =>
-      status == CoverageStatus.partial || status == CoverageStatus.notCovered;
+  /// 该维度是否是**缺口**（部分覆盖、完全没覆盖、未执行或执行失败）。
+  bool get isGap => switch (status) {
+        CoverageStatus.partial ||
+        CoverageStatus.notCovered ||
+        CoverageStatus.notScanned ||
+        CoverageStatus.failed =>
+          true,
+        CoverageStatus.covered || CoverageStatus.notApplicable => false,
+      };
 
   /// 覆盖比例的文本形式；无法量化时为 `null`。
   String? get ratioText {
@@ -184,6 +201,8 @@ class AnalysisCoverage {
       CoverageStatus.covered: 1,
       CoverageStatus.partial: 2,
       CoverageStatus.notCovered: 3,
+      CoverageStatus.notScanned: 4,
+      CoverageStatus.failed: 5,
     };
     final ra = rank[a.status]!;
     final rb = rank[b.status]!;
