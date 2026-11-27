@@ -138,4 +138,5 @@ flutter test
 - [x] Stage 1 入口接入（Android/iOS 解析生命周期、真实快照、切文件保护）
 - [x] Stage 2 Evidence / Finding / Coverage
 - [x] Stage 3 Artifact Inventory / Load Graph
-- [ ] Stage 4 Network
+- [x] Stage 4 Network
+- [ ] Stage 5 Report / History

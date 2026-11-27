@@ -43,6 +43,7 @@ import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
 import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
+import 'package:apk_info_tool/widgets/network_clues_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_center.dart';
 import 'package:apk_info_tool/widgets/security_notice_banner.dart';
@@ -1165,6 +1166,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 证据中心：只显示本次真实产出的证据，按稳定 evidenceId 去重。
       if (security.evidence.isNotEmpty)
         SecurityEvidenceCenterCard(evidence: security.evidence),
+      if (security.network.clues.isNotEmpty)
+        NetworkCluesCard(network: security.network),
       // 「盗 U 风险」：优先用五段链评估卡；旧路径没有评估时退回小结。
       if (security.cryptoTheft case final assessment?)
         CryptoTheftCard(

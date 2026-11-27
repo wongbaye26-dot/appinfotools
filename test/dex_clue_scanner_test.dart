@@ -7,6 +7,7 @@
 
 import 'dart:typed_data';
 
+import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_parser/apk_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -42,6 +43,13 @@ void main() {
       expect(result.hasClue('okhttp'), isTrue);
       expect(result.hasClue('workmanager'), isTrue);
       expect(result.scannedDexCount, 1);
+      // Stage 4：同一次遍历产出结构化 URL 线索，并带回来源 DEX。
+      expect(result.networkClues, isNotEmpty);
+      final urlClue = result.networkClues.firstWhere(
+        (c) => c.type == NetworkClueType.url,
+      );
+      expect(urlClue.value, contains('cdn.example.com'));
+      expect(urlClue.sourcePath, 'classes.dex');
 
       final ocr = result.clues.firstWhere((c) => c.markerId == 'ocr-mlkit');
       expect(ocr.samples, contains('Lcom/google/mlkit/vision/text;'));

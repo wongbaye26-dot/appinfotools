@@ -587,6 +587,7 @@ class IosPrivacyAudit {
     // 「网络」一节在 iOS 上**永远是空的**，而「数据发到哪」正是用户最想知道的。
     final domainSet = <String>{};
     final ipSet = <String>{};
+    final networkClues = <NetworkClue>[];
     // 主动请求权限的证据：API 名 → 命中的选择子（含冒号的原样）。
     final requestedByApi = <String, Set<String>>{};
     final requestSources = <String, Set<String>>{};
@@ -716,7 +717,13 @@ class IosPrivacyAudit {
 
       onStage?.call('strings:${target.path}:methname-done');
       void consume(String str, {bool unicode = false}) {
-        NetworkEndpoints.collect(str, domainSet, ipSet);
+        NetworkEndpoints.collect(
+          str,
+          domainSet,
+          ipSet,
+          clues: networkClues,
+          sourcePath: target.path,
+        );
         // 「盗 U」信号复用这一次遍历：钱包框架 / 助记词 / 剪贴板 / 链上地址。
         cryptoSignals.collect(str, target.path);
         // 中文话术必须赶在 `_markerPattern` 早退之前收 —— 那张 21 条标记表
@@ -2445,6 +2452,7 @@ class IosPrivacyAudit {
       network: NetworkFacts(
         domains: domainSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
         ips: ipSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
+        clues: networkClues,
       ),
       coverage: coverage,
       cryptoTheft: IosCryptoTheftChain.assess(

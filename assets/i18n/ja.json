@@ -939,7 +939,11 @@
     "evidence_artifact_hash": "SHA-256",
     "evidence_graph_nodes": "ノード",
     "evidence_graph_edges": "エッジ",
-    "evidence_graph_missing": "パッケージ内に無い"
+    "evidence_graph_missing": "パッケージ内に無い",
+    "network_clues_title": "ネットワーク手がかり（{count}）",
+    "network_clues_view_all": "すべての手がかりを表示",
+    "network_clues_source": "ソース",
+    "network_clues_limitation": "静的文字列抽出のみで、実行時の通信を証明しません。"
   },
   "report": {
     "export_json_action": "JSON セキュリティレポートをエクスポート",

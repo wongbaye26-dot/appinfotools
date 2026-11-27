@@ -939,7 +939,11 @@
     "evidence_artifact_hash": "SHA-256",
     "evidence_graph_nodes": "노드",
     "evidence_graph_edges": "엣지",
-    "evidence_graph_missing": "패키지에 없음"
+    "evidence_graph_missing": "패키지에 없음",
+    "network_clues_title": "네트워크 단서 ({count})",
+    "network_clues_view_all": "모든 단서 보기",
+    "network_clues_source": "출처",
+    "network_clues_limitation": "정적 문자열 추출일 뿐 실행 시 접근을 의미하지 않습니다."
   },
   "report": {
     "export_json_action": "JSON 보안 보고서 낳출",

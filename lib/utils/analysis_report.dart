@@ -2901,6 +2901,17 @@ class AnalysisReport {
       'network': {
         'domains': security?.network.domains ?? const <String>[],
         'ips': security?.network.ips ?? const <String>[],
+        'clues': [
+          if (security != null)
+            for (final clue in security.network.clues)
+              {
+                'id': clue.id,
+                'type': clue.type.name,
+                'value': clue.value,
+                if (clue.sourcePath != null) 'sourcePath': clue.sourcePath,
+                if (clue.context != null) 'context': clue.context,
+              },
+        ],
       },
 
       // 分包一致性。`null` 表示**没查**（单 APK 或本次未做这项检查）——

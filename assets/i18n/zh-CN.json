@@ -1124,7 +1124,11 @@
     "evidence_artifact_hash": "SHA-256",
     "evidence_graph_nodes": "节点",
     "evidence_graph_edges": "边",
-    "evidence_graph_missing": "不在包内"
+    "evidence_graph_missing": "不在包内",
+    "network_clues_title": "网络线索（{count}）",
+    "network_clues_view_all": "查看全部线索",
+    "network_clues_source": "来源",
+    "network_clues_limitation": "仅静态字符串提取，不代表运行时访问过。"
   },
   "detail_tab": {
     "overview": "概览",

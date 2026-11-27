@@ -1124,7 +1124,11 @@
     "evidence_artifact_hash": "SHA-256",
     "evidence_graph_nodes": "節點",
     "evidence_graph_edges": "邊",
-    "evidence_graph_missing": "不在包內"
+    "evidence_graph_missing": "不在包內",
+    "network_clues_title": "網路線索（{count}）",
+    "network_clues_view_all": "查看全部線索",
+    "network_clues_source": "來源",
+    "network_clues_limitation": "僅靜態字串提取，不代表執行時存取過。"
   },
   "detail_tab": {
     "overview": "概覽",

@@ -87,6 +87,9 @@ class DexScanResult {
   /// 提取到的 IPv4 字面量。
   final List<String> ips;
 
+  /// 结构化网络线索（URL / WebSocket / 域名 / IPv4 / IPv6）。
+  final List<NetworkClue> networkClues;
+
   /// 实际扫描的 DEX 数与字节数。
   final int scannedDexCount;
   final int scannedBytes;
@@ -113,6 +116,7 @@ class DexScanResult {
     required this.clues,
     required this.domains,
     required this.ips,
+    this.networkClues = const [],
     required this.scannedDexCount,
     required this.scannedBytes,
     required this.skippedForBudget,
@@ -253,6 +257,7 @@ class DexClueScanner {
   }) {
     final domains = <String>{};
     final ips = <String>{};
+    final networkClues = <NetworkClue>[];
     final addresses = <CryptoAddressHit>{};
     final markerSamples = <String, Set<String>>{};
     final markerDexes = <String, Set<String>>{};
@@ -298,7 +303,7 @@ class DexClueScanner {
 
       for (final str in _extractStrings(entry.bytes, limit)) {
         _markString(str, entry.name, markerSamples, markerDexes);
-        _collectEndpoints(str, domains, ips);
+        _collectEndpoints(str, entry.name, domains, ips, networkClues);
         collectCryptoAddresses(str, addresses, max: maxCryptoAddresses);
         _markSdk(str, entry.name, sdkIndex, sdkCounts, sdkDexes);
       }
@@ -339,6 +344,7 @@ class DexClueScanner {
       clues: clues,
       domains: domains.take(maxEndpoints).toList()..sort(),
       ips: ips.take(maxEndpoints).toList()..sort(),
+      networkClues: networkClues,
       cryptoAddresses: addresses.toList(growable: false),
       scannedDexCount: scannedDexCount,
       scannedBytes: scannedBytes,
@@ -379,8 +385,19 @@ class DexClueScanner {
   }
 
   static void _collectEndpoints(
-          String value, Set<String> domains, Set<String> ips) =>
-      NetworkEndpoints.collect(value, domains, ips);
+    String value,
+    String dexName,
+    Set<String> domains,
+    Set<String> ips,
+    List<NetworkClue> clues,
+  ) =>
+      NetworkEndpoints.collect(
+        value,
+        domains,
+        ips,
+        clues: clues,
+        sourcePath: dexName,
+      );
 }
 
 /// SDK 前缀的两段索引。

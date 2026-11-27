@@ -1124,7 +1124,11 @@
     "evidence_artifact_hash": "SHA-256",
     "evidence_graph_nodes": "Nodes",
     "evidence_graph_edges": "Edges",
-    "evidence_graph_missing": "Not in package"
+    "evidence_graph_missing": "Not in package",
+    "network_clues_title": "Network clues ({count})",
+    "network_clues_view_all": "View all clues",
+    "network_clues_source": "Source",
+    "network_clues_limitation": "Static string extraction only; this does not prove runtime access."
   },
   "detail_tab": {
     "overview": "Overview",
