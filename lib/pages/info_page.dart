@@ -8,6 +8,7 @@ import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/ipaparser/ios_codesign_step.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
 import 'package:apk_info_tool/ipaparser/ipa_parse_task.dart';
+import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
@@ -15,6 +16,7 @@ import 'package:apk_info_tool/pages/pages.dart';
 import 'package:apk_info_tool/pages/text_info.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
+import 'package:apk_info_tool/providers/analysis_run_provider.dart';
 import 'package:apk_info_tool/providers/home_page_provider.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/providers/setting_provider.dart';
@@ -180,6 +182,66 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     return "$sdkVersion (${AndroidVersion.getAndroidVersion(sdkVersion)})";
   }
 
+  /// 开始一条 run。失败只记日志，绝不让“历史写不进去”变成“解析失败”。
+  Future<AnalysisRun?> _beginAnalysisRun(
+    String filePath,
+    PackagePlatform platform,
+  ) async {
+    try {
+      final recorder = await ref.read(analysisRunRecorderProvider.future);
+      final run =
+          await recorder.start(packagePath: filePath, platform: platform);
+      if (mounted) {
+        final state = ref.read(currentFileStateProvider);
+        if (state.filePath == filePath) {
+          ref.read(currentFileStateProvider.notifier).update(
+                state.copyWith(
+                  analysisRunId: run.id,
+                  analysisRunStatus: run.status,
+                ),
+              );
+        }
+      }
+      return run;
+    } catch (e) {
+      log.warning('_beginAnalysisRun: $e');
+      return null;
+    }
+  }
+
+  /// 结束一条 run，并保存当前真实结果的报告快照。
+  Future<void> _finishAnalysisRun({
+    required Future<AnalysisRun?> runFuture,
+    required AnalysisRunStatus status,
+    String? limitation,
+  }) async {
+    try {
+      final run = await runFuture;
+      if (run == null || !mounted) return;
+      final state = ref.read(currentFileStateProvider);
+      // 用户已经切走：绝不能把新文件的结果写进旧 run。
+      if (state.filePath != run.packagePath) return;
+      final recorder = await ref.read(analysisRunRecorderProvider.future);
+      final updated = await recorder.finish(
+        run: run,
+        status: status,
+        result: state.analysis,
+        t: t,
+        packageSha256: state.sha256Hash,
+        limitations: [if (limitation != null) limitation],
+      );
+      if (!mounted) return;
+      final current = ref.read(currentFileStateProvider);
+      if (current.analysisRunId == updated.id) {
+        ref.read(currentFileStateProvider.notifier).update(
+              current.copyWith(analysisRunStatus: updated.status),
+            );
+      }
+    } catch (e) {
+      log.warning('_finishAnalysisRun: $e');
+    }
+  }
+
   Future<void> loadApkInfo(String filePath) async {
     _setFailure(null);
     // 同一个文件已经在解析：直接返回，复用那一次的结果。
@@ -231,6 +293,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       isComputingHash: enableHash,
       isComputingSignature: enableSignature && !isXapk,
     ));
+    final runFuture = _beginAnalysisRun(filePath, PackagePlatform.android);
 
     // 如果启用哈希计算，异步计算哈希值（与 APK 解析并行）
     if (enableHash) {
@@ -298,6 +361,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       if (apkInfo == null) {
         if (_loadGeneration == gen) {
           _setFailure(t.parse.parse_apk_info_fail);
+          unawaited(_finishAnalysisRun(
+            runFuture: runFuture,
+            status: AnalysisRunStatus.failed,
+            limitation: 'parse.no_result',
+          ));
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -316,6 +384,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           fileState.update(
             ref.read(currentFileStateProvider).copyWith(apkInfo: apkInfo),
           );
+          unawaited(_finishAnalysisRun(
+            runFuture: runFuture,
+            status: AnalysisRunStatus.partial,
+            limitation: 'manifest.partial',
+          ));
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -333,6 +406,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           final currentState = ref.read(currentFileStateProvider);
           fileState.update(currentState.copyWith(
             apkInfo: apkInfo,
+          ));
+          final afterUpdate = ref.read(currentFileStateProvider);
+          final pending =
+              afterUpdate.isComputingHash || afterUpdate.isComputingSignature;
+          unawaited(_finishAnalysisRun(
+            runFuture: runFuture,
+            status:
+                pending ? AnalysisRunStatus.partial : AnalysisRunStatus.success,
           ));
           // 追加到最近文件列表。走 provider 而不是直接写 Config ——
           // 概览页常驻 IndexedStack，只有 provider 变化才会让它重建。
@@ -355,6 +436,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       log.info('loadApkInfo: cancelled by user');
       if (_loadGeneration == gen) {
         _setFailure(t.analysis_state.cancelled);
+        unawaited(_finishAnalysisRun(
+          runFuture: runFuture,
+          status: AnalysisRunStatus.cancelled,
+        ));
       }
     } catch (e) {
       log.warning('loadApkInfo: $e');
@@ -366,6 +451,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           : t.analysis_state.failure_body;
       if (_loadGeneration == gen) {
         _setFailure(message);
+        unawaited(_finishAnalysisRun(
+          runFuture: runFuture,
+          status: AnalysisRunStatus.failed,
+          limitation: 'parse.exception',
+        ));
       }
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -474,10 +564,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       return;
     }
     _currentTask = task;
+    final runFuture = _beginAnalysisRun(filePath, PackagePlatform.ios);
 
     IpaAnalysis? parsed;
     SecurityAnalysisResult? security;
     var applied = false;
+    var runTerminal = false;
     await for (final event in task.events) {
       if (_loadGeneration != gen) break;
 
@@ -488,6 +580,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           // 容器打不开：显示**具体原因**，而不是笼统的「解析失败」。
           final message = DetailRenderer.openFailure(result, t, detail: detail);
           _setFailure(message);
+          runTerminal = true;
+          unawaited(_finishAnalysisRun(
+            runFuture: runFuture,
+            status: AnalysisRunStatus.failed,
+            limitation: 'ipa.open_failed',
+          ));
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(message)),
@@ -496,6 +594,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         case IpaParseFailed(:final reason):
           log.warning('_loadIpaInfo: parse failed: $reason');
           _setFailure(t.parse.parse_apk_info_fail);
+          runTerminal = true;
+          unawaited(_finishAnalysisRun(
+            runFuture: runFuture,
+            status: AnalysisRunStatus.failed,
+            limitation: 'ipa.parse_failed',
+          ));
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(t.parse.parse_apk_info_fail)),
@@ -529,6 +633,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           // 用户主动取消 —— 不弹错误提示，但页面要能说明为什么没有结果。
           log.info('_loadIpaInfo: cancelled by user');
           _setFailure(t.analysis_state.cancelled);
+          runTerminal = true;
+          unawaited(_finishAnalysisRun(
+            runFuture: runFuture,
+            status: AnalysisRunStatus.cancelled,
+          ));
       }
     }
 
@@ -545,6 +654,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 事件流结束却没有结果，也没有显式错误：仍然要把页面从空白里救出来，
       // 否则用户看到的是「文件已选中 + 一屏 '-'」。
       _setFailure(t.parse.parse_apk_info_fail);
+    }
+    if (parsed == null && !runTerminal) {
+      unawaited(_finishAnalysisRun(
+        runFuture: runFuture,
+        status: AnalysisRunStatus.failed,
+        limitation: 'ipa.no_result',
+      ));
     }
 
     if (parsed != null) {
@@ -564,6 +680,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       final mainApp = parsed.mainApp;
       if (enableSignature && mainApp != null) {
         await _verifyIosSignature(filePath, gen, mainApp);
+      }
+      if (_loadGeneration == gen) {
+        final state = ref.read(currentFileStateProvider);
+        final pending = state.isComputingHash || state.isComputingSignature;
+        unawaited(_finishAnalysisRun(
+          runFuture: runFuture,
+          status:
+              pending ? AnalysisRunStatus.partial : AnalysisRunStatus.success,
+        ));
       }
       return;
     }
