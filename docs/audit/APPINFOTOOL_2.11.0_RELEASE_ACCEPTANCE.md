@@ -152,3 +152,10 @@ CI：
 - 历史 v8 快照保留可读；新报告写 v9。
 - 因此原第 4 项阻断（“report schema 仍为 v8”）已解除。
 - 发布结论仍为 **NO-GO**：Windows/Linux 实机、CI 样本门禁、历史页 widget 测试、全量手工验收仍未完成。
+
+## 8. 2026-11-28 追加：历史页测试与语义
+
+- 历史页 widget 测试已补：`test/history_page_test.dart`（commit `7f8dcbc`）。
+- “重新打开”统一改为“重新分析”：历史快照只作审计，不注入当前 UI；重新分析原包。
+- 因此原第 3 项阻断（历史页 widget 测试缺失）已解除。
+- 发布结论仍为 **NO-GO**：Windows/Linux 实机、CI 样本门禁、全量手工验收仍未完成。

@@ -150,3 +150,11 @@ flutter test
 - 旧报告：历史 v8 快照仍可读取/展示；新生成报告为 v9，未做自动迁移。
 - 门禁：`flutter test` 1899 passed / 20 skipped；analyze 干净；format 473 文件 0 变化；build bundle 0。
 - 剩余顺序不变：历史页 widget 测试/快照语义 → Windows/Linux 实机 → CI 样本门禁 → 版本/CHANGELOG/发布验收。
+
+### 2026-11-28 顺序执行进度
+
+- [x] Step 1 report schema v9（commit `5f360d6`）
+- [x] Step 2 历史页 widget 测试 + “重新分析”语义（commit `7f8dcbc`）
+- [ ] Step 3 Windows/Linux 实机验收：**阻塞**，当前机器为 macOS，无 Windows/Linux 环境
+- [ ] Step 4 CI 样本清单与三平台门禁
+- [ ] Step 5 版本/CHANGELOG/发布验收
