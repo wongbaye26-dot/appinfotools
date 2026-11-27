@@ -77,16 +77,14 @@ class _SecurityFindingCardState extends State<SecurityFindingCard> {
 
     return Card(
       elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: severityColor.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
       ),
       child: InkWell(
         onTap: () => setState(() => _expanded = !_expanded),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

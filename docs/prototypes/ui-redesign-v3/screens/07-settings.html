@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V3 · 07 设置</title>
+<link rel="stylesheet" href="../assets/v3.css">
+</head>
+<body class="app" data-nav="settings" data-window-title="AppInfoTool — 设置" data-crumb="WORKSPACE / SETTINGS" data-state="LOCAL-FIRST" data-status-left="SETTINGS · LOCAL ONLY" data-status-right="VERSION 2.10.6 · STABLE">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div class="page-head-main">
+          <div class="kicker">WORKSPACE <span class="slash">/</span> <b>SETTINGS</b></div>
+          <h1>设置</h1>
+          <p class="page-sub" style="font-size:10px;color:var(--muted);">本地优先：分析结果、缓存与日志都只保存在这台电脑。</p>
+        </div>
+        <div class="page-actions">
+          <span class="chip mono">v2.10.6</span>
+          <button class="btn"><svg class="ic"><use href="#i-refresh"/></svg>检查更新</button>
+        </div>
+      </header>
+
+      <div class="settings-layout">
+        <nav class="settings-nav">
+          <div class="item active"><svg class="ic"><use href="#i-sliders"/></svg>常规</div>
+          <div class="item"><svg class="ic"><use href="#i-phone"/></svg>设备与安装</div>
+          <div class="item"><svg class="ic"><use href="#i-shield"/></svg>安全与诊断</div>
+          <div class="item"><svg class="ic"><use href="#i-info"/></svg>关于</div>
+          <div style="margin-top:14px;padding:10px 9px;border:1px solid var(--line);border-radius:4px;background:#0d151a;color:var(--muted);font-size:8px;line-height:1.6;">
+            <div class="mono" style="color:var(--teal);font-size:7.5px;letter-spacing:.08em;">PRIVACY BOUNDARY</div>
+            <div style="margin-top:5px;">不执行样本，不上传安装包；系统集成只影响本机。</div>
+          </div>
+        </nav>
+
+        <div class="settings-grid">
+          <section class="setting-card">
+            <div class="setting-head"><svg class="ic"><use href="#i-sliders"/></svg>外观与语言</div>
+            <div class="setting-body">
+              <div class="setting-row"><div><div class="setting-name">主题</div><div class="setting-desc">跟随系统，或固定深色 / 浅色。</div></div><div class="setting-control"><div class="seg"><span class="active">系统</span><span>浅色</span><span>深色</span></div></div></div>
+              <div class="setting-row"><div><div class="setting-name">界面语言</div><div class="setting-desc">技术术语保持英文，便于与报告对照。</div></div><div class="setting-control"><div class="select">简体中文<svg class="ic"><use href="#i-chevron"/></svg></div></div></div>
+              <div class="setting-row"><div><div class="setting-name">紧凑列表</div><div class="setting-desc">减少表格行高，适合大屏浏览。</div></div><div class="setting-control"><div class="toggle"></div></div></div>
+            </div>
+          </section>
+
+          <section class="setting-card">
+            <div class="setting-head"><svg class="ic"><use href="#i-layers"/></svg>系统集成 <span class="chip amber" style="margin-left:auto;">需手动启用</span></div>
+            <div class="setting-body">
+              <div class="setting-row"><div><div class="setting-name">在资源管理器中显示应用图标</div><div class="setting-desc">默认关闭。只在本机注册缩略图处理器，不修改应用文件；关闭失败会如实提示。</div></div><div class="setting-control"><div class="toggle"></div></div></div>
+              <div class="setting-row"><div><div class="setting-name">文件关联</div><div class="setting-desc">仅注册 .apk / .ipa 的“打开方式”，不抢占系统默认程序。</div></div><div class="setting-control"><div class="toggle on"></div></div></div>
+              <div style="padding:9px 10px;margin-bottom:10px;border:1px solid #4b3a22;border-radius:4px;background:#1e1a12;color:#c2a26e;font-size:8px;line-height:1.55;">
+                <b>关闭时可能显示“未能完全停用”</b><br>如果检测到旧的 HKLM 机器级注册，Explorer 仍可能使用缩略图；需要管理员权限才能清理。
+              </div>
+            </div>
+          </section>
+
+          <section class="setting-card">
+            <div class="setting-head"><svg class="ic"><use href="#i-terminal"/></svg>工具路径</div>
+            <div class="setting-body">
+              <div class="setting-row"><div><div class="setting-name">adb</div><div class="setting-desc">用于安装 APK / XAPK 与设备管理。</div></div><div class="setting-control"><span class="path">/opt/homebrew/bin/adb</span><span class="chip lime">可用</span></div></div>
+              <div class="setting-row"><div><div class="setting-name">Java</div><div class="setting-desc">某些签名与安装工具需要；未配置时相关功能会明确降级。</div></div><div class="setting-control"><span class="path">/usr/bin/java</span><span class="chip">未检测</span></div></div>
+              <div class="setting-row"><div><div class="setting-name">自动检测</div><div class="setting-desc">重新扫描 PATH 与常见安装位置。</div></div><div class="setting-control"><button class="btn small">检测</button></div></div>
+            </div>
+          </section>
+
+          <section class="setting-card">
+            <div class="setting-head"><svg class="ic"><use href="#i-activity"/></svg>诊断与日志</div>
+            <div class="setting-body">
+              <div class="setting-row"><div><div class="setting-name">诊断日志</div><div class="setting-desc">记录解析阶段与失败原因，不包含安装包内容。</div></div><div class="setting-control"><button class="btn small">导出</button></div></div>
+              <div class="setting-row"><div><div class="setting-name">日志目录</div><div class="setting-desc">仅本机访问；可随时清理。</div></div><div class="setting-control"><button class="btn small">打开</button></div></div>
+              <div class="setting-row"><div><div class="setting-name">清理缓存</div><div class="setting-desc">删除解析中间结果与缩略图缓存，不删除原始安装包。</div></div><div class="setting-control"><button class="btn small">清理</button></div></div>
+            </div>
+          </section>
+
+          <section class="setting-card">
+            <div class="setting-head"><svg class="ic"><use href="#i-lock"/></svg>隐私</div>
+            <div class="setting-body">
+              <div class="setting-row"><div><div class="setting-name">完全本地分析</div><div class="setting-desc">默认且不可关闭：安装包不会上传到任何服务器。</div></div><div class="setting-control"><span class="chip lime">ALWAYS ON</span></div></div>
+              <div class="setting-row"><div><div class="setting-name">外部样本目录</div><div class="setting-desc">真实样本测试只在本地环境变量中配置。</div></div><div class="setting-control"><span class="chip">NOT SET</span></div></div>
+            </div>
+          </section>
+
+          <section class="setting-card">
+            <div class="setting-head"><svg class="ic"><use href="#i-info"/></svg>关于</div>
+            <div class="setting-body">
+              <div class="about-card" style="padding-left:0;padding-right:0;">
+                <img src="../assets/logo.png" alt="">
+                <div><div class="about-name">AppInfoTool</div><div class="about-meta">2.10.6 · STATIC INSPECTOR · LOCAL-FIRST</div></div>
+                <span class="chip" style="margin-left:auto;">STABLE</span>
+              </div>
+              <div class="setting-row"><div><div class="setting-name">更新通道</div><div class="setting-desc">稳定版只包含已验证的构建。</div></div><div class="setting-control"><div class="select">稳定版<svg class="ic"><use href="#i-chevron"/></svg></div></div></div>
+              <div class="setting-row"><div><div class="setting-name">开源许可</div><div class="setting-desc">第三方库与字体许可。</div></div><div class="setting-control"><button class="btn small">查看</button></div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="footnote"><span>V3 / SIGNAL ROOM · SETTINGS</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V4 · 06 安装 · 设备</title>
+<link rel="stylesheet" href="../assets/v4.css">
+</head>
+<body class="app" data-nav="install" data-crumb="WORKSPACE / INSTALL" data-state="PIXEL 8 / CONNECTED" data-window-title="AppInfoTool — 安装">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div>
+          <div class="page-kicker">WORKSPACE <span>/</span> <b>INSTALL</b></div>
+          <h1 class="page-title">安装到设备</h1>
+          <p class="page-sub">通过 adb 安装 APK / XAPK / APKS；安装日志会完整保留。安装不等于运行分析。</p>
+        </div>
+        <div class="page-actions">
+          <span class="chip mint"><svg class="ic"><use href="#i-check"/></svg>adb 已连接</span>
+          <button class="btn small" aria-label="刷新设备"><svg class="ic"><use href="#i-refresh"/></svg></button>
+        </div>
+      </header>
+
+      <div class="install-grid" style="flex:1;min-height:0">
+        <div class="install-left">
+          <section class="file-strip">
+            <span class="file-badge">APK</span>
+            <div><b>Aurora Notes · 3.20.0</b><small>com.aurora.notes · 18.4 MB · 已解析 · arm64-v8a 匹配</small></div>
+            <div class="file-tags">
+              <span class="chip">1 / 1</span>
+              <span class="chip">minSdk 24</span>
+              <span class="chip">未安装过</span>
+              <button class="btn small" aria-label="移除"><svg class="ic"><use href="#i-x"/></svg></button>
+            </div>
+          </section>
+
+          <section class="card device-card">
+            <div class="card-head" style="margin-bottom:10px"><div class="card-title"><svg class="ic"><use href="#i-phone"/></svg>TARGET DEVICE</div><div style="display:flex;gap:5px"><span class="chip mint">ONLINE</span><span class="chip plain">USB</span></div></div>
+            <div class="device-row">
+              <span class="device-ic"><svg class="ic"><use href="#i-phone"/></svg></span>
+              <div class="device-meta"><b>Pixel 8</b><small>Android 15 · arm64-v8a · 126 GB 可用 · 3A21FDH2009P4</small></div>
+              <span class="chip mint">ONLINE</span>
+            </div>
+            <div class="device-actions"><button class="btn small"><svg class="ic"><use href="#i-refresh"/></svg>刷新设备</button><button class="btn small"><svg class="ic"><use href="#i-command"/></svg>无线连接</button></div>
+          </section>
+
+          <section class="card options-card">
+            <div class="card-head" style="padding:14px 18px 8px;margin:0"><div class="card-title"><svg class="ic"><use href="#i-sliders"/></svg>INSTALL OPTIONS</div><span class="chip plain">按需启用</span></div>
+            <div class="option"><span class="check on"><svg class="ic"><use href="#i-check"/></svg></span><div class="option-body"><b>替换现有版本</b><small>保留应用数据；签名不一致时会失败。</small></div><span class="flag">-r</span></div>
+            <div class="option"><span class="check"></span><div class="option-body"><b>允许版本降级</b><small>仅在明确需要回滚时使用。</small></div><span class="flag">-d</span></div>
+            <div class="option"><span class="check"></span><div class="option-body"><b>授予全部运行时权限</b><small>用于测试；正式安装不建议开启。</small></div><span class="flag">-g</span></div>
+            <button class="btn grad install-cta"><svg class="ic"><use href="#i-upload"/></svg>安装到 Pixel 8</button>
+            <div class="install-note"><svg class="ic"><use href="#i-info"/></svg><span>安装 ≠ 运行分析。本页只负责把包传到设备，不启动应用、不执行其代码；日志仅保留在本机。</span></div>
+          </section>
+
+          <section class="card recent-installs">
+            <div class="table-head"><div class="table-title"><svg class="ic"><use href="#i-clock"/></svg>RECENT INSTALLS</div><span class="chip plain">LOCAL ONLY</span></div>
+            <table class="table">
+              <thead><tr><th>FILE</th><th>DEVICE</th><th>RESULT</th><th>WHEN</th></tr></thead>
+              <tbody>
+                <tr><td><b>Aurora Notes · 3.20.0</b><small>18.4 MB</small></td><td class="muted">Pixel 8</td><td><span class="chip mint">SUCCESS</span></td><td class="muted">TODAY 14:32</td></tr>
+                <tr><td><b>Aurora Notes · 2.9.0</b><small>16.1 MB</small></td><td class="muted">Pixel 8</td><td><span class="chip mint">SUCCESS</span></td><td class="muted">NOV 21</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+
+        <section class="log-panel">
+          <div class="log-head"><svg class="ic"><use href="#i-terminal"/></svg>ADB INSTALL LOG<span style="margin-left:auto;color:#C4F36A"><i class="state-dot" style="display:inline-block;background:#C4F36A;box-shadow:none"></i> LIVE</span></div>
+          <div style="flex:1;overflow:hidden;font:500 8.2px/1.8 var(--mono);color:#CFC8E6;padding-top:10px">
+            <div><span style="color:#776E93">14:31:58</span> <span style="color:#C4F36A">$</span> adb -s 3A21FDH2009P4 install -r -g "Aurora Notes.apk"</div>
+            <div><span style="color:#776E93">14:31:58</span> Performing Streamed Install</div>
+            <div><span style="color:#776E93">14:32:01</span> Uploading APK... 18.4 MB / 18.4 MB (100%)</div>
+            <div><span style="color:#776E93">14:32:02</span> <span style="color:#C4F36A">Success</span></div>
+            <div style="margin-top:10px"><span style="color:#776E93">14:32:02</span> —</div>
+            <div><span style="color:#776E93">14:33:10</span> <span style="color:#C4F36A">$</span> adb devices</div>
+            <div><span style="color:#776E93">14:33:10</span> 3A21FDH2009P4&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;device</div>
+            <div style="margin-top:14px;color:#8E86A5">14:33:12 提示：应用未启动。如需分析运行时行为，请另使用设备工具。</div>
+            <div style="margin-top:14px;color:#8E86A5">LOG IS IN-MEMORY · COPYABLE · NEVER UPLOADED</div>
+          </div>
+          <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center"><span style="font:600 7px/1 var(--mono);color:#8E86A5">adb 1.0.41 · LOCAL</span><button class="btn small" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.15);color:#fff">复制日志</button></div>
+        </section>
+      </div>
+      <div class="footnote"><span>V4 / PAPER &amp; SIGNAL · INSTALL / PIXEL 8</span><span>INSTALL ≠ RUN · LOGS STAY LOCAL · 1440×1024</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

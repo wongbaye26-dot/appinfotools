@@ -944,10 +944,17 @@ class AnalysisReport {
       'android.arsc' => d.android_arsc,
       'android.cleartextPolicy' => d.android_cleartextPolicy,
       'android.signature' => d.android_signature,
+      // Stage B 新增的结构化证据维度。
+      'android.artifacts' => d.android_artifacts,
+      'android.payloadProbe' => d.android_payloadProbe,
+      'android.loadGraph' => d.android_loadGraph,
+      'android.nativeLibraries' => d.android_nativeLibraries,
+      'android.splitSampling' => d.android_splitSampling,
       'ios.infoPlist' => d.ios_infoPlist,
       'ios.usageDescriptions' => d.ios_usageDescriptions,
       'ios.privacyManifest' => d.ios_privacyManifest,
       'ios.executables' => d.ios_executables,
+      'ios.encryption' => d.ios_encryption,
       'ios.macho.strings' => d.ios_macho_strings,
       'ios.unicodeStrings' => d.ios_unicodeStrings,
       'ios.machoSites' => d.ios_machoSites,
@@ -1003,6 +1010,8 @@ class AnalysisReport {
     // iOS 规则 F 的同类参数：超预算的可执行文件数、完全没读到的个数。
     final overBudget = finding.messageArgs['overBudget'];
     final unread = finding.messageArgs['unread'];
+    // FairPlay：密文可执行文件数量（规则 F 的加密分支）。
+    final encrypted = finding.messageArgs['encrypted'];
     final uncovered = finding.messageArgs['uncovered'];
     final modes = finding.messageArgs['modes'];
     final name = finding.messageArgs['name'];
@@ -1143,6 +1152,24 @@ class AnalysisReport {
       'ios.ocr_capability' => f.ios_ocr_capability,
       'ios.rule_c' => f.ios_rule_c,
       'ios.rule_f' => f.ios_rule_f,
+      'ios.encrypted_binary' => (() {
+          final count = finding.messageArgs['count'];
+          final path = finding.messageArgs['path'];
+          if (count == null || path is! String) return null;
+          return f.ios_encrypted_binary(count: count, path: path);
+        })(),
+      // FairPlay 加密时的否定结论：密文里的内容没看见，不能说“未发现”。
+      'ios.rule_f_encrypted' => (scannedBytes == null ||
+              totalBytes == null ||
+              percent == null ||
+              encrypted == null)
+          ? null
+          : f.ios_rule_f_encrypted(
+              encrypted: encrypted,
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+            ),
       // 截断时的否定结论（与 Android 的 `android.rule_f_truncated` 同构）。
       'ios.rule_f_truncated' => (scannedBytes == null ||
               totalBytes == null ||
@@ -1163,6 +1190,15 @@ class AnalysisReport {
       'ios.scan_coverage' => (total == null || scanned == null || bytes == null)
           ? null
           : f.ios_scan_coverage(total: total, scanned: scanned, bytes: bytes),
+      'ios.scan_coverage_encrypted' =>
+        (total == null || scanned == null || bytes == null || encrypted == null)
+            ? null
+            : f.ios_scan_coverage_encrypted(
+                total: total,
+                scanned: scanned,
+                bytes: bytes,
+                encrypted: encrypted,
+              ),
       'ios.scan_coverage_gap' =>
         (total == null || scanned == null || bytes == null || uncovered == null)
             ? null
@@ -1410,6 +1446,8 @@ class AnalysisReport {
         f.ios_ocr_capability_confirm_input_and_sink,
       'ios.rule_c.manual_review' => f.ios_rule_c_manual_review,
       'ios.rule_f.runtime_traffic' => f.ios_rule_f_runtime_traffic,
+      'ios.encrypted_binary.manual_review' =>
+        f.ios_encrypted_binary_manual_review,
       'ios.url_schemes.manual_review' => f.ios_url_schemes_manual_review,
       'ios.scan_coverage.manual_review' => f.ios_scan_coverage_manual_review,
       'android.unicode_phrase.review' => f.android_unicode_phrase_review,
@@ -1574,6 +1612,8 @@ class AnalysisReport {
       'ios.privacy_info.limitation' => f.ios_privacy_info_limitation,
       'ios.rule_f.limitation' => f.ios_rule_f_limitation,
       'ios.rule_f.limitation_incomplete' => f.ios_rule_f_limitation_incomplete,
+      'ios.rule_f.limitation_encrypted' => f.ios_rule_f_limitation_encrypted,
+      'ios.encrypted_binary.limitation' => f.ios_encrypted_binary_limitation,
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
       'android.debuggable.limitation' => f.android_debuggable_limitation,
@@ -2346,6 +2386,14 @@ class AnalysisReport {
     // SDK 盘点的覆盖说明要用「截断几个 / 读不出几个」。
     final truncated = entry.noteArgs['truncated'];
     final failed = entry.noteArgs['failed'];
+    // FairPlay 覆盖说明里的 cryptid。
+    final cryptid = entry.noteArgs['cryptid'];
+    // Stage B 结构化覆盖说明的参数。
+    final probed = entry.noteArgs['probed'];
+    final nodes = entry.noteArgs['nodes'];
+    final edges = entry.noteArgs['edges'];
+    final coveredArg = entry.noteArgs['covered'];
+    final audited = entry.noteArgs['audited'];
 
     final String? localized = switch (code) {
       'android.manifest.unparsed' =>
@@ -2377,6 +2425,30 @@ class AnalysisReport {
         n.android_dex_no_traversable_bodies,
       'android.dex.desynced_bodies' =>
         count == null ? null : n.android_dex_desynced_bodies(count: count),
+      'android.artifacts.not_provided' => n.android_artifacts_not_provided,
+      'android.artifacts.scope' => (count == null || total == null)
+          ? null
+          : n.android_artifacts_scope(count: count, total: total),
+      'android.artifacts.truncated' => n.android_artifacts_truncated,
+      'android.payload.not_provided' => n.android_payload_not_provided,
+      'android.payload.no_candidates' => n.android_payload_no_candidates,
+      'android.payload.truncated' => (probed == null || total == null)
+          ? null
+          : n.android_payload_truncated(probed: probed, total: total),
+      'android.load_graph.not_provided' => n.android_load_graph_not_provided,
+      'android.load_graph.incomplete' => (nodes == null || edges == null)
+          ? null
+          : n.android_load_graph_incomplete(nodes: nodes, edges: edges),
+      'android.native_libraries.not_provided' =>
+        n.android_native_libraries_not_provided,
+      'android.native_libraries.partial' =>
+        (coveredArg == null || total == null)
+            ? null
+            : n.android_native_libraries_partial(
+                covered: coveredArg, total: total),
+      'android.split_sampling.truncated' => (audited == null || total == null)
+          ? null
+          : n.android_split_sampling_truncated(audited: audited, total: total),
       'android.native_symbols.not_provided' =>
         n.android_native_symbols_not_provided,
       'android.native_symbols.skipped_for_budget' => count == null
@@ -2432,6 +2504,12 @@ class AnalysisReport {
       'ios.privacy_manifest.absent' => n.ios_privacy_manifest_absent,
       'ios.executables.unscanned' =>
         count == null ? null : n.ios_executables_unscanned(count: count),
+      'ios.encryption.encrypted' =>
+        cryptid == null ? null : n.ios_encryption_encrypted(cryptid: cryptid),
+      'ios.encryption.nested_encrypted' =>
+        count == null ? null : n.ios_encryption_nested_encrypted(count: count),
+      'ios.encryption.decrypted' => n.ios_encryption_decrypted,
+      'ios.encryption.no_marker' => n.ios_encryption_no_marker,
       'ios.executables.truncated' => (count == null || total == null)
           ? null
           : n.ios_executables_truncated(count: count, total: total),
@@ -2793,17 +2871,23 @@ class AnalysisReport {
               'highestRiskSeverity': worst?.severity.name,
             },
 
-      // Phase C：顶层 `security` 对象。当前只有 cryptoTheft 有值；
-      // artifacts/loadGraph/seal/baseline 在 D/E 阶段接入（先保留 null，
-      // 让消费者可以稳定解析五个键）。
+      // Phase C：顶层 `security` 对象。
+      //
+      // v8 schema 早已为 artifacts/loadGraph 预留键与完整 $defs；2.10.7
+      // Stage B 只是把引擎已经算出的值真正写进来，因此**不升 schema 版本**。
+      // `null` 仍然表示「本次未产出」，不是「包里没有制品/加载边」。
       'security': security == null
           ? null
           : {
               'cryptoTheft': security.cryptoTheft == null
                   ? null
                   : _cryptoTheftJson(security.cryptoTheft!),
-              'artifacts': null,
-              'loadGraph': null,
+              'artifacts': security.artifacts == null
+                  ? null
+                  : _artifactInventoryJson(security.artifacts!),
+              'loadGraph': security.loadGraph == null
+                  ? null
+                  : _loadGraphJson(security.loadGraph!),
               'seal': security.seal == null ? null : _sealJson(security.seal!),
               'baseline': security.baseline == null
                   ? null
@@ -2944,6 +3028,54 @@ class AnalysisReport {
         'expectedFingerprintPrefixes': baseline.expectedFingerprintPrefixes,
         'actualFingerprintPrefixes': baseline.actualFingerprintPrefixes,
         'noteCodes': baseline.noteCodes,
+      };
+
+  static Map<String, dynamic> _artifactInventoryJson(
+    ArtifactInventory inventory,
+  ) =>
+      {
+        'entries': [
+          for (final entry in inventory.entries)
+            {
+              'path': entry.path,
+              'kind': entry.kind.name,
+              'origin': entry.origin.name,
+              'sizeBytes': entry.sizeBytes,
+              'arch': entry.arch,
+              'sha256': entry.sha256,
+              'contentScanned': entry.contentScanned,
+              'skipCode': entry.skipCode,
+              'suspicionCodes': entry.suspicionCodes,
+            },
+        ],
+        'totalEntries': inventory.totalEntries,
+        'inventoriedEntries': inventory.inventoriedEntries,
+        'entriesComplete': inventory.entriesComplete,
+        'skippedCodes': inventory.skippedCodes,
+      };
+
+  static Map<String, dynamic> _loadGraphJson(LoadGraph graph) => {
+        'nodes': [
+          for (final node in graph.nodes)
+            {
+              'id': node.id,
+              'kind': node.kind.name,
+              'resolvedPath': node.resolvedPath,
+              'presentInPackage': node.presentInPackage,
+            },
+        ],
+        'edges': [
+          for (final edge in graph.edges)
+            {
+              'fromId': edge.fromId,
+              'toId': edge.toId,
+              'kind': edge.kind.name,
+              'source': edge.source.name,
+              'location': edge.location,
+            },
+        ],
+        'danglingEdgeIds': graph.danglingEdgeIds,
+        'complete': graph.complete,
       };
 
   static Map<String, dynamic> _sealJson(SealCheck seal) => {

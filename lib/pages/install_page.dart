@@ -548,56 +548,91 @@ class _InstallPageState extends State<InstallPage> {
     // 判「是否在界内」，而 `IndexedStack` 里各页尺寸完全重叠，于是不可见的页
     // 也会收到同一次拖放 —— 拖一个 APK 到概览页会同时被安装页接住。
     final visible = Visibility.of(context);
-    return Scaffold(
-      body: DropTarget(
-        enable: visible,
-        onDragEntered: (_) => setState(() => _dragging = true),
-        onDragExited: (_) => setState(() => _dragging = false),
-        onDragDone: (details) {
-          setState(() => _dragging = false);
-          if (details.files.isEmpty) return;
-          unawaited(_setFile(details.files.first.path));
-        },
-        child: Container(
-          color: _dragging
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
-              : null,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
+    return DropTarget(
+      enable: visible,
+      onDragEntered: (_) => setState(() => _dragging = true),
+      onDragExited: (_) => setState(() => _dragging = false),
+      onDragDone: (details) {
+        setState(() => _dragging = false);
+        if (details.files.isEmpty) return;
+        unawaited(_setFile(details.files.first.path));
+      },
+      child: Container(
+        color: _dragging
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
+            : null,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 940;
+            final header = PageHeader(
+              title: t.nav.install,
+              subtitle: t.install.subtitle,
+              actions: [
+                IconButton(
+                  tooltip: t.install.refresh_devices,
+                  onPressed: _loadingDevices ? null : _refreshDevices,
+                  icon: _loadingDevices
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                ),
+              ],
+            );
+            final controls = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                PageHeader(
-                  title: t.nav.install,
-                  subtitle: t.install.subtitle,
-                  actions: [
-                    IconButton(
-                      tooltip: t.install.refresh_devices,
-                      onPressed: _loadingDevices ? null : _refreshDevices,
-                      icon: _loadingDevices
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
                 _buildFileCard(theme),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildDeviceCard(theme),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildOptionsCard(theme),
-                const SizedBox(height: 12),
-                _buildLogCard(theme),
-                const SizedBox(height: 20),
-                _buildInstallBar(theme),
-                const SizedBox(height: 24),
               ],
-            ),
-          ),
+            );
+            final log = _buildLogCard(
+              theme,
+              logHeight: wide ? 430 : 160,
+            );
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  header,
+                  const SizedBox(height: 14),
+                  if (wide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              controls,
+                              const SizedBox(height: 18),
+                              _buildInstallBar(theme),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 2, child: log),
+                      ],
+                    )
+                  else ...[
+                    controls,
+                    const SizedBox(height: 10),
+                    log,
+                    const SizedBox(height: 18),
+                    _buildInstallBar(theme),
+                  ],
+                  const SizedBox(height: 18),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -607,11 +642,8 @@ class _InstallPageState extends State<InstallPage> {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: theme.dividerColor.withValues(alpha: 0.2),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1154,7 +1186,7 @@ class _InstallPageState extends State<InstallPage> {
 
   // ---- 日志 ----
 
-  Widget _buildLogCard(ThemeData theme) {
+  Widget _buildLogCard(ThemeData theme, {double logHeight = 160}) {
     return _card(
       theme: theme,
       children: [
@@ -1171,19 +1203,29 @@ class _InstallPageState extends State<InstallPage> {
         ),
         const SizedBox(height: 8),
         if (_logs.isEmpty)
-          Text(
-            t.install.log_empty,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          Container(
+            width: double.infinity,
+            height: logHeight,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFF111318),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              t.install.log_empty,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF9AA0A6),
+              ),
+            ),
           )
         else
           Container(
             width: double.infinity,
-            height: 160,
+            height: logHeight,
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xFF111318),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Scrollbar(
               controller: _logScroll,
@@ -1195,6 +1237,7 @@ class _InstallPageState extends State<InstallPage> {
                     fontFamily: 'monospace',
                     fontSize: 11.5,
                     height: 1.45,
+                    color: Color(0xFFD6D3CC),
                   ),
                 ),
               ),

@@ -133,11 +133,17 @@ it is not implemented.
 `.apk` / `.ipa` files can show their own app icon in File Explorer instead of the generic
 file icon.
 
-**Off by default.** Turn it on once under Settings → System file icons. The feature
-writes a thumbnail-handler registration under the registry (per-user `HKCU`), which is
-installing something into your system — it should not happen behind your back.
-Disabling it removes exactly the two keys this app wrote; it does not touch other
-handlers or change the default app for `.apk`.
+**Off by default.** Neither the installer nor app startup writes a thumbnail
+registration; you must turn it on under Settings → System file icons, which writes a
+per-user `HKCU` entry. This feature installs something into your system — it should not
+happen behind your back.
+
+Disabling removes this app's `HKCU` entry and attempts to clean up the machine-wide
+(`HKLM`) entry written by older versions. Without administrator rights the `HKLM` entry
+cannot be removed; the UI then says it could not fully disable the feature instead of
+claiming success. It does not touch other handlers or change the default app for `.apk`.
+Upgrading does not automatically delete a `HKCU` registration written by an older
+version; use the settings toggle to disable it.
 
 The design is an in-proc COM thumbnail handler plus an out-of-process parser. Explorer
 loads the handler into itself, so the parsing must **not** run there — a crash would take
@@ -251,6 +257,7 @@ The Android and iOS parsers do not depend on each other; they share only `analys
   `aapt2` for the manifest and resources, `apksigner` / `codesign` for signatures, `assetutil` for iOS asset catalogs,
   `libcompression` (Apple's system library) for LZFSE, and `actool` (bundled with Xcode) to generate asset-catalog fixtures
 - **Fixtures are real artifacts**, never hand-assembled bytes — a hand-built sample carries the same wrong assumptions as the parser, which makes the test self-confirming
+- **Real-sample gate**: run real APK/IPA E2E with `APPINFOTOOL_SAMPLES` pointing at a sample directory; a release tag is **blocked** when samples are missing and `APPINFOTOOL_ALLOW_NO_SAMPLES=1` is not explicitly set, so a skip is never treated as a pass
 
 ## Known limitations
 

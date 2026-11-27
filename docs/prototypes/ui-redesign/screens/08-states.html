@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>08 · 页面状态与对话框</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+<style>
+  .state-card .state-preview .mini-body { padding: 9px 10px; }
+  .state-card .state-illustration { width: 32px; height: 32px; margin-bottom: 7px; }
+  .state-card .state-box h4 { font-size: 11px; margin-bottom: 4px; }
+  .state-card .state-box p { font-size: 9.5px; line-height: 1.42; margin-bottom: 7px; }
+  .state-card .state-box .btn { height: 28px; }
+  .state-card .mini-titlebar { height: 22px; }
+</style>
+</head>
+<body class="app" data-nav="analysis" data-window-title="AppInfoTool — 状态与对话框" data-window-state="空 / 加载 / 部分 / 失败">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">设计系统 <span class="sep">/</span> 状态与浮层</div>
+          <h1>状态与对话框</h1>
+          <p>解析页必须让“未加载、加载中、部分结果、失败”一眼可辨；失败不渲染无意义详情。</p>
+        </div>
+        <div class="actions"><span class="chip">组件规范 · v1</span></div>
+      </header>
+
+      <section class="state-board" style="flex:none; height:466px;">
+        <div class="card state-card">
+          <div class="card-head" style="margin-bottom:8px;"><div class="card-title">Empty · 未选择文件</div><span class="chip">引导</span></div>
+          <div class="state-preview">
+            <div class="mini-titlebar"><i></i><i></i><i></i></div>
+            <div class="mini-body">
+              <div class="state-box">
+                <div class="state-illustration"><svg class="ic"><use href="#i-upload"/></svg></div>
+                <h4>还没有打开安装包</h4>
+                <p>拖入 APK / IPA，或从本地选择。解析全程在本机完成。</p>
+                <button class="btn primary small"><svg class="ic"><use href="#i-folder"/></svg>选择文件</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card state-card">
+          <div class="card-head" style="margin-bottom:8px;"><div class="card-title">Loading · 解析中</div><span class="chip blue">可取消</span></div>
+          <div class="state-preview">
+            <div class="mini-titlebar"><i></i><i></i><i></i></div>
+            <div class="mini-body">
+              <div class="state-box">
+                <div class="spinner"></div>
+                <h4>正在解析 Aurora Notes</h4>
+                <p style="margin-bottom:8px;">读取 DEX 与资源表… <span style="font-family:var(--mono);font-size:9px;">62%</span></p>
+                <div style="height:4px; background:#e6e9e1; border-radius:3px; overflow:hidden; width:220px; margin:0 auto 10px;"><div style="height:100%; width:62%; background:var(--brand);"></div></div>
+                <button class="btn small">取消解析</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card state-card">
+          <div class="card-head" style="margin-bottom:8px;"><div class="card-title">Partial · 部分结果</div><span class="chip amber">覆盖缺口</span></div>
+          <div class="state-preview">
+            <div class="mini-titlebar"><i></i><i></i><i></i></div>
+            <div style="padding:10px 12px; background:#fbf4e5; border-bottom:1px solid #f1e2bf; font-size:9.5px; color:#7a5a1d; display:flex; gap:7px; align-items:flex-start;">
+              <svg class="ic" style="width:12px;height:12px;flex-shrink:0;"><use href="#i-alert"/></svg>
+              <span>21 / 64 个 payload 候选未探测；以下结论置信度已降低。</span>
+            </div>
+            <div class="mini-body" style="align-items:flex-start; justify-content:flex-start; flex-direction:column; gap:8px;">
+              <div style="display:flex; gap:8px; width:100%;"><span class="chip green">清单完整</span><span class="chip amber">payload 部分</span><span class="chip">签名已验</span></div>
+              <div style="height:34px; width:100%; border:1px solid var(--line); border-radius:7px; background:var(--panel);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card state-card">
+          <div class="card-head" style="margin-bottom:8px;"><div class="card-title">Failure · 失败</div><span class="chip red">不渲染详情</span></div>
+          <div class="state-preview">
+            <div class="mini-titlebar"><i></i><i></i><i></i></div>
+            <div class="mini-body">
+              <div class="state-box">
+                <div class="state-illustration" style="background:#fdf1ef; border-color:#f2d3cd; color:#b94a3e;"><svg class="ic"><use href="#i-alert"/></svg></div>
+                <h4>无法解析这个安装包</h4>
+                <p>文件可能损坏，或不是有效的 APK / IPA。原始错误：<span style="font-family:var(--mono);font-size:9px;">EOCD not found</span></p>
+                <div style="display:flex; gap:6px; justify-content:center;"><button class="btn primary small">重试</button><button class="btn small">选择其他文件</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; height:288px; flex:none;">
+        <div class="card state-card">
+          <div class="card-head" style="margin-bottom:8px;"><div class="card-title"><svg class="ic"><use href="#i-download"/></svg>导出报告</div><span class="chip">Markdown / JSON</span></div>
+          <div class="dialog-preview">
+            <div class="mock-dialog">
+              <h4>导出解析报告</h4>
+              <p>选择格式与范围，导出后可离线保存或附在工单里。</p>
+              <div style="display:flex; gap:8px; margin-bottom:9px;">
+                <div class="radio on"><b style="display:block;color:var(--ink);font-size:10px;">Markdown</b>适合阅读与粘贴</div>
+                <div class="radio"><b style="display:block;color:var(--ink);font-size:10px;">JSON</b>适合自动化</div>
+              </div>
+              <div class="radio-row" style="margin-top:0;">
+                <div class="radio on">完整报告</div><div class="radio">仅安全检测</div>
+              </div>
+              <div style="font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:5px;"><svg class="ic" style="width:11px;height:11px;"><use href="#i-info"/></svg>文件不会上传；导出包含本次解析的诊断信息。</div>
+              <div class="mock-actions"><button class="btn small">取消</button><button class="btn primary small">导出…</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card state-card">
+          <div class="card-head" style="margin-bottom:8px;"><div class="card-title"><svg class="ic"><use href="#i-compare"/></svg>批量重命名</div><span class="chip">预览后执行</span></div>
+          <div class="dialog-preview">
+            <div class="mock-dialog">
+              <h4>批量重命名 · 3 个文件</h4>
+              <p>按应用名 + 版本生成；冲突会自动追加序号，不会覆盖已有文件。</p>
+              <div style="border:1px solid var(--line); border-radius:7px; overflow:hidden; font-size:9px;">
+                <div style="display:grid; grid-template-columns:1.1fr 1fr 22px; padding:7px 8px; background:var(--panel-2); color:var(--muted);"><span>当前文件名</span><span>新文件名</span><span></span></div>
+                <div style="display:grid; grid-template-columns:1.1fr 1fr 22px; padding:7px 8px; border-top:1px solid var(--line); gap:4px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">217_091915.apk</span><span style="font-family:var(--mono);color:var(--brand);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Aurora Notes-3.20.0.apk</span><span style="color:var(--green);">✓</span></div>
+                <div style="display:grid; grid-template-columns:1.1fr 1fr 22px; padding:7px 8px; border-top:1px solid var(--line); gap:4px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">SUN.ipa</span><span style="font-family:var(--mono);color:var(--brand);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">SUN-1.8.3.ipa</span><span style="color:var(--green);">✓</span></div>
+                <div style="display:grid; grid-template-columns:1.1fr 1fr 22px; padding:7px 8px; border-top:1px solid var(--line); gap:4px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">notes-old.apk</span><span style="font-family:var(--mono);color:var(--brand);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Aurora Notes-2.9.0.apk</span><span style="color:var(--green);">✓</span></div>
+              </div>
+              <div class="mock-actions"><button class="btn small">取消</button><button class="btn primary small">重命名 3 个文件</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="footnote">Prototype · States &amp; Dialogs</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

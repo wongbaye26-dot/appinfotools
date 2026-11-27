@@ -31,7 +31,12 @@ import 'package:ipa_parser/ipa_parser.dart'
         IosIconSource,
         IosUnresolvedIcon,
         IpaContainer,
-        IpaInfoPlist;
+        IpaInfoPlist,
+        MachOByteOrder,
+        MachOEncryptionInfo,
+        MachOFile,
+        MachOFileType,
+        MachOImage;
 
 const _appPath = 'Payload/Example.app';
 
@@ -78,7 +83,7 @@ final _infoPlist = IpaInfoPlist(
       const FieldValue.extracted(['demo'], source: FieldSource.infoPlist),
 );
 
-IpaAnalysis _ipa() => IpaAnalysis(
+IpaAnalysis _ipa({bool encrypted = false}) => IpaAnalysis(
       container: const IpaContainer(
         bundles: [_mainApp],
         payloadApps: [_mainApp],
@@ -88,6 +93,25 @@ IpaAnalysis _ipa() => IpaAnalysis(
       ),
       mainApp: _mainApp,
       infoPlist: _infoPlist,
+      executable: encrypted
+          ? const MachOFile(images: [
+              MachOImage(
+                offset: 0,
+                size: 4096,
+                byteOrder: MachOByteOrder.little,
+                is64Bit: true,
+                cpuType: 0x0100000C,
+                cpuSubtype: 0,
+                fileType: MachOFileType.execute,
+                encryption: MachOEncryptionInfo(
+                  cryptOffset: 0x4000,
+                  cryptSize: 0x8000,
+                  cryptId: 1,
+                  is64Bit: true,
+                ),
+              ),
+            ])
+          : null,
       executablePath: '$_appPath/Example',
       icon: const IosIconResolution(
         unresolved: [
@@ -206,6 +230,23 @@ void main() {
       expect(find.byType(IosHeroCard), findsOneWidget);
     });
 
+    testWidgets('FairPlay 加密时先给出范围提示，而不是让读者自己猜', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa(encrypted: true)));
+      expect(tester.takeException(), isNull);
+
+      expect(find.text(t.security.encryption_banner_title), findsOneWidget);
+      expect(
+        find.textContaining('1 executable(s)'),
+        findsOneWidget,
+        reason: '提示要写明有几个可执行文件是密文',
+      );
+    });
+
+    testWidgets('未加密时没有 FairPlay 提示（不制造假警告）', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+      expect(find.text(t.security.encryption_banner_title), findsNothing);
+    });
+
     testWidgets('卡片顺序与 APK 页一致：文件 → 平台 → 版本 → 容器 …', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
       final titles = _cardTitles(tester);
@@ -218,9 +259,8 @@ void main() {
         expect(ia, lessThan(ib), reason: '「$a」应当排在「$b」前面');
       }
 
-      // 平台标识刻意排在最前 —— 它是两页唯一的分辨依据，应该第一眼看到。
-      before(t.file_info.platform, t.file_info.file);
-      before(t.file_info.file, t.apk_info.version_name);
+      // iOS Tab 顺序：概览 → Info.plist → 嵌套框架 → 签名 → 安全 → 文件 → 诊断。
+      before(t.file_info.platform, t.apk_info.version_name);
       before(t.apk_info.version_name, t.ios_info.minimum_os);
       before(t.ios_info.minimum_os, t.ios_info.container_section);
       before(t.ios_info.container_section, t.ios_info.signature_section);

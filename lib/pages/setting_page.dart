@@ -39,6 +39,12 @@ class SettingPage extends ConsumerStatefulWidget {
 
 class _SettingPageState extends ConsumerState<SettingPage> {
   final _maxLinesController = TextEditingController();
+  final _settingsScroll = ScrollController();
+  final _sectionKeys = List.generate(6, (_) => GlobalKey());
+  int _activeSection = 0;
+
+  /// 宽屏时把分组铺成两列卡片，并直接展开内容（对齐 V4 原型的设置卡片网格）。
+  bool _wideCards = false;
 
   /// 文件关联是否已登记；`null` 表示还没试过（Windows 之外的平台一直是 `null`）。
   ///
@@ -363,15 +369,13 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     bool initiallyExpanded = false,
   }) {
     final theme = Theme.of(context);
+    final card = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+      side: BorderSide(color: theme.colorScheme.outlineVariant, width: 1),
+    );
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: theme.dividerColor.withValues(alpha: 0.2),
-          width: 1,
-        ),
-      ),
+      shape: card,
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -596,24 +600,30 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       children: [
         ListTile(
           title: Text(t.settings.parser_engine),
-          trailing: DropdownButton<String>(
-            value: parserEngine,
-            isDense: true,
-            onChanged: (value) {
-              if (value != null) {
-                ref.read(settingStateProvider.notifier).setParserEngine(value);
-              }
-            },
-            items: [
-              DropdownMenuItem(
-                value: Config.kParserBuiltin,
-                child: Text(t.settings.parser_engine_builtin),
-              ),
-              DropdownMenuItem(
-                value: Config.kParserAapt2,
-                child: Text(t.settings.parser_engine_aapt2),
-              ),
-            ],
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: DropdownButton<String>(
+              value: parserEngine,
+              isDense: true,
+              onChanged: (value) {
+                if (value != null) {
+                  ref
+                      .read(settingStateProvider.notifier)
+                      .setParserEngine(value);
+                }
+              },
+              isExpanded: true,
+              items: [
+                DropdownMenuItem(
+                  value: Config.kParserBuiltin,
+                  child: Text(t.settings.parser_engine_builtin),
+                ),
+                DropdownMenuItem(
+                  value: Config.kParserAapt2,
+                  child: Text(t.settings.parser_engine_aapt2),
+                ),
+              ],
+            ),
           ),
         ),
         SwitchListTile(
@@ -764,32 +774,49 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   ///
   /// 用返回的**实际状态**刷新界面，而不是假定操作成功 ——
   /// 原生侧会拒绝「DLL 不在却写注册表」这类请求，这里必须如实反映。
+  ///
+  /// 停用比启用多一层：原生注销会尝试删 HKCU，也会尝试删旧版写在 HKLM 的
+  /// 机器级注册。没有管理员权限时 HKLM 删不掉，原生会返回错误；此时必须再查
+  /// 一次真实状态，不能因为拿到的结果不是 usable 就说「已停用」。
   Future<void> _toggleThumbnailProvider() async {
     if (_thumbnailBusy) return;
     setState(() => _thumbnailBusy = true);
     final wasUsable = _thumbnailStatus.usable;
-    final next = wasUsable
+    var next = wasUsable
         ? await SystemThumbnailManager.unregister()
         : await SystemThumbnailManager.register();
-    // 记住的是**意图**（用户点了哪一边），不是结果：注册失败（DLL 缺失）时
-    // 用户想要的仍是「开」，存成 false 会让下次启动静默放弃。
-    await Config.systemIconEnabled.updateValue(!wasUsable);
+
+    // 通道异常/注销部分失败会退化成 unknown；再查一次，让提示语基于注册表
+    // 的真实状态，而不是基于「我们猜它成功了」。
+    if (!next.isKnown || (wasUsable && !next.usable)) {
+      final actual = await SystemThumbnailManager.getStatus();
+      if (actual.isKnown) next = actual;
+    }
+
+    final outcome = SystemThumbnailManager.classifyToggle(
+      wasUsable: wasUsable,
+      status: next,
+    );
+    // 记录**实际**是否可用，不是记录用户点了哪一边。失败后仍写 true 会让
+    // 下次设置页显示一个从未生效的「已启用」。
+    await Config.systemIconEnabled.updateValue(next.usable);
     if (!mounted) return;
     setState(() {
       _thumbnailStatus = next;
       _thumbnailBusy = false;
     });
 
-    // 提示语按**结果**给，不按意图给：点了启用但 `usable` 仍是 false 时，
-    // 说「已启用」就是虚假成功。
     final String message;
-    if (next.usable) {
-      message = t.settings.system_icon.enabled_ok;
-    } else if (wasUsable) {
-      message = t.settings.system_icon.disabled_ok;
-    } else {
-      message = t.settings.system_icon
-          .failed(reason: SystemIconSection.stateLabel(next, t));
+    switch (outcome) {
+      case ThumbnailToggleOutcome.enabled:
+        message = t.settings.system_icon.enabled_ok;
+      case ThumbnailToggleOutcome.disabled:
+        message = t.settings.system_icon.disabled_ok;
+      case ThumbnailToggleOutcome.disabledMachineWide:
+        message = t.settings.system_icon.disabled_machine_wide;
+      case ThumbnailToggleOutcome.failed:
+        message = t.settings.system_icon
+            .failed(reason: SystemIconSection.stateLabel(next, t));
     }
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -826,42 +853,48 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       children: [
         ListTile(
           title: Text(t.settings.language),
-          trailing: DropdownButton<String>(
-            value: language,
-            items: [
-              DropdownMenuItem(
-                value: Config.kLanguageAuto,
-                child: Text(t.settings.language_auto),
-              ),
-              const DropdownMenuItem(value: 'en', child: Text('English')),
-              const DropdownMenuItem(
-                value: 'zh-CN',
-                child: Text('简体中文'),
-              ),
-              const DropdownMenuItem(
-                value: 'zh-HK',
-                child: Text('繁體中文（香港）'),
-              ),
-              const DropdownMenuItem(
-                value: 'zh-TW',
-                child: Text('繁體中文（台灣）'),
-              ),
-              const DropdownMenuItem(value: 'ja', child: Text('日本語')),
-              const DropdownMenuItem(value: 'ko', child: Text('한국어')),
-            ],
-            onChanged: (String? value) {
-              if (value != null) {
-                ref.read(settingStateProvider.notifier).setLanguage(value);
-              }
-            },
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: DropdownButton<String>(
+              value: language,
+              items: [
+                DropdownMenuItem(
+                  value: Config.kLanguageAuto,
+                  child: Text(t.settings.language_auto),
+                ),
+                const DropdownMenuItem(value: 'en', child: Text('English')),
+                const DropdownMenuItem(
+                  value: 'zh-CN',
+                  child: Text('简体中文'),
+                ),
+                const DropdownMenuItem(
+                  value: 'zh-HK',
+                  child: Text('繁體中文（香港）'),
+                ),
+                const DropdownMenuItem(
+                  value: 'zh-TW',
+                  child: Text('繁體中文（台灣）'),
+                ),
+                const DropdownMenuItem(value: 'ja', child: Text('日本語')),
+                const DropdownMenuItem(value: 'ko', child: Text('한국어')),
+              ],
+              onChanged: (String? value) {
+                if (value != null) {
+                  ref.read(settingStateProvider.notifier).setLanguage(value);
+                }
+              },
+            ),
           ),
         ),
         // 主题模式切换
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(child: Text(t.settings.theme_mode)),
+              Text(t.settings.theme_mode),
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(
@@ -1229,32 +1262,211 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     );
   }
 
+  void _jumpToSection(int index) {
+    setState(() => _activeSection = index);
+    final context = _sectionKeys[index].currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignment: 0.04,
+    );
+  }
+
+  @override
+  void dispose() {
+    _settingsScroll.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      // 不再用 AppBar：设置页的标题改为页面内的 `PageHeader`，
-      // 与 概览 / 分析 / 版本对比 三个页面同一个做法（左边标题+副标题，
-      // 右边操作）。此前这里是 AppBar 里一个孤立的「设置」，与另外几页
-      // 完全不是一个路数 —— 而这三页本身也曾经各有一套。
-      body: ListView(
-        padding: const EdgeInsets.all(24.0),
-        children: [
-          // 不能写 `const`：`t.*` 是 getter，不是编译期常量。
-          PageHeader(
-            title: t.settings.title,
-            subtitle: t.settings.subtitle,
-          ),
-          const SizedBox(height: 18),
-          _buildEnvironmentSection(),
-          _buildFeaturesSection(),
-          // 只在 Windows 出现：其它平台没有 Shell 缩略图处理器这个概念，
-          // 显示一个永远不可用的开关比不显示更糟（规格 8.2 同一条原则）。
-          if (SystemThumbnailManager.isSupported) _buildSystemIconSection(),
-          _buildAppearanceSection(),
-          _buildDebugSection(),
-          _buildAboutSection(),
-        ],
-      ),
+    _wideCards = MediaQuery.sizeOf(context).width >= 1100;
+    final sections = <Widget>[
+      _buildEnvironmentSection(),
+      _buildFeaturesSection(),
+      // 只在 Windows 出现：其它平台没有 Shell 缩略图处理器这个概念，
+      // 显示一个永远不可用的开关比不显示更糟（规格 8.2 同一条原则）。
+      if (SystemThumbnailManager.isSupported) _buildSystemIconSection(),
+      _buildAppearanceSection(),
+      _buildDebugSection(),
+      _buildAboutSection(),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 940;
+        final header = PageHeader(
+          title: t.settings.title,
+          subtitle: t.settings.subtitle,
+        );
+        if (!wide) {
+          return ListView(
+            padding: const EdgeInsets.all(18.0),
+            children: [
+              header,
+              const SizedBox(height: 14),
+              ...sections,
+            ],
+          );
+        }
+
+        final navLabels = [
+          t.settings.environment,
+          t.settings.features,
+          if (SystemThumbnailManager.isSupported) t.settings.system_icon.title,
+          t.settings.appearance,
+          t.settings.debug,
+          t.settings.about,
+        ];
+        final icons = [
+          Icons.computer,
+          Icons.tune,
+          if (SystemThumbnailManager.isSupported) Icons.image_outlined,
+          Icons.palette_outlined,
+          Icons.bug_report_outlined,
+          Icons.info_outline,
+        ];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+              child: header,
+            ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 190,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 8, 18),
+                      itemCount: navLabels.length,
+                      itemBuilder: (context, index) {
+                        final selected = index == _activeSection;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Material(
+                            color: selected
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withValues(alpha: 0.45)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => _jumpToSection(index),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      icons[index],
+                                      size: 18,
+                                      color: selected
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        navLabels[index],
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: selected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w400,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, body) {
+                        if (_wideCards) {
+                          // 环境/功能两组包含长路径和下拉框，保持整行；
+                          // 其余较短的分组排成两列卡片，避免半宽卡片挤压设置行。
+                          final cardWidth = (body.maxWidth - 40) / 2;
+                          final split = 2;
+                          return SingleChildScrollView(
+                            controller: _settingsScroll,
+                            padding: const EdgeInsets.fromLTRB(4, 0, 18, 18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0; i < split; i++)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: KeyedSubtree(
+                                      key: _sectionKeys[i],
+                                      child: sections[i],
+                                    ),
+                                  ),
+                                Wrap(
+                                  spacing: 16,
+                                  runSpacing: 16,
+                                  crossAxisAlignment: WrapCrossAlignment.start,
+                                  children: [
+                                    for (var i = split;
+                                        i < sections.length;
+                                        i++)
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: KeyedSubtree(
+                                          key: _sectionKeys[i],
+                                          child: sections[i],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return ListView(
+                          controller: _settingsScroll,
+                          padding: const EdgeInsets.fromLTRB(4, 0, 18, 18),
+                          children: [
+                            for (var i = 0; i < sections.length; i++)
+                              KeyedSubtree(
+                                key: _sectionKeys[i],
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: sections[i],
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>06 · 安装到设备</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+</head>
+<body class="app" data-nav="install" data-window-title="AppInfoTool — 安装" data-window-state="Pixel 8 · 已连接">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">工作区 <span class="sep">/</span> 安装</div>
+          <h1>安装到设备</h1>
+          <p>通过 adb 安装 APK / XAPK / APKS；安装日志会完整保留。</p>
+        </div>
+        <div class="actions">
+          <span class="chip green"><span class="badge-dot"></span>adb 已就绪</span>
+          <button class="btn icon"><svg class="ic"><use href="#i-refresh"/></svg></button>
+        </div>
+      </header>
+
+      <section class="install-grid" style="flex:1;">
+        <div class="stack" style="min-height:0;">
+          <div class="card card-pad">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-upload"/></svg>安装包</div><span class="chip">1 / 1</span></div>
+            <div class="file-drop">
+              <div class="file-icon">APK</div>
+              <div style="min-width:0;"><div class="name">Aurora Notes · 3.20.0</div><div class="meta">com.aurora.notes · 18.4 MB · 已解析</div></div>
+              <button class="btn small icon" style="margin-left:auto;" aria-label="移除"><svg class="ic"><use href="#i-x"/></svg></button>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+              <span class="chip green">架构匹配</span><span class="chip">minSdk 24</span><span class="chip">未安装过</span>
+            </div>
+          </div>
+
+          <div class="card card-pad">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-phone"/></svg>目标设备</div><span class="chip">USB</span></div>
+            <div class="device-row">
+              <div class="device-icon"><svg class="ic"><use href="#i-phone"/></svg></div>
+              <div><div class="device-name">Pixel 8</div><div class="device-meta">Android 15 · arm64-v8a · 126 GB 可用</div></div>
+              <span class="chip green">在线</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <button class="btn small"><svg class="ic"><use href="#i-refresh"/></svg>刷新设备</button>
+              <button class="btn small">无线连接</button>
+            </div>
+          </div>
+
+          <div class="card card-pad">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-settings"/></svg>安装选项</div><span class="chip">按需启用</span></div>
+            <div class="option-row"><span class="check on"><svg class="ic"><use href="#i-check"/></svg></span><div><div class="option-title">替换现有版本</div><div class="option-desc">保留应用数据；签名不一致时会失败。</div></div><span class="val">-r</span></div>
+            <div class="option-row"><span class="check"><svg class="ic"><use href="#i-check"/></svg></span><div><div class="option-title">允许版本降级</div><div class="option-desc">仅在明确需要回滚时使用。</div></div><span class="val">-d</span></div>
+            <div class="option-row"><span class="check"><svg class="ic"><use href="#i-check"/></svg></span><div><div class="option-title">授予全部运行时权限</div><div class="option-desc">用于测试；正式安装不建议开启。</div></div><span class="val">-g</span></div>
+            <button class="btn primary install-cta"><svg class="ic"><use href="#i-upload"/></svg>安装到 Pixel 8</button>
+          </div>
+
+          <div class="banner" style="padding:10px 12px;">
+            <svg class="ic"><use href="#i-info"/></svg>
+            <div><b style="font-size:10.5px">安装 ≠ 运行分析</b><p style="font-size:9.5px">本页只负责把包传到设备，不会启动应用或执行其代码。</p></div>
+          </div>
+        </div>
+
+        <div class="card log-card">
+          <div class="log-head">
+            <svg class="ic"><use href="#i-terminal"/></svg>adb 安装日志
+            <span class="chip">实时</span>
+            <button class="btn small icon" style="background:transparent;border-color:#303941;color:#9aa4ad;margin-left:6px;" aria-label="复制"><svg class="ic"><use href="#i-copy"/></svg></button>
+          </div>
+          <div class="log-body" style="flex:1;">
+            <div><span class="time">14:31:58</span> <span class="cmd">$ adb -s 3A21FDH2009P4 install -r -g "Aurora Notes.apk"</span></div>
+            <div><span class="time">14:31:58</span> Performing Streamed Install</div>
+            <div><span class="time">14:32:01</span> <span class="ok">Uploading APK… 18.4 MB / 18.4 MB (100%)</span></div>
+            <div><span class="time">14:32:02</span> <span class="ok">Success</span></div>
+            <div><span class="time">14:32:02</span> <span class="muted">——</span></div>
+            <div><span class="time">14:32:02</span> <span class="cmd">$ adb -s 3A21FDH2009P4 shell pm list packages com.aurora.notes</span></div>
+            <div><span class="time">14:32:02</span> package:com.aurora.notes</div>
+            <div><span class="time">14:32:02</span> <span class="ok">✓ 安装完成，耗时 4.1s</span></div>
+            <div style="margin-top:10px;"><span class="time">14:32:02</span> <span class="muted">提示：应用未启动；如需分析运行时行为，请另行使用设备工具。</span></div>
+            <div style="margin-top:18px; padding-top:12px; border-top:1px solid #252c32;">
+              <span class="time">14:33:10</span> <span class="cmd">$ adb devices</span><br>
+              <span class="time">14:33:10</span> 3A21FDH2009P4&nbsp;&nbsp;&nbsp;&nbsp;device<br>
+              <span class="time">14:33:10</span> <span class="muted">1 台设备在线 · 无无线设备</span>
+            </div>
+            <div style="margin-top:auto; padding-top:12px; color:#59656e; font-size:9px;">日志仅保存在本机内存；可复制，不上传。</div>
+          </div>
+        </div>
+      </section>
+      <div class="footnote">Prototype · Install</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

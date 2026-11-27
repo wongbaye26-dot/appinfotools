@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V3 · 02 概览 / 工作台</title>
+<link rel="stylesheet" href="../assets/v3.css">
+</head>
+<body class="app" data-nav="overview" data-window-title="AppInfoTool — 概览" data-crumb="WORKSPACE / TARGET" data-state="AURORA NOTES / ANDROID" data-status-left="STATIC ONLY · NO SAMPLE EXECUTION" data-status-right="LOCAL CACHE · NO UPLOAD">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div class="page-head-main">
+          <div class="kicker">WORKSPACE <span class="slash">/</span> <b>ACTIVE TARGET</b></div>
+          <h1>Aurora Notes</h1>
+          <p class="page-sub mono" style="font-size:10px;color:var(--muted);">com.aurora.notes · 3.20.0 (320) · ANDROID · 18.4 MB · 静态解析完成</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn"><svg class="ic"><use href="#i-compare"/></svg>加入对比</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-arrow"/></svg>查看详情</button>
+        </div>
+      </header>
+
+      <div class="grid12">
+        <section class="card" style="grid-column: span 8;">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-crosshair"/></svg>CURRENT TARGET</div><div class="right"><span class="chip lime">PARSED</span><span class="chip">APK</span></div></div>
+          <div class="card-body">
+            <div class="app-identity">
+              <div class="app-avatar">A</div>
+              <div style="min-width:0;">
+                <div class="app-name">Aurora Notes</div>
+                <div class="app-id">com.aurora.notes · v3.20.0 (320)</div>
+                <div class="identity-tags"><span class="chip"><svg class="ic"><use href="#i-android"/></svg>Android</span><span class="chip">arm64-v8a</span><span class="chip">minSdk 24</span><span class="chip amber">Debuggable</span></div>
+              </div>
+              <div style="margin-left:auto; text-align:right;">
+                <div class="kicker" style="justify-content:flex-end;">FILE</div>
+                <div class="mono" style="font-size:9px;color:var(--muted);margin-top:5px;">18.4 MB · SHA-256</div>
+                <div class="mono" style="font-size:8px;color:var(--faint);margin-top:2px;">9f2c…a71e</div>
+              </div>
+            </div>
+            <div class="detail-grid">
+              <div class="detail-cell"><div class="k">PACKAGE</div><div class="v mono">com.aurora.notes</div></div>
+              <div class="detail-cell"><div class="k">VERSION</div><div class="v mono">3.20.0 (320)</div></div>
+              <div class="detail-cell"><div class="k">SIGNATURE</div><div class="v mono" style="color:var(--lime)">v2 / v3 · VERIFIED</div></div>
+              <div class="detail-cell"><div class="k">TARGET SDK</div><div class="v mono">36</div></div>
+              <div class="detail-cell"><div class="k">COMPONENTS</div><div class="v mono">18 exported · 2 launchers</div></div>
+              <div class="detail-cell"><div class="k">ENTRY POINTS</div><div class="v mono">MainActivity · BootReceiver</div></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="overview-side" style="grid-column: span 4;">
+          <div class="side-panel">
+            <div class="side-panel-head"><svg class="ic"><use href="#i-shield"/></svg>POSTURE / STATIC</div>
+            <div class="side-panel-body">
+              <div style="display:flex;align-items:baseline;gap:9px;"><div class="metric" style="font-size:36px;color:var(--amber)">17</div><div style="font-size:9px;color:var(--muted)">项发现 · 3 项需优先复核</div></div>
+              <div style="display:flex;gap:14px;margin-top:9px;font-family:var(--mono);font-size:8.5px;">
+                <span style="color:var(--red)">● 3 HIGH</span><span style="color:var(--amber)">● 7 REVIEW</span><span style="color:var(--muted)">● 7 INFO</span>
+              </div>
+              <div class="coverage-item" style="margin-top:10px;"><svg class="ic ok"><use href="#i-check"/></svg><span>覆盖 11 / 13 维度</span><span class="state" style="color:var(--lime)">85%</span></div>
+              <div class="coverage-item"><svg class="ic warn"><use href="#i-alert"/></svg><span>2 个覆盖缺口</span><span class="state" style="color:var(--amber)">PARTIAL</span></div>
+            </div>
+          </div>
+          <div class="side-panel">
+            <div class="side-panel-head"><svg class="ic"><use href="#i-activity"/></svg>NEXT ACTION</div>
+            <div class="side-panel-body" style="padding-top:8px;padding-bottom:8px;">
+              <div class="quick-row"><svg class="ic"><use href="#i-file"/></svg><span>查看安全发现</span><span class="meta">17</span></div>
+              <div class="quick-row"><svg class="ic"><use href="#i-layers"/></svg><span>检查结构证据</span><span class="meta">1601</span></div>
+              <div class="quick-row"><svg class="ic"><use href="#i-download"/></svg><span>导出完整报告</span><span class="meta">MD / JSON</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="stat-label">PERMISSIONS</div><div class="stat-value">10</div><div class="stat-foot">3 个危险权限组合</div></div>
+        <div class="stat"><div class="stat-label">COMPONENTS</div><div class="stat-value">18</div><div class="stat-foot">2 个 exported activity</div></div>
+        <div class="stat"><div class="stat-label">DEX FILES</div><div class="stat-value">1</div><div class="stat-foot">4,218 classes · 完整</div></div>
+        <div class="stat"><div class="stat-label">NATIVE LIBS</div><div class="stat-value">2</div><div class="stat-foot">arm64 + armeabi-v7a</div></div>
+      </div>
+
+      <div class="grid12" style="margin-top:12px;">
+        <section class="card" style="grid-column: span 8;">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-clock"/></svg>RECENT ANALYSES</div><div class="right"><span class="chip">LOCAL ONLY</span></div></div>
+          <table class="dense">
+            <thead><tr><th>FILE</th><th>PLATFORM</th><th>SECURITY</th><th>LAST OPENED</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="cell-main">Aurora Notes · 3.20.0</div><div class="cell-sub">com.aurora.notes · 18.4 MB</div></td><td><span class="chip lime">ANDROID</span></td><td><span class="mono" style="color:var(--amber)">17</span> <span class="muted" style="font-size:9px">findings</span></td><td class="mono" style="color:var(--muted);font-size:9px;">TODAY 14:32</td><td><svg class="ic" style="width:13px;height:13px;color:var(--faint)"><use href="#i-more"/></svg></td></tr>
+              <tr><td><div class="cell-main">SUN · 1.8.3</div><div class="cell-sub">com.overall.sun · 40.5 MB</div></td><td><span class="chip teal">IOS</span></td><td><span class="mono" style="color:var(--amber)">17</span> <span class="muted" style="font-size:9px">findings</span></td><td class="mono" style="color:var(--muted);font-size:9px;">YESTERDAY 18:07</td><td><svg class="ic" style="width:13px;height:13px;color:var(--faint)"><use href="#i-more"/></svg></td></tr>
+              <tr><td><div class="cell-main">Aurora Notes · 2.9.0</div><div class="cell-sub">com.aurora.notes · 16.1 MB</div></td><td><span class="chip lime">ANDROID</span></td><td><span class="mono" style="color:var(--muted)">9</span> <span class="muted" style="font-size:9px">findings</span></td><td class="mono" style="color:var(--muted);font-size:9px;">NOV 21</td><td><svg class="ic" style="width:13px;height:13px;color:var(--faint)"><use href="#i-more"/></svg></td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section class="card" style="grid-column: span 4;">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-terminal"/></svg>SESSION LOG</div><div class="right"><span class="chip">READ-ONLY</span></div></div>
+          <div class="card-body" style="padding:10px 13px;font-family:var(--mono);font-size:8px;line-height:1.9;color:var(--muted);">
+            <div><span style="color:var(--faint)">14:31:58</span> <span style="color:var(--teal)">parse.apk</span> <span style="color:var(--lime)">ok</span></div>
+            <div><span style="color:var(--faint)">14:31:59</span> <span style="color:var(--teal)">manifest</span> 1601 entries</div>
+            <div><span style="color:var(--faint)">14:32:00</span> <span style="color:var(--teal)">dex.scan</span> 1 file / 4218 cls</div>
+            <div><span style="color:var(--faint)">14:32:00</span> <span style="color:var(--teal)">seal.v2v3</span> <span style="color:var(--lime)">verified</span></div>
+            <div><span style="color:var(--faint)">14:32:01</span> <span style="color:var(--teal)">coverage</span> 11 / 13 <span style="color:var(--amber)">partial</span></div>
+            <div><span style="color:var(--faint)">14:32:01</span> <span style="color:var(--teal)">findings</span> 17 total / 3 high</div>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);color:var(--faint);">No runtime evidence. No upload.</div>
+          </div>
+        </section>
+      </div>
+      <div class="footnote"><span>V3 / SIGNAL ROOM · OVERVIEW / ACTIVE</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

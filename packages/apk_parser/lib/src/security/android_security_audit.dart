@@ -236,6 +236,16 @@ class AndroidSecurityAudit {
     /// Phase B 载荷探测；`null` = 未接入。
     PayloadProbeResult? payloadProbe,
 
+    /// 分包 APK 总数（base 之外）；`null` = 单 APK / 未接入。
+    ///
+    /// 与 [splitAudited] 配对，表达「抽到了多少分包、实际审了多少」。
+    /// 分包在 total 里但没审，是一个具体的覆盖缺口，必须进 Coverage，
+    /// 不能只写进 limitations。
+    int? splitTotal,
+
+    /// 实际打开并纳入审计的分包数；单 APK 为 null。
+    int? splitAudited,
+
     /// Phase D 密封校验；`null` = 未做/未注入摘要函数。
     SealCheck? seal,
 
@@ -1824,6 +1834,161 @@ class AndroidSecurityAudit {
           _ => null,
         },
       ),
+      // 制品清单：只回答「列了多少、是否完整」，不判断恶意性。
+      // `null` = 本次没有接入 Phase B，是未覆盖而不是「包里没有制品」。
+      CoverageEntry.noted(
+        id: 'android.artifacts',
+        status: artifacts == null
+            ? CoverageStatus.notCovered
+            : (artifacts.entriesComplete
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        note: artifacts == null
+            ? (
+                'android.artifacts.not_provided',
+                'The artifact inventory was not provided to the security audit',
+                const <String, Object>{},
+              )
+            : (artifacts.entriesComplete
+                ? (
+                    'android.artifacts.scope',
+                    '${artifacts.entries.length} security-relevant '
+                        'artifact(s) are listed out of '
+                        '${artifacts.totalEntries} archive entry(ies)',
+                    {
+                      'count': artifacts.entries.length,
+                      'total': artifacts.totalEntries,
+                    },
+                  )
+                : (
+                    'android.artifacts.truncated',
+                    'The artifact inventory was truncated at the entry limit; '
+                        'only part of the package is listed',
+                    const <String, Object>{},
+                  )),
+      ),
+      // 载荷探测：调用方 cap 64 曾把「还有候选没探测」藏起来；这里用
+      // entriesTotal 作为分母，complete=false 时明确标 partial。
+      CoverageEntry.noted(
+        id: 'android.payloadProbe',
+        status: payloadProbe == null
+            ? CoverageStatus.notCovered
+            : (payloadProbe.entriesTotal == 0
+                ? CoverageStatus.notApplicable
+                : (payloadProbe.complete
+                    ? CoverageStatus.covered
+                    : CoverageStatus.partial)),
+        covered: payloadProbe?.entriesProbed,
+        limit: payloadProbe?.entriesTotal,
+        note: payloadProbe == null
+            ? (
+                'android.payload.not_provided',
+                'Payload probing was not provided to the security audit',
+                const <String, Object>{},
+              )
+            : (payloadProbe.entriesTotal == 0
+                ? (
+                    'android.payload.no_candidates',
+                    'No asset or embedded-code candidates were available for '
+                        'payload probing',
+                    const <String, Object>{},
+                  )
+                : (payloadProbe.complete
+                    ? null
+                    : (
+                        'android.payload.truncated',
+                        '${payloadProbe.entriesProbed} of '
+                            '${payloadProbe.entriesTotal} candidate entry(ies) '
+                            'were probed',
+                        {
+                          'probed': payloadProbe.entriesProbed,
+                          'total': payloadProbe.entriesTotal,
+                        },
+                      ))),
+      ),
+      // 加载链：完整遍历才叫 covered；被预算/解析失败截断是具体缺口。
+      CoverageEntry.noted(
+        id: 'android.loadGraph',
+        status: loadGraph == null
+            ? CoverageStatus.notCovered
+            : (loadGraph.complete
+                ? CoverageStatus.covered
+                : CoverageStatus.partial),
+        covered: loadGraph?.nodes.length,
+        note: loadGraph == null
+            ? (
+                'android.load_graph.not_provided',
+                'The load graph was not provided to the security audit',
+                const <String, Object>{},
+              )
+            : (loadGraph.complete
+                ? null
+                : (
+                    'android.load_graph.incomplete',
+                    'Load graph traversal stopped early: '
+                        '${loadGraph.nodes.length} node(s) and '
+                        '${loadGraph.edges.length} edge(s) were recorded',
+                    {
+                      'nodes': loadGraph.nodes.length,
+                      'edges': loadGraph.edges.length,
+                    },
+                  )),
+      ),
+      // 原生库内容：与 `android.nativeSymbols` 分开 —— 后者回答「符号扫了
+      // 多少」，这里回答「全包唯一库中真正打开/读取了多少」。
+      CoverageEntry.noted(
+        id: 'android.nativeLibraries',
+        status: (nativeLibraryTotal ?? 0) == 0
+            ? CoverageStatus.notApplicable
+            : ((nativeEntries.length <
+                        (nativeLibraryTotal ?? nativeEntries.length) ||
+                    nativeSkipped.isNotEmpty)
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: nativeEntries.isEmpty ? null : nativeEntries.length,
+        limit: nativeLibraryTotal,
+        note: (nativeLibraryTotal ?? 0) == 0
+            ? (
+                'android.native_libraries.not_provided',
+                'No native library content was provided for scanning',
+                const <String, Object>{},
+              )
+            : ((nativeEntries.length <
+                        (nativeLibraryTotal ?? nativeEntries.length) ||
+                    nativeSkipped.isNotEmpty)
+                ? (
+                    'android.native_libraries.partial',
+                    '${nativeEntries.length} of $nativeLibraryTotal unique '
+                        'native library(ies) were opened for content scanning',
+                    {
+                      'covered': nativeEntries.length,
+                      'total': nativeLibraryTotal ?? nativeEntries.length,
+                    },
+                  )
+                : null),
+      ),
+      // 分包抽样：total 是包里声明的分包数，audited 是真正打开并纳入审计的。
+      // 单 APK 不适用；有分包但只审了一部分才是缺口。
+      CoverageEntry.noted(
+        id: 'android.splitSampling',
+        status: (splitTotal ?? 0) == 0
+            ? CoverageStatus.notApplicable
+            : ((splitAudited ?? 0) < (splitTotal ?? 0)
+                ? CoverageStatus.partial
+                : CoverageStatus.covered),
+        covered: (splitTotal ?? 0) == 0 ? null : splitAudited,
+        limit: (splitTotal ?? 0) == 0 ? null : splitTotal,
+        note: (splitTotal ?? 0) == 0
+            ? null
+            : ((splitAudited ?? 0) < (splitTotal ?? 0)
+                ? (
+                    'android.split_sampling.truncated',
+                    '${splitAudited ?? 0} of $splitTotal split APK(s) were '
+                        'audited',
+                    {'audited': splitAudited ?? 0, 'total': splitTotal ?? 0},
+                  )
+                : null),
+      ),
     ]);
 
     if (seal?.state == SealState.mismatch) {
@@ -1853,6 +2018,8 @@ class AndroidSecurityAudit {
       ),
       seal: seal,
       baseline: baseline,
+      artifacts: artifacts,
+      loadGraph: loadGraph,
     );
   }
 

@@ -568,8 +568,9 @@ PayloadProbeResult _probePayloads(
   const headBytes = 4096;
   const probeBytes = 64 * 1024;
   final inputs = <PayloadProbeInput>[];
+  var candidateCount = 0;
+  var skipped = 0;
   for (final entry in inventory.entries) {
-    if (inputs.length >= maxEntries) break;
     final path = entry.path;
     final candidate = path.startsWith('assets/') ||
         entry.kind == ArtifactKind.dex ||
@@ -577,9 +578,23 @@ PayloadProbeResult _probePayloads(
         entry.kind == ArtifactKind.assetBinary ||
         entry.kind == ArtifactKind.script;
     if (!candidate) continue;
-    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) continue;
+    candidateCount++;
+    // **先计数，再决定要不要读**：调用方 cap 64 不能把「还有候选」藏起来。
+    // 否则 `PayloadProbe.scan` 只看到 64 条，会诚实地对它看到的输入报
+    // `complete=true`，而报告读者以为整个包都探过了。
+    if (inputs.length >= maxEntries) {
+      skipped++;
+      continue;
+    }
+    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) {
+      skipped++;
+      continue;
+    }
     final bytes = reader.readFilePrefix(path, maxBytes: probeBytes);
-    if (bytes == null || bytes.isEmpty) continue;
+    if (bytes == null || bytes.isEmpty) {
+      skipped++;
+      continue;
+    }
     final head =
         bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
     final dot = path.lastIndexOf('.');
@@ -592,7 +607,15 @@ PayloadProbeResult _probePayloads(
       declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
     ));
   }
-  return PayloadProbe.scan(inputs);
+  final scanned = PayloadProbe.scan(inputs);
+  if (skipped == 0 && candidateCount == inputs.length) return scanned;
+  return PayloadProbeResult(
+    signals: scanned.signals,
+    entriesProbed: scanned.entriesProbed,
+    entriesTotal: candidateCount,
+    complete: false,
+    noteCodes: [...scanned.noteCodes, 'payload.candidates_skipped']..sort(),
+  );
 }
 
 /// `resources.arsc` 全局字符串池 + 文本型 `assets/**` 的字符串。

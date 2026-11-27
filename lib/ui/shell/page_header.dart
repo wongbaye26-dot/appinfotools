@@ -70,8 +70,9 @@ class PageHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                  fontSize: 32,
                 ),
               ),
               if (subtitle != null) ...[
@@ -81,8 +82,11 @@ class PageHeader extends StatelessWidget {
                   // 一行到底：见类文档「副标题只占一行」。
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.hintColor),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
                 ),
               ],
             ],

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V3 · 01 概览 / 空态</title>
+<link rel="stylesheet" href="../assets/v3.css">
+</head>
+<body class="app" data-nav="overview" data-window-title="AppInfoTool — 概览" data-crumb="WORKSPACE / OVERVIEW" data-state="NO TARGET / IDLE" data-status-left="STATIC ONLY · NO SAMPLE EXECUTION" data-status-right="LOCAL CACHE · NO UPLOAD">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div class="page-head-main">
+          <div class="kicker">WORKSPACE <span class="slash">/</span> <b>START</b></div>
+          <h1>把安装包拆成可读的证据。</h1>
+          <p class="page-sub">本地静态分析 APK / IPA，不上传样本、不执行代码。结果以结构、覆盖范围和安全线索呈现，而不是一句“安全 / 不安全”。</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn">批量重命名</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-upload"/></svg>打开安装包</button>
+        </div>
+      </header>
+
+      <div class="grid12">
+        <section class="card overview-hero">
+          <div class="hero-inner">
+            <div class="hero-label">READY / NO TARGET</div>
+            <h2 class="hero-title">把陌生安装包<br>变成可核对的<em>证据链</em>。</h2>
+            <p class="hero-copy">清单、权限、DEX、原生库、签名与覆盖范围——每个结论都能回到一个文件或一个规则。</p>
+            <div class="hero-actions">
+              <span class="hero-drop"><svg class="ic"><use href="#i-folder"/></svg>拖入 APK / IPA</span>
+              <button class="btn primary"><svg class="ic"><use href="#i-arrow"/></svg>选择文件</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="overview-side">
+          <div class="side-panel">
+            <div class="side-panel-head"><svg class="ic"><use href="#i-crosshair"/></svg>SESSION</div>
+            <div class="side-panel-body">
+              <div class="session-line"><span>ENGINE</span><span>2.10.6 / BUILTIN</span></div>
+              <div class="session-line"><span>MODE</span><span>STATIC ONLY</span></div>
+              <div class="session-line"><span>NETWORK</span><span>OFF</span></div>
+              <div class="session-line"><span>BASELINE</span><span>2 ANDROID / 0 IOS</span></div>
+            </div>
+          </div>
+          <div class="side-panel">
+            <div class="side-panel-head"><svg class="ic"><use href="#i-layers"/></svg>SUPPORTED</div>
+            <div class="side-panel-body">
+              <div class="quick-row"><svg class="ic"><use href="#i-android"/></svg><span>APK / XAPK / APKM / APKS</span><span class="meta">L2-L4</span></div>
+              <div class="quick-row"><svg class="ic"><use href="#i-apple"/></svg><span>IPA / Payload / Frameworks</span><span class="meta">L2-L3</span></div>
+              <div class="quick-row"><svg class="ic"><use href="#i-file"/></svg><span>Markdown / JSON 导出</span><span class="meta">OFFLINE</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="stat-label"><svg class="ic" style="width:11px;height:11px"><use href="#i-database"/></svg>ANALYZED</div><div class="stat-value">0</div><div class="stat-foot">本次会话还没有分析记录</div></div>
+        <div class="stat"><div class="stat-label"><svg class="ic" style="width:11px;height:11px"><use href="#i-clock"/></svg>LAST RUN</div><div class="stat-value">—</div><div class="stat-foot">打开文件后开始计时</div></div>
+        <div class="stat"><div class="stat-label"><svg class="ic" style="width:11px;height:11px"><use href="#i-shield"/></svg>FINDINGS</div><div class="stat-value">—</div><div class="stat-foot">仅静态证据，非恶意软件定性</div></div>
+        <div class="stat"><div class="stat-label"><svg class="ic" style="width:11px;height:11px"><use href="#i-code"/></svg>REPORT</div><div class="stat-value lime">JSON</div><div class="stat-foot">schema v8 · 可离线归档</div></div>
+      </div>
+
+      <div class="grid12" style="margin-top:12px;">
+        <section class="card" style="grid-column: span 8;">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-file"/></svg>RECENT ANALYSES</div><div class="right"><span class="chip">LOCAL ONLY</span></div></div>
+          <div style="padding: 28px 16px; text-align:center;">
+            <div style="width:34px;height:34px;border:1px solid var(--line-2);border-radius:6px;display:grid;place-items:center;margin:0 auto 10px;color:var(--faint);"><svg class="ic" style="width:16px;height:16px"><use href="#i-folder"/></svg></div>
+            <div style="font-size:11px;color:var(--ink-2);">还没有分析记录</div>
+            <div style="font-size:9px;color:var(--muted);margin-top:4px;">打开第一个安装包后，这里会保留最近 10 条本地记录。</div>
+          </div>
+        </section>
+        <section class="card" style="grid-column: span 4;">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-activity"/></svg>ENVIRONMENT</div></div>
+          <div class="card-body">
+            <div class="coverage-item"><span class="ok">●</span><span>内置解析器</span><span class="state">READY</span></div>
+            <div class="coverage-item"><span class="ok">●</span><span>签名工具</span><span class="state">READY</span></div>
+            <div class="coverage-item"><span class="warn">●</span><span>adb / 设备安装</span><span class="state">OPTIONAL</span></div>
+            <div class="coverage-item"><span style="color:var(--faint)">●</span><span>外部样本基线</span><span class="state">NOT SET</span></div>
+          </div>
+        </section>
+      </div>
+      <section class="card" style="margin-top:12px;">
+        <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-layers"/></svg>PIPELINE / WHAT HAPPENS</div><div class="right"><span class="chip">READ-ONLY</span></div></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);">
+          <div style="padding:12px 14px;border-right:1px solid var(--line);"><div class="kicker" style="color:var(--lime)">01 / DROP</div><div style="font-size:10px;color:var(--ink-2);margin-top:6px;">拖入或选择安装包</div><div style="font-size:8.5px;color:var(--muted);margin-top:3px;">APK / XAPK / APKM / APKS / IPA</div></div>
+          <div style="padding:12px 14px;border-right:1px solid var(--line);"><div class="kicker">02 / PARSE</div><div style="font-size:10px;color:var(--ink-2);margin-top:6px;">清单、DEX、资源、签名</div><div style="font-size:8.5px;color:var(--muted);margin-top:3px;">纯 Dart 解析，不执行样本</div></div>
+          <div style="padding:12px 14px;border-right:1px solid var(--line);"><div class="kicker">03 / EVIDENCE</div><div style="font-size:10px;color:var(--ink-2);margin-top:6px;">覆盖范围与静态线索</div><div style="font-size:8.5px;color:var(--muted);margin-top:3px;">每条结论都可回溯到规则</div></div>
+          <div style="padding:12px 14px;"><div class="kicker">04 / EXPORT</div><div style="font-size:10px;color:var(--ink-2);margin-top:6px;">Markdown / JSON 归档</div><div style="font-size:8.5px;color:var(--muted);margin-top:3px;">本地导出，不上传</div></div>
+        </div>
+      </section>
+      <div class="footnote"><span>V3 / SIGNAL ROOM · OVERVIEW / EMPTY</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

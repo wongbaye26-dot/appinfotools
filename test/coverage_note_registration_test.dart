@@ -50,6 +50,12 @@ const _args = <String, Object>{
   'failed': 1,
   'path': 'assets/x',
   'size': 64,
+  'cryptid': 1,
+  'probed': 2,
+  'nodes': 3,
+  'edges': 4,
+  'covered': 2,
+  'audited': 2,
 };
 
 Future<void> _use(String locale) => LocaleSettings.setLocaleRaw(locale);

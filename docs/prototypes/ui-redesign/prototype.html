@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AppInfoTool — UI Redesign Prototype</title>
+<link rel="stylesheet" href="assets/prototype.css">
+<style>
+  body { width: auto; min-height: 100vh; background: #101317; color: #eef0ea; }
+  .gallery { max-width: 1240px; margin: 0 auto; padding: 64px 32px 80px; }
+  .g-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; margin-bottom: 44px; }
+  .g-kicker { color: #8d939d; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
+  .g-title { font-size: 48px; line-height: 1.04; letter-spacing: -.045em; margin: 14px 0 16px; font-weight: 680; }
+  .g-lede { color: #a2a8b1; font-size: 14px; line-height: 1.7; max-width: 620px; margin: 0; }
+  .g-meta { border-left: 1px solid #2a2f36; padding-left: 22px; min-width: 210px; color: #8d939d; font-size: 11px; line-height: 2; }
+  .g-meta b { color: #eef0ea; font-weight: 560; }
+  .g-tokens { display: flex; gap: 10px; flex-wrap: wrap; margin: 30px 0 40px; }
+  .swatch { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #2a2f36; border-radius: 8px; color: #a2a8b1; font-size: 10px; }
+  .swatch i { width: 14px; height: 14px; border-radius: 4px; display: block; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .shot { background: #181c21; border: 1px solid #2a2f36; border-radius: 16px; overflow: hidden; transition: transform .18s ease, border-color .18s ease; display: block; }
+  .shot:hover { transform: translateY(-3px); border-color: #3b4a44; }
+  .shot img { width: 100%; display: block; border-bottom: 1px solid #2a2f36; }
+  .shot-body { padding: 16px 18px 18px; display: flex; align-items: flex-start; gap: 12px; }
+  .num { font-family: var(--mono); color: #6ee7b7; font-size: 11px; padding-top: 2px; }
+  .shot h3 { margin: 0 0 5px; font-size: 14px; font-weight: 600; color: #eef0ea; }
+  .shot p { margin: 0; color: #8d939d; font-size: 11.5px; line-height: 1.55; }
+  .shot .arrow { margin-left: auto; color: #6ee7b7; font-size: 18px; padding-top: 8px; }
+  .g-foot { margin-top: 42px; padding-top: 22px; border-top: 1px solid #2a2f36; display: flex; justify-content: space-between; color: #6f7680; font-size: 10.5px; gap: 24px; flex-wrap: wrap; }
+  .g-foot b { color: #a2a8b1; font-weight: 500; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } .g-top { flex-direction: column; } .g-title { font-size: 36px; } }
+</style>
+</head>
+<body>
+  <div class="gallery">
+    <div class="g-top">
+      <div>
+        <div class="g-kicker">AppInfoTool · UI Redesign · 2026</div>
+        <h1 class="g-title">Less tool.<br>More instrument.</h1>
+        <p class="g-lede">一套面向“安装包检查”的界面语言：暖白工作台、石墨侧栏、青色证据强调。目标不是装饰，而是让结构、覆盖范围和安全发现更快被读懂。</p>
+      </div>
+      <div class="g-meta">
+        <div>版本 <b>v1 · 8 screens</b></div>
+        <div>画布 <b>1440 × 1024</b></div>
+        <div>基线 <b>2.10.6</b></div>
+        <div>状态 <b>原型 / 未改业务逻辑</b></div>
+      </div>
+    </div>
+
+    <div class="g-tokens">
+      <span class="swatch"><i style="background:#101317"></i>Graphite #101317</span>
+      <span class="swatch"><i style="background:#f2f2ec"></i>Workbench #f2f2ec</span>
+      <span class="swatch"><i style="background:#0f766e"></i>Teal #0f766e</span>
+      <span class="swatch"><i style="background:#b9f26e"></i>Mint #b9f26e</span>
+      <span class="swatch"><i style="background:#ffffff;border:1px solid #444"></i>Panel #ffffff</span>
+      <span class="swatch"><i style="background:#a65a08"></i>Attention #a65a08</span>
+    </div>
+
+    <div class="grid">
+      <a class="shot" href="screens/01-overview-empty.html">
+        <img src="renders/01-overview-empty.png" alt="概览空态">
+        <div class="shot-body"><span class="num">01</span><div><h3>概览 · 空态</h3><p>把“开始分析”做成明确的下一步：拖入、选择、理解支持格式。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/02-overview-active.html">
+        <img src="renders/02-overview-active.png" alt="概览工作台">
+        <div class="shot-body"><span class="num">02</span><div><h3>概览 · 工作台</h3><p>当前文件、安全发现、结构与最近记录集中在一屏。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/03-analysis-apk.html">
+        <img src="renders/03-analysis-apk.png" alt="Android 分析">
+        <div class="shot-body"><span class="num">03</span><div><h3>分析 · Android</h3><p>证据优先：覆盖环、静态线索、Artifact / Load Graph 结构证据。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/04-analysis-ipa.html">
+        <img src="renders/04-analysis-ipa.png" alt="iOS 分析">
+        <div class="shot-body"><span class="num">04</span><div><h3>分析 · iOS</h3><p>FairPlay 加密、签名失败与嵌套截断在同一视线高度内被解释。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/05-diff.html">
+        <img src="renders/05-diff.png" alt="版本对比">
+        <div class="shot-body"><span class="num">05</span><div><h3>版本对比</h3><p>字段、集合、无法比较三类差异分开表达，避免“未知=变化”。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/06-install.html">
+        <img src="renders/06-install.png" alt="安装设备">
+        <div class="shot-body"><span class="num">06</span><div><h3>安装 · 设备</h3><p>设备、选项、日志并排；安装与运行分析明确分离。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/07-settings.html">
+        <img src="renders/07-settings.png" alt="设置">
+        <div class="shot-body"><span class="num">07</span><div><h3>设置</h3><p>默认关闭系统集成；权限、隐私边界与失败状态说清楚。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/08-states.html">
+        <img src="renders/08-states.png" alt="状态与对话框">
+        <div class="shot-body"><span class="num">08</span><div><h3>状态与浮层</h3><p>Empty / Loading / Partial / Failure 与导出、批量重命名对话框。</p></div><span class="arrow">↗</span></div>
+      </a>
+    </div>
+
+    <div class="g-foot">
+      <span><b>Prototype only.</b> 未修改 Flutter 源码与业务逻辑；所有页面以静态 HTML 呈现。</span>
+      <span>Design system · <b>prototype.css</b> · icons.js · shell.js</span>
+    </div>
+  </div>
+</body>
+</html>

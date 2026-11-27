@@ -181,6 +181,7 @@
       "refresh_done": "Asked Explorer to re-read the file associations",
       "enabled_ok": "Enabled — open a folder with APK or IPA files to check",
       "disabled_ok": "Disabled — Explorer falls back to the generic file icon",
+      "disabled_machine_wide": "Could not fully disable: a machine-wide (HKLM) thumbnail registration remains. Explorer may keep using it; remove the HKLM entry as administrator.",
       "failed": "Operation failed: {reason}",
       "extensions_title": "Per extension",
       "ext_registered": "registered",
@@ -860,7 +861,13 @@
       "android_rule_f_truncated": "No upload-related code characteristics were found in the part of the DEX content this scan examined, but that part is incomplete: {scannedBytes} of {totalBytes} bytes ({percent}%), {skippedDex} DEX file(s) exceeded the scan budget and {unanalysedDex} could not be fully analysed. The unexamined part could contain upload markers, so this does not mean the app has no upload behaviour.",
       "android_rule_f_limitation_incomplete": "Part of the DEX content was not examined (scan budget or an untraversable structure), so this “not found” conclusion covers only the scanned part.",
       "ios_rule_f_truncated": "No network upload characteristics were found in the part of the executable content this scan examined, but that part is incomplete: {scannedBytes} of {totalBytes} bytes ({percent}%), {overBudget} executable(s) exceeded the scan budget and {unread} could not be read. The unexamined part could contain upload markers, so this does not mean the app has no network behaviour.",
-      "ios_rule_f_limitation_incomplete": "Part of the executable content was not examined (scan budget or unreadable nested binaries), so this “not found” conclusion covers only the scanned part."
+      "ios_rule_f_limitation_incomplete": "Part of the executable content was not examined (scan budget or unreadable nested binaries), so this “not found” conclusion covers only the scanned part.",
+      "ios_rule_f_encrypted": "No network upload characteristics were found in the plaintext content this scan could read, but {encrypted} executable(s) are FairPlay-encrypted: the encrypted __TEXT range ({scannedBytes} of {totalBytes} bytes scanned, {percent}%) is ciphertext, so this does not mean the app has no upload behaviour.",
+      "ios_rule_f_limitation_encrypted": "FairPlay-encrypted executables were not decrypted: upload markers hidden in the encrypted __TEXT range cannot be found by this static scan.",
+      "ios_encrypted_binary": "{count} executable(s) are FairPlay-encrypted; for example {path}. Their __TEXT bytes are ciphertext, so string/symbol scanning cannot see the original code or literals. This states the analysis scope, not a risk verdict.",
+      "ios_encrypted_binary_limitation": "Encrypted __TEXT content cannot be inspected statically: strings, Objective-C selectors and literal addresses inside that range are not visible. Absence of a marker in this scan is not evidence that the app cannot perform the behaviour.",
+      "ios_encrypted_binary_manual_review": "Decrypt the binary in a controlled environment or obtain a decrypted build before drawing conclusions about capabilities that may be hidden in the encrypted range.",
+      "ios_scan_coverage_encrypted": "API usage clue scanning opened {scanned} of {total} executables, {bytes} bytes in total, but {encrypted} executable(s) are FairPlay-encrypted: their strings and selectors are ciphertext, so those contents are not meaningfully covered."
     },
     "sources": {
       "photo_library": "full photo library (PhotoKit)",
@@ -1095,10 +1102,24 @@
     "capability_theme": "Theme",
     "capability_count": "Findings",
     "capability_rules": "Rules",
-    "capability_hint": "Grouped by detection theme (the `category` the engine assigns to each finding). A theme with more findings is not automatically worse - severity still decides that; this table answers \"in which directions is this app called out most\"."
+    "capability_hint": "Grouped by detection theme (the `category` the engine assigns to each finding). A theme with more findings is not automatically worse - severity still decides that; this table answers \"in which directions is this app called out most\".",
+    "encryption_banner_title": "FairPlay-encrypted content",
+    "encryption_banner_body": "{count} executable(s) are still FairPlay-encrypted: the string/symbol scan sees ciphertext, so related \"not found\" conclusions are downgraded.",
+    "evidence_title": "Structured evidence",
+    "evidence_artifacts_summary": "{count} security-relevant artifact(s) out of {total} archive entry(ies)",
+    "evidence_artifacts_truncated": "Inventory truncated at the entry limit",
+    "evidence_load_graph_summary": "{nodes} node(s), {edges} edge(s)",
+    "evidence_load_graph_dangling": "{count} edge(s) point outside the package",
+    "evidence_load_graph_incomplete": "Traversal incomplete"
   },
   "detail_tab": {
     "overview": "Overview",
+    "manifest": "Manifest",
+    "components": "Components",
+    "files": "Files",
+    "infoPlist": "Info.plist",
+    "frameworks": "Frameworks",
+    "diagnostics": "Diagnostics",
     "application": "Application",
     "permissions": "Permissions",
     "structure": "Structure",
@@ -1144,7 +1165,13 @@
       "android_signature": "Signature materials",
       "ios_machoSites": "Mach-O call sites",
       "ios_unicodeStrings": "Unicode strings",
-      "android_dex_unicodeStrings": "DEX Unicode strings"
+      "android_dex_unicodeStrings": "DEX Unicode strings",
+      "ios_encryption": "FairPlay encryption",
+      "android_artifacts": "Android artifacts",
+      "android_payloadProbe": "Payload probe",
+      "android_loadGraph": "Load graph",
+      "android_nativeLibraries": "Native library content",
+      "android_splitSampling": "Split APK sampling"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml could not be parsed ({reason})",
@@ -1184,7 +1211,22 @@
       "android_dex_unicode_strings_no_content": "No DEX string_ids entries were available for Unicode scanning",
       "android_dex_unicode_strings_untrusted": "{count} DEX file(s) had an untrustworthy structure; their string constants were not decoded",
       "android_dex_unicode_strings_truncated": "Some string_ids entries could not be decoded or exceeded the Unicode scan budget; the unexamined part is unknown",
-      "android_dex_unicode_strings_scope": "MUTF-8 string constants reachable through DEX string_ids were decoded. Text in resources/ and assets/, native libraries, hardened shells and runtime-assembled strings are not visible here"
+      "android_dex_unicode_strings_scope": "MUTF-8 string constants reachable through DEX string_ids were decoded. Text in resources/ and assets/, native libraries, hardened shells and runtime-assembled strings are not visible here",
+      "ios_encryption_encrypted": "The main executable is FairPlay-encrypted (cryptid={cryptid}); its __TEXT range is ciphertext",
+      "ios_encryption_nested_encrypted": "{count} executable(s) are FairPlay-encrypted; their __TEXT ranges are ciphertext",
+      "ios_encryption_decrypted": "The main executable is marked decrypted (cryptid=0)",
+      "ios_encryption_no_marker": "No readable LC_ENCRYPTION_INFO command was found; this is not a confirmation that the executable is plaintext",
+      "android_artifacts_not_provided": "The artifact inventory was not provided to the security audit",
+      "android_artifacts_scope": "{count} security-relevant artifact(s) are listed out of {total} archive entry(ies)",
+      "android_artifacts_truncated": "The artifact inventory was truncated at the entry limit; only part of the package is listed",
+      "android_payload_not_provided": "Payload probing was not provided to the security audit",
+      "android_payload_no_candidates": "No asset or embedded-code candidates were available for payload probing",
+      "android_payload_truncated": "{probed} of {total} candidate entry(ies) were probed",
+      "android_load_graph_not_provided": "The load graph was not provided to the security audit",
+      "android_load_graph_incomplete": "Load graph traversal stopped early: {nodes} node(s) and {edges} edge(s) were recorded",
+      "android_native_libraries_not_provided": "No native library content was provided for scanning",
+      "android_native_libraries_partial": "{covered} of {total} unique native library(ies) were opened for content scanning",
+      "android_split_sampling_truncated": "{audited} of {total} split APK(s) were audited"
     }
   },
   "diff": {
@@ -1362,5 +1404,24 @@
     "split_cert_mismatch_message": "The base APK and at least one split APK are signed with different certificates ({packageId}).",
     "split_cert_mismatch_review": "Do not trust this installation set; re-download the package from the official channel. Android normally rejects inconsistent split signatures.",
     "split_cert_mismatch_limitation": "A certificate mismatch proves the installation set is inconsistent; it does not identify which split was tampered with."
+  },
+  "analysis_state": {
+    "empty_title": "No package loaded",
+    "empty_body": "Open an APK, XAPK, APKS or IPA to inspect its structure and static security evidence.",
+    "empty_action": "Open package",
+    "loading_title": "Analyzing…",
+    "loading_body": "Parsing the package. Large split packages can take a while.",
+    "partial_title": "Partially parsed",
+    "partial_body": "Some data could not be parsed; the details below are incomplete.",
+    "failure_title": "Could not analyze this package",
+    "failure_body": "The package was not parsed. Check the path and try again.",
+    "retry": "Retry",
+    "cancelled": "Parsing was cancelled.",
+    "file_not_found": "File not found. Check the path and try again."
+  },
+  "shell": {
+    "search_hint": "Search or jump…",
+    "command_title": "Jump to",
+    "command_empty": "No matching page"
   }
 }

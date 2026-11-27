@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V4 · 01 概览 · 空态</title>
+<link rel="stylesheet" href="../assets/v4.css">
+</head>
+<body class="app" data-nav="overview" data-crumb="WORKSPACE / OVERVIEW" data-state="NO TARGET / IDLE" data-window-title="AppInfoTool — 概览">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div>
+          <div class="page-kicker">WORKSPACE <span>/</span> <b>START</b></div>
+          <h1 class="page-title">从安装包开始</h1>
+          <p class="page-sub">本地静态分析 APK / IPA，不上传样本、不执行代码。结果以结构、覆盖范围和安全线索呈现，而不是一句“安全 / 不安全”。</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn"><svg class="ic"><use href="#i-copy"/></svg>批量重命名</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-folder"/></svg>打开文件</button>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span>READY / NO TARGET</span><b>·</b><span>LOCAL-FIRST</span></div>
+          <h2>把陌生安装包<br>变成<em>可核对的证据链。</em></h2>
+          <p>清单、权限、DEX、原生库、签名与覆盖范围——每个结论都能回到一个文件或一个规则。分析结果可导出 Markdown / JSON，全程离线。</p>
+          <div class="hero-actions">
+            <button class="btn grad"><svg class="ic"><use href="#i-folder"/></svg>选择文件</button>
+            <button class="btn"><svg class="ic"><use href="#i-scan"/></svg>查看支持格式</button>
+          </div>
+          <div class="hero-note"><svg class="ic"><use href="#i-shield"/></svg><span>APK / XAPK / APKM / APKS / IPA · 不执行样本 · 不访问网络</span></div>
+        </div>
+        <div class="hero-side">
+          <button class="dropzone" type="button" aria-label="拖入安装包或选择文件">
+            <svg class="dash" aria-hidden="true"><rect x="1" y="1" width="calc(100% - 2px)" height="calc(100% - 2px)" rx="21"/></svg>
+            <span class="drop-orb"><svg class="ic"><use href="#i-upload"/></svg></span>
+            <b>拖入文件，或 <em>选择安装包</em></b>
+            <small>APK · XAPK · APKM · APKS · IPA<br>最大 4 GB / 本地解析</small>
+          </button>
+          <div class="session-list">
+            <div class="session-row"><span>ENGINE</span><b>2.10.6 / BUILTIN</b></div>
+            <div class="session-row"><span>MODE</span><b>STATIC ONLY</b></div>
+            <div class="session-row"><span>NETWORK</span><b>OFF</b></div>
+            <div class="session-row"><span>BASELINE</span><b>2 ANDROID / 0 IOS</b></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stats">
+        <div class="stat"><svg class="ic"><use href="#i-database"/></svg><div class="stat-num">0</div><div class="stat-label">本次已分析</div><div class="stat-sub">还没有打开安装包</div></div>
+        <div class="stat"><svg class="ic"><use href="#i-clock"/></svg><div class="stat-num">—</div><div class="stat-label">最近一次分析</div><div class="stat-sub">打开文件后开始计时</div></div>
+        <div class="stat"><svg class="ic"><use href="#i-shield"/></svg><div class="stat-num">—</div><div class="stat-label">安全发现</div><div class="stat-sub">仅静态证据，非软件定性</div></div>
+        <div class="stat"><svg class="ic"><use href="#i-file"/></svg><div class="stat-num mono">JSON</div><div class="stat-label">报告格式</div><div class="stat-sub">schema v8 · 可离线归档</div></div>
+      </section>
+
+      <div class="overview-grid">
+        <section class="card table-card">
+          <div class="table-head">
+            <div class="table-title"><svg class="ic"><use href="#i-clock"/></svg>最近分析</div>
+            <span class="chip plain">LOCAL ONLY</span>
+          </div>
+          <div style="height:245px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;border-top:1px solid var(--line);">
+            <div style="width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-3)"><svg class="ic" style="width:20px;height:20px"><use href="#i-folder"/></svg></div>
+            <b style="font-size:10.5px;font-weight:650">还没有分析记录</b>
+            <span style="color:var(--ink-3);font-size:8.5px">打开第一个安装包后，这里会保留最近 10 条记录。</span>
+          </div>
+        </section>
+        <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+          <section class="card card-pad" style="padding:17px 18px">
+            <div class="card-head" style="margin-bottom:8px"><div class="card-title"><svg class="ic"><use href="#i-layers"/></svg>环境</div><span class="chip mint">READY</span></div>
+            <div class="cov-list" style="margin-top:0">
+              <div class="cov-row"><svg class="ic"><use href="#i-check"/></svg><span>内置 APK / IPA 解析器</span><span>READY</span></div>
+              <div class="cov-row"><svg class="ic"><use href="#i-check"/></svg><span>签名工具</span><span>READY</span></div>
+              <div class="cov-row part"><svg class="ic"><use href="#i-info"/></svg><span>adb / 设备安装</span><span>OPTIONAL</span></div>
+              <div class="cov-row"><svg class="ic"><use href="#i-info"/></svg><span>外部样本基线</span><span>NOT SET</span></div>
+            </div>
+          </section>
+          <section class="card card-pad" style="padding:15px 18px;flex:1;display:flex;flex-direction:column;justify-content:center">
+            <div class="small-label" style="margin-bottom:9px">PIPELINE / WHAT HAPPENS</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px">
+              <div><div class="mono" style="font-size:7px;color:var(--accent)">01 / DROP</div><div style="font-size:8px;color:var(--ink-2);margin-top:4px">拖入文件</div></div>
+              <div><div class="mono" style="font-size:7px;color:var(--accent)">02 / PARSE</div><div style="font-size:8px;color:var(--ink-2);margin-top:4px">清单 / DEX</div></div>
+              <div><div class="mono" style="font-size:7px;color:var(--accent)">03 / EVIDENCE</div><div style="font-size:8px;color:var(--ink-2);margin-top:4px">覆盖与线索</div></div>
+              <div><div class="mono" style="font-size:7px;color:var(--accent)">04 / EXPORT</div><div style="font-size:8px;color:var(--ink-2);margin-top:4px">MD / JSON</div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="footnote"><span>V4 / PAPER &amp; SIGNAL · OVERVIEW / EMPTY</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

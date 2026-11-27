@@ -22,6 +22,7 @@ import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/utils/android_version.dart';
 import 'package:apk_info_tool/utils/architecture_label.dart';
 import 'package:apk_info_tool/utils/cancellable_task.dart';
+import 'package:apk_info_tool/utils/analysis_page_status.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
@@ -38,7 +39,10 @@ import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
+import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
+import 'package:apk_info_tool/widgets/security_evidence_card.dart';
+import 'package:apk_info_tool/widgets/security_notice_banner.dart';
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
@@ -84,6 +88,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   /// `finally` 清理，因此不会留下临时目录。
   bool _iosCodeSignCancelled = false;
 
+  /// 最近一次打开/解析失败的用户可读原因。
+  ///
+  /// 之所以要显式保存而不是只用 SnackBar：SnackBar 会消失，而详情页此前在
+  /// 失败后仍会渲染一屏 `-`，用户既不知道失败过，也无法重试。这个字段只在
+  /// **没有可用结果**时驱动页面级失败态；已有结果时不会把结果页替换掉。
+  String? _failureMessage;
+
   /// 同一个文件的重复触发去重。
   ///
   /// 双击包启动时路径会从命令行参数与文件关联事件**两条入口**同时到达，
@@ -100,6 +111,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     if (task == null || task.isFinished) return;
     log.info('loadApkInfo: 取消上一次仍在进行的解析');
     task.cancel();
+  }
+
+  /// 更新失败原因；`null` 表示清除。
+  ///
+  /// 只在挂载时调用 `setState`：解析任务结束后仍可能有回调落到已销毁的页面。
+  void _setFailure(String? message) {
+    if (!mounted || _failureMessage == message) return;
+    setState(() => _failureMessage = message);
   }
 
   void openFilePicker() async {
@@ -123,6 +142,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   void openApk(String path) {
     final file = File(path);
     final state = ref.read(currentFileStateProvider.notifier);
+    _setFailure(null);
     if (file.existsSync()) {
       final fileSize = file.lengthSync();
       state.update(FileState(filePath: path, fileSize: fileSize));
@@ -130,11 +150,25 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         loadApkInfo(path);
       }
     } else {
+      // 选中一个不存在的文件也必须让旧解析停下：否则旧任务完成时会把
+      // 「上一条路径的结果」写回 FileState，用户看到的失败原因与详情对不上。
+      _cancelInFlightTask();
+      ++_loadGeneration;
+      ref.read(isParsingProvider.notifier).update(false);
+      ref.read(parseStageProvider.notifier).update(null);
+      ref.read(iosParseStageProvider.notifier).update(null);
       state.update(FileState(filePath: path));
+      _setFailure(t.analysis_state.file_not_found);
     }
   }
 
   void closeApk() {
+    _cancelInFlightTask();
+    ++_loadGeneration;
+    _setFailure(null);
+    ref.read(isParsingProvider.notifier).update(false);
+    ref.read(parseStageProvider.notifier).update(null);
+    ref.read(iosParseStageProvider.notifier).update(null);
     ref.read(currentFileStateProvider.notifier).update(FileState());
     ref.read(currentApkInfoProvider.notifier).reset();
     ref.read(selectedIconIndexProvider.notifier).reset();
@@ -147,6 +181,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   }
 
   Future<void> loadApkInfo(String filePath) async {
+    _setFailure(null);
     // 同一个文件已经在解析：直接返回，复用那一次的结果。
     //
     // 双击包启动时路径会从命令行参数与文件关联事件两条入口同时到达
@@ -261,6 +296,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         },
       );
       if (apkInfo == null) {
+        if (_loadGeneration == gen) {
+          _setFailure(t.parse.parse_apk_info_fail);
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(t.parse.parse_apk_info_fail)),
@@ -312,14 +350,24 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         }
       }
     } on ApkParseCancelledException {
-      // 用户主动取消 —— 不该弹错误提示，界面上也没有需要清理的残留状态。
+      // 用户主动取消 —— 不弹错误提示，但页面不能停在「有文件、没结果」的
+      // 空白状态；给一个可重试的取消态。
       log.info('loadApkInfo: cancelled by user');
+      if (_loadGeneration == gen) {
+        _setFailure(t.analysis_state.cancelled);
+      }
     } catch (e) {
       log.warning('loadApkInfo: $e');
+      // 只有容器打开失败有结构化原因；其余异常只写进日志。把
+      // `e.toString()` 直接放到页面上，用户看到的是英文类名和内部路径，
+      // 既不可操作也不一定不泄露信息。
+      final message = e is ApkOpenException
+          ? DetailRenderer.openFailure(e.result, t, detail: e.detail)
+          : t.analysis_state.failure_body;
+      if (_loadGeneration == gen) {
+        _setFailure(message);
+      }
       if (mounted) {
-        final message = e is ApkOpenException
-            ? DetailRenderer.openFailure(e.result, t, detail: e.detail)
-            : e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
       }
@@ -405,6 +453,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       );
     } catch (e) {
       log.warning('_loadIpaInfo: failed to start the IPA task: $e');
+      if (_loadGeneration == gen) {
+        _setFailure(t.parse.parse_apk_info_fail);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(t.parse.parse_apk_info_fail)),
@@ -435,17 +486,16 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           iosStageState.update(stage);
         case IpaOpenFailed(:final result, :final detail):
           // 容器打不开：显示**具体原因**，而不是笼统的「解析失败」。
+          final message = DetailRenderer.openFailure(result, t, detail: detail);
+          _setFailure(message);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  DetailRenderer.openFailure(result, t, detail: detail),
-                ),
-              ),
+              SnackBar(content: Text(message)),
             );
           }
         case IpaParseFailed(:final reason):
           log.warning('_loadIpaInfo: parse failed: $reason');
+          _setFailure(t.parse.parse_apk_info_fail);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(t.parse.parse_apk_info_fail)),
@@ -468,6 +518,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           isParsingState.update(false);
           iosStageState.update(null);
           applied = true;
+          _setFailure(null);
         case IpaSecurityReady(:final security):
           if (parsed == null) break;
           final currentState = ref.read(currentFileStateProvider);
@@ -475,8 +526,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             securityResult: security,
           ));
         case IpaParseCancelled():
-          // 用户主动取消 —— 不弹错误提示。
+          // 用户主动取消 —— 不弹错误提示，但页面要能说明为什么没有结果。
           log.info('_loadIpaInfo: cancelled by user');
+          _setFailure(t.analysis_state.cancelled);
       }
     }
 
@@ -487,6 +539,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       // 丢掉。连续拖入两个文件时，这就是两条流水线同时在跑。
       task.cancel();
       return;
+    }
+
+    if (parsed == null && _failureMessage == null) {
+      // 事件流结束却没有结果，也没有显式错误：仍然要把页面从空白里救出来，
+      // 否则用户看到的是「文件已选中 + 一屏 '-'」。
+      _setFailure(t.parse.parse_apk_info_fail);
     }
 
     if (parsed != null) {
@@ -674,11 +732,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // 第一眼依据。
     cards.add(_buildPlatformRow(fileState));
 
+    // FairPlay：即使后续统一模型还没汇合，只要 Mach-O 已解析出 cryptid=1，
+    // 就要先告诉读者「字符串/符号看到的是密文」。这是范围说明，不是风险卡片。
+    if (parsed != null && parsed.hasEncryptedExecutable) {
+      cards.add(SecurityNoticeBanner(
+        title: t.security.encryption_banner_title,
+        body: t.security.encryption_banner_body(
+          count: parsed.encryptedExecutablePaths.length,
+        ),
+      ));
+    }
+
     // 还没解析出结果时，「应用信息」无从谈起，但**文件信息是事实** ——
     // 路径与大小在解析之前就已经知道了，照常显示。
     if (parsed == null || result == null || ios == null) {
-      cards.add(
-          _SectionHeader(title: t.file_info.group, tab: DetailTab.overview));
+      cards.add(_SectionHeader(title: t.file_info.group, tab: DetailTab.files));
       cards.add(card(t.file_info.file, fileState.filePath ?? '-',
           end: _buildFileActionMenu()));
       cards.add(card(
@@ -720,11 +788,22 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         text: ios.bundleIdentifier.value ?? '',
         iconSize: 16,
       ),
+      details: _FactsGrid(cells: [
+        (t.ios_info.bundle_id, field(ios.bundleIdentifier)),
+        (t.apk_info.version_name, field(ios.shortVersion)),
+        (t.apk_info.version_code, field(ios.buildNumber)),
+        (t.ios_info.minimum_os, field(ios.minimumOSVersion)),
+        (t.ios_info.architectures, architectureLabelOf(result) ?? '-'),
+        (t.ios_info.executable, field(ios.executableName)),
+      ]),
     ));
 
+    if (fileState.securityResult != null) {
+      cards.add(_buildOverviewEvidence(fileState));
+    }
+
     // ===== 文件信息 =====
-    cards
-        .add(_SectionHeader(title: t.file_info.group, tab: DetailTab.overview));
+    cards.add(_SectionHeader(title: t.file_info.group, tab: DetailTab.files));
     cards.add(card(t.file_info.file, fileState.filePath ?? '-',
         end: _buildFileActionMenu()));
     cards.add(card(
@@ -733,10 +812,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           ? "${formatFileSize(fileState.fileSize)} (${fileState.fileSize} Bytes)"
           : "",
     ));
-
     // ===== 应用详情（归入「应用」Tab，与 Android 侧对齐）=====
     cards.add(_SectionHeader(
-        title: t.detail_tab.application, tab: DetailTab.application));
+        title: t.detail_tab.infoPlist, tab: DetailTab.infoPlist));
 
     // 版本栏。图标只在 Hero 卡片里出现一次 —— 早先这里右侧还挂着
     // 一张独立的图标卡，与 Hero 卡片是同一个图标，纯属重复。
@@ -760,10 +838,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         ios.urlSchemes.hasValue ||
         ios.backgroundModes.hasValue ||
         ios.requiredDeviceCapabilities.hasValue ||
-        ios.hasMultipleMainApps) {
-      cards.add(_SectionHeader(
-          title: t.detail_tab.permissions, tab: DetailTab.permissions));
-    }
+        ios.hasMultipleMainApps) {}
     // 「注册的 scheme」与「查询的 scheme」是**两个方向**的事实：
     // 前者是本应用被外部唤起的入口，后者是本应用可以唤起别人的白名单。
     // 放在一起但分开陈述，避免读者把两者混为一谈。
@@ -814,7 +889,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     // ===== 容器与二进制 =====
     cards.add(_SectionHeader(
-        title: t.ios_info.group_container, tab: DetailTab.structure));
+        title: t.ios_info.group_container, tab: DetailTab.frameworks));
     final container = DetailRenderer.iosContainer(ios.container, t);
     if (container.isNotEmpty) {
       cards
@@ -855,7 +930,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // ===== 文件校验 =====
     if (enableHash) {
       cards.add(_SectionHeader(
-          title: t.ios_info.group_integrity, tab: DetailTab.signature));
+          title: t.ios_info.group_integrity, tab: DetailTab.files));
       // 复制按钮由 `TitleValueLayout` 统一提供（默认就有），这里不再各挂一个
       // —— 否则同一张卡片上会出现两个一模一样的复制图标。
       cards.add(card(t.file_info.md5, fileState.md5Hash ?? ''));
@@ -888,7 +963,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final diagnostics = DetailRenderer.diagnostics(result.diagnostics, t);
     if (diagnostics.isNotEmpty) {
       cards.add(_SectionHeader(
-          title: t.apk_info.diagnostics, tab: DetailTab.security));
+          title: t.apk_info.diagnostics, tab: DetailTab.diagnostics));
       cards.add(card(t.apk_info.diagnostics, diagnostics, selectable: true));
     }
 
@@ -954,6 +1029,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       _SectionHeader(title: t.security.title, tab: DetailTab.security),
       // 总览摘要卡片
       _buildSecurityOverviewCard(findings, hasActualGaps, gapCount),
+      // 结构化证据：制品清单 / 加载链。只有真正产出了才显示 —— `null` 是
+      // 「本次未产出」，不是「包里没有」，不能渲染成一张空卡。
+      if (security.artifacts != null || security.loadGraph != null)
+        SecurityEvidenceCard(
+          artifacts: security.artifacts,
+          loadGraph: security.loadGraph,
+        ),
       // 「盗 U 风险」：优先用五段链评估卡；旧路径没有评估时退回小结。
       if (security.cryptoTheft case final assessment?)
         CryptoTheftCard(
@@ -1673,10 +1755,31 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     final textMaxLines =
         ref.watch(uiConfigStateProvider.select((value) => value.textMaxLines));
 
-    final cards = fileState.platform == PackagePlatform.ios
-        ? _buildIosCards(fileState)
-        : _buildAndroidCards(fileState, apkInfo, analysisNotes, structureText,
-            enableSignature, enableHash, textMaxLines);
+    final hasParsedResult = apkInfo != null ||
+        fileState.ipaAnalysis != null ||
+        fileState.analysis != null;
+    // 「部分解析」只表示解析本身没拿全，不代表安全覆盖存在缺口。安全覆盖
+    // 缺口已经由 `hasActualGaps` 单独表达，两个概念不能混。
+    final parsePartial = apkInfo?.parseFailureReason != null ||
+        (fileState.ipaAnalysis?.diagnostics
+                .any((d) => d.severity == DiagnosticSeverity.error) ??
+            false);
+    final pageStatus = resolveAnalysisPageStatus(
+      filePath: fileState.filePath,
+      isParsing: isParsing,
+      hasParsedResult: hasParsedResult,
+      parsePartial: parsePartial,
+      hasFailure: _failureMessage != null,
+    );
+    final showDetails = pageStatus == AnalysisPageStatus.success ||
+        pageStatus == AnalysisPageStatus.partial;
+
+    final cards = !showDetails
+        ? const <Widget>[]
+        : fileState.platform == PackagePlatform.ios
+            ? _buildIosCards(fileState)
+            : _buildAndroidCards(fileState, apkInfo, analysisNotes,
+                structureText, enableSignature, enableHash, textMaxLines);
     final tabContent = _groupCardsByTab(cards);
 
     // 页头 + 内容。页头与 概览 / 版本对比 / 设置 共用 `PageHeader`：
@@ -1688,11 +1791,51 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 16, 0),
-          child: PageHeader(
-            title: t.nav.analysis,
-            subtitle: t.home.subtitle,
-            actions: ref.watch(pageActionsProvider),
+          padding: const EdgeInsets.fromLTRB(18, 18, 12, 0),
+          child: Builder(
+            builder: (context) {
+              final apkInfo = fileState.apkInfo;
+              final ios = fileState.analysis?.ios;
+              final appName = apkInfo != null
+                  ? _getDisplayLabel(apkInfo)
+                  : ios?.preferredName.value;
+              final subtitleParts = <String>[];
+              if (apkInfo != null) {
+                final pkg = apkInfo.packageName;
+                if (pkg != null && pkg.isNotEmpty) subtitleParts.add(pkg);
+                final ver = apkInfo.versionName;
+                if (ver != null && ver.isNotEmpty) {
+                  subtitleParts.add(
+                    apkInfo.versionCode == null
+                        ? 'v$ver'
+                        : 'v$ver (${apkInfo.versionCode})',
+                  );
+                }
+                subtitleParts.add('APK');
+              } else if (ios != null) {
+                final bundle = ios.bundleIdentifier.value;
+                if (bundle != null && bundle.isNotEmpty) {
+                  subtitleParts.add(bundle);
+                }
+                final ver = ios.shortVersion.value;
+                if (ver != null && ver.isNotEmpty) {
+                  subtitleParts.add('v$ver (${ios.buildNumber.value ?? '-'})');
+                }
+                subtitleParts.add('IPA');
+              }
+              if (fileState.fileSize != null) {
+                subtitleParts.add(formatFileSize(fileState.fileSize));
+              }
+              return PageHeader(
+                title: (appName != null && appName.isNotEmpty)
+                    ? appName
+                    : t.nav.analysis,
+                subtitle: subtitleParts.isEmpty
+                    ? t.home.subtitle
+                    : subtitleParts.join(' · '),
+                actions: ref.watch(pageActionsProvider),
+              );
+            },
           ),
         ),
         Expanded(
@@ -1719,18 +1862,487 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 }
               }
             },
-            child: DetailTabView(
+            child: _buildAnalysisContent(
+              status: pageStatus,
               tabs: tabContent,
+              fileState: fileState,
               isParsing: isParsing,
               parseStageLabel: parseStageLabel,
-              onCancelParse: _currentTask != null && !_currentTask!.isFinished
-                  ? _cancelParse
-                  : null,
+              failureMessage: _failureMessage,
             ),
           ),
         ),
       ],
     );
+  }
+
+  /// 宽屏分析页右侧的上下文栏。
+  ///
+  /// 只显示「当前对象 + 静态分析边界」，不复制左侧卡片的数据；窄屏由
+  /// [DetailTabView] 自动隐藏。
+  Widget _buildOverviewEvidence(FileState fileState) {
+    final security = fileState.securityResult;
+    if (security == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final high = security.findings
+        .where((f) =>
+            f.severity == SecuritySeverity.p0 ||
+            f.severity == SecuritySeverity.p1)
+        .length;
+    final review = security.findings
+        .where((f) =>
+            f.severity == SecuritySeverity.p2 ||
+            f.severity == SecuritySeverity.p3)
+        .length;
+    final info = security.findings.length - high - review;
+    final artifacts = security.artifacts;
+    final graph = security.loadGraph;
+
+    Widget metric(String label, String value) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 8.5,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                value,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'STATIC FINDINGS',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 9,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${security.findings.length}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                metric('HIGH', '$high'),
+                metric('REVIEW', '$review'),
+                metric('INFO', '$info'),
+                metric('GAPS', '${security.coverage.gaps.length}'),
+              ],
+            ),
+            if (artifacts != null || graph != null) ...[
+              const SizedBox(height: 14),
+              Container(height: 1, color: scheme.outlineVariant),
+              const SizedBox(height: 10),
+              Text(
+                'STRUCTURE EVIDENCE',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 9,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  metric('ENTRIES',
+                      '${artifacts?.inventoriedEntries ?? '-'} / ${artifacts?.totalEntries ?? '-'}'),
+                  metric('NODES', '${graph?.nodes.length ?? '-'}'),
+                  metric('EDGES', '${graph?.edges.length ?? '-'}'),
+                  metric('DANGLING', '${graph?.danglingEdgeIds.length ?? '-'}'),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _asideKv(
+    ThemeData theme,
+    ColorScheme scheme,
+    String key,
+    String value,
+  ) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 62,
+          child: Text(
+            key,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontSize: 8.5,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontSize: 10.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnalysisAside(FileState fileState) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final platform = fileState.platform == PackagePlatform.ios
+        ? t.file_info.platform_ios
+        : t.file_info.platform_android;
+    final filePath = fileState.filePath ?? '';
+
+    Widget card({required Widget child}) => Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: child,
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'CURRENT TARGET',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  letterSpacing: 1.4,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                filePath.isEmpty ? '-' : path.basename(filePath),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                filePath,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(height: 1, color: scheme.outlineVariant),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    fileState.platform == PackagePlatform.ios
+                        ? Icons.phone_iphone
+                        : Icons.android,
+                    size: 15,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(platform, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (fileState.securityResult != null &&
+            fileState.securityResult!.coverage.entries.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'COVERAGE',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    letterSpacing: 1.4,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 58,
+                      height: 58,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: fileState
+                                    .securityResult!.coverage.entries.isEmpty
+                                ? 0
+                                : (fileState.securityResult!.coverage.entries
+                                            .length -
+                                        fileState.securityResult!.coverage.gaps
+                                            .length) /
+                                    fileState.securityResult!.coverage.entries
+                                        .length,
+                            strokeWidth: 6,
+                            backgroundColor: scheme.surfaceContainerHighest,
+                          ),
+                          Text(
+                            '${fileState.securityResult!.coverage.entries.length - fileState.securityResult!.coverage.gaps.length}/${fileState.securityResult!.coverage.entries.length}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        AnalysisReport.coverageSummary(
+                          fileState.securityResult!.coverage,
+                          t,
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (fileState.securityResult?.seal != null ||
+            fileState.securityResult?.baseline != null) ...[
+          const SizedBox(height: 12),
+          card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'INTEGRITY',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    letterSpacing: 1.4,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (fileState.securityResult?.seal != null) ...[
+                  _asideKv(
+                    theme,
+                    scheme,
+                    'SEAL',
+                    '${fileState.securityResult!.seal!.state.name.toUpperCase()} · ${fileState.securityResult!.seal!.scheme}',
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (fileState.securityResult?.baseline != null)
+                  _asideKv(
+                    theme,
+                    scheme,
+                    'BASELINE',
+                    fileState.securityResult!.baseline!.status.name
+                        .toUpperCase(),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'STATIC ONLY',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  letterSpacing: 1.4,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '不执行样本，不访问网络；结论只来自本地静态证据。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<DetailTab> _tabOrder(FileState fileState) {
+    if (fileState.ipaAnalysis != null) {
+      return const [
+        DetailTab.overview,
+        DetailTab.infoPlist,
+        DetailTab.frameworks,
+        DetailTab.signature,
+        DetailTab.security,
+        DetailTab.files,
+        DetailTab.diagnostics,
+      ];
+    }
+    return const [
+      DetailTab.overview,
+      DetailTab.manifest,
+      DetailTab.components,
+      DetailTab.permissions,
+      DetailTab.security,
+      DetailTab.files,
+      DetailTab.diagnostics,
+    ];
+  }
+
+  Map<DetailTab, int> _tabCounts(FileState fileState) {
+    final counts = <DetailTab, int>{};
+    final apk = fileState.apkInfo;
+    if (apk != null) {
+      if (apk.structure.fileEntryCount > 0) {
+        counts[DetailTab.manifest] = apk.structure.fileEntryCount;
+        counts[DetailTab.files] = apk.structure.fileEntryCount;
+      }
+      if (apk.components.isNotEmpty) {
+        counts[DetailTab.components] = apk.components.length;
+      }
+      if (apk.usesPermissions.isNotEmpty) {
+        counts[DetailTab.permissions] = apk.usesPermissions.length;
+      }
+    }
+    final ios = fileState.ipaAnalysis;
+    if (ios != null && ios.nestedBinaries.isNotEmpty) {
+      counts[DetailTab.frameworks] = ios.nestedBinaries.length;
+      counts[DetailTab.files] = 1;
+    }
+    final security = fileState.securityResult;
+    if (security != null && security.findings.isNotEmpty) {
+      counts[DetailTab.security] = security.findings.length;
+    }
+    return counts;
+  }
+
+  /// 按页面级状态决定渲染什么。
+  ///
+  /// 失败/空/加载态**不构建详情卡片**：构建了也只会得到一屏 `-`，而 `-` 在
+  /// 详情页里的含义是「读取了，但包里没有这项」——拿它表示「没读到」会直接
+  /// 误导结论。只有 [AnalysisPageStatus.success]/[partial] 才进入 `DetailTabView`。
+  Widget _buildAnalysisContent({
+    required AnalysisPageStatus status,
+    required Map<DetailTab, List<Widget>> tabs,
+    required FileState fileState,
+    required bool isParsing,
+    required String parseStageLabel,
+    required String? failureMessage,
+  }) {
+    final path = fileState.filePath;
+    final canRetry = path != null && path.isNotEmpty;
+    final canCancel = _currentTask != null && !_currentTask!.isFinished;
+
+    DetailTabView details() => DetailTabView(
+          tabs: tabs,
+          isParsing: isParsing,
+          parseStageLabel: parseStageLabel,
+          onCancelParse: canCancel ? _cancelParse : null,
+          aside: _buildAnalysisAside(fileState),
+          tabCounts: _tabCounts(fileState),
+          tabOrder: _tabOrder(fileState),
+        );
+
+    switch (status) {
+      case AnalysisPageStatus.empty:
+        return AnalysisStatePanel(
+          icon: Icons.folder_open,
+          title: t.analysis_state.empty_title,
+          body: t.analysis_state.empty_body,
+          actionLabel: t.analysis_state.empty_action,
+          onAction: openFilePicker,
+        );
+      case AnalysisPageStatus.loading:
+        return AnalysisStatePanel(
+          loading: true,
+          title: t.analysis_state.loading_title,
+          body: '$parseStageLabel\n${t.analysis_state.loading_body}',
+          actionLabel: canCancel ? t.parse.cancel_parse : null,
+          onAction: canCancel ? _cancelParse : null,
+        );
+      case AnalysisPageStatus.failure:
+        return AnalysisStatePanel(
+          icon: Icons.error_outline,
+          title: t.analysis_state.failure_title,
+          body: failureMessage ?? t.analysis_state.failure_body,
+          actionLabel: t.analysis_state.retry,
+          onAction: canRetry ? () => openApk(path) : openFilePicker,
+        );
+      case AnalysisPageStatus.partial:
+        return Column(
+          children: [
+            AnalysisPartialBanner(
+              title: t.analysis_state.partial_title,
+              body: t.analysis_state.partial_body,
+              retryLabel: t.analysis_state.retry,
+              onRetry: canRetry ? () => openApk(path) : null,
+            ),
+            Expanded(child: details()),
+          ],
+        );
+      case AnalysisPageStatus.success:
+        return details();
+    }
   }
 
   /// 渲染 Android 侧的 [FieldValue] 字段。
@@ -1791,6 +2403,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           text: apkInfo?.packageName ?? '',
           iconSize: 16,
         ),
+        details: apkInfo == null
+            ? null
+            : _FactsGrid(cells: [
+                (t.apk_info.package_name, apkInfo.packageName ?? '-'),
+                (t.apk_info.version_name, apkInfo.versionName ?? '-'),
+                (t.apk_info.target_sdk, '${apkInfo.targetSdkVersion ?? '-'}'),
+                (t.apk_info.min_sdk, '${apkInfo.sdkVersion ?? '-'}'),
+                (
+                  t.apk_info.abi,
+                  apkInfo.nativeCodes.isEmpty
+                      ? '-'
+                      : apkInfo.nativeCodes.join(', ')
+                ),
+                (t.apk_info.components, '${apkInfo.components.length}'),
+              ]),
       ),
       // 语言切换菜单
       if (apkInfo != null && apkInfo.labels.isNotEmpty)
@@ -1818,8 +2445,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           minLines: 1,
           maxLines: 3,
         )),
+      if (fileState.securityResult != null) _buildOverviewEvidence(fileState),
       // ===== 文件信息 =====
-      _SectionHeader(title: t.file_info.group, tab: DetailTab.overview),
+      _SectionHeader(title: t.file_info.group, tab: DetailTab.files),
       Card(
           child: TitleValueLayout(
               title: t.file_info.file,
@@ -1834,8 +2462,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             : "",
       )),
       // ===== 应用详情（归入「应用」Tab，与 iOS 侧对齐）=====
-      _SectionHeader(
-          title: t.detail_tab.application, tab: DetailTab.application),
+      _SectionHeader(title: t.detail_tab.manifest, tab: DetailTab.manifest),
       Card(
           child: TitleValueLayout(
         title: t.apk_info.version_code,
@@ -1948,7 +2575,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             (v) => getSdkVersionText(v as int),
           ),
         )),
-      if (apkInfo?.components.isNotEmpty ?? false)
+      if (apkInfo?.components.isNotEmpty ?? false) ...[
+        _SectionHeader(
+            title: t.detail_tab.components, tab: DetailTab.components),
         Card(
             child: TitleValueLayout(
           title: t.apk_info.components,
@@ -1957,7 +2586,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: true,
         )),
-      _SectionHeader(title: t.apk_info.structure, tab: DetailTab.structure),
+      ],
+      _SectionHeader(title: t.apk_info.structure, tab: DetailTab.files),
       // XAPK / OBB / 结构
       if (apkInfo?.isXapk ?? false)
         Card(
@@ -1992,8 +2622,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: true,
         )),
-      _SectionHeader(
-          title: t.apk_info.signature_info, tab: DetailTab.signature),
+      _SectionHeader(title: t.apk_info.signature_info, tab: DetailTab.files),
       // MD5 哈希值
       if (enableHash)
         Card(
@@ -2032,7 +2661,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: !fileState.isComputingSignature,
         )),
-      _SectionHeader(title: t.apk_info.diagnostics, tab: DetailTab.security),
+      _SectionHeader(title: t.apk_info.diagnostics, tab: DetailTab.diagnostics),
       // 解析诊断：加固线索 + 诊断记录
       if (analysisNotes.isNotEmpty)
         Card(
@@ -2568,41 +3197,98 @@ class _SectionHeader extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
       child: Row(
         children: [
           Container(
-            width: 4,
-            height: 18,
+            width: 6,
+            height: 6,
             decoration: BoxDecoration(
               color: colorScheme.primary,
-              borderRadius: BorderRadius.circular(2),
+              shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 9),
           Text(
             title,
-            style: theme.textTheme.titleSmall?.copyWith(
+            style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w700,
-              color: colorScheme.primary,
-              letterSpacing: 0.3,
+              color: colorScheme.onSurface,
+              letterSpacing: 0.6,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primary.withValues(alpha: 0.2),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
+            child: Container(height: 1, color: colorScheme.outlineVariant),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// V4 三列事实网格：短字段集中展示，窄窗口退化为两列。
+class _FactsGrid extends StatelessWidget {
+  final List<(String, String)> cells;
+
+  const _FactsGrid({required this.cells});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.only(top: 14),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 560 ? 3 : 2;
+          final width = constraints.maxWidth / columns;
+          return Wrap(
+            children: [
+              for (final cell in cells)
+                SizedBox(
+                  width: width,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: scheme.outlineVariant),
+                        bottom: BorderSide(color: scheme.outlineVariant),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          cell.$1,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          cell.$2.isEmpty ? '-' : cell.$2,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'monospace',
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

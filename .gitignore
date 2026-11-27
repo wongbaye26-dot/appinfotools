@@ -100,3 +100,6 @@ lib/gen
 # 解决办法**不是**加 `!CHANGELOG.md` 否定 —— 否定同样被大小写折叠吃掉。
 # 用 `git add -f CHANGELOG.md`：**已追踪的文件不受 .gitignore 约束**，
 # 这条规则从此只管得住 CI 的那个小写产物。
+
+# local memsearch cache
+.memsearch/

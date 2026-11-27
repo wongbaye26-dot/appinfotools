@@ -8,11 +8,13 @@ import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
+import 'package:apk_info_tool/theme/v4_theme.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/utils/architecture_label.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
 import 'package:apk_info_tool/utils/file_rename.dart';
+import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/ios_icon_decoder.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/package_file_type.dart';
@@ -197,6 +199,15 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final apkInfo = ref.watch(currentApkInfoProvider);
     final isParsing = ref.watch(isParsingProvider);
     final recentFiles = ref.watch(recentFilesProvider);
+    final currentName = apkInfo?.label ??
+        fileState.filePath?.split(Platform.pathSeparator).last;
+    final currentSubtitle = fileState.filePath == null
+        ? t.overview.subtitle
+        : [
+            if ((apkInfo?.packageName ?? '').isNotEmpty) apkInfo!.packageName,
+            if ((apkInfo?.versionName ?? '').isNotEmpty) apkInfo!.versionName,
+            if (fileState.fileSize != null) formatFileSize(fileState.fileSize!),
+          ].join(' · ');
 
     // 只有**当前可见**的那一页才接收拖放。
     //
@@ -239,8 +250,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             // 正好差十几像素放不下。收紧的是**间距**，不是内容 ——
             // 底部「最近文件」至少要 44px（分区标题 + 空状态文案），
             // 这一段实测能拿回 16px。
-            final gap = compact ? 10.0 : 20.0;
-            final pad = compact ? 16.0 : 24.0;
+            final gap = compact ? 8.0 : 16.0;
+            final pad = compact ? 14.0 : 18.0;
             // 网格「显不显示」由窗口高度决定（门槛见 _detailGridMaxHeight）。
             final gridHeight = (constraints.maxHeight - _chromeHeightEstimate)
                 .clamp(0.0, _detailGridMaxHeight);
@@ -254,8 +265,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   // （此前概览页根本没有页头，标题只在 Hero 里显示当前包名，
                   //  用户切到别的页面再回来就找不到「这是哪一页」）。
                   PageHeader(
-                    title: t.nav.overview,
-                    subtitle: t.overview.subtitle,
+                    title: currentName ?? t.nav.overview,
+                    subtitle: currentSubtitle,
                     // 三个动作放在**页头右上角** —— 版本对比页的「导出对比报告」
                     // 就在這個位置，四个页面因此是同一个路数。
                     //
@@ -305,7 +316,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                       ),
                     ],
                   ),
-                  SizedBox(height: compact ? 8 : 18),
+                  SizedBox(height: compact ? 6 : 14),
                   // Hero 区
                   if (apkInfo?.parseFailureReason != null)
                     ManifestPartialBanner(
@@ -314,6 +325,21 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                     ),
                   if (fileState.filePath == null)
                     _buildWelcomeHero(context, compact)
+                  else if (!compact)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _buildCurrentFilePanel(context, fileState,
+                              apkInfo, isParsing, compact, gridHeight),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 220,
+                          child: _buildPostureCard(fileState, isParsing),
+                        ),
+                      ],
+                    )
                   else
                     _buildCurrentFilePanel(context, fileState, apkInfo,
                         isParsing, compact, gridHeight),
@@ -371,18 +397,18 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 20 : 28),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primaryContainer.withValues(alpha: 0.6),
-            colorScheme.secondaryContainer.withValues(alpha: 0.4),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.primary.withValues(alpha: 0.1),
-        ),
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(V4Radius.panel),
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: V4Colors.ink.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.24 : 0.05,
+            ),
+            blurRadius: 36,
+            offset: const Offset(0, 16),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -394,17 +420,30 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
+                  'READY / NO TARGET',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontFamily: 'monospace',
+                    fontSize: 8,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
                   t.title,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.1,
+                    fontSize: 30,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   t.overview.subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.hintColor,
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11.5,
+                    height: 1.35,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -448,6 +487,102 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
   // ---------------------------------------------------------------------
   // 当前文件状态面板
   // ---------------------------------------------------------------------
+
+  Widget _buildPostureCard(FileState fileState, bool isParsing) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final security = fileState.securityResult;
+    final findings = security?.findings ?? const [];
+    final high = findings
+        .where((f) =>
+            f.severity == SecuritySeverity.p0 ||
+            f.severity == SecuritySeverity.p1)
+        .length;
+    final review = findings
+        .where((f) =>
+            f.severity == SecuritySeverity.p2 ||
+            f.severity == SecuritySeverity.p3)
+        .length;
+    final info = findings.length - high - review;
+    final gaps = security?.coverage.gaps.length ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(V4Radius.panel),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.shield_outlined, size: 16, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'POSTURE',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontFamily: 'monospace',
+                  letterSpacing: 1.2,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              if (security == null)
+                Text(
+                  isParsing ? 'PARSING' : 'NOT RUN',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            security == null ? '—' : '${findings.length}',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _PostureChip(label: 'HIGH', value: high, color: scheme.error),
+              _PostureChip(
+                label: 'REVIEW',
+                value: review,
+                color: scheme.tertiary,
+              ),
+              _PostureChip(
+                label: 'INFO',
+                value: info,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Icon(Icons.layers_outlined,
+                  size: 13, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  gaps == 0 ? '覆盖完整' : '覆盖缺口 $gaps',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildCurrentFilePanel(
     BuildContext context,
@@ -511,20 +646,20 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(compact ? 16 : 24),
+      padding: EdgeInsets.all(compact ? 14 : 20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primaryContainer.withValues(alpha: 0.55),
-            colorScheme.secondaryContainer.withValues(alpha: 0.35),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.primary.withValues(alpha: 0.12),
-        ),
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(V4Radius.panel),
+        border: Border.all(color: colorScheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: V4Colors.ink.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.24 : 0.05,
+            ),
+            blurRadius: 36,
+            offset: const Offset(0, 16),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -630,7 +765,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               ],
             ),
           ),
-          SizedBox(height: compact ? 14 : 18),
+          SizedBox(height: compact ? 12 : 14),
           // 下半：四个状态卡片（值都可复制）
           _buildStatusCards(
             context,
@@ -649,7 +784,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           // 这一段仍差 1px 放不下（默认窗口 1040×800 实测溢出 1px）。这一块
           // 的固定开销一直是估算值，网格的真实高度没算进去；按本项目一贯的
           // 做法**动间距、不动内容**。
-          SizedBox(height: compact ? 10 : 12),
+          SizedBox(height: compact ? 8 : 10),
           // 详细信息：每一项都带复制入口。
           //
           // 之前 Hero 区只有「应用名 / 标识符 / 版本」三行，而用户最常拿去
@@ -1040,7 +1175,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             // 十来个字段排成一条竖线，把 Hero 顶到两倍高。
             const spacing = 8.0;
             final width = constraints.maxWidth;
-            final columns = width >= 900 ? 3 : (width >= 560 ? 2 : 1);
+            final columns = width >= 680 ? 3 : (width >= 460 ? 2 : 1);
             final cellWidth = (width - (columns - 1) * spacing) / columns;
 
             return Wrap(
@@ -1292,7 +1427,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionLabel(text: t.overview.statistics),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -1344,7 +1479,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         Row(
           children: [
             _SectionLabel(text: t.overview.recent_files),
-            const Spacer(),
             if (recentFiles.isNotEmpty)
               TextButton(
                 onPressed: () => ref.read(recentFilesProvider.notifier).clear(),
@@ -1352,7 +1486,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Expanded(
           child: recentFiles.isEmpty
               ? _buildEmptyRecentFiles(context)
@@ -1377,11 +1511,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.12),
-        ),
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       // 页面是固定一屏的：窗口矮的时候这块会被压到几十像素。图标 + 两行字
       // 大约要 70px，压过头就会在框里溢出（渲染成一条黄黑警示带）。
@@ -1800,11 +1932,9 @@ class _StatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.12),
-        ),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1878,10 +2008,8 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.15),
-        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -1902,7 +2030,9 @@ class _StatCard extends StatelessWidget {
                 Text(
                   value,
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 25,
+                    letterSpacing: -0.8,
                     color: color,
                   ),
                 ),
@@ -1994,18 +2124,16 @@ class _RecentFileTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: theme.dividerColor.withValues(alpha: 0.15),
-              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: Row(
               children: [
@@ -2151,6 +2279,39 @@ class _RecentFileIconState extends State<_RecentFileIcon> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+class _PostureChip extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _PostureChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        '$label $value',
+        style: theme.textTheme.labelSmall?.copyWith(
+          fontFamily: 'monospace',
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

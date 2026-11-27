@@ -79,7 +79,7 @@ class _DiffPageState extends ConsumerState<DiffPage> {
     final pair = _comparablePair(cache, leftPath, rightPath);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -97,12 +97,12 @@ class _DiffPageState extends ConsumerState<DiffPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           if (paths.length < 2)
             _buildNotEnough()
           else ...[
             _buildSlots(cache, leftPath, rightPath),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             ..._buildBody(cache, leftPath, rightPath),
           ],
         ],
@@ -214,7 +214,16 @@ class _DiffPageState extends ConsumerState<DiffPage> {
             onPick: (path) => setState(() => _leftPath = path),
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
+        Padding(
+          padding: const EdgeInsets.only(top: 54),
+          child: Icon(
+            Icons.arrow_forward_rounded,
+            size: 22,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: _SlotCard(
             label: t.diff.slot_right,
@@ -293,16 +302,26 @@ class _DiffPageState extends ConsumerState<DiffPage> {
     // 的结论句反查。两侧合并一次，避免每个成员各查一遍。
     final ruleTitles = DiffLabels.findingTitles(leftAnalysis, rightAnalysis, t);
 
-    return [
-      _buildSummary(diff, fieldChanges.length, setChanges.length),
+    final wide = MediaQuery.sizeOf(context).width >= 1180;
+    final summary = _buildSummary(
+      diff,
+      fieldChanges.length,
+      setChanges.length,
+      vertical: wide,
+    );
+    final fieldSections = <Widget>[
       if (fieldChanges.isNotEmpty) ...[
         _sectionHeader(t.diff.section_fields),
-        for (final f in fieldChanges) _buildFieldCard(f),
+        _buildFieldTable(fieldChanges),
       ],
+    ];
+    final setSections = <Widget>[
       if (setChanges.isNotEmpty) ...[
         _sectionHeader(t.diff.section_sets),
-        for (final s in setChanges) _buildSetCard(s, ruleTitles),
+        _buildSetTable(setChanges, ruleTitles),
       ],
+    ];
+    final unknownSections = <Widget>[
       if (fieldUnknown.isNotEmpty || setUnknown.isNotEmpty) ...[
         _sectionHeader(t.diff.section_unknown),
         _note(t.diff.unknown_field_hint),
@@ -311,9 +330,52 @@ class _DiffPageState extends ConsumerState<DiffPage> {
         for (final s in setUnknown) _buildSetCard(s, ruleTitles),
       ],
     ];
+
+    // 宽屏时按原型的「字段表 + 右侧摘要」排布；窄屏仍回到单列，
+    // 避免在 900px 以下把两张卡挤成不可读的窄条。
+    if (wide) {
+      return [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: fieldSections,
+              ),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 300,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [summary],
+              ),
+            ),
+          ],
+        ),
+        if (setSections.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ...setSections,
+        ],
+        ...unknownSections,
+      ];
+    }
+
+    return [
+      summary,
+      ...fieldSections,
+      ...setSections,
+      ...unknownSections,
+    ];
   }
 
-  Widget _buildSummary(PackageDiff diff, int fieldCount, int setCount) {
+  Widget _buildSummary(
+    PackageDiff diff,
+    int fieldCount,
+    int setCount, {
+    bool vertical = false,
+  }) {
     final theme = Theme.of(context);
     final total = fieldCount + setCount;
     return Card(
@@ -344,10 +406,57 @@ class _DiffPageState extends ConsumerState<DiffPage> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            if (vertical) ...[
+              _SummaryMetric(
+                value: '$fieldCount',
+                label: t.diff.section_fields,
+                accent: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 8),
+              _SummaryMetric(
+                value: '$setCount',
+                label: t.diff.section_sets,
+                accent: theme.colorScheme.tertiary,
+              ),
+              const SizedBox(height: 8),
+              _SummaryMetric(
+                value: '${diff.unknownFieldCount}',
+                label: t.diff.section_unknown,
+                accent: theme.colorScheme.error,
+              ),
+            ] else
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryMetric(
+                      value: '$fieldCount',
+                      label: t.diff.section_fields,
+                      accent: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _SummaryMetric(
+                      value: '$setCount',
+                      label: t.diff.section_sets,
+                      accent: theme.colorScheme.tertiary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _SummaryMetric(
+                      value: '${diff.unknownFieldCount}',
+                      label: t.diff.section_unknown,
+                      accent: theme.colorScheme.error,
+                    ),
+                  ),
+                ],
+              ),
             // 「无法比较」的条数单独报。并进上面那一句会让「这次说不清」
             // 被读成「没有差异」。
             if (diff.unknownFieldCount > 0) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 t.diff.summary_unknown(count: diff.unknownFieldCount),
                 style:
@@ -356,6 +465,101 @@ class _DiffPageState extends ConsumerState<DiffPage> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFieldTable(List<FieldDiff> fields) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final headerStyle = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+      fontSize: 9,
+      letterSpacing: 1.2,
+      fontFamily: 'monospace',
+    );
+    return Card(
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: scheme.outlineVariant),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(flex: 22, child: Text('FIELD', style: headerStyle)),
+                Expanded(flex: 32, child: Text('OLD', style: headerStyle)),
+                Expanded(flex: 32, child: Text('NEW', style: headerStyle)),
+                SizedBox(
+                  width: 74,
+                  child: Text('CHANGE', style: headerStyle),
+                ),
+              ],
+            ),
+          ),
+          for (var i = 0; i < fields.length; i++) ...[
+            if (i > 0)
+              Divider(
+                  height: 1,
+                  color: scheme.outlineVariant.withValues(alpha: 0.7)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    flex: 22,
+                    child: Text(
+                      DiffLabels.field(fields[i].id, t),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 32,
+                    child: Text(
+                      DiffLabels.value(fields[i].id, fields[i].left, t),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontFamily: 'monospace',
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 32,
+                    child: Text(
+                      DiffLabels.value(fields[i].id, fields[i].right, t),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurface,
+                        fontFamily: 'monospace',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 74,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: _KindBadge(kind: fields[i].kind),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -370,6 +574,157 @@ class _DiffPageState extends ConsumerState<DiffPage> {
         end: _KindBadge(kind: f.kind),
         // 值是两个值的组合（`A → B`），不是一个「可复制的事实」。
         copyable: false,
+      ),
+    );
+  }
+
+  Widget _buildSetTable(
+    List<SetDiff> sets,
+    Map<String, String> ruleTitles,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final headerStyle = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+      fontSize: 9,
+      letterSpacing: 1.2,
+      fontFamily: 'monospace',
+    );
+    return Card(
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: scheme.outlineVariant),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(child: Text('SET', style: headerStyle)),
+                SizedBox(
+                  width: 72,
+                  child: Text('COMMON', style: headerStyle),
+                ),
+                SizedBox(
+                  width: 64,
+                  child: Text('ADDED', style: headerStyle),
+                ),
+                SizedBox(
+                  width: 64,
+                  child: Text('REMOVED', style: headerStyle),
+                ),
+              ],
+            ),
+          ),
+          for (var i = 0; i < sets.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: scheme.outlineVariant),
+            _buildSetRow(sets[i], ruleTitles),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetRow(SetDiff s, Map<String, String> ruleTitles) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  DiffLabels.set(s.id, t),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (!s.comparable)
+                const _KindBadge(kind: DiffKind.unknown)
+              else if (s.isSame)
+                Text(
+                  t.diff.common_count(count: s.common.length),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              if (s.comparable) ...[
+                const SizedBox(width: 8),
+                Text(
+                  t.diff.added_count(count: s.added.length),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: _KindBadge.colorOf(DiffKind.added, theme),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  t.diff.removed_count(count: s.removed.length),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: _KindBadge.colorOf(DiffKind.removed, theme),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (s.added.isNotEmpty || s.removed.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final m in s.added.take(DiffPage.maxMembersPerList))
+                  _memberChip(
+                    DiffLabels.member(s.id, m, t, ruleTitles: ruleTitles),
+                    DiffKind.added,
+                  ),
+                for (final m in s.removed.take(DiffPage.maxMembersPerList))
+                  _memberChip(
+                    DiffLabels.member(s.id, m, t, ruleTitles: ruleTitles),
+                    DiffKind.removed,
+                  ),
+                if (s.added.length > DiffPage.maxMembersPerList ||
+                    s.removed.length > DiffPage.maxMembersPerList)
+                  Text(
+                    t.diff.truncated_members(
+                      count: (s.added.length - DiffPage.maxMembersPerList)
+                              .clamp(0, 1 << 30) +
+                          (s.removed.length - DiffPage.maxMembersPerList)
+                              .clamp(0, 1 << 30),
+                    ),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _memberChip(String label, DiffKind kind) {
+    final theme = Theme.of(context);
+    final color = _KindBadge.colorOf(kind, theme);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        '${kind == DiffKind.added ? '+' : '−'} $label',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: color,
+          fontFamily: 'monospace',
+          fontSize: 10,
+        ),
       ),
     );
   }
@@ -627,6 +982,54 @@ class _SlotIcon extends StatelessWidget {
 }
 
 /// 一个文件槽：显示已选的包，或「选择应用包」。
+class _SummaryMetric extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color accent;
+
+  const _SummaryMetric({
+    required this.value,
+    required this.label,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SlotCard extends StatelessWidget {
   final String label;
   final FileState? state;

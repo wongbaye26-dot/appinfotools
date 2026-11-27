@@ -188,6 +188,7 @@
       "refresh_done": "已通知资源管理器重新读取文件关联",
       "enabled_ok": "已启用 —— 打开一个放有 APK 或 IPA 的文件夹看看",
       "disabled_ok": "已停用 —— 资源管理器会回退到通用文件图标",
+      "disabled_machine_wide": "未能完全停用：检测到机器级（HKLM）缩略图注册仍在，资源管理器可能继续使用。请以管理员身份清理 HKLM 项。",
       "failed": "操作失败：{reason}",
       "extensions_title": "按扩展名",
       "ext_registered": "已注册",
@@ -860,7 +861,13 @@
       "android_rule_f_truncated": "本次扫描所检查的那部分 DEX 内容里未发现上传相关特征，但覆盖并不完整：{scannedBytes} / {totalBytes} 字节（{percent}%），{skippedDex} 个 DEX 超出扫描预算，{unanalysedDex} 个未能完整分析。未检查的部分可能含有上传标记，因此不能据此认为该应用不上传。",
       "android_rule_f_limitation_incomplete": "部分 DEX 内容未被检查（扫描预算或结构不可遍历），因此这条「未发现」结论只覆盖已扫描的部分。",
       "ios_rule_f_truncated": "本次扫描所检查的那部分可执行文件内容里未发现网络上传特征，但覆盖并不完整：{scannedBytes} / {totalBytes} 字节（{percent}%），{overBudget} 个可执行文件超出扫描预算，{unread} 个未能读取。未检查的部分可能含有上传标记，因此不能据此认为该应用没有网络行为。",
-      "ios_rule_f_limitation_incomplete": "部分可执行文件内容未被检查（扫描预算或嵌套二进制读取失败），因此这条「未发现」结论只覆盖已扫描的部分。"
+      "ios_rule_f_limitation_incomplete": "部分可执行文件内容未被检查（扫描预算或嵌套二进制读取失败），因此这条「未发现」结论只覆盖已扫描的部分。",
+      "ios_rule_f_encrypted": "本次扫描能读取的明文中未发现上传特征，但有 {encrypted} 个可执行文件仍被 FairPlay 加密：加密的 __TEXT 范围（已扫描 {scannedBytes}/{totalBytes} 字节，{percent}%）是密文，因此不能据此认为应用没有上传行为。",
+      "ios_rule_f_limitation_encrypted": "FairPlay 加密的可执行文件未解密：隐藏在加密 __TEXT 范围内的上传特征无法被本次静态扫描发现。",
+      "ios_encrypted_binary": "发现 {count} 个可执行文件仍被 FairPlay 加密（例如 {path}）。其 __TEXT 字节为密文，字符串/符号扫描看不到原始代码与字面量。这描述的是分析范围，不是风险结论。",
+      "ios_encrypted_binary_limitation": "加密的 __TEXT 内容无法静态检查：该范围内的字符串、Objective-C 选择子和字面量地址都不可见。本次扫描没命中，不代表应用不会执行相应行为。",
+      "ios_encrypted_binary_manual_review": "如需判断加密范围内可能隐藏的能力，请在受控环境中解密该二进制，或取得解密后的构建产物。",
+      "ios_scan_coverage_encrypted": "API 使用线索扫描打开了 {total} 个可执行文件中的 {scanned} 个（共 {bytes} 字节），但其中 {encrypted} 个被 FairPlay 加密：字符串与选择子是密文，这部分内容并未真正覆盖。"
     },
     "sources": {
       "photo_library": "完整照片库（PhotoKit）",
@@ -1095,10 +1102,24 @@
     "capability_theme": "主题",
     "capability_count": "条数",
     "capability_rules": "涉及规则",
-    "capability_hint": "按**检测主题**（引擎给每条发现项打的 `category`）聚合。条数多不等于更严重 —— 严重程度仍看等级；这张表回答的是「这个应用在哪些方向上被点名最多」。"
+    "capability_hint": "按**检测主题**（引擎给每条发现项打的 `category`）聚合。条数多不等于更严重 —— 严重程度仍看等级；这张表回答的是「这个应用在哪些方向上被点名最多」。",
+    "encryption_banner_title": "FairPlay 加密内容",
+    "encryption_banner_body": "{count} 个可执行文件仍被 FairPlay 加密：字符串/符号扫描看到的是密文，相关「未发现」结论已降级。",
+    "evidence_title": "结构化证据",
+    "evidence_artifacts_summary": "安全相关制品 {count} 个，归档条目共 {total} 个",
+    "evidence_artifacts_truncated": "清单在条目上限处被截断",
+    "evidence_load_graph_summary": "{nodes} 个节点，{edges} 条边",
+    "evidence_load_graph_dangling": "其中 {count} 条边指向包外",
+    "evidence_load_graph_incomplete": "遍历不完整"
   },
   "detail_tab": {
     "overview": "概览",
+    "manifest": "清单",
+    "components": "组件",
+    "files": "文件",
+    "infoPlist": "Info.plist",
+    "frameworks": "嵌套框架",
+    "diagnostics": "诊断",
     "application": "应用",
     "permissions": "权限",
     "structure": "结构",
@@ -1144,7 +1165,13 @@
       "android_signature": "签名材料",
       "ios_machoSites": "Mach-O 调用点",
       "ios_unicodeStrings": "Unicode 字符串",
-      "android_dex_unicodeStrings": "DEX Unicode 字符串"
+      "android_dex_unicodeStrings": "DEX Unicode 字符串",
+      "ios_encryption": "FairPlay 加密",
+      "android_artifacts": "Android 制品清单",
+      "android_payloadProbe": "载荷探测",
+      "android_loadGraph": "加载链",
+      "android_nativeLibraries": "原生库内容",
+      "android_splitSampling": "分包抽样"
     },
     "notes": {
       "android_manifest_unparsed": "AndroidManifest.xml 无法解析（{reason}）",
@@ -1184,7 +1211,22 @@
       "android_dex_unicode_strings_no_content": "没有可供 Unicode 扫描的 DEX string_ids 条目",
       "android_dex_unicode_strings_untrusted": "{count} 个 DEX 文件结构不可信，其字符串常量未解码",
       "android_dex_unicode_strings_truncated": "部分 string_ids 条目无法解码或超出 Unicode 扫描预算；未检查的部分内容未知",
-      "android_dex_unicode_strings_scope": "已解码可通过 DEX string_ids 访问的 MUTF-8 字符串常量；resources/ 与 assets/ 中的文本、原生库、加固壳以及运行时拼接的字符串不在可见范围内。"
+      "android_dex_unicode_strings_scope": "已解码可通过 DEX string_ids 访问的 MUTF-8 字符串常量；resources/ 与 assets/ 中的文本、原生库、加固壳以及运行时拼接的字符串不在可见范围内。",
+      "ios_encryption_encrypted": "主可执行文件被 FairPlay 加密（cryptid={cryptid}），其 __TEXT 范围是密文",
+      "ios_encryption_nested_encrypted": "{count} 个可执行文件被 FairPlay 加密，其 __TEXT 范围是密文",
+      "ios_encryption_decrypted": "主可执行文件标记为已解密（cryptid=0）",
+      "ios_encryption_no_marker": "未找到可读的 LC_ENCRYPTION_INFO 命令；这不等于确认可执行文件是明文",
+      "android_artifacts_not_provided": "安全审计未获得制品清单",
+      "android_artifacts_scope": "已列出 {count} 个安全相关制品，归档条目共 {total} 个",
+      "android_artifacts_truncated": "制品清单在条目上限处被截断，仅列出包的一部分",
+      "android_payload_not_provided": "安全审计未获得载荷探测结果",
+      "android_payload_no_candidates": "没有可用于载荷探测的 assets 或内嵌代码候选",
+      "android_payload_truncated": "已探测 {probed}/{total} 个候选条目",
+      "android_load_graph_not_provided": "安全审计未获得加载链",
+      "android_load_graph_incomplete": "加载链遍历提前停止：已记录 {nodes} 个节点、{edges} 条边",
+      "android_native_libraries_not_provided": "没有可用于内容扫描的原生库",
+      "android_native_libraries_partial": "已打开 {covered}/{total} 个唯一原生库进行内容扫描",
+      "android_split_sampling_truncated": "已审计 {audited}/{total} 个分包 APK"
     }
   },
   "diff": {
@@ -1362,5 +1404,24 @@
     "split_cert_mismatch_message": "base APK 与至少一个 split APK 的签名证书不一致（{packageId}）。",
     "split_cert_mismatch_review": "不要信任这个安装集合；请从官方渠道重新下载。Android 通常会拒绝签名不一致的分包。",
     "split_cert_mismatch_limitation": "证书不一致只证明安装集合不完整/被拼凑，不能指出具体哪个分包被篡改。"
+  },
+  "analysis_state": {
+    "empty_title": "尚未载入安装包",
+    "empty_body": "打开 APK、XAPK、APKS 或 IPA，查看结构与静态安全证据。",
+    "empty_action": "打开安装包",
+    "loading_title": "正在分析…",
+    "loading_body": "正在解析安装包；大型分包可能需要较长时间。",
+    "partial_title": "部分解析",
+    "partial_body": "部分数据未能解析，下方详情不完整。",
+    "failure_title": "无法分析此安装包",
+    "failure_body": "安装包未能解析，请检查路径后重试。",
+    "retry": "重试",
+    "cancelled": "解析已取消。",
+    "file_not_found": "文件不存在，请检查路径后重试。"
+  },
+  "shell": {
+    "search_hint": "搜索或跳转…",
+    "command_title": "跳转到",
+    "command_empty": "没有匹配的页面"
   }
 }

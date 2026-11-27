@@ -239,6 +239,47 @@ void main() {
       expect(withLimitation.hasActualGaps, isFalse);
     });
 
+    test('artifacts / loadGraph 在 withFinding、withLimitation 后保留', () {
+      const inventory = ArtifactInventory(
+        entries: [
+          ArtifactEntry(
+            path: 'classes.dex',
+            kind: ArtifactKind.dex,
+            sizeBytes: 10,
+          ),
+        ],
+        totalEntries: 2,
+        inventoriedEntries: 1,
+        entriesComplete: false,
+      );
+      const graph = LoadGraph(
+        nodes: [
+          LoadNode(
+            id: 'classes.dex',
+            kind: LoadNodeKind.dex,
+            presentInPackage: true,
+          ),
+        ],
+        complete: false,
+      );
+      const result = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        artifacts: inventory,
+        loadGraph: graph,
+      );
+
+      final withFinding =
+          result.withFinding(finding(severity: SecuritySeverity.info));
+      expect(withFinding.artifacts, same(inventory));
+      expect(withFinding.loadGraph, same(graph));
+
+      final withLimitation =
+          result.withLimitation(const AnalysisNote('x', 'y'));
+      expect(withLimitation.artifacts, same(inventory));
+      expect(withLimitation.loadGraph, same(graph));
+    });
+
     test('includesRuntimeEvidence 默认 false（本工具不做运行时分析）', () {
       const result =
           SecurityAnalysisResult(engineVersion: 'e', rulesVersion: 'r');

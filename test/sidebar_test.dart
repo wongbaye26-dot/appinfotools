@@ -17,7 +17,11 @@ import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> _pumpSidebar(WidgetTester tester, Size size) async {
+Future<void> _pumpSidebar(
+  WidgetTester tester,
+  Size size, {
+  bool collapsed = false,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -27,8 +31,14 @@ Future<void> _pumpSidebar(WidgetTester tester, Size size) async {
       child: MaterialApp(
         home: Scaffold(
           body: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AppSidebar(selectedId: 'overview', onItemSelected: (_) {}),
+              AppSidebar(
+                selectedId: 'overview',
+                onItemSelected: (_) {},
+                collapsed: collapsed,
+                onToggleCollapsed: () {},
+              ),
             ],
           ),
         ),
@@ -48,18 +58,19 @@ String _text(WidgetTester tester) {
 
 void main() {
   group('侧边栏', () {
-    testWidgets('展开宽度是 200（不是 240）', (tester) async {
+    testWidgets('V4 展开宽度是 232', (tester) async {
       await _pumpSidebar(tester, const Size(1280, 800));
 
       final sidebar = tester.getSize(find.byType(AppSidebar));
       expect(sidebar.width, kSidebarWidth);
-      expect(sidebar.width, 200);
+      expect(sidebar.width, 232);
     });
 
-    testWidgets('窄窗口退化成 64px 紧凑模式', (tester) async {
-      await _pumpSidebar(tester, const Size(700, 800));
+    testWidgets('收起后是 76px 图标栏', (tester) async {
+      await _pumpSidebar(tester, const Size(700, 800), collapsed: true);
 
-      expect(tester.getSize(find.byType(AppSidebar)).width, 64);
+      expect(tester.getSize(find.byType(AppSidebar)).width,
+          kSidebarCollapsedWidth);
     });
 
     testWidgets('导航项都在，且「版本对比」已简化成「对比」', (tester) async {
@@ -105,20 +116,18 @@ void main() {
           reason: '副标题是纯噪音，还占掉窄栏的纵向空间');
     });
 
-    testWidgets('平台图标与版本号回到侧边栏底栏', (tester) async {
-      // `packageInfo` 在单元测试里没初始化，`_versionText()` 返回空串 ——
-      // 因此这里不断言版本号的文字，只断言「底栏那一行」确实在底部。
+    testWidgets('底栏保留本地边界提示', (tester) async {
       await _pumpSidebar(tester, const Size(1280, 800));
 
-      final icons = find.byIcon(Icons.android);
-      expect(icons, findsWidgets, reason: '底栏要保留平台图标');
+      expect(find.text('LOCAL ONLY'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
 
       final sidebarHeight = tester.getSize(find.byType(AppSidebar)).height;
-      final bottomRow = tester.getRect(icons.first);
+      final hint = tester.getRect(find.text('LOCAL ONLY'));
       expect(
-        bottomRow.center.dy,
-        greaterThan(sidebarHeight - 60),
-        reason: '平台图标（与版本号同行）应当贴近侧边栏底部',
+        hint.center.dy,
+        greaterThan(sidebarHeight - 90),
+        reason: '本地边界提示应当贴近侧边栏底部',
       );
     });
   });

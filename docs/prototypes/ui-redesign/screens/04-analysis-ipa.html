@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>04 · 分析 / iOS</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+</head>
+<body class="app" data-nav="analysis" data-window-title="AppInfoTool — 分析" data-window-state="SUN · IPA">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">工作区 <span class="sep">/</span> 分析 <span class="sep">/</span> iOS</div>
+          <h1>SUN</h1>
+          <p>com.overall.sun · 1.8.3 (183) · IPA 静态解析完成。</p>
+        </div>
+        <div class="actions">
+          <button class="btn icon"><svg class="ic"><use href="#i-refresh"/></svg></button>
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-compare"/></svg>加入对比</button>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <span class="tab active">概览</span>
+        <span class="tab">Info.plist</span>
+        <span class="tab">嵌套框架 <span class="count">27</span></span>
+        <span class="tab">签名</span>
+        <span class="tab">安全 <span class="count">17</span></span>
+        <span class="tab">文件</span>
+        <span class="tab">诊断</span>
+      </nav>
+
+      <div class="banner">
+        <svg class="ic"><use href="#i-lock"/></svg>
+        <div><b>FairPlay 加密：主可执行文件的明文不可见</b><p>检测到 LC_ENCRYPTION_INFO cryptid=1。依赖明文的目标字符串、调用点与 payload 结论已降级为“未知”，而不是“未发现”。</p></div>
+      </div>
+
+      <section class="detail-grid">
+        <div class="detail-col">
+          <div class="card card-pad">
+            <div class="card-head">
+              <div class="card-title"><svg class="ic"><use href="#i-apple"/></svg>应用信息</div>
+              <span class="chip amber"><span class="badge-dot"></span>签名验证失败</span>
+            </div>
+            <div class="info-grid">
+              <div class="info-cell"><div class="info-k">Bundle ID</div><div class="info-v mono">com.overall.sun</div></div>
+              <div class="info-cell"><div class="info-k">版本</div><div class="info-v">1.8.3 (183)</div></div>
+              <div class="info-cell"><div class="info-k">安装包大小</div><div class="info-v">40.5 MB</div></div>
+              <div class="info-cell"><div class="info-k">最低系统</div><div class="info-v">iOS 13.0</div></div>
+              <div class="info-cell"><div class="info-k">架构</div><div class="info-v mono">arm64</div></div>
+              <div class="info-cell"><div class="info-k">FairPlay</div><div class="info-v">已加密 · cryptid 1</div></div>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap;">
+              <span class="chip">Apple 签名</span><span class="chip amber">未通过 codesign</span><span class="chip">嵌套 27</span><span class="chip">Mach-O 15</span>
+            </div>
+          </div>
+
+          <div class="card card-pad" style="flex:1;">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><svg class="ic"><use href="#i-shield"/></svg>静态安全线索</div>
+                <div class="card-sub">FairPlay 加密会限制静态可见范围。</div>
+              </div>
+              <button class="btn small">查看全部 17 项</button>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon red"><svg class="ic"><use href="#i-alert"/></svg></div>
+              <div style="min-width:0; flex:1;"><div class="finding-title">签名校验未通过 <span class="chip red">需优先复核</span></div><div class="finding-desc">embedded.mobileprovision 与 CodeResources 无法形成完整信任链；可能为测试签名、重签或损坏。</div></div>
+              <span class="finding-code">IOS-SIGNATURE-INVALID</span>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon"><svg class="ic"><use href="#i-lock"/></svg></div>
+              <div style="min-width:0; flex:1;"><div class="finding-title">加密内容覆盖缺口</div><div class="finding-desc">主二进制为 FairPlay 密文；字符串、调用点与动态加载证据只覆盖可见部分。</div></div>
+              <span class="finding-code">IOS-ENCRYPTED-BINARY</span>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon blue"><svg class="ic"><use href="#i-layers"/></svg></div>
+              <div style="min-width:0; flex:1;"><div class="finding-title">嵌套框架截断</div><div class="finding-desc">共 27 个嵌套包，本轮解析前 24 个；剩余 3 个未纳入静态扫描。</div></div>
+              <span class="finding-code">IOS-NESTED-TRUNCATED</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-col">
+          <div class="card card-pad">
+            <div class="card-head">
+              <div class="card-title"><svg class="ic"><use href="#i-activity"/></svg>分析覆盖</div>
+              <span class="chip amber">2 个缺口</span>
+            </div>
+            <div class="coverage-ring">
+              <div class="ring" style="background:conic-gradient(var(--brand) 0 78%, #ecece4 78% 100%);"><b>78%</b></div>
+              <div class="coverage-meta"><b>7 / 9 维度</b><div>加密内容与嵌套截断<br>都会降低结论置信度</div></div>
+            </div>
+            <div class="coverage-list">
+              <div class="coverage-row"><span class="status"></span>Info.plist / 权限说明<span class="val">完整</span></div>
+              <div class="coverage-row"><span class="status"></span>签名 / CodeResources<span class="val">完整</span></div>
+              <div class="coverage-row"><span class="status gap"></span>Mach-O 明文字符串<span class="val">加密</span></div>
+              <div class="coverage-row"><span class="status partial"></span>嵌套框架<span class="val">24 / 27</span></div>
+              <div class="coverage-row"><span class="status"></span>图标 / 资源<span class="val">完整</span></div>
+            </div>
+          </div>
+
+          <div class="card card-pad">
+            <div class="card-head">
+              <div class="card-title"><svg class="ic"><use href="#i-lock"/></svg>签名与加密</div>
+              <span class="chip red">验证失败</span>
+            </div>
+            <div class="signature-grid">
+              <div class="sig-cell"><div class="k">签名类型</div><div class="v">Ad-hoc / 重签</div></div>
+              <div class="sig-cell"><div class="k">Team ID</div><div class="v mono">未读取</div></div>
+              <div class="sig-cell"><div class="k">FairPlay cryptid</div><div class="v mono">1 · 加密</div></div>
+              <div class="sig-cell"><div class="k">CodeResources</div><div class="v">存在但不匹配</div></div>
+            </div>
+            <div class="banner" style="margin-top:12px; padding:9px 10px;">
+              <svg class="ic"><use href="#i-info"/></svg>
+              <div><b style="font-size:10.5px">静态签名 ≠ 运行信任</b><p style="font-size:9.5px">未在设备上安装，也未执行 codesign 动态校验。</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="footnote">Prototype · Analysis / iOS</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

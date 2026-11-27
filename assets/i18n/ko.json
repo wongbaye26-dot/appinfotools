@@ -166,6 +166,7 @@
       "refresh_done": "탐색기에 파일 연결을 다시 읽으라고 알렸습니다",
       "enabled_ok": "사용 설정했습니다 — APK 나 IPA 가 있는 폴더를 열어 확인하십시오",
       "disabled_ok": "사용 해제했습니다 — 탐색기는 일반 파일 아이콘으로 돌아갑니다",
+      "disabled_machine_wide": "완전히 비활성화하지 못했습니다. 시스템 전체(HKLM) 썸네일 등록이 남아 있어 Explorer가 계속 사용할 수 있습니다. 관리자 권한으로 HKLM 항목을 제거하세요.",
       "failed": "작업 실패: {reason}",
       "extensions_title": "확장자별",
       "ext_registered": "등록됨",
@@ -867,7 +868,13 @@
       "android_rule_f_truncated": "이번 스캔이 확인한 DEX 범위에서는 업로드 관련 특징이 발견되지 않았지만, 그 범위는 완전하지 않습니다: {scannedBytes} / {totalBytes} 바이트({percent}%), DEX {skippedDex}개가 스캔 예산을 초과했고 {unanalysedDex}개는 완전히 분석되지 않았습니다. 검사하지 않은 부분에 업로드 마커가 있을 수 있으므로 앱이 업로드하지 않는다는 근거가 될 수 없습니다.",
       "android_rule_f_limitation_incomplete": "DEX의 일부가 검사되지 않았습니다(스캔 예산 또는 순회할 수 없는 구조). 따라서 이 \"발견되지 않음\" 결론은 스캔한 범위에만 해당합니다.",
       "ios_rule_f_truncated": "이번 스캔이 확인한 실행 파일 범위에서는 네트워크 업로드 특징이 발견되지 않았지만, 그 범위는 완전하지 않습니다: {scannedBytes} / {totalBytes} 바이트({percent}%), 실행 파일 {overBudget}개가 스캔 예산을 초과했고 {unread}개는 읽을 수 없었습니다. 검사하지 않은 부분에 업로드 마커가 있을 수 있으므로 앱에 네트워크 동작이 없다는 근거가 될 수 없습니다.",
-      "ios_rule_f_limitation_incomplete": "실행 파일의 일부가 검사되지 않았습니다(스캔 예산 또는 읽을 수 없는 중첩 바이너리). 따라서 이 \"발견되지 않음\" 결론은 스캔한 범위에만 해당합니다."
+      "ios_rule_f_limitation_incomplete": "실행 파일의 일부가 검사되지 않았습니다(스캔 예산 또는 읽을 수 없는 중첩 바이너리). 따라서 이 \"발견되지 않음\" 결론은 스캔한 범위에만 해당합니다.",
+      "ios_rule_f_encrypted": "이번 스캔에서 읽을 수 있었던 평문에서는 업로드 특징이 발견되지 않았지만, {encrypted}개의 실행 파일이 여전히 FairPlay 암호화되어 있습니다. 암호화된 __TEXT 범위({scannedBytes}/{totalBytes}바이트, {percent}% 스캔)는 암호문이므로 앱에 업로드 동작이 없다고 볼 수 없습니다.",
+      "ios_rule_f_limitation_encrypted": "FairPlay 암호화된 실행 파일은 복호화되지 않았습니다. 암호화된 __TEXT 범위에 숨은 업로드 특징은 이 정적 스캔에서 찾을 수 없습니다.",
+      "ios_encrypted_binary": "{count}개의 실행 파일이 FairPlay 암호화되어 있습니다(예: {path}). __TEXT 바이트가 암호문이므로 문자열/심볼 스캔으로는 원본 코드나 리터럴을 볼 수 없습니다. 이는 분석 범위를 설명하는 것이며 위험 판정이 아닙니다.",
+      "ios_encrypted_binary_limitation": "암호화된 __TEXT 내용은 정적으로 검사할 수 없습니다. 해당 범위의 문자열, Objective-C 선택자, 리터럴 주소는 보이지 않습니다. 이번 스캔에서 발견되지 않았다고 해서 앱이 그 동작을 하지 않는다는 증거는 아닙니다.",
+      "ios_encrypted_binary_manual_review": "암호화 범위에 숨을 수 있는 기능을 판단하려면 통제된 환경에서 바이너리를 복호화하거나 복호화된 빌드를 확보하세요.",
+      "ios_scan_coverage_encrypted": "API 사용 단서 스캔이 {total}개 중 {scanned}개의 실행 파일(총 {bytes}바이트)을 열었지만, {encrypted}개가 FairPlay 암호화되어 있어 문자열과 선택자가 암호문이므로 해당 내용은 실질적으로 검사되지 않았습니다."
     },
     "sdk_categories": {
       "analytics": "분석 / 어트리뷰션",
@@ -910,7 +917,15 @@
     "capability_theme": "테마",
     "capability_count": "건수",
     "capability_rules": "관련 규칙",
-    "capability_hint": "**검출 테마**(엔진이 각 지적에 부여하는 `category`)로 집계합니다. 건수가 많다고 더 심각한 것은 아니며 심각도는 등급으로 판단합니다. 이 표는 \"어느 방향에서 가장 많이 지적되었는가\"에 답합니다."
+    "capability_hint": "**검출 테마**(엔진이 각 지적에 부여하는 `category`)로 집계합니다. 건수가 많다고 더 심각한 것은 아니며 심각도는 등급으로 판단합니다. 이 표는 \"어느 방향에서 가장 많이 지적되었는가\"에 답합니다.",
+    "encryption_banner_title": "FairPlay 암호화된 콘텐츠",
+    "encryption_banner_body": "{count}개의 실행 파일이 FairPlay 암호화된 상태입니다. 문자열/심볼 스캔은 암호문을 보므로 관련 \"발견되지 않음\" 결론이 하향 조정됩니다.",
+    "evidence_title": "구조화된 증거",
+    "evidence_artifacts_summary": "보안 관련 아티팩트 {count}개(아카이브 항목 {total}개)",
+    "evidence_artifacts_truncated": "목록이 항목 한도에서 잘렸습니다",
+    "evidence_load_graph_summary": "노드 {nodes}개, 엣지 {edges}개",
+    "evidence_load_graph_dangling": "그중 {count}개 엣지가 패키지 밖을 가리킵니다",
+    "evidence_load_graph_incomplete": "순회가 불완전합니다"
   },
   "report": {
     "export_json_action": "JSON 보안 보고서 낳출",
@@ -930,6 +945,12 @@
   },
   "detail_tab": {
     "overview": "개요",
+    "manifest": "매니페스트",
+    "components": "컴포넌트",
+    "files": "파일",
+    "infoPlist": "Info.plist",
+    "frameworks": "중첩 프레임워크",
+    "diagnostics": "진단",
     "application": "앱",
     "permissions": "권한",
     "structure": "구조",
@@ -966,7 +987,13 @@
       "android_signature": "서명 자료",
       "ios_machoSites": "Mach-O 호출 지점",
       "ios_unicodeStrings": "Unicode 문자열",
-      "android_dex_unicodeStrings": "DEX Unicode 문자열"
+      "android_dex_unicodeStrings": "DEX Unicode 문자열",
+      "ios_encryption": "FairPlay 암호화",
+      "android_artifacts": "Android 아티팩트",
+      "android_payloadProbe": "페이로드 검사",
+      "android_loadGraph": "로드 그래프",
+      "android_nativeLibraries": "네이티브 라이브러리 내용",
+      "android_splitSampling": "분할 APK 샘플링"
     },
     "gap_count": "{count}개 항목에 누락이 있습니다",
     "hint": "'누락'은 결론이 모든 것을 포괄하지 못한다는 뜻입니다. 여기서 '찾을 수 없음'은 '없음'이 아닙니다.",
@@ -1011,7 +1038,22 @@
       "android_dex_unicode_strings_no_content": "Unicode 스캔에 사용할 수 있는 DEX string_ids 항목이 없습니다",
       "android_dex_unicode_strings_untrusted": "DEX 파일 {count}개의 구조를 신뢰할 수 없어 문자열 상수를 디코딩하지 않았습니다",
       "android_dex_unicode_strings_truncated": "일부 string_ids 항목을 디코딩할 수 없거나 Unicode 스캔 예산을 초과했습니다. 검사하지 않은 부분의 내용은 알 수 없습니다",
-      "android_dex_unicode_strings_scope": "DEX string_ids로 접근할 수 있는 MUTF-8 문자열 상수를 디코딩했습니다. resources/ 및 assets/의 텍스트, 네이티브 라이브러리, 난독화 셸, 런타임에 조립되는 문자열은 여기서 확인할 수 없습니다."
+      "android_dex_unicode_strings_scope": "DEX string_ids로 접근할 수 있는 MUTF-8 문자열 상수를 디코딩했습니다. resources/ 및 assets/의 텍스트, 네이티브 라이브러리, 난독화 셸, 런타임에 조립되는 문자열은 여기서 확인할 수 없습니다.",
+      "ios_encryption_encrypted": "주 실행 파일이 FairPlay 암호화되어 있습니다(cryptid={cryptid}). __TEXT 범위는 암호문입니다",
+      "ios_encryption_nested_encrypted": "{count}개의 실행 파일이 FairPlay 암호화되어 있습니다. __TEXT 범위는 암호문입니다",
+      "ios_encryption_decrypted": "주 실행 파일이 복호화된 것으로 표시되어 있습니다(cryptid=0)",
+      "ios_encryption_no_marker": "읽을 수 있는 LC_ENCRYPTION_INFO 명령이 없습니다. 이는 실행 파일이 평문임을 확인하는 것이 아닙니다",
+      "android_artifacts_not_provided": "보안 감사에 아티팩트 목록이 제공되지 않았습니다",
+      "android_artifacts_scope": "보안 관련 아티팩트 {count}개를 아카이브 항목 {total}개 중에서 나열했습니다",
+      "android_artifacts_truncated": "아티팩트 목록이 항목 한도에서 잘렸으며 패키지의 일부만 나열되었습니다",
+      "android_payload_not_provided": "보안 감사에 페이로드 검사가 제공되지 않았습니다",
+      "android_payload_no_candidates": "페이로드 검사에 사용할 assets 또는 내장 코드 후보가 없었습니다",
+      "android_payload_truncated": "후보 {total}개 중 {probed}개를 검사했습니다",
+      "android_load_graph_not_provided": "보안 감사에 로드 그래프가 제공되지 않았습니다",
+      "android_load_graph_incomplete": "로드 그래프 순회가 일찍 중단되었습니다: 노드 {nodes}개, 엣지 {edges}개 기록",
+      "android_native_libraries_not_provided": "내용 스캔에 사용할 네이티브 라이브러리가 없었습니다",
+      "android_native_libraries_partial": "고유 네이티브 라이브러리 {total}개 중 {covered}개를 열어 내용을 스캔했습니다",
+      "android_split_sampling_truncated": "분할 APK {total}개 중 {audited}개를 감사했습니다"
     },
     "partial": "부분 커버",
     "summary": "{applicable}개 중 {covered}개 항목이 완전히 커버되었습니다",
@@ -1209,5 +1251,24 @@
     "security_disabled": "설정에서 보안 감사가 꺼져 있습니다",
     "security_crypto_theft_not_assessed": "이 패키지에서는 암호화폐 탈취 체인 평가를 실행하지 않았습니다",
     "security_coverage_not_structured": "이 엔진은 구조화된 커버리지를 산출하지 않았습니다"
+  },
+  "analysis_state": {
+    "empty_title": "패키지가 로드되지 않았습니다",
+    "empty_body": "APK, XAPK, APKS 또는 IPA를 열어 구조와 정적 보안 증거를 확인하세요.",
+    "empty_action": "패키지 열기",
+    "loading_title": "분석 중…",
+    "loading_body": "패키지를 분석하고 있습니다. 큰 분할 패키지는 시간이 걸릴 수 있습니다.",
+    "partial_title": "부분 분석",
+    "partial_body": "일부 데이터를 분석하지 못했습니다. 아래 세부 정보는 불완전합니다.",
+    "failure_title": "이 패키지를 분석할 수 없습니다",
+    "failure_body": "패키지를 분석하지 못했습니다. 경로를 확인한 후 다시 시도하세요.",
+    "retry": "다시 시도",
+    "cancelled": "분석이 취소되었습니다.",
+    "file_not_found": "파일을 찾을 수 없습니다. 경로를 확인한 후 다시 시도하세요."
+  },
+  "shell": {
+    "search_hint": "검색 또는 이동…",
+    "command_title": "이동",
+    "command_empty": "일치하는 페이지가 없습니다"
   }
 }

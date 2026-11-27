@@ -166,6 +166,7 @@
       "refresh_done": "エクスプローラーにファイルの関連付けを読み直すよう通知しました",
       "enabled_ok": "有効にしました — APK または IPA が入ったフォルダーを開いて確認してください",
       "disabled_ok": "無効にしました — エクスプローラーは汎用のファイル アイコンに戻ります",
+      "disabled_machine_wide": "完全に無効化できませんでした：マシン全体（HKLM）のサムネイル登録が残っています。Explorer が引き続き使用する可能性があります。管理者として HKLM の項目を削除してください。",
       "failed": "操作に失敗しました：{reason}",
       "extensions_title": "拡張子ごと",
       "ext_registered": "登録済み",
@@ -867,7 +868,13 @@
       "android_rule_f_truncated": "今回のスキャンが確認した範囲の DEX にはアップロード関連の特徴は見つかりませんでしたが、その範囲は不完全です：{scannedBytes} / {totalBytes} バイト（{percent}%）、{skippedDex} 個の DEX がスキャン予算を超え、{unanalysedDex} 個は完全には解析できませんでした。未検査の部分にアップロードのマーカーがある可能性があるため、アプリがアップロードしない根拠にはなりません。",
       "android_rule_f_limitation_incomplete": "DEX の一部は検査されていません（スキャン予算または走査できない構造）。そのため、この「見つからない」という結論はスキャン済みの範囲にのみ当てはまります。",
       "ios_rule_f_truncated": "今回のスキャンが確認した範囲の実行ファイルにはネットワーク経由のアップロード特徴は見つかりませんでしたが、その範囲は不完全です：{scannedBytes} / {totalBytes} バイト（{percent}%）、{overBudget} 個の実行ファイルがスキャン予算を超え、{unread} 個は読み込めませんでした。未検査の部分にアップロードのマーカーがある可能性があるため、アプリにネットワーク動作がない根拠にはなりません。",
-      "ios_rule_f_limitation_incomplete": "実行ファイルの一部は検査されていません（スキャン予算または読み込めないネストされたバイナリ）。そのため、この「見つからない」という結論はスキャン済みの範囲にのみ当てはまります。"
+      "ios_rule_f_limitation_incomplete": "実行ファイルの一部は検査されていません（スキャン予算または読み込めないネストされたバイナリ）。そのため、この「見つからない」という結論はスキャン済みの範囲にのみ当てはまります。",
+      "ios_rule_f_encrypted": "今回のスキャンで読めた平文にはアップロードの特徴は見つかりませんでしたが、{encrypted} 個の実行ファイルが FairPlay 暗号化されたままです。暗号化された __TEXT 範囲（{scannedBytes}/{totalBytes} バイト、{percent}% をスキャン）は暗号文であり、アプリにアップロード動作がないことを意味しません。",
+      "ios_rule_f_limitation_encrypted": "FairPlay 暗号化された実行ファイルは復号されていません。暗号化された __TEXT 範囲に隠れたアップロードの特徴は、この静的スキャンでは見つけられません。",
+      "ios_encrypted_binary": "{count} 個の実行ファイルが FairPlay 暗号化されています（例: {path}）。__TEXT のバイト列は暗号文のため、文字列/シンボルスキャンでは元のコードやリテラルを確認できません。これは分析範囲の説明であり、リスク判定ではありません。",
+      "ios_encrypted_binary_limitation": "暗号化された __TEXT の内容は静的に検査できません。その範囲内の文字列、Objective-C セレクタ、リテラルアドレスは見えません。今回のスキャンで見つからないことは、アプリがその動作をしない証拠ではありません。",
+      "ios_encrypted_binary_manual_review": "暗号化範囲に隠れている可能性のある機能を判断するには、管理された環境でバイナリを復号するか、復号済みのビルドを入手してください。",
+      "ios_scan_coverage_encrypted": "API 使用の手がかりスキャンは {total} 個中 {scanned} 個の実行ファイル（合計 {bytes} バイト）を開きましたが、{encrypted} 個は FairPlay 暗号化されており、文字列とセレクタは暗号文のため、その内容は実質的にカバーされていません。"
     },
     "sdk_categories": {
       "analytics": "分析 / アトリビューション",
@@ -910,7 +917,15 @@
     "capability_theme": "テーマ",
     "capability_count": "件数",
     "capability_rules": "関連ルール",
-    "capability_hint": "**検出テーマ**（エンジンが各指摘に付ける `category`）で集計しています。件数が多いほど深刻とは限らず、深刻度は等級で判断します。この表は「どの方向で最も指摘されているか」に答えるものです。"
+    "capability_hint": "**検出テーマ**（エンジンが各指摘に付ける `category`）で集計しています。件数が多いほど深刻とは限らず、深刻度は等級で判断します。この表は「どの方向で最も指摘されているか」に答えるものです。",
+    "encryption_banner_title": "FairPlay 暗号化された内容",
+    "encryption_banner_body": "{count} 個の実行ファイルが FairPlay 暗号化されたままです。文字列/シンボルスキャンは暗号文を見ているため、関連する「見つからない」という結論は引き下げられています。",
+    "evidence_title": "構造化された証拠",
+    "evidence_artifacts_summary": "セキュリティ関連アーティファクト {count} 件（アーカイブ項目 {total} 件）",
+    "evidence_artifacts_truncated": "一覧は項目上限で切り詰められています",
+    "evidence_load_graph_summary": "ノード {nodes} 件、エッジ {edges} 件",
+    "evidence_load_graph_dangling": "うち {count} 本のエッジはパッケージ外を参照",
+    "evidence_load_graph_incomplete": "走査は不完全です"
   },
   "report": {
     "export_json_action": "JSON セキュリティレポートをエクスポート",
@@ -930,6 +945,12 @@
   },
   "detail_tab": {
     "overview": "概要",
+    "manifest": "マニフェスト",
+    "components": "コンポーネント",
+    "files": "ファイル",
+    "infoPlist": "Info.plist",
+    "frameworks": "ネストフレームワーク",
+    "diagnostics": "診断",
     "application": "アプリ",
     "permissions": "権限",
     "structure": "構造",
@@ -966,7 +987,13 @@
       "android_signature": "署名素材",
       "ios_machoSites": "Mach-O 呼び出し箇所",
       "ios_unicodeStrings": "Unicode 文字列",
-      "android_dex_unicodeStrings": "DEX Unicode 文字列"
+      "android_dex_unicodeStrings": "DEX Unicode 文字列",
+      "ios_encryption": "FairPlay 暗号化",
+      "android_artifacts": "Android アーティファクト",
+      "android_payloadProbe": "ペイロード検査",
+      "android_loadGraph": "ロードグラフ",
+      "android_nativeLibraries": "ネイティブライブラリの内容",
+      "android_splitSampling": "分割 APK のサンプリング"
     },
     "gap_count": "{count} 件の項目に不足があります",
     "hint": "「不足」は結論がすべてを網羅していないことを意味します。ここでの「見つからない」は「存在しない」ではありません。",
@@ -1011,7 +1038,22 @@
       "android_dex_unicode_strings_no_content": "Unicode スキャンに利用できる DEX string_ids のエントリがありませんでした",
       "android_dex_unicode_strings_untrusted": "{count} 個の DEX ファイルは構造が信頼できないため、文字列定数をデコードしていません",
       "android_dex_unicode_strings_truncated": "一部の string_ids エントリはデコードできないか、Unicode スキャンの予算を超えています。未検査部分の内容は不明です",
-      "android_dex_unicode_strings_scope": "DEX string_ids から到達できる MUTF-8 文字列定数をデコードしました。resources/ と assets/ 内のテキスト、ネイティブライブラリ、難読化シェル、実行時に組み立てられる文字列はここでは確認できません。"
+      "android_dex_unicode_strings_scope": "DEX string_ids から到達できる MUTF-8 文字列定数をデコードしました。resources/ と assets/ 内のテキスト、ネイティブライブラリ、難読化シェル、実行時に組み立てられる文字列はここでは確認できません。",
+      "ios_encryption_encrypted": "メイン実行ファイルは FairPlay 暗号化されています（cryptid={cryptid}）。__TEXT 範囲は暗号文です",
+      "ios_encryption_nested_encrypted": "{count} 個の実行ファイルが FairPlay 暗号化されています。__TEXT 範囲は暗号文です",
+      "ios_encryption_decrypted": "メイン実行ファイルは復号済みと記録されています（cryptid=0）",
+      "ios_encryption_no_marker": "読み取り可能な LC_ENCRYPTION_INFO コマンドが見つかりません。これは実行ファイルが平文であることの確認ではありません",
+      "android_artifacts_not_provided": "セキュリティ監査にアーティファクト一覧が渡されませんでした",
+      "android_artifacts_scope": "セキュリティ関連アーティファクト {count} 件（アーカイブ項目 {total} 件）を一覧化しました",
+      "android_artifacts_truncated": "アーティファクト一覧は項目上限で切り詰められ、パッケージの一部のみが一覧化されています",
+      "android_payload_not_provided": "セキュリティ監査にペイロード検査が渡されませんでした",
+      "android_payload_no_candidates": "ペイロード検査に利用できる assets または埋め込みコードの候補がありませんでした",
+      "android_payload_truncated": "候補 {total} 件のうち {probed} 件を検査しました",
+      "android_load_graph_not_provided": "セキュリティ監査にロードグラフが渡されませんでした",
+      "android_load_graph_incomplete": "ロードグラフの走査は途中で停止しました: ノード {nodes} 件、エッジ {edges} 件を記録",
+      "android_native_libraries_not_provided": "内容走査に利用できるネイティブライブラリがありませんでした",
+      "android_native_libraries_partial": "一意なネイティブライブラリ {total} 件のうち {covered} 件を開いて内容を走査しました",
+      "android_split_sampling_truncated": "分割 APK {total} 件のうち {audited} 件を監査しました"
     },
     "partial": "一部カバー",
     "summary": "{applicable} 件中 {covered} 件の項目を完全にカバーしています",
@@ -1209,5 +1251,24 @@
     "security_disabled": "設定でセキュリティ監査が無効になっています",
     "security_crypto_theft_not_assessed": "このパッケージでは暗号資産窃取チェーンの評価を実行していません",
     "security_coverage_not_structured": "このエンジンは構造化されたカバレッジ情報を出力していません"
+  },
+  "analysis_state": {
+    "empty_title": "パッケージが読み込まれていません",
+    "empty_body": "APK、XAPK、APKS、IPA を開いて構造と静的安全証拠を確認します。",
+    "empty_action": "パッケージを開く",
+    "loading_title": "解析中…",
+    "loading_body": "パッケージを解析しています。大きな分割パッケージは時間がかかることがあります。",
+    "partial_title": "一部のみ解析",
+    "partial_body": "一部のデータを解析できませんでした。以下の詳細は不完全です。",
+    "failure_title": "このパッケージを解析できません",
+    "failure_body": "パッケージを解析できませんでした。パスを確認して再試行してください。",
+    "retry": "再試行",
+    "cancelled": "解析はキャンセルされました。",
+    "file_not_found": "ファイルが見つかりません。パスを確認して再試行してください。"
+  },
+  "shell": {
+    "search_hint": "検索または移動…",
+    "command_title": "移動先",
+    "command_empty": "一致するページがありません"
   }
 }

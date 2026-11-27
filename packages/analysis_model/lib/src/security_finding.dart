@@ -16,7 +16,9 @@
 library;
 
 import 'analysis_coverage.dart';
+import 'artifact_inventory.dart';
 import 'crypto_theft.dart';
+import 'load_graph.dart';
 import 'network_facts.dart';
 import 'official_baseline.dart';
 import 'package_seal.dart';
@@ -555,6 +557,16 @@ class SecurityAnalysisResult {
   /// 官方基线匹配；`null` = 未做/无基线库。
   final BaselineMatch? baseline;
 
+  /// 制品清单（路径、类型、来源、大小）。`null` = 本次没有产出该事实，
+  /// **不是**「包里没有任何制品」。
+  ///
+  /// 这是事实层数据，不含恶意性判断；规则层仍用 findings 表达结论。
+  final ArtifactInventory? artifacts;
+
+  /// 加载链（谁加载了谁、目标是否在包内）。`null` = 本次没有产出该事实，
+  /// **不是**「没有任何加载行为」。
+  final LoadGraph? loadGraph;
+
   const SecurityAnalysisResult({
     required this.engineVersion,
     required this.rulesVersion,
@@ -566,6 +578,8 @@ class SecurityAnalysisResult {
     this.cryptoTheft,
     this.seal,
     this.baseline,
+    this.artifacts,
+    this.loadGraph,
   });
 
   /// 各等级发现数量。
@@ -593,6 +607,8 @@ class SecurityAnalysisResult {
       cryptoTheft: cryptoTheft,
       seal: seal,
       baseline: baseline,
+      artifacts: artifacts,
+      loadGraph: loadGraph,
     );
   }
 
@@ -613,6 +629,8 @@ class SecurityAnalysisResult {
       cryptoTheft: cryptoTheft,
       seal: seal,
       baseline: baseline,
+      artifacts: artifacts,
+      loadGraph: loadGraph,
     );
   }
 

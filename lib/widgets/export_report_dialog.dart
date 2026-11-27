@@ -103,7 +103,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
         ],
       ),
       content: SizedBox(
-        width: 400,
+        width: 440,
         child: _exporting
             ? Column(
                 mainAxisSize: MainAxisSize.min,
@@ -193,12 +193,9 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest
-                          .withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: theme.dividerColor.withValues(alpha: 0.15),
-                      ),
+                      color: colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colorScheme.outlineVariant),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

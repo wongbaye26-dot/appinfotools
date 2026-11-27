@@ -404,6 +404,9 @@ Future<ApkInfo?> getApkInfo(
           apkInfo.securityResult = await _auditExtractedBaseApk(
             baseApkPath,
             splitApkPaths: splitPaths,
+            // 包里声明的分包数与**实际提取/审计**的分包数分开：
+            // 提取上限 50 时，剩下的分包不能因为没被提取就当不存在。
+            splitDeclaredTotal: apkInfo.archiveApks.length - 1,
           );
           try {
             final aaptPath = CommandTools.findAapt2Path();
@@ -705,10 +708,12 @@ SecurityFinding _splitCertMismatchFinding(String? packageId) {
 Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
   String baseApkPath, {
   List<String> splitApkPaths = const [],
+  int? splitDeclaredTotal,
 }) async {
   final reader = apk_parser.ApkReader();
   final splitReaders = <apk_parser.ApkReader>[];
   final splitReadersByName = <String, apk_parser.ApkReader>{};
+  var splitAudited = 0;
   try {
     final openResult = await reader.open(baseApkPath);
     if (!openResult.isOk) {
@@ -750,6 +755,7 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
           continue;
         }
         final label = path.basename(splitPath);
+        splitAudited++;
         final splitCert = splitMeta.signingSchemes?.signingCertificate;
         final splitCertSha =
             splitCert == null ? null : contentDigest('sha256', splitCert);
@@ -853,6 +859,8 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       loadGraph: loadGraph,
       payloadProbe: payloadProbe,
       methodScanResult: methodScan,
+      splitTotal: splitDeclaredTotal ?? splitApkPaths.length,
+      splitAudited: splitAudited,
       seal: mergedSeal,
       baseline: baseline,
     );
@@ -984,8 +992,9 @@ PayloadProbeResult _probePayloadsForBase(
   // 整条读取会让 64 条 8 MiB 的资源包白解压 512 MiB。
   const probeBytes = 64 * 1024;
   final inputs = <PayloadProbeInput>[];
+  var candidateCount = 0;
+  var skipped = 0;
   for (final entry in inventory.entries) {
-    if (inputs.length >= maxEntries) break;
     final path = entry.path;
     final candidate = path.startsWith('assets/') ||
         entry.kind == ArtifactKind.dex ||
@@ -993,19 +1002,36 @@ PayloadProbeResult _probePayloadsForBase(
         entry.kind == ArtifactKind.assetBinary ||
         entry.kind == ArtifactKind.script;
     if (!candidate) continue;
-    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) continue;
+    candidateCount++;
+    if (inputs.length >= maxEntries) {
+      skipped++;
+      continue;
+    }
+    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) {
+      skipped++;
+      continue;
+    }
     var source = reader;
     var sourcePath = path;
     if (path.startsWith('split:')) {
       final slash = path.indexOf('/', 'split:'.length);
-      if (slash <= 0) continue;
+      if (slash <= 0) {
+        skipped++;
+        continue;
+      }
       final label = path.substring('split:'.length, slash);
       source = splitReaders[label] ?? reader;
-      if (source == reader) continue;
+      if (source == reader) {
+        skipped++;
+        continue;
+      }
       sourcePath = path.substring(slash + 1);
     }
     final bytes = source.readFilePrefix(sourcePath, maxBytes: probeBytes);
-    if (bytes == null || bytes.isEmpty) continue;
+    if (bytes == null || bytes.isEmpty) {
+      skipped++;
+      continue;
+    }
     final head =
         bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
     final dot = path.lastIndexOf('.');
@@ -1018,7 +1044,15 @@ PayloadProbeResult _probePayloadsForBase(
       declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
     ));
   }
-  return apk_parser.PayloadProbe.scan(inputs);
+  final scanned = apk_parser.PayloadProbe.scan(inputs);
+  if (skipped == 0 && candidateCount == inputs.length) return scanned;
+  return PayloadProbeResult(
+    signals: scanned.signals,
+    entriesProbed: scanned.entriesProbed,
+    entriesTotal: candidateCount,
+    complete: false,
+    noteCodes: [...scanned.noteCodes, 'payload.candidates_skipped']..sort(),
+  );
 }
 
 /// base APK 的密封校验：有 v2 优先 v2，否则 v1。
