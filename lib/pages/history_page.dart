@@ -20,7 +20,10 @@ class HistoryPage extends ConsumerStatefulWidget {
   /// 测试可注入临时仓库；生产为 null，从 provider 取应用支持目录。
   final AnalysisRunRepository? repository;
 
-  const HistoryPage({super.key, this.repository});
+  /// 测试可注入同步假加载；生产为 null。
+  final Future<List<AnalysisRunSummary>> Function()? loader;
+
+  const HistoryPage({super.key, this.repository, this.loader});
 
   @override
   ConsumerState<HistoryPage> createState() => _HistoryPageState();
@@ -36,6 +39,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   Future<List<AnalysisRunSummary>> _load() async {
+    final loader = widget.loader;
+    if (loader != null) return loader();
     final injected = widget.repository;
     if (injected != null) {
       return injected.list(limit: 100);

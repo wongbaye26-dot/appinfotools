@@ -1447,10 +1447,10 @@
   },
   "history": {
     "title": "Analysis history",
-    "subtitle": "Local runs saved on this computer. Reopen the original package or remove a record.",
+    "subtitle": "Local runs saved on this computer. Re-analyze the original package or remove a record.",
     "empty_title": "No analysis history yet",
     "empty_body": "Completed analyses are saved here automatically.",
-    "open": "Reopen",
+    "open": "Re-analyze",
     "delete": "Delete",
     "delete_title": "Delete this run?",
     "delete_body": "The saved report snapshot will be removed. The original package is not touched.",
