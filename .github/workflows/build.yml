@@ -654,11 +654,11 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP 'appinfotool-portable'
           Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
           Expand-Archive -Path $zip -DestinationPath $dir -Force
-          $exe = Get-ChildItem -Path $dir -Recurse -Filter AppInfoTool.exe -File |
+          $exe = Get-ChildItem -Path $dir -Recurse -Filter apk_info_tool.exe -File |
             Select-Object -First 1
           if (-not $exe) {
-            Write-Host "::error title=Windows portable missing exe::zip expanded without AppInfoTool.exe ($dir)"
-            throw "AppInfoTool.exe not found in portable zip"
+            Write-Host "::error title=Windows portable missing exe::zip expanded without apk_info_tool.exe ($dir)"
+            throw "apk_info_tool.exe not found in portable zip"
           }
           & tool/runtime_smoke/windows.ps1 -ExePath $exe.FullName
 
