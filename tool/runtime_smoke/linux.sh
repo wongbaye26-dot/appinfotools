@@ -16,6 +16,8 @@ if ! command -v xvfb-run >/dev/null 2>&1; then
   exit 1
 fi
 
+# xvfb-run / setsid 可能改变工作目录或解析相对路径；先固定为绝对路径。
+APPIMAGE="$(cd "$(dirname "$APPIMAGE")" && pwd)/$(basename "$APPIMAGE")"
 chmod +x "$APPIMAGE"
 LOG="$(mktemp -t appinfotool-linux-smoke.XXXXXX)"
 # AppImage may not have FUSE on a CI runner; extract-and-run is the supported
