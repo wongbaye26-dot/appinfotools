@@ -1115,7 +1115,16 @@
     "evidence_center_count": "{count} items",
     "evidence_center_view_all": "View all",
     "evidence_center_close": "Close",
-    "evidence_center_empty": "No evidence to display for this run."
+    "evidence_center_empty": "No evidence to display for this run.",
+    "evidence_view_artifacts": "View artifacts ({count})",
+    "evidence_view_load_graph": "View load graph ({count})",
+    "evidence_artifact_path": "Path",
+    "evidence_artifact_kind": "Kind",
+    "evidence_artifact_size": "Size",
+    "evidence_artifact_hash": "SHA-256",
+    "evidence_graph_nodes": "Nodes",
+    "evidence_graph_edges": "Edges",
+    "evidence_graph_missing": "Not in package"
   },
   "detail_tab": {
     "overview": "Overview",

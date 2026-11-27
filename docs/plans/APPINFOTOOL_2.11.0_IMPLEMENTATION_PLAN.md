@@ -137,4 +137,5 @@ flutter test
 - [x] Stage 1 模型 / 仓库 / 测试（`analysis_run.dart`、`analysis_run_repository.dart`、10 项测试）
 - [x] Stage 1 入口接入（Android/iOS 解析生命周期、真实快照、切文件保护）
 - [x] Stage 2 Evidence / Finding / Coverage
-- [ ] Stage 3 Artifact Inventory / Load Graph
+- [x] Stage 3 Artifact Inventory / Load Graph
+- [ ] Stage 4 Network

@@ -1115,7 +1115,16 @@
     "evidence_center_count": "{count} 条",
     "evidence_center_view_all": "查看全部",
     "evidence_center_close": "关闭",
-    "evidence_center_empty": "本次分析没有可展示的证据。"
+    "evidence_center_empty": "本次分析没有可展示的证据。",
+    "evidence_view_artifacts": "查看制品（{count}）",
+    "evidence_view_load_graph": "查看加载链（{count}）",
+    "evidence_artifact_path": "路径",
+    "evidence_artifact_kind": "类型",
+    "evidence_artifact_size": "大小",
+    "evidence_artifact_hash": "SHA-256",
+    "evidence_graph_nodes": "节点",
+    "evidence_graph_edges": "边",
+    "evidence_graph_missing": "不在包内"
   },
   "detail_tab": {
     "overview": "概览",

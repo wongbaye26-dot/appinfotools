@@ -930,7 +930,16 @@
     "evidence_center_count": "{count}건",
     "evidence_center_view_all": "전체 보기",
     "evidence_center_close": "닫기",
-    "evidence_center_empty": "이 분석에는 표시할 증거가 없습니다."
+    "evidence_center_empty": "이 분석에는 표시할 증거가 없습니다.",
+    "evidence_view_artifacts": "아티팩트 보기 ({count})",
+    "evidence_view_load_graph": "로드 그래프 보기 ({count})",
+    "evidence_artifact_path": "경로",
+    "evidence_artifact_kind": "종류",
+    "evidence_artifact_size": "크기",
+    "evidence_artifact_hash": "SHA-256",
+    "evidence_graph_nodes": "노드",
+    "evidence_graph_edges": "엣지",
+    "evidence_graph_missing": "패키지에 없음"
   },
   "report": {
     "export_json_action": "JSON 보안 보고서 낳출",

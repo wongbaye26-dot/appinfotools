@@ -1115,7 +1115,16 @@
     "evidence_center_count": "{count} 條",
     "evidence_center_view_all": "查看全部",
     "evidence_center_close": "關閉",
-    "evidence_center_empty": "本次分析沒有可展示的證據。"
+    "evidence_center_empty": "本次分析沒有可展示的證據。",
+    "evidence_view_artifacts": "查看製品（{count}）",
+    "evidence_view_load_graph": "查看載入鏈（{count}）",
+    "evidence_artifact_path": "路徑",
+    "evidence_artifact_kind": "類型",
+    "evidence_artifact_size": "大小",
+    "evidence_artifact_hash": "SHA-256",
+    "evidence_graph_nodes": "節點",
+    "evidence_graph_edges": "邊",
+    "evidence_graph_missing": "不在包內"
   },
   "detail_tab": {
     "overview": "概覽",

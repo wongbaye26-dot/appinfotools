@@ -368,6 +368,7 @@ void main() {
       'coverage.dimensions.ios_infoPlist': 'Info.plist 是文件名，不是术语',
       'coverage.summary_join:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
       'diff.fields.file_sha256': 'SHA-256 是算法名',
+      'security.evidence_artifact_hash': 'SHA-256 是算法名',
       'ios_info.code_signature_dir': '目录名 _CodeSignature',
       'ios_info.codesign_cdhash': 'Apple 的技术标识 CDHash',
       'ios_info.device_ipad': 'Apple 产品名',

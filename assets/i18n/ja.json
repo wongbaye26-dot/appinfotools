@@ -930,7 +930,16 @@
     "evidence_center_count": "{count} 件",
     "evidence_center_view_all": "すべて表示",
     "evidence_center_close": "閉じる",
-    "evidence_center_empty": "この分析には表示できる証拠がありません。"
+    "evidence_center_empty": "この分析には表示できる証拠がありません。",
+    "evidence_view_artifacts": "成果物を表示（{count}）",
+    "evidence_view_load_graph": "ロードグラフを表示（{count}）",
+    "evidence_artifact_path": "パス",
+    "evidence_artifact_kind": "種類",
+    "evidence_artifact_size": "サイズ",
+    "evidence_artifact_hash": "SHA-256",
+    "evidence_graph_nodes": "ノード",
+    "evidence_graph_edges": "エッジ",
+    "evidence_graph_missing": "パッケージ内に無い"
   },
   "report": {
     "export_json_action": "JSON セキュリティレポートをエクスポート",

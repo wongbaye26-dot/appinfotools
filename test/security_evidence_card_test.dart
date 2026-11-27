@@ -9,7 +9,8 @@ import 'package:apk_info_tool/widgets/security_evidence_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+Widget _wrap(Widget child) =>
+    TranslationProvider(child: MaterialApp(home: Scaffold(body: child)));
 
 void main() {
   setUp(() => LocaleSettings.setLocaleRaw('en'));
@@ -51,8 +52,70 @@ void main() {
     expect(find.textContaining('1 edge(s) point outside'), findsOneWidget);
   });
 
+  _stage3Tests();
+
   testWidgets('两项都为空时不渲染空卡，避免暗示「查过了」', (tester) async {
     await tester.pumpWidget(_wrap(const SecurityEvidenceCard()));
     expect(find.byType(Card), findsNothing);
+  });
+}
+
+// 制品清单与加载链的明细视图：Stage 3 要求证据可展开核对，而不是只有计数。
+void _stage3Tests() {
+  testWidgets('制品明细展示路径/类型/大小与未计算哈希', (tester) async {
+    await tester.pumpWidget(_wrap(const SecurityEvidenceCard(
+      artifacts: ArtifactInventory(
+        entries: [
+          ArtifactEntry(
+            path: 'classes.dex',
+            kind: ArtifactKind.dex,
+            sizeBytes: 2048,
+          ),
+        ],
+        totalEntries: 1,
+        inventoriedEntries: 1,
+        entriesComplete: true,
+      ),
+    )));
+    final label = t.security.evidence_view_artifacts(count: 1);
+    expect(find.text(label), findsOneWidget);
+    await tester.tap(find.text(label));
+    await tester.pumpAndSettle();
+    expect(find.text('classes.dex'), findsOneWidget);
+    expect(find.text('dex'), findsOneWidget);
+    expect(find.text('2.0 KB'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+  });
+
+  testWidgets('加载链明细展示节点、边与悬空标识', (tester) async {
+    await tester.pumpWidget(_wrap(const SecurityEvidenceCard(
+      loadGraph: LoadGraph(
+        nodes: [
+          LoadNode(
+              id: 'artifact:classes.dex',
+              kind: LoadNodeKind.dex,
+              presentInPackage: true),
+          LoadNode(id: 'missing:libx.so', kind: LoadNodeKind.missing),
+        ],
+        edges: [
+          LoadEdge(
+            fromId: 'artifact:classes.dex',
+            toId: 'missing:libx.so',
+            kind: LoadEdgeKind.systemLoadLibrary,
+            source: SecurityEvidenceSource.dexString,
+            location: 'classes.dex @0x10',
+          ),
+        ],
+        danglingEdgeIds: ['artifact:classes.dex->missing:libx.so'],
+        complete: false,
+      ),
+    )));
+    final label = t.security.evidence_view_load_graph(count: 1);
+    expect(find.text(label), findsOneWidget);
+    await tester.tap(find.text(label));
+    await tester.pumpAndSettle();
+    expect(find.text('artifact:classes.dex → missing:libx.so'), findsOneWidget);
+    expect(find.textContaining('System.loadLibrary'), findsOneWidget);
+    expect(find.text(t.security.evidence_graph_missing), findsOneWidget);
   });
 }
