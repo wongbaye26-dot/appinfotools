@@ -195,6 +195,38 @@ void main() {
     expect(list, hasLength(3));
   });
 
+  test('旧 run JSON（无 model 键）可读，model 为 null', () {
+    final run = AnalysisRun.fromJson({
+      'schemaVersion': 1,
+      'id': 'analysis_1_abcdef12',
+      'toolVersion': '2.11.1',
+      'platform': 'android',
+      'packagePath': '/tmp/demo.apk',
+      'startedAt': '2026-11-27T12:00:00.000Z',
+      'status': 'success',
+      'snapshot': {'reportSchemaVersion': 11},
+      'limitations': <String>[],
+    });
+    expect(run.model, isNull);
+    expect(run.snapshot, isNotNull);
+  });
+
+  test('V3 结构化 model 可往返，且不影响 snapshot', () {
+    final now = DateTime.utc(2026, 11, 28, 1, 2, 3);
+    final run = _run(id: 'run_v3', startedAt: now).copyWith(
+      model: {
+        'schemaVersion': 1,
+        'components': [
+          {'id': 'cmp_1', 'name': 'okhttp', 'version': '4.12.0'},
+        ],
+      },
+    );
+    final restored = AnalysisRun.fromJson(run.toJson());
+    expect(restored.model?['components'], hasLength(1));
+    expect(restored.snapshot, isNotNull);
+    expect(restored.toJson(), run.toJson());
+  });
+
   test('坏 JSON 字段抛出 FormatException，而不是静默成功', () {
     expect(
       () => AnalysisRun.fromJson(const {'schemaVersion': 1}),
@@ -202,6 +234,19 @@ void main() {
     );
     expect(
       () => AnalysisRunStatus.fromCode('something-else'),
+      throwsFormatException,
+    );
+    expect(
+      () => AnalysisRun.fromJson(const {
+        'schemaVersion': 1,
+        'id': 'x',
+        'toolVersion': '2.11.1',
+        'platform': 'android',
+        'packagePath': '/tmp/a.apk',
+        'startedAt': '2026-11-27T12:00:00.000Z',
+        'status': 'success',
+        'model': 'not-an-object',
+      }),
       throwsFormatException,
     );
   });

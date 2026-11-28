@@ -1,7 +1,7 @@
 # AppInfoTool V3.0 开发进度表
 
 更新：2026-11-28（Asia/Bangkok）
-基线：`main @ 01971a2`（阶段 0 审计提交）
+基线：`main @ 2a52fcc`（阶段 1 基础设施）
 维护规则：**每完成一个子步骤就更新本表并提交**；状态只写实际证据，不写「预计完成」。
 
 ## 状态图例
@@ -19,7 +19,7 @@
 | 阶段 | 内容 | 状态 | 出口物 | 门禁 |
 | --- | --- | --- | --- | --- |
 | 0 | 基线审计 | ✅ | `docs/audit/APPINFOTOOL_V3_BASELINE_AUDIT.md`（`01971a2`） | 十项功能有状态与证据 |
-| 1 | 分析基础设施 | 🟡 | `docs/architecture/APPINFOTOOL_V3_ANALYSIS_ARCHITECTURE.md` | 新模型可序列化；旧数据可读；ID 唯一 |
+| 1 | 分析基础设施 | ✅ | `docs/architecture/APPINFOTOOL_V3_ANALYSIS_ARCHITECTURE.md` | 新模型可序列化；旧数据可读；ID 唯一 |
 | 2 | F04 文件浏览器 + F01 敏感信息 | ⬜ | 代码 + 样本回归 | 真样本命中；无明文落盘 |
 | 3 | F02 SDK/隐私 + F03 SBOM | ⬜ | 代码 + Schema 校验 | CycloneDX/SPDX 过校验 |
 | 4 | F05 深度差异 + F06 处置 | ⬜ | 代码 + 历史 run 对比 | 处置不污染原始结果 |
@@ -39,14 +39,16 @@
 | 1.4 | Artifact identity（artifactId / parentPath / archiveEntry） | ✅ | `ArtifactIdentity` + `ArtifactEntry.stableId`；`test/v3/artifact_identity_test.dart` 5 条 |
 | 1.5 | Evidence 扩展（redactedValue / extractorId） | ✅ | 可选字段，旧构造不变；`test/v3/evidence_fields_test.dart` |
 | 1.6 | ScanProfile / RulePack Schema + 校验器 | ✅ | `scan_profile.dart`（未知阶段/超预算整体拒绝）；`test/v3/scan_profile_test.dart` 7 条 |
-| 1.7 | 结果持久化与迁移（run 目录结构化） | 🟡 | 模型已定（`AnalysisRun.model` 方案），旧 run 读取测试待补 |
-| 1.8 | UI / CLI 复用点验证（无头分析入口） | ⬜ | 纯 Dart 调用可产出报告（受 `apk_info.dart` 依赖 Flutter 阻塞） |
+| 1.7 | 结果持久化与迁移（run 目录结构化） | ✅ | `AnalysisRun.model` 可选键 + 旧 run 无该键可读；索引 schema 不动（`indexSchemaVersion=2` 保持） |
+| 1.8 | UI / CLI 复用点验证（无头分析入口） | ⏸️ | 模型层已纯 Dart（`dart test` 可跑）；`getApkInfo` 仍依赖 Flutter，无头入口留给阶段 8，见架构文档 §2 |
 
 阶段 1 命令证据（2026-11-28）：
 
 ```
-cd packages/analysis_model && dart test test/v3   # 30 passed
-dart analyze                                      # No issues found
+cd packages/analysis_model && dart test            # 183 passed（阶段 1 新增 35 条）
+cd packages/analysis_model && dart analyze          # No issues found
+flutter analyze                                     # No issues found
+flutter test test/analysis_run_test.dart            # 12 passed
 ```
 
 ## 阶段 2 明细（F04 + F01）

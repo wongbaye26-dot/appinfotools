@@ -49,6 +49,13 @@ class AnalysisRun {
   /// null 表示任务尚未完成/没有可保存结果；**不能**用空对象伪装“分析成功”。
   final Map<String, dynamic>? snapshot;
 
+  /// V3 结构化模型（`Component` 列表、指纹、制品身份等）的可选载荷。
+  ///
+  /// 为什么与 [snapshot] 并存：snapshot 是导出契约的一部分（必须保持原样），
+  /// 结构化模型供历史对比/误报处置按字段查询，不要求两边同时可用。
+  /// 旧 run 没有这个键 → null，读取方必须按「只有快照」处理。
+  final Map<String, dynamic>? model;
+
   /// 分析级限制（例如“归档条目超预算”“加密内容不可读”）。
   final List<String> limitations;
 
@@ -63,6 +70,7 @@ class AnalysisRun {
     this.packageSha256,
     this.completedAt,
     this.snapshot,
+    this.model,
     this.limitations = const [],
   });
 
@@ -87,6 +95,7 @@ class AnalysisRun {
     AnalysisRunStatus? status,
     DateTime? completedAt,
     Map<String, dynamic>? snapshot,
+    Map<String, dynamic>? model,
     List<String>? limitations,
     String? appName,
     String? packageSha256,
@@ -103,6 +112,7 @@ class AnalysisRun {
       completedAt: completedAt ?? this.completedAt,
       status: status ?? this.status,
       snapshot: snapshot ?? this.snapshot,
+      model: model ?? this.model,
       limitations: limitations ?? this.limitations,
     );
   }
@@ -119,6 +129,7 @@ class AnalysisRun {
         'completedAt': completedAt?.toUtc().toIso8601String(),
         'status': status.code,
         'snapshot': snapshot,
+        if (model != null) 'model': model,
         'limitations': limitations,
       };
 
@@ -175,6 +186,11 @@ class AnalysisRun {
       throw const FormatException('AnalysisRun.snapshot 必须是对象');
     }
 
+    final modelRaw = json['model'];
+    if (modelRaw != null && modelRaw is! Map<String, dynamic>) {
+      throw const FormatException('AnalysisRun.model 必须是对象');
+    }
+
     final limitationsRaw = json['limitations'];
     final limitations = <String>[];
     if (limitationsRaw != null) {
@@ -202,6 +218,8 @@ class AnalysisRun {
       snapshot: snapshotRaw == null
           ? null
           : Map<String, dynamic>.from(snapshotRaw as Map),
+      model:
+          modelRaw == null ? null : Map<String, dynamic>.from(modelRaw as Map),
       limitations: List.unmodifiable(limitations),
     );
   }
