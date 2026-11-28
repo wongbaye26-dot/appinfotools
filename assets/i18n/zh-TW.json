@@ -641,7 +641,14 @@
     "grant_all_permissions": "授予全部執行權限",
     "grant_all_permissions_desc": "傳 -g，讓 adb 在安裝時直接授予執行階段權限；僅供除錯。",
     "installed_before": "已安裝過",
-    "never_installed": "未安裝過"
+    "never_installed": "未安裝過",
+    "ios_section": "iOS 裝置",
+    "ios_status_ready": "可用",
+    "ios_status_missing": "未安裝工具",
+    "ios_toolchain_hint": "未找到 ideviceinstaller，無法安裝 .ipa。需要 libimobiledevice：",
+    "ios_no_devices": "未發現 iOS 裝置。用 USB 連接並在裝置上「信任此電腦」。",
+    "ios_install": "安裝",
+    "ios_installed": "已安裝到裝置"
   },
   "ios_info": {
     "architectures": "架構",

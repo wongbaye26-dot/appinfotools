@@ -641,7 +641,14 @@
     "grant_all_permissions": "授予全部运行权限",
     "grant_all_permissions_desc": "传 -g，让 adb 在安装时直接授予运行时权限；仅调试用。",
     "installed_before": "已安装过",
-    "never_installed": "未安装过"
+    "never_installed": "未安装过",
+    "ios_section": "iOS 기기",
+    "ios_status_ready": "준비됨",
+    "ios_status_missing": "도구 없음",
+    "ios_toolchain_hint": "ideviceinstaller를 찾을 수 없습니다. .ipa 설치에는 libimobiledevice가 필요합니다:",
+    "ios_no_devices": "iOS 기기를 찾을 수 없습니다. USB로 연결하고 기기에서 \"이 컴퓨터 신뢰\"를 선택하세요.",
+    "ios_install": "설치",
+    "ios_installed": "기기에 설치했습니다"
   },
   "ios_info": {
     "architectures": "架构",

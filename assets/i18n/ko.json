@@ -616,7 +616,14 @@
     "grant_all_permissions": "모든 런타임 권한 부여",
     "grant_all_permissions_desc": "설치 시 -g를 전달해 adb가 런타임 권한을 부여합니다. 디버깅 전용입니다.",
     "installed_before": "설치한 적 있음",
-    "never_installed": "설치한 적 없음"
+    "never_installed": "설치한 적 없음",
+    "ios_section": "iOS デバイス",
+    "ios_status_ready": "準備完了",
+    "ios_status_missing": "ツール未検出",
+    "ios_toolchain_hint": "ideviceinstaller が見つかりません。.ipa のインストールには libimobiledevice が必要です：",
+    "ios_no_devices": "iOS デバイスが見つかりません。USB で接続し、デバイスで「このコンピュータを信頼」してください。",
+    "ios_install": "インストール",
+    "ios_installed": "デバイスにインストールしました"
   },
   "about": {
     "features": {

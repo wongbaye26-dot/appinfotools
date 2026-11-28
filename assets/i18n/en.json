@@ -641,7 +641,14 @@
     "grant_all_permissions": "Grant all runtime permissions",
     "grant_all_permissions_desc": "Pass -g so adb grants runtime permissions at install time; debugging only.",
     "installed_before": "Installed before",
-    "never_installed": "Never installed"
+    "never_installed": "Never installed",
+    "ios_section": "iOS 设备",
+    "ios_status_ready": "可用",
+    "ios_status_missing": "未安装工具",
+    "ios_toolchain_hint": "未找到 ideviceinstaller，无法安装 .ipa。需要 libimobiledevice：",
+    "ios_no_devices": "未发现 iOS 设备。用 USB 连接并在设备上「信任此电脑」。",
+    "ios_install": "安装",
+    "ios_installed": "已安装到设备"
   },
   "ios_info": {
     "architectures": "Architectures",

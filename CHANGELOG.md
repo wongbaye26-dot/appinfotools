@@ -16,6 +16,12 @@
   其余按 dangerous / normal / system 归类，界面上固定写明「不等于恶意」。
 - 官方标题与说明跟随界面语言，缺失时回退英文短名，不伪造文案。
 
+### iOS 安装（.ipa）
+
+安装页现在接受 `.ipa`：选择后设备区换成 iOS 设备卡，通过 libimobiledevice 的
+`idevice_id` 枚举设备、`ideviceinstaller -i` 安装，输出进同一个日志控制台。
+工具缺失时显示 `brew install libimobiledevice ideviceinstaller` 指引。
+
 ### 库识别
 
 - **离线导入规则包**：设置 → 安全与诊断 →「库识别规则」可直接选择上游

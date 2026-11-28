@@ -616,7 +616,14 @@
     "grant_all_permissions": "すべての実行時権限を付与",
     "grant_all_permissions_desc": "インストール時に -g を渡し、実行時権限を adb に付与させます（デバッグ用）。",
     "installed_before": "インストール済み",
-    "never_installed": "未インストール"
+    "never_installed": "未インストール",
+    "ios_section": "iOS device",
+    "ios_status_ready": "Ready",
+    "ios_status_missing": "Tool missing",
+    "ios_toolchain_hint": "ideviceinstaller not found — libimobiledevice is required to install .ipa files:",
+    "ios_no_devices": "No iOS device found. Connect over USB and trust this computer.",
+    "ios_install": "Install",
+    "ios_installed": "Installed on device"
   },
   "about": {
     "features": {

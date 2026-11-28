@@ -9,6 +9,7 @@ import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/utils/adb_install_error.dart';
 import 'package:apk_info_tool/utils/adb_service.dart';
 import 'package:apk_info_tool/utils/install_history.dart';
+import 'package:apk_info_tool/utils/ios_install_service.dart';
 import 'package:apk_info_tool/utils/known_devices.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/xapk_installer.dart';
@@ -52,6 +53,7 @@ class InstallPage extends StatefulWidget {
     this.deviceLoader,
     this.deviceInfoLoader,
     this.apkInfoLoader,
+    this.iosToolchain,
   });
 
   /// 设备枚举实现。
@@ -66,6 +68,12 @@ class InstallPage extends StatefulWidget {
 
   /// 安装包信息（图标 / 名称 / 版本）的读取实现。
   final Future<ApkInfo?> Function(String path)? apkInfoLoader;
+
+  /// iOS 工具链探测结果。
+  ///
+  /// 默认按 `PATH` 真实探测；测试注入空工具链，避免 `idevice_id` 子进程在
+  /// fake-async 区留下悬挂的 Timer。
+  final IosToolchain? iosToolchain;
 
   @override
   State<InstallPage> createState() => _InstallPageState();
@@ -96,6 +104,13 @@ class _InstallPageState extends State<InstallPage> {
 
   /// `adb version` 的版本号，只取一次。取不到就保持 `null`，页脚只写 `ADB`。
   String? _adbVersion;
+
+  // ---- iOS（libimobiledevice）----
+  /// 选中的是 .ipa 时走这条链路：`ideviceinstaller` 代替 `adb install`。
+  bool get _isIpa => (_filePath ?? '').toLowerCase().endsWith('.ipa');
+  IosToolchain? _iosToolchain;
+  List<IosDevice> _iosDevices = const [];
+  bool _iosLoading = false;
 
   // ---- 选项 ----
   bool _allowDowngrade = false;
@@ -144,7 +159,11 @@ class _InstallPageState extends State<InstallPage> {
       // 注入的 fake loader 只在测试里出现：此时不要再去碰真实 adb，
       // 否则 Process 的超时定时器会活得比 widget 树更久。
       if (widget.deviceLoader == null) unawaited(_loadAdbVersion());
-      unawaited(_refreshDevices());
+      if (_isIpa) {
+        unawaited(_refreshIos());
+      } else {
+        unawaited(_refreshDevices());
+      }
     } else if (!visible) {
       _wasVisible = false;
     }
@@ -165,7 +184,7 @@ class _InstallPageState extends State<InstallPage> {
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['apk', 'xapk', 'apks'],
+      allowedExtensions: const ['apk', 'xapk', 'apks', 'ipa'],
       dialogTitle: t.install.pick_file,
     );
     final path = result?.files.single.path;
@@ -176,8 +195,24 @@ class _InstallPageState extends State<InstallPage> {
     final lower = path.toLowerCase();
     if (!lower.endsWith('.apk') &&
         !lower.endsWith('.xapk') &&
-        !lower.endsWith('.apks')) {
+        !lower.endsWith('.apks') &&
+        !lower.endsWith('.ipa')) {
       _snack(t.install.unsupported_file);
+      return;
+    }
+    if (lower.endsWith('.ipa')) {
+      // .ipa 不走 APK 解析流水线（那是 aapt2/zip 的活）；文件条只需名字与
+      // 大小，设备列表换由 libimobiledevice 提供。
+      setState(() {
+        _apkInfo?.dispose();
+        _apkInfo = null;
+        _filePath = path;
+        _isXapk = false;
+        _parsing = false;
+        _parseFailed = false;
+        _selectedSplits.clear();
+      });
+      await _refreshIos();
       return;
     }
     final isXapk = lower.endsWith('.xapk') || lower.endsWith('.apks');
@@ -700,9 +735,11 @@ class _InstallPageState extends State<InstallPage> {
       children: [
         _buildFileCard(theme),
         const SizedBox(height: 12),
-        _buildDeviceCard(theme),
-        const SizedBox(height: 12),
-        _buildOptionsCard(theme),
+        if (_isIpa) _buildIosCard(theme) else _buildDeviceCard(theme),
+        if (!_isIpa) ...[
+          const SizedBox(height: 12),
+          _buildOptionsCard(theme),
+        ],
         const SizedBox(height: 12),
         _buildRecentCard(theme),
       ],
@@ -1065,9 +1102,11 @@ class _InstallPageState extends State<InstallPage> {
   /// 格式角标：有图标时显示图标，底部压一条格式带（APK / XAPK / APKS）。
   Widget _formatBadge(ThemeData theme) {
     final lower = (_filePath ?? '').toLowerCase();
-    final format = _isXapk
-        ? (lower.endsWith('.apks') ? 'APKS' : 'XAPK')
-        : 'APK';
+    final format = lower.endsWith('.ipa')
+        ? 'IPA'
+        : _isXapk
+            ? (lower.endsWith('.apks') ? 'APKS' : 'XAPK')
+            : 'APK';
     final image = _apkInfo?.mainIconImage;
     return Container(
       width: 38,
@@ -1185,6 +1224,220 @@ class _InstallPageState extends State<InstallPage> {
   }
 
   // ---- 设备 ----
+
+  // ---------------------------------------------------------------- iOS
+
+  /// 探测 libimobiledevice 并枚举 iOS 设备。
+  ///
+  /// 工具缺失不是错误：页面要能说清楚「缺什么、怎么装」，而不是只显示空列表。
+  Future<void> _refreshIos() async {
+    if (!_isIpa) return;
+    setState(() => _iosLoading = true);
+    final toolchain = widget.iosToolchain ?? IosToolchain.detect();
+    var devices = const <IosDevice>[];
+    if (toolchain.available) {
+      devices = await IosInstallService(toolchain: toolchain).listDevices();
+    }
+    if (!mounted) return;
+    setState(() {
+      _iosToolchain = toolchain;
+      _iosDevices = devices;
+      _iosLoading = false;
+    });
+  }
+
+  Widget _buildIosCard(ThemeData theme) {
+    final toolchain = _iosToolchain;
+    final ready = toolchain?.available ?? false;
+    return _card(
+      theme,
+      children: [
+        _cardHead(
+          theme,
+          icon: Icons.phone_iphone,
+          title: t.install.ios_section,
+          trailing: [
+            _chip(
+              ready ? t.install.ios_status_ready : t.install.ios_status_missing,
+              color: ready ? V4Colors.mint : V4Colors.amber,
+              background:
+                  (ready ? V4Colors.mint : V4Colors.amber).withValues(
+                alpha: 0.09,
+              ),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 15),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!ready)
+                _iosMissingBlock(theme)
+              else if (_iosDevices.isEmpty)
+                _iosNoDeviceBlock(theme)
+              else
+                for (final device in _iosDevices)
+                  _buildIosDeviceRow(theme, device),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _smallButton(
+                    icon: Icons.refresh,
+                    label: t.install.refresh_devices,
+                    busy: _iosLoading,
+                    onPressed: _iosLoading || _installing ? null : _refreshIos,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _iosMissingBlock(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: V4Colors.amber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: V4Colors.amber.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.install.ios_toolchain_hint,
+            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            'brew install libimobiledevice ideviceinstaller',
+            style: _mono(size: 9, color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _iosNoDeviceBlock(ThemeData theme) {
+    return Container(
+      height: 64,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        t.install.ios_no_devices,
+        style: theme.textTheme.bodySmall?.copyWith(
+          fontSize: 10.5,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIosDeviceRow(ThemeData theme, IosDevice device) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              Icons.phone_iphone,
+              size: 17,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  device.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'iOS ${device.version}'
+                  '${device.model == null ? '' : ' · ${device.model}'}',
+                  style: _mono(
+                    size: 8,
+                    weight: FontWeight.w500,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _installing ? null : () => _installIos(device),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 30),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+            child: Text(t.install.ios_install),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _installIos(IosDevice device) async {
+    final path = _filePath;
+    final toolchain = _iosToolchain;
+    if (path == null || toolchain == null || !toolchain.available) return;
+    setState(() {
+      _installing = true;
+      _logs.clear();
+    });
+    _appendLog(t.install.log_install_started(device: device.name));
+    bool ok = false;
+    try {
+      ok = await IosInstallService(toolchain: toolchain).install(
+        path,
+        udid: device.udid,
+        onLine: _appendLog,
+      );
+    } catch (e) {
+      _appendLog('$e');
+    } finally {
+      if (mounted) setState(() => _installing = false);
+    }
+    if (!mounted || !ok) return;
+    final record = InstallRecord(
+      fileName: p.basename(path),
+      size: _formatBytes(_fileSize(path)),
+      device: device.name,
+      packageName: null,
+      ok: true,
+      at: DateTime.now(),
+    );
+    final records = await InstallHistoryManager.add(record);
+    if (!mounted) return;
+    setState(() => _recent = records);
+    _snack(t.install.ios_installed);
+  }
 
   Widget _buildDeviceCard(ThemeData theme) {
     final knownWireless = _known

@@ -92,7 +92,7 @@ Android 侧 **47 个规则 id**（含 7 条组合规则及其升级变体）+ 33
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 组合规则 C 的等级**跟着证据强度走**：同一方法体内两个调用点给 P1，只有整包层面共现给 P2。
 
-### 安装到设备（Android）
+### 安装到设备（Android / iOS）
 
 分析完的下一步通常是「装上去看看」。安装页把这套流程做完整了 —— 选包、连设备、
 安装、看日志都在同一个页面里，不必再开终端敲 `adb`。
@@ -111,9 +111,14 @@ Android 侧 **47 个规则 id**（含 7 条组合规则及其升级变体）+ 33
 > 必然失败（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`），而重打包的包签名几乎一定
 > 与已装版本不同 —— 这正是本工具的用户最常撞上的一种失败。
 
-**目前只支持 Android。** iOS 的门槛不在工具，而在签名：IPA 必须「为这台设备
-签过」才装得上，App Store 包与砸壳包一律装不上，只有企业签与 Ad-Hoc 有意义。
-方案评估在 [`docs/notes/install-support-eval.md`](docs/notes/install-support-eval.md)，尚未实现。
+**iOS（.ipa）走 libimobiledevice。** 选择 `.ipa` 后安装页换成 iOS 设备卡，
+用 `idevice_id` 枚举设备、`ideviceinstaller -i` 安装，日志进同一个控制台。
+工具不自带（`brew install libimobiledevice ideviceinstaller`），缺失时页面
+给出安装指引而不是空列表。
+
+> iOS 的门槛不在工具，而在签名：IPA 必须「为这台设备签过」才装得上，
+> App Store 包与砸壳包一律装不上，只有企业签与 Ad-Hoc 有意义。装不上时
+> 控制台会原样保留 `ideviceinstaller` 的报错，便于判断是签名还是设备信任问题。
 
 ### 界面
 
