@@ -1,7 +1,7 @@
 # AppInfoTool 2.11.1 发布验收（GO / NO-GO）
 
 日期：2026-11-28
-代码基线：`main` @ `273490e`（此后仅追加文档与 `tool/verify`，不改产品代码）
+代码基线：`main` @ `222bbbb`（产品代码止于 `273490e`；此后为样本门禁与 CI 修复）
 任务书：`docs/audit/APPINFOTOOL_2.11.1_REMEDIATION_BASELINE.md` 所述五阶段整改
 
 ## 1. 门禁逐条判定
@@ -9,14 +9,14 @@
 | # | 任务书要求 | 证据 | 判定 |
 | --- | --- | --- | --- |
 | 1 | `main` 含全部整改 | `f996a71` 合并 + `9012032` / `9ec88c3`…`273490e`；`origin/main` 与本地一致 | **PASS** |
-| 2 | 真实样本在 CI 里**真实执行** | `test/samples/manifest.json` 固定两个可再分发的 F-Droid 真实 APK（url + sha256）；`external-samples` 自动下载校验后真实执行；**iOS 无公开 `.ipa`，门禁按平台收窄为 `android` 并打印 warning** | **PARTIAL（Android PASS / iOS 未覆盖）** |
+| 2 | 真实样本在 CI 里**真实执行** | `test/samples/manifest.json` 固定两个可再分发的 F-Droid 真实 APK（url + sha256）；`external-samples` 自动下载校验后真实执行（CI 运行 `46148768077` success）；**iOS 无公开 `.ipa`，门禁按平台收窄为 `android` 并打印 warning** | **PARTIAL（Android PASS / iOS 未覆盖）** |
 | 3 | 无长期豁免（文件/变量） | `.github/allow-no-samples` 已删除；本地复现 tag 门禁 → `BLOCKED: tag without samples`（exit 1） | **PASS** |
 | 4 | Windows / Linux 实机验收 | 无实机；CI 只做构建 + 冒烟；迁移档案无人工验收记录 | **FAIL** |
 | 5 | ja / ko 缺键清零 | 146 键补齐；`i18n_coverage_test` 全量键集一致、无英文复制、占位符一致 | **PASS** |
 | 6 | 报告 schema 与界面一致 | schema v11：权限分级、库识别、包内证书字段均落盘；契约 `analysis-report-v11.schema.json` | **PASS** |
 | 7 | `v2.11.0` tag 不动 | `v2.11.0^{commit}` = `cfcbaa5`，tag 对象未改 | **PASS** |
 | 8 | 测试不跳、不 mock | 根 2011 passed / 20 skipped；样本门禁改为「按平台要求」后 Android 侧真实执行，iOS 侧仍显式标注未覆盖；包 310 + 777 passed | **PARTIAL（iOS 侧仍缺样本）** |
-| 9 | CI 绿 | `a9a04b9` 运行 `46145043813` success；`273490e` 运行 `46146363896` 作业全部 success | **PASS** |
+| 9 | CI 绿 | `a9a04b9` 运行 `46145043813` success；`273490e` 运行 `46146363896` 作业全部 success；`222bbbb` 运行 `46148768077` success（样本门禁真实执行） | **PASS** |
 | 10 | 核心分析能力可复现 | 第五阶段真实 APK 端到端核验：Finding/Evidence/Coverage/Artifact/Graph/Network/权限/库/证书全部落盘 | **PASS（两项已知限制）** |
 
 ## 2. 各阶段结论
@@ -33,7 +33,7 @@
 
 | 风险 | 影响 | 触发条件 / 现状 |
 | --- | --- | --- |
-| 真实样本从未在 CI 执行 | 解析正确性只由合成夹具保证；加固/畸形包行为未知 | `samples/` 为空；需放入真实样本后删跳过逻辑 |
+| iOS 真实样本未在 CI 执行 | Android 侧已由两个固定 SHA-256 的公开 APK 覆盖（运行 `46148768077`）；iOS 端到端仍只有单测 | 无公开可再分发的 `.ipa`；门禁按平台收窄为 `android` 并 warning |
 | Windows / Linux 未实机验收 | 缩略图、文件关联、安装器注册、AppImage 在真实桌面环境的行为未确认 | 无实机；CI 只构建 + 冒烟 |
 | iOS 真机安装未 E2E | `.ipa` 安装链路只有单测与注入替身 | 本机无 `ideviceinstaller`、无设备 |
 | 历史「重开」不读快照 | 历史条目无法原样复现上次结论，只能重新解析 | 见第五阶段文档「历史重开」 |
@@ -55,7 +55,7 @@
 ### 转为 GO 所需的最小动作
 
 1. ~~Android 真实样本进 CI~~ 已完成：`test/samples/manifest.json` + 自动下载校验，
-   `real_samples_*` 与 `sample_regression_test` 在 CI 真实执行；剩余 iOS 侧需
+   `real_samples_*` 与 `sample_regression_test` 在 CI 真实执行（运行 `46148768077` success）；剩余 iOS 侧需
    至少 1 份可再分发的真实 `.ipa`，并把 `APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS`
    改回 `android,ios`；
 2. 在 Windows 11 与 Ubuntu 24.04 实机各跑一遍安装、打开、导出、安装到设备
