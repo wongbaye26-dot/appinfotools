@@ -1819,6 +1819,12 @@
     "kind_stripe": "Stripe key",
     "kind_private_key": "Private key",
     "kind_jwt": "JWT",
-    "kind_generic": "Credential assignment"
+    "kind_generic": "Credential assignment",
+    "reveal": "Show plaintext",
+    "reveal_title": "Plaintext value",
+    "reveal_warning": "Plaintext exists only in this dialog. It is not written to disk, logs or reports.",
+    "reveal_failed": "Cannot re-read the value (entry changed or budget refused)",
+    "copy_value": "Copy value",
+    "value_copied": "Value copied"
   }
 }

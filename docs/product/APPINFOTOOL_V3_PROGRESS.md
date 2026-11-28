@@ -59,9 +59,9 @@ flutter test test/analysis_run_test.dart            # 12 passed
 | 2.2 | 文件树 / 搜索 / 筛选 / 导出 | ⬜ | |
 | 2.3 | 文本 / Hex / 图片查看器 | ⬜ | |
 | 2.4 | `SecretMatch` 模型 + 规则库（格式/上下文/校验） | ✅ | `secret_{match,rules,scanner}.dart`（8 条规则）+ `lib/utils/secret_scan_service.dart`（文本条目 400 条上限、DEX 8 个/8 MiB、总 12 MiB） |
-| 2.5 | 脱敏管道与显式查看流程 | 🟡 | `SecretRedactor` + 上下文替换明文已完成；「显式查看明文」的二次确认流程待做（当前 UI 只展示脱敏值） |
-| 2.6 | 敏感信息 UI + 报告节 | 🟡 | `lib/widgets/secret_scan_panel.dart` + 独立「敏感信息」Tab（Android/iOS）；报告节待接 schema v12 |
-| 2.7 | 安全设计评审（明文不落盘/不入日志） | ⬜ | |
+| 2.5 | 脱敏管道与显式查看流程 | ✅ | 脱敏在模型层；「显式查看」需二次确认、按值哈希重扫核对（`revealPlaintext`），不缓存明文 |
+| 2.6 | 敏感信息 UI + 报告节 | ✅ | 独立 Tab + schema v12 `secrets` 节（JSON/Markdown 只写脱敏值） |
+| 2.7 | 安全设计评审（明文不落盘/不入日志） | ✅ | `test/secret_policy_test.dart` 钉住键集与脱敏；评审结论写进阶段 2 报告 |
 
 ## 阶段 3 明细（F02 + F03）
 

@@ -6,14 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('v11 报告契约与常量版本一致', () {
-    expect(AnalysisReport.reportSchemaVersion, 11);
+    expect(AnalysisReport.reportSchemaVersion, 12);
     final schema = jsonDecode(
-      File('docs/contracts/analysis-report-v11.schema.json').readAsStringSync(),
+      File('docs/contracts/analysis-report-v12.schema.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     final props = schema['properties'] as Map<String, dynamic>;
     expect(
       (props['reportSchemaVersion'] as Map<String, dynamic>)['const'],
-      11,
+      12,
     );
     expect(props.containsKey('analysisRun'), isTrue);
     expect(props.containsKey('findings'), isTrue);

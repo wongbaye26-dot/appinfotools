@@ -578,7 +578,7 @@ void main() {
         generatedAt: _at,
         t: t,
       );
-      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"reportSchemaVersion": 12'));
       expect(json, contains('"IOS-ENCRYPTED-BINARY"'));
       expect(json, contains('"id": "ios.encryption"'));
       expect(json, contains('"noteCode": "ios.encryption.encrypted"'));
@@ -631,7 +631,7 @@ void main() {
         generatedAt: _at,
         t: t,
       );
-      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"reportSchemaVersion": 12'));
       expect(json, contains('"artifacts"'));
       expect(json, contains('"loadGraph"'));
       expect(json, contains('"totalEntries": 9'));
@@ -684,7 +684,7 @@ void main() {
       // v4：B11 给 findings[] 与 evidence[] 补了稳定 code。
       // 版本号与字段**必须一起断言** —— 只改号不加字段（或反之）都会让
       // 消费脚本的判断落空。
-      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"reportSchemaVersion": 12'));
       for (final field in [
         '"messageCode"',
         '"recommendationCode"',
@@ -1004,7 +1004,7 @@ void main() {
         t: t,
         analysisRun: run,
       );
-      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"reportSchemaVersion": 12'));
       expect(json, contains('"id": "analysis_1_abcdef12"'));
       expect(json, contains('"status": "success"'));
       expect(json, contains('"evidenceIds"'));

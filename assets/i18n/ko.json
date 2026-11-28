@@ -1819,6 +1819,12 @@
     "kind_stripe": "Stripe 키",
     "kind_private_key": "개인 키",
     "kind_jwt": "JWT",
-    "kind_generic": "자격 증명 할당"
+    "kind_generic": "자격 증명 할당",
+    "reveal": "평문 보기",
+    "reveal_title": "평문 값",
+    "reveal_warning": "평문은 이 대화상자에만 존재하며 디스크, 로그, 보고서에 남기지 않습니다.",
+    "reveal_failed": "값을 다시 읽을 수 없습니다(항목 변경 또는 예산 초과)",
+    "copy_value": "평문 복사",
+    "value_copied": "평문을 복사했습니다"
   }
 }

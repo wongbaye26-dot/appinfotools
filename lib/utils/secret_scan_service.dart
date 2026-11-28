@@ -8,6 +8,7 @@
 import 'dart:convert';
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_parser/apk_parser.dart';
+import 'package:apk_info_tool/utils/package_archive_tree.dart';
 
 /// 一次敏感信息扫描的产物。
 class SecretScanReport {
@@ -34,6 +35,43 @@ class SecretScanReport {
 }
 
 class SecretScanService {
+  /// 显式查看明文：重新读条目、用同一规则再扫一遍，只返回哈希对得上的那一个值。
+  ///
+  /// 为什么不在扫描时缓存明文：缓存就等于「明文常驻内存直到会话结束」，
+  /// 一旦崩溃转储或把对象打日志就泄露了。这里按需重扫，代价是用户点开时
+  /// 多一次读条目，收益是明文只在对话框存活的那几秒里存在。
+  ///
+  /// 返回 null 表示「读不到」或「重扫结果对不上」，调用方不能自己拼值。
+  static Future<String?> revealPlaintext(
+    String packagePath,
+    SecretMatch match, {
+    int maxBytes = 2 * 1024 * 1024,
+  }) async {
+    final (tree, _) = await PackageArchiveTree.open(packagePath);
+    if (tree == null) return null;
+    try {
+      final read = tree.readEntry(match.location, maxBytes: maxBytes);
+      final bytes = read.bytes;
+      if (bytes == null) return null;
+      final text = utf8.decode(bytes, allowMalformed: true);
+      for (final rule in secretRules) {
+        if (rule.id != match.ruleId) continue;
+        for (final candidate in rule.pattern.allMatches(text)) {
+          final raw = rule.valueGroup == 0
+              ? candidate.group(0)
+              : candidate.group(rule.valueGroup);
+          if (raw == null || raw.trim().isEmpty) continue;
+          if (SecretScanner.valueHashOf(raw) == match.valueSha256) {
+            return raw;
+          }
+        }
+      }
+      return null;
+    } finally {
+      tree.close();
+    }
+  }
+
   /// 文本类条目的扩展名白名单：只扫「可能放配置/密钥」的文件，
   /// 不扫 res/ 里的二进制资源与图片。
   static const Set<String> textExtensions = {

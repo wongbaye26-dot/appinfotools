@@ -56,7 +56,7 @@ void main() {
 
   testWidgets('有存档快照时展示只读报告，不重新解析', (tester) async {
     final snapshot = <String, dynamic>{
-      'reportSchemaVersion': 11,
+      'reportSchemaVersion': 12,
       'generatedAt': '2026-11-27T12:00:02.000Z',
       'findings': [
         {'id': 'a'},
@@ -112,14 +112,14 @@ void main() {
     expect(find.text(t.history.snapshot_hint), findsOneWidget);
     // 摘要事实来自快照本身：schema 11 / 2 findings / 1 permission / 3 SDKs。
     expect(
-      find.textContaining('schema v11 · 2026-11-27T12:00:02.000Z'),
+      find.textContaining('schema v12 · 2026-11-27T12:00:02.000Z'),
       findsOneWidget,
     );
     expect(find.textContaining('2 findings'), findsOneWidget);
     expect(find.textContaining('1 permissions'), findsOneWidget);
     expect(find.textContaining('3 SDKs'), findsOneWidget);
     // 原始 JSON 可见。
-    expect(find.textContaining('"reportSchemaVersion": 11'), findsOneWidget);
+    expect(find.textContaining('"reportSchemaVersion": 12'), findsOneWidget);
   });
 }
 

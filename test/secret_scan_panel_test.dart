@@ -76,6 +76,43 @@ void main() {
         findsOneWidget);
   });
 
+  testWidgets('显式查看明文：先确认，再显示，且退出后不再存在', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: TranslationProvider(
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SecretScanPanel(
+                  packagePath: 'in-memory.apk',
+                  loader: (_) async => SecretScanReport(
+                    matches: [_match()],
+                    scannedEntries: 1,
+                    scannedDexFiles: 0,
+                    truncated: false,
+                    skippedCodes: const [],
+                  ),
+                  revealLoader: (_, __) async => 'AKIAIOSFODNN7EXAMPLE',
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 不确认就没有明文。
+    await tester.tap(find.byIcon(Icons.visibility_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text(t.secrets.reveal_title), findsOneWidget);
+    expect(find.text('AKIAIOSFODNN7EXAMPLE'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, t.secrets.reveal));
+    await tester.pumpAndSettle();
+    expect(find.text('AKIAIOSFODNN7EXAMPLE'), findsOneWidget);
+  });
+
   test('SecretScanService：命中、脱敏与范围统计', () async {
     final temp = await Directory.systemTemp.createTemp('secret_scan_service');
     addTearDown(() => temp.delete(recursive: true));

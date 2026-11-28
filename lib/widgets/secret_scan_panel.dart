@@ -14,10 +14,14 @@ class SecretScanPanel extends StatefulWidget {
   final String packagePath;
   final Future<SecretScanReport?> Function(String path) loader;
 
+  /// 「显式查看明文」的取数函数；测试注入替身，生产走真实重扫。
+  final Future<String?> Function(String path, SecretMatch match)? revealLoader;
+
   const SecretScanPanel({
     super.key,
     required this.packagePath,
     this.loader = SecretScanService.scan,
+    this.revealLoader,
   });
 
   @override
@@ -39,6 +43,78 @@ class _SecretScanPanelState extends State<SecretScanPanel> {
     if (oldWidget.packagePath != widget.packagePath) {
       _future = widget.loader(widget.packagePath);
     }
+  }
+
+  /// 显式查看明文：先确认，再重扫取原文；拿不到就明确失败。
+  Future<void> _reveal(SecretMatch match) async {
+    final t = TranslationProvider.of(context).translations;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t.secrets.reveal_title),
+        content: Text(t.secrets.reveal_warning),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(t.base.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(t.secrets.reveal),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final loader = widget.revealLoader ?? SecretScanService.revealPlaintext;
+    final value = await loader(widget.packagePath, match);
+    if (!mounted) return;
+    if (value == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.secrets.reveal_failed)),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t.secrets.reveal_title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              value,
+              style: const TextStyle(fontFamily: 'Menlo', fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              t.secrets.reveal_warning,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: value));
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(t.secrets.value_copied)),
+              );
+            },
+            child: Text(t.secrets.copy_value),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(t.base.close),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _copyFingerprint(SecretMatch match) async {
@@ -168,7 +244,12 @@ class _SecretScanPanelState extends State<SecretScanPanel> {
               ),
             ),
             for (final kind in kinds)
-              _KindCard(kind: kind, report: report, onCopy: _copyFingerprint),
+              _KindCard(
+                kind: kind,
+                report: report,
+                onCopy: _copyFingerprint,
+                onReveal: _reveal,
+              ),
           ],
         );
       },
@@ -180,11 +261,13 @@ class _KindCard extends StatelessWidget {
   final SecretKind kind;
   final SecretScanReport report;
   final void Function(SecretMatch) onCopy;
+  final void Function(SecretMatch) onReveal;
 
   const _KindCard({
     required this.kind,
     required this.report,
     required this.onCopy,
+    required this.onReveal,
   });
 
   @override
@@ -231,6 +314,12 @@ class _KindCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      tooltip: t.secrets.reveal,
+                      iconSize: 16,
+                      icon: const Icon(Icons.visibility_outlined),
+                      onPressed: () => onReveal(match),
                     ),
                     IconButton(
                       tooltip: t.secrets.copy_fingerprint,

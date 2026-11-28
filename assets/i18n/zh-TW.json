@@ -1819,6 +1819,12 @@
     "kind_stripe": "Stripe key",
     "kind_private_key": "私鑰",
     "kind_jwt": "JWT",
-    "kind_generic": "憑證賦值"
+    "kind_generic": "憑證賦值",
+    "reveal": "查看明文",
+    "reveal_title": "明文值",
+    "reveal_warning": "明文只在目前對話框存在，不落盤、不進日誌、不進報告。",
+    "reveal_failed": "無法重新讀取該值（條目已變更或超出預算）",
+    "copy_value": "複製明文",
+    "value_copied": "已複製明文"
   }
 }

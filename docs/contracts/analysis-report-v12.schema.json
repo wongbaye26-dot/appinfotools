@@ -1,0 +1,508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://appinfotool.local/contracts/analysis-report-v11.schema.json",
+  "title": "AppInfoTool Analysis Report v11",
+  "description": "2.11 report schema additions: analysis run header, stable evidence IDs, and finding-to-evidence links. This schema intentionally describes the v10 additions; consumers must still treat unknown fields as forward-compatible. 新增 application.permissionDetails 与一级 libraries（均可选：未采集时不出现）。 v11 增加 signatureSummary.certificates（包内证书字段）。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "reportSchemaVersion",
+    "findings",
+    "security"
+  ],
+  "properties": {
+    "reportSchemaVersion": {
+      "const": 12
+    },
+    "analysisRun": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/analysisRun"
+        }
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ruleId",
+          "evidenceIds"
+        ],
+        "properties": {
+          "ruleId": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/evidenceId"
+            }
+          }
+        }
+      }
+    },
+    "security": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/evidence"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "permissionDetails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "name",
+              "risk"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "shortName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "risk": {
+                "enum": [
+                  "high",
+                  "sensitive",
+                  "normal",
+                  "system",
+                  "unknown"
+                ]
+              },
+              "protection": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "dangerous",
+                  "signature",
+                  "signatureOrSystem",
+                  "internal",
+                  null
+                ]
+              },
+              "protectionLevel": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "flags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "libraries": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "dataVersion",
+            "identifiedSdkCount"
+          ],
+          "properties": {
+            "dataVersion": {
+              "type": "integer"
+            },
+            "identifiedSdkCount": {
+              "type": "integer"
+            },
+            "dexClasses": {
+              "type": "integer"
+            },
+            "dexTruncated": {
+              "type": "boolean"
+            },
+            "kotlin": {
+              "type": "boolean"
+            },
+            "compose": {
+              "type": "boolean"
+            },
+            "native": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/libraryGroup"
+              }
+            },
+            "components": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/libraryGroup"
+              }
+            },
+            "dex": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/libraryGroup"
+              }
+            },
+            "unmatchedNative": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "abi": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "signatureSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "签名结论与证书事实。certificates 为可选键：null 不出现，空数组表示采集过但没有证书。",
+      "properties": {
+        "certificates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/certificate"
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "description": "敏感信息命中；只有脱敏值、值哈希与指纹，明文永不写入报告。",
+      "items": {
+        "$ref": "#/$defs/secretMatch"
+      }
+    }
+  },
+  "$defs": {
+    "evidenceId": {
+      "type": "string",
+      "pattern": "^ev_[0-9a-f]{12}$"
+    },
+    "analysisRun": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "status",
+        "startedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^analysis_[0-9]+_[A-Za-z0-9]+$"
+        },
+        "toolVersion": {
+          "type": "string"
+        },
+        "appName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "platform": {
+          "type": "string"
+        },
+        "packageSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "success",
+            "partial",
+            "failed",
+            "cancelled"
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "source",
+        "location"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/evidenceId"
+        },
+        "source": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "locationCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detailCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "libraryGroup": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "label",
+        "hits"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "ruleId": {
+          "type": "integer"
+        },
+        "iconId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "name",
+              "source"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "source": {
+                "enum": [
+                  "exact",
+                  "regex",
+                  "action"
+                ]
+              },
+              "abis": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sizeBytes": {
+                "type": "integer"
+              },
+              "componentType": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "platform",
+        "subject",
+        "sha256"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "android",
+            "ios"
+          ]
+        },
+        "scheme": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signerIndex": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "subject": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "serialNumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notBefore": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notAfter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signatureAlgorithm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keyAlgorithm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keySizeBits": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "publicKeyCurve": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "sha1": {
+          "type": "string"
+        },
+        "md5": {
+          "type": "string"
+        }
+      }
+    },
+    "secretMatch": {
+      "type": "object",
+      "required": [
+        "fingerprint",
+        "ruleId",
+        "kind",
+        "confidence",
+        "redactedValue",
+        "valueSha256",
+        "location",
+        "context"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "redactedValue": {
+          "type": "string"
+        },
+        "valueSha256": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

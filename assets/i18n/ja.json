@@ -1819,6 +1819,12 @@
     "kind_stripe": "Stripe キー",
     "kind_private_key": "秘密鍵",
     "kind_jwt": "JWT",
-    "kind_generic": "認証情報の代入"
+    "kind_generic": "認証情報の代入",
+    "reveal": "平文を表示",
+    "reveal_title": "平文の値",
+    "reveal_warning": "平文はこのダイアログ内だけに存在し、ディスク・ログ・レポートには残しません。",
+    "reveal_failed": "値を再読み込みできません（エントリ変更または予算超過）",
+    "copy_value": "平文をコピー",
+    "value_copied": "平文をコピーしました"
   }
 }

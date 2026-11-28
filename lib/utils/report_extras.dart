@@ -1,8 +1,10 @@
+import 'package:analysis_model/analysis_model.dart' show SecretMatch;
 import 'package:apk_parser/apk_parser.dart';
 import 'package:ipa_parser/ipa_parser.dart' show X509CertificateInfo;
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/android_metadata.dart';
 import 'package:apk_info_tool/utils/libchecker_data.dart';
+import 'package:apk_info_tool/utils/secret_scan_service.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 
 /// 报告里「界面能看到、JSON 里没有」的那部分事实。
@@ -11,7 +13,11 @@ import 'package:apk_info_tool/utils/logger.dart';
 /// `AnalysisReport.render*` 是纯函数。所以由调用方先算好，再作为可选入参传进去：
 /// 不给就退回旧行为，给了就多出对应的段落/键。
 class ReportExtras {
+  /// 敏感信息命中（只有脱敏值与指纹，草稿里不出现明文）。
+  final List<SecretMatch>? secrets;
+
   const ReportExtras({
+    this.secrets,
     this.permissions,
     this.libraries,
     this.certificates,
@@ -41,6 +47,7 @@ class ReportExtras {
     String? archivePath,
     bool includePermissions = true,
     bool includeLibraries = true,
+    bool includeSecrets = true,
   }) async {
     final android = result.android;
 
@@ -73,6 +80,16 @@ class ReportExtras {
       }
     }
 
+    List<SecretMatch>? secrets;
+    if (includeSecrets && archivePath != null) {
+      try {
+        final report = await SecretScanService.scan(archivePath);
+        secrets = report?.matches;
+      } catch (error, stack) {
+        log.warning('ReportExtras: 敏感信息扫描失败: \$error', error, stack);
+      }
+    }
+
     LibraryReport? libraries;
     if (includeLibraries && archivePath != null && android != null) {
       try {
@@ -86,6 +103,7 @@ class ReportExtras {
       permissions: permissions,
       libraries: libraries,
       certificates: _certificatesOf(result),
+      secrets: secrets,
     );
   }
 

@@ -70,6 +70,8 @@ class AnalysisReport {
       if (result.platform == PackagePlatform.android) {
         _librariesSection(sb, t, extras?.libraries);
       }
+      // 敏感信息：任何平台都可能有（iOS 的配置 plist / 打包进去的脚本）。
+      _secretsSection(sb, t, extras?.secrets);
       // 分包一致性单列一节。放在平台段之后、安全段之前：它是**结构事实**，
       // 不是风险结论 —— 混进安全段会被读成「发现了风险」。
       _splitConsistency(sb, result, t);
@@ -1040,6 +1042,44 @@ class AnalysisReport {
   ///
   /// 与「解析诊断」分开：那里是给人读的句子，这里是结构化结论
   ///（比对了几个、有几个不一致、有没有没查到的）。
+  /// 敏感信息小节。**只写脱敏值与指纹**：报告会被导出、归档、发给别人，
+  /// 明文一旦写进来就再也收不回去。
+  static void _secretsSection(
+    StringBuffer sb,
+    Translations t,
+    List<SecretMatch>? secrets,
+  ) {
+    if (secrets == null || secrets.isEmpty) return;
+    sb
+      ..writeln()
+      ..writeln('## ${t.secrets.title}')
+      ..writeln()
+      ..writeln(t.secrets.heuristic_note)
+      ..writeln()
+      ..writeln('| ${t.secrets.title} | ${t.secrets.copy_fingerprint} |')
+      ..writeln('| --- | --- |');
+    for (final match in secrets) {
+      sb.writeln(
+        '| ${_cell(match.kind.name)} · ${_cell(match.redactedValue)} '
+        '| ${_cell(match.location)} · ${_cell(match.id)} |',
+      );
+    }
+  }
+
+  static List<Map<String, Object?>> _secretsJson(List<SecretMatch> secrets) => [
+        for (final match in secrets)
+          {
+            'fingerprint': match.id,
+            'ruleId': match.ruleId,
+            'kind': match.kind.name,
+            'confidence': match.confidence.name,
+            'redactedValue': match.redactedValue,
+            'valueSha256': match.valueSha256,
+            'location': match.location,
+            'context': match.contextRedacted,
+          },
+      ];
+
   static void _splitConsistency(
     StringBuffer sb,
     PackageAnalysisResult result,
@@ -2868,7 +2908,7 @@ class AnalysisReport {
   /// 11：`signatureSummary.certificates` —— 包内证书的完整字段（序列号、
   ///     有效期、算法、密钥长度、SHA-256/SHA-1/MD5）。此前只有 apksigner
   ///     的签名者与 iOS 证书链的四个公开字段，界面能看到、导出拿不到。
-  static const int reportSchemaVersion = 11;
+  static const int reportSchemaVersion = 12;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -3098,6 +3138,10 @@ class AnalysisReport {
       if (!securityOnly)
         if (extras?.libraries case final libs?)
           'libraries': _librariesJson(libs),
+
+      if (!securityOnly)
+        if (extras?.secrets case final secrets?)
+          'secrets': _secretsJson(secrets),
 
       'securitySummary': security == null
           ? null

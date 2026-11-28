@@ -78,6 +78,12 @@ class SecretScanner {
   /// 进报告与证据的扫描器 id；规则变化时必须同时改这里。
   static const String extractorId = 'secret.regex.v$secretRulesVersion';
 
+  /// 计算与 [SecretMatch.valueSha256] 完全一致的值哈希。
+  ///
+  /// 「显式查看明文」时用它核对：重新扫出来的候选值必须和原命中同一个哈希。
+  static String valueHashOf(String value) =>
+      sha256.convert(utf8.encode(value.trim())).toString().substring(0, 16);
+
   /// 扫描一段文本。
   ///
   /// [location] 由调用方给：包内路径（嵌套用 `!`），用于稳定指纹。
