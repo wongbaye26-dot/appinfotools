@@ -1733,7 +1733,13 @@
     "delete_title": "Delete this run?",
     "delete_body": "The saved report snapshot will be removed. The original package is not touched.",
     "missing": "The original package no longer exists.",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "view_snapshot": "Archived report",
+    "snapshot_title": "Archived report (snapshot)",
+    "snapshot_hint": "This is the JSON snapshot written when the analysis ran. Nothing is re-parsed.",
+    "copy_snapshot": "Copy JSON",
+    "snapshot_copied": "Snapshot copied",
+    "snapshot_missing": "This history entry has no archived report"
   },
   "html_report": {
     "title": "AppInfoTool · Static Inspection Report",

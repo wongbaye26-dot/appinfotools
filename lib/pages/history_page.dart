@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:apk_info_tool/gen/strings.g.dart';
@@ -10,6 +11,7 @@ import 'package:apk_info_tool/theme/v4_theme.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 本地分析历史。
@@ -61,6 +63,29 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     }
     ref.read(pendingOpenRequestProvider.notifier).request(run.packagePath);
     ref.read(shellNavigationProvider.notifier).navigate('analysis');
+  }
+
+  Future<void> _showSnapshot(AnalysisRunSummary run) async {
+    final AnalysisRunRepository repo;
+    final injected = widget.repository;
+    if (injected != null) {
+      repo = injected;
+    } else {
+      repo = await ref.read(analysisRunRepositoryProvider.future);
+    }
+    final full = await repo.read(run.id);
+    final snapshot = full?.snapshot;
+    if (!mounted) return;
+    if (snapshot == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.history.snapshot_missing)),
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _SnapshotDialog(snapshot: snapshot),
+    );
   }
 
   Future<void> _delete(AnalysisRunSummary run) async {
@@ -161,6 +186,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   run: runs[index],
                   onOpen: _open,
                   onDelete: _delete,
+                  onSnapshot: _showSnapshot,
                 ),
               );
             },
@@ -175,11 +201,13 @@ class _HistoryTile extends StatelessWidget {
   final AnalysisRunSummary run;
   final Future<void> Function(AnalysisRunSummary) onOpen;
   final Future<void> Function(AnalysisRunSummary) onDelete;
+  final Future<void> Function(AnalysisRunSummary) onSnapshot;
 
   const _HistoryTile({
     required this.run,
     required this.onOpen,
     required this.onDelete,
+    required this.onSnapshot,
   });
 
   @override
@@ -283,6 +311,11 @@ class _HistoryTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
+          IconButton(
+            tooltip: t.history.view_snapshot,
+            onPressed: run.hasSnapshot ? () => onSnapshot(run) : null,
+            icon: const Icon(Icons.description_outlined, size: 18),
+          ),
           TextButton.icon(
             onPressed: exists ? () => onOpen(run) : null,
             icon: const Icon(Icons.open_in_new, size: 15),
@@ -302,4 +335,108 @@ class _HistoryTile extends StatelessWidget {
       '${dt.year}-${_two(dt.month)}-${_two(dt.day)} ${_two(dt.hour)}:${_two(dt.minute)}';
 
   static String _two(int n) => n.toString().padLeft(2, '0');
+}
+
+/// 只读展示一次分析的存档报告。
+///
+/// 历史页的「打开」是重新解析原包；这里展示的是**当时**写入的 JSON 快照，
+/// 两者语义不同，所以标题、提示和按钮都分开写，避免用户误以为结果被复用。
+class _SnapshotDialog extends StatelessWidget {
+  final Map<String, dynamic> snapshot;
+
+  const _SnapshotDialog({required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final pretty = const JsonEncoder.withIndent('  ').convert(snapshot);
+    final findings = snapshot['findings'];
+    final libraries = snapshot['libraries'];
+    final permissions = (snapshot['application'] is Map)
+        ? (snapshot['application'] as Map)['permissionDetails']
+        : null;
+    final facts = <String>[
+      if (snapshot['reportSchemaVersion'] != null)
+        'schema v${snapshot['reportSchemaVersion']}',
+      if (snapshot['generatedAt'] != null) '${snapshot['generatedAt']}',
+      if (findings is List) '${findings.length} findings',
+      if (permissions is List) '${permissions.length} permissions',
+      if (libraries is Map && libraries['identifiedSdkCount'] != null)
+        '${libraries['identifiedSdkCount']} SDKs',
+    ];
+    return AlertDialog(
+      title: Text(t.history.snapshot_title),
+      content: SizedBox(
+        width: 720,
+        height: 480,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              t.history.snapshot_hint,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (facts.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                facts.join(' · '),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontFamily: 'monospace',
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    pretty,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${pretty.length} chars',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: pretty));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(t.history.snapshot_copied)),
+            );
+          },
+          child: Text(t.history.copy_snapshot),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(t.base.close),
+        ),
+      ],
+    );
+  }
 }

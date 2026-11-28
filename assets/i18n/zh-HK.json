@@ -1733,7 +1733,13 @@
     "delete_title": "刪除這條記錄？",
     "delete_body": "只刪除已保存的報告快照，不會改動原始安裝包。",
     "missing": "原始安裝包已不存在。",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "view_snapshot": "存檔報告",
+    "snapshot_title": "存檔報告（快照）",
+    "snapshot_hint": "這是分析當時寫入的 JSON 快照，不會重新解析安裝包。",
+    "copy_snapshot": "複製 JSON",
+    "snapshot_copied": "已複製存檔 JSON",
+    "snapshot_missing": "這條歷史沒有可用的存檔報告"
   },
   "html_report": {
     "title": "AppInfoTool · 靜態檢查報告",

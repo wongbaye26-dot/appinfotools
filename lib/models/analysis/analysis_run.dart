@@ -218,6 +218,12 @@ class AnalysisRunSummary {
   final DateTime? completedAt;
   final AnalysisRunStatus status;
 
+  /// 是否存在可读的报告快照。
+  ///
+  /// 历史列表按摘要渲染，不读完整 snapshot（几百 KB）；这里只记一个布尔，
+  /// 需要看内容时再按 id 读 run 文件。
+  final bool hasSnapshot;
+
   const AnalysisRunSummary({
     required this.id,
     required this.platform,
@@ -227,6 +233,7 @@ class AnalysisRunSummary {
     this.appName,
     this.packageSha256,
     this.completedAt,
+    this.hasSnapshot = false,
   });
 
   factory AnalysisRunSummary.fromRun(AnalysisRun run) => AnalysisRunSummary(
@@ -238,6 +245,7 @@ class AnalysisRunSummary {
         startedAt: run.startedAt,
         completedAt: run.completedAt,
         status: run.status,
+        hasSnapshot: run.snapshot != null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -249,6 +257,7 @@ class AnalysisRunSummary {
         'startedAt': startedAt.toUtc().toIso8601String(),
         'completedAt': completedAt?.toUtc().toIso8601String(),
         'status': status.code,
+        'hasSnapshot': hasSnapshot,
       };
 
   factory AnalysisRunSummary.fromJson(Map<String, dynamic> json) {
@@ -288,6 +297,7 @@ class AnalysisRunSummary {
       startedAt: startedAt.toUtc(),
       completedAt: completedAt?.toUtc(),
       status: AnalysisRunStatus.fromCode(json['status'] as String?),
+      hasSnapshot: json['hasSnapshot'] == true,
     );
   }
 }

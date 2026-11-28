@@ -19,7 +19,13 @@ import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 class AnalysisRunRepository {
   static const String runsDirectoryName = 'analysis_runs';
   static const String indexFileName = 'index.json';
-  static const int indexSchemaVersion = 1;
+
+  /// 索引结构版本。
+  ///
+  /// v2：摘要增加 `hasSnapshot`。旧索引没有这个字段会让历史页的「存档报告」
+  /// 一直不可用，因此版本号 +1，让旧索引整体重建一次（重建本身会读 run 文件，
+  /// 不在列表渲染时读）。
+  static const int indexSchemaVersion = 2;
 
   final Directory root;
   final int maxRuns;

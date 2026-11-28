@@ -1668,7 +1668,13 @@
     "delete_title": "이 기록을 삭제할까요?",
     "delete_body": "저장된 보고서 스냅샷만 삭제하며 원본 패키지는 변경하지 않습니다.",
     "missing": "원본 패키지가 더 이상 존재하지 않습니다.",
-    "refresh": "새로 고침"
+    "refresh": "새로 고침",
+    "view_snapshot": "보관된 보고서",
+    "snapshot_title": "보관된 보고서(스냅샷)",
+    "snapshot_hint": "분석 당시 기록된 JSON 스냅샷이며, 다시 파싱하지 않습니다.",
+    "copy_snapshot": "JSON 복사",
+    "snapshot_copied": "스냅샷을 복사했습니다",
+    "snapshot_missing": "이 기록에는 사용할 수 있는 보관 보고서가 없습니다"
   },
   "html_report": {
     "title": "AppInfoTool · 정적 검사 보고서",

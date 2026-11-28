@@ -1668,7 +1668,13 @@
     "delete_title": "この記録を削除しますか？",
     "delete_body": "保存済みのレポートスナップショットのみ削除します。元のパッケージは変更しません。",
     "missing": "元のパッケージが見つかりません。",
-    "refresh": "更新"
+    "refresh": "更新",
+    "view_snapshot": "アーカイブレポート",
+    "snapshot_title": "アーカイブレポート（スナップショット）",
+    "snapshot_hint": "解析時に書き出した JSON スナップショットです。再解析は行いません。",
+    "copy_snapshot": "JSON をコピー",
+    "snapshot_copied": "スナップショットをコピーしました",
+    "snapshot_missing": "この履歴には利用できるアーカイブレポートがありません"
   },
   "html_report": {
     "title": "AppInfoTool · 静的検査レポート",

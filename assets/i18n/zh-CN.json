@@ -1733,7 +1733,13 @@
     "delete_title": "删除这条记录？",
     "delete_body": "只删除已保存的报告快照，不会改动原始安装包。",
     "missing": "原始安装包已不存在。",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "view_snapshot": "存档报告",
+    "snapshot_title": "存档报告（快照）",
+    "snapshot_hint": "这是分析当时写入的 JSON 快照，不会重新解析安装包。",
+    "copy_snapshot": "复制 JSON",
+    "snapshot_copied": "已复制存档 JSON",
+    "snapshot_missing": "这条历史没有可用的存档报告"
   },
   "html_report": {
     "title": "AppInfoTool · 静态检查报告",
