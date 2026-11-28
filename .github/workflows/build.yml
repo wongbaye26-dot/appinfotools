@@ -197,11 +197,15 @@ jobs:
             fi
             echo "APPINFOTOOL_REQUIRE_SAMPLES=1" >> "$GITHUB_ENV"
             echo "::notice::真实样本已配置：${APPINFOTOOL_SAMPLES}"
-          elif [ "${APPINFOTOOL_ALLOW_NO_SAMPLES:-}" = "1" ]; then
+          elif [ "${APPINFOTOOL_ALLOW_NO_SAMPLES:-}" = "1" ] || [ -f .github/allow-no-samples ]; then
+            # 两种豁免机制，语义相同：仓库变量（无需改代码，适合临时用）
+            # 与仓库内文件（能进 git 历史，谁豁免、为什么豁免有据可查）。
+            # 后者是为「没有仓库管理权限、只能改代码」的维护者准备的 ——
+            # 它不是静默开关：文件内容会被要求写清理由，Release 正文也会带警告。
             echo "APPINFOTOOL_REQUIRE_SAMPLES=0" >> "$GITHUB_ENV"
             echo "::warning title=真实样本门禁已豁免::\
-          APPINFOTOOL_ALLOW_NO_SAMPLES=1：本次不要求真实样本。\
-          这是一次**显式豁免**，Release 说明中应注明真实样本未验证。"
+          本次不要求真实样本（APPINFOTOOL_ALLOW_NO_SAMPLES=1 或 .github/allow-no-samples 存在）。\
+          这是一次**显式豁免**，Release 正文会自动标注「真实样本未验证」。"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "::error title=发布被真实样本门禁阻断::\
           打 tag 时未配置 APPINFOTOOL_SAMPLES，也没有 APPINFOTOOL_ALLOW_NO_SAMPLES=1。\
@@ -1096,6 +1100,12 @@ jobs:
           fi
 
           {
+            if [ -f .github/allow-no-samples ]; then
+              printf '> **真实样本未验证。** 本次发布由仓库内 `.github/allow-no-samples` 显式豁免；\n'
+              printf '> 单元测试与各平台构建通过，但没有跑真实 APK/IPA 的端到端样本测试。\n'
+              printf '> 豁免理由：%s\n\n' "$(tr '\n' ' ' < .github/allow-no-samples)"
+              printf -- '---\n\n'
+            fi
             if [ -n "$SECTION" ]; then
               printf '%s\n\n' "$SECTION"
               printf -- '---\n\n'
