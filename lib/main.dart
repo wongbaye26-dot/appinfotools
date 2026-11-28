@@ -4,6 +4,7 @@ import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/ui/shell/app_shell.dart';
+import 'package:apk_info_tool/utils/android_metadata.dart';
 import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
@@ -148,6 +149,10 @@ void main(List<String> arguments) async {
   } else {
     await LocaleSettings.setLocaleRaw(lang);
   }
+  // Android 平台元数据（权限保护级别/官方文案）。失败不阻塞启动：
+  // 详情页会在缺少说明时退回包名，不会因为一个资产文件缺了就打不开包。
+  await AndroidMetadata.instance.ensureLoaded();
+
   runApp(ProviderScope(child: TranslationProvider(child: const MyApp())));
 }
 

@@ -392,6 +392,11 @@ void main() {
       'security.finding_texts.android_permission_rule_with_note:ko':
           '纯占位符模板 {description} ({note})，韩文用 ASCII 括号',
       'diff.sets.android_nativeCodes': 'ABI 是技术缩写，不翻译',
+      // 对比页叙述句的拼接标点：韩文本来就用 ASCII 逗号 / 分号 / 句号，
+      // 与 en 逐字节相同是**唯一正确**的结果（同上面 security 的分隔符条目）。
+      'diff.list_sep:ko': '韩文用 ASCII 逗号，与 en 相同是正常结果',
+      'diff.sentence_sep:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
+      'diff.sentence_end:ko': '韩文句号是「.」加空格，与 en 相同是正常结果',
       'ios_info.bundle_kind_app_extension:ja': 'Apple 的官方日文写法就是 App Extension',
     };
 

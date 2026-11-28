@@ -1,9 +1,14 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
+import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/theme/v4_theme.dart';
 import 'package:apk_info_tool/ui/shell/navigation_item.dart';
+import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
+import 'package:apk_info_tool/utils/recent_files.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
+import 'package:apk_info_tool/widgets/recent_app_icon.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 侧边栏展开宽度（V4：浮动白面板）。
 ///
@@ -129,6 +134,7 @@ class AppSidebar extends StatelessWidget {
                 },
               ),
             ),
+            if (!collapsed) const _SidebarRecentSection(),
             if (!collapsed)
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -252,7 +258,7 @@ class AppSidebar extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'APPINFOTOOL',
+                  'PACKAGE INSPECTOR',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
                     letterSpacing: 1.1,
@@ -271,14 +277,15 @@ class AppSidebar extends StatelessWidget {
 
   /// 导航固定顺序：概览 / 分析 / 版本对比 / 安装 / 设置。
   ///
-  /// 与 `AppNavigation.items()` 的模型解耦，避免为了视觉顺序改动导航数据。
+  /// 「最近分析」不是导航项 —— 原型把它放在导航下方的列表里，点条目直接
+  /// 打开该文件；`history` 页仍保留（最近分析卡片的「管理」入口会去），
+  /// 但不占侧栏一格。
   List<NavigationItem> _orderedItems() {
     final all = AppNavigation.items();
     NavigationItem byId(String id) => all.firstWhere((item) => item.id == id);
     return [
       byId('overview'),
       byId('analysis'),
-      byId('history'),
       byId('diff'),
       byId('install'),
       byId('settings'),
@@ -462,6 +469,124 @@ class _SidebarHint extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// 导航下方的「最近分析」：最多三条，点条目直接打开。
+///
+/// 只做入口，不重复概览页的表格信息 —— 侧栏窄，放名字和平台就够。
+class _SidebarRecentSection extends ConsumerWidget {
+  const _SidebarRecentSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final recent = ref.watch(recentFilesProvider);
+    if (recent.isEmpty) return const SizedBox.shrink();
+
+    final entries = recent.take(3).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 14, 6),
+          child: Row(
+            children: [
+              Text(
+                t.overview.recent_files,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  fontSize: 9,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'LOCAL',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.55),
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (final entry in entries)
+          _SidebarRecentTile(
+            entry: entry,
+            onTap: () {
+              ref.read(pendingOpenRequestProvider.notifier).request(entry.path);
+              ref.read(shellNavigationProvider.notifier).navigate('analysis');
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _SidebarRecentTile extends StatelessWidget {
+  final RecentFileEntry entry;
+  final VoidCallback onTap;
+
+  const _SidebarRecentTile({required this.entry, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isIos = entry.platform == 'ios';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 1, 12, 1),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            children: [
+              RecentAppIcon(
+                iconFile: entry.iconFile,
+                fallback: isIos ? Icons.apple : Icons.android,
+                fallbackColor: scheme.onSurfaceVariant,
+                size: 22,
+                radius: 6,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      entry.fileName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      isIos ? 'iOS' : 'Android',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 8.5,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

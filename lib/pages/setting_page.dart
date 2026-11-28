@@ -8,6 +8,7 @@ import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/utils/app_links.dart';
+import 'package:apk_info_tool/utils/cache_manager.dart';
 import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
@@ -20,7 +21,6 @@ import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/tool_downloader.dart';
 import 'package:apk_info_tool/utils/tool_paths.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
-import 'package:apk_info_tool/widgets/title_value_layout.dart';
 import 'package:apk_info_tool/widgets/title_width_setting.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -43,9 +43,6 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   final _sectionKeys = List.generate(6, (_) => GlobalKey());
   int _activeSection = 0;
 
-  /// 宽屏时把分组铺成两列卡片，并直接展开内容（对齐 V4 原型的设置卡片网格）。
-  bool _wideCards = false;
-
   /// 文件关联是否已登记；`null` 表示还没试过（Windows 之外的平台一直是 `null`）。
   ///
   /// 只在用户点「重新登记」后更新，不在 build 里查 —— 每次重建都打一次
@@ -66,6 +63,11 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   /// 取决于第一次写到哪里，结果不可预测。
   bool _thumbnailBusy = false;
 
+  /// 缓存占用（图标缩略图 + 日志备份），用于「清理缓存」这一行。
+  ///
+  /// 首次在 [initState] 里盘点，清理后重算。取不到目录时保持 0。
+  CacheUsage _cacheUsage = const CacheUsage();
+
   /// `codesign` 的路径；非 macOS 或确实没有时为 `null`。
   ///
   /// 不提供配置项：macOS 上它固定在 `/usr/bin/codesign`，配错只会更糟。
@@ -78,10 +80,20 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     _maxLinesController.text = ref.read(
         uiConfigStateProvider.select((value) => value.textMaxLines.toString()));
     _loadThumbnailStatus();
+    _loadCacheUsage();
     // codesign 是纯文件系统判断（不拉子进程），同步做完即可 —— 异步化反而会
     // 在 widget 测试里留下未完成的 Timer。Java 的探测跟着配置走，放在
     // `_buildEnvironmentSection` 里（`JavaRuntime.detect` 自己带缓存）。
     _codesignPath = IosCodeSignAnalyzer.findCodesignPath();
+  }
+
+  /// 盘点缓存占用。
+  ///
+  /// 不 await：统计目录大小可能在网络盘上很慢，设置页不该因此延迟首帧。
+  Future<void> _loadCacheUsage() async {
+    final usage = await CacheManager.inspect();
+    if (!mounted) return;
+    setState(() => _cacheUsage = usage);
   }
 
   /// 首次查询缩略图处理器状态。
@@ -272,37 +284,47 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     onSource(Config.kToolSourceBuiltin);
   }
 
-  Widget _buildToolSelector({
-    required String title,
+  /// 一行工具路径：名称 + 当前解析到的路径 + 来源/选择/检测。
+  ///
+  /// 原型的 `.set-row` 只有一行，所以路径作为副标题与工具名同排，
+  /// 不再像旧版那样让下拉框单独占一行（半宽卡片里会挤成三行）。
+  Widget _buildToolRow({
+    required String name,
     required String source,
     required String? systemPath,
     required String? builtinPath,
     required String customPath,
-    required bool singleLine,
     required ValueChanged<String> onSourceChanged,
     required VoidCallback onCustomPick,
     required VoidCallback onReset,
   }) {
+    final theme = Theme.of(context);
     final displayPath = _displayPathForSource(
       source: source,
       systemPath: systemPath,
       builtinPath: builtinPath,
       customPath: customPath,
     );
-    return TitleValueLayout(
-      title: title,
-      value: displayPath,
-      singleLine: singleLine,
-      end: Wrap(
-        spacing: 8,
+    final missing = displayPath == t.settings.path_not_found;
+    return _V4SetRow(
+      title: name,
+      desc: displayPath,
+      descStyle: theme.textTheme.labelSmall?.copyWith(
+        fontFamily: 'monospace',
+        fontFamilyFallback: const ['Menlo', 'Courier'],
+        fontSize: 10.5,
+        color: missing ? theme.colorScheme.error : theme.hintColor,
+      ),
+      control: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButton<String>(
             value: source,
             isDense: true,
+            underline: const SizedBox.shrink(),
+            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
             onChanged: (value) {
-              if (value != null) {
-                onSourceChanged(value);
-              }
+              if (value != null) onSourceChanged(value);
             },
             items: [
               DropdownMenuItem(
@@ -320,24 +342,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
             ],
           ),
           if (source == Config.kToolSourceCustom)
-            SizedBox(
-              height: 36,
-              child: Center(
-                child: TextButton(
-                  onPressed: onCustomPick,
-                  child: Text(t.base.select),
-                ),
-              ),
-            ),
-          SizedBox(
-            height: 36,
-            child: Center(
-              child: TextButton(
-                onPressed: onReset,
-                child: Text(t.settings.auto_detect),
-              ),
-            ),
-          ),
+            _v4IconAction(
+                Icons.file_open_outlined, t.base.select, onCustomPick),
+          _v4IconAction(Icons.refresh, t.settings.auto_detect, onReset),
         ],
       ),
     );
@@ -362,38 +369,6 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   /// - 分组标题用 `titleSmall` + w600，与概览页的 `_SectionLabel`、详情页的
   ///   `_SectionHeader` 同一套字号与字重 —— 三页的「分组」看起来才是同一件事；
   /// - 前置图标缩到 18 并统一用主色，默认的 24 号灰色图标会把标题压得很小。
-  Widget _buildSettingCard({
-    required String title,
-    required List<Widget> children,
-    required IconData icon,
-    bool initiallyExpanded = false,
-  }) {
-    final theme = Theme.of(context);
-    final card = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(20),
-      side: BorderSide(color: theme.colorScheme.outlineVariant, width: 1),
-    );
-    return Card(
-      elevation: 0,
-      shape: card,
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          leading: Icon(icon, size: 18, color: theme.colorScheme.primary),
-          title: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.2,
-            ),
-          ),
-          initiallyExpanded: initiallyExpanded,
-          children: children,
-        ),
-      ),
-    );
-  }
-
   Widget _buildEnvironmentSection() {
     final theme = Theme.of(context);
     final aapt2Path =
@@ -440,41 +415,24 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ToolPaths.getDownloadedJavaPath(baseDir: resolvedDownloadDir);
     final javaInfo = JavaRuntime.detect();
 
-    return _buildSettingCard(
-      title: t.settings.environment,
-      icon: Icons.computer,
-      initiallyExpanded: true,
+    return _V4SetCard(
+      title: t.settings.tool_paths,
+      icon: Icons.tune,
       children: [
-        ListTile(
-          title: Row(
-            children: [
-              Text(t.settings.download_dependencies),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  t.settings.download_dependencies_desc,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).hintColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          trailing: TextButton(
-            onPressed: _openDownloadDialog,
-            child: Text(t.settings.download_dependencies_manage),
+        _V4SetRow(
+          title: t.settings.download_dependencies,
+          desc: t.settings.download_dependencies_desc,
+          control: _v4TextAction(
+            t.settings.download_dependencies_manage,
+            _openDownloadDialog,
           ),
         ),
-        _buildToolSelector(
-          title: t.settings.aapt_path,
+        _buildToolRow(
+          name: 'aapt2',
           source: aapt2Source,
           systemPath: aapt2System,
           builtinPath: aapt2Builtin,
           customPath: aapt2Path,
-          singleLine: true,
           onSourceChanged: (value) {
             ref.read(settingStateProvider.notifier).setAapt2Source(value);
           },
@@ -486,13 +444,12 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           }),
           onReset: () => resetToDefaultPath('aapt2'),
         ),
-        _buildToolSelector(
-          title: t.settings.apksigner_path,
+        _buildToolRow(
+          name: 'apksigner',
           source: apksignerSource,
           systemPath: apksignerSystem,
           builtinPath: apksignerBuiltin,
           customPath: apksignerPath,
-          singleLine: true,
           onSourceChanged: (value) {
             ref.read(settingStateProvider.notifier).setApksignerSource(value);
           },
@@ -504,13 +461,12 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           }),
           onReset: () => resetToDefaultPath('apksigner'),
         ),
-        _buildToolSelector(
-          title: t.settings.adb_path,
+        _buildToolRow(
+          name: 'adb',
           source: adbSource,
           systemPath: adbSystem,
           builtinPath: adbBuiltin,
           customPath: adbPath,
-          singleLine: true,
           onSourceChanged: (value) {
             ref.read(settingStateProvider.notifier).setAdbSource(value);
           },
@@ -522,17 +478,14 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           }),
           onReset: () => resetToDefaultPath('adb'),
         ),
-        // 下面两项没有配置入口，只报状态。原因各不相同：
-        // - Java 是 apksigner 的运行时依赖，换一个 java 路径并不会改变
-        //   「装没装 JDK」这个事实，给用户一个可编辑的框只会误导；
-        // - codesign 在 macOS 上固定 `/usr/bin/codesign`，配错更糟。
-        _buildToolSelector(
-          title: t.settings.java_runtime,
+        // Java 与 codesign 只报状态：换一个 java 路径不会改变「装没装 JDK」
+        // 这个事实，而 codesign 在 macOS 上固定 `/usr/bin/codesign`。
+        _buildToolRow(
+          name: t.settings.java_runtime,
           source: javaSource,
           systemPath: javaSystem,
           builtinPath: javaBuiltin,
           customPath: javaPath,
-          singleLine: true,
           onSourceChanged: (value) {
             ref.read(settingStateProvider.notifier).setJavaSource(value);
           },
@@ -546,43 +499,30 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ),
         if (!javaInfo.usable)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Text(
               JavaRuntime.supportsDownload
                   ? t.settings.java_missing_hint
                   : t.settings.java_missing_hint_manual,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.error),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+                height: 1.4,
+              ),
             ),
           ),
-        _buildDependencyStatusRow(
+        _V4SetRow(
           title: t.settings.codesign_path,
-          value: _codesignPath ?? t.settings.codesign_unavailable,
-          // 非 macOS 上「不可用」是平台事实，不是环境问题，不该标红。
-          isProblem: _codesignPath == null && Platform.isMacOS,
+          desc: _codesignPath ?? t.settings.codesign_unavailable,
+          descStyle: theme.textTheme.labelSmall?.copyWith(
+            fontFamily: 'monospace',
+            fontFamilyFallback: const ['Menlo', 'Courier'],
+            fontSize: 10.5,
+            color: _codesignPath == null && Platform.isMacOS
+                ? theme.colorScheme.error
+                : theme.hintColor,
+          ),
         ),
       ],
-    );
-  }
-
-  /// 只读的依赖状态行。
-  ///
-  /// 与三个「工具路径」共用 [TitleValueLayout]，但**没有**来源下拉与「自动
-  /// 检测」按钮 —— 这两项不是可以「指向别处」的工具。
-  Widget _buildDependencyStatusRow({
-    required String title,
-    required String value,
-    required bool isProblem,
-  }) {
-    final theme = Theme.of(context);
-    return TitleValueLayout(
-      title: title,
-      value: value,
-      singleLine: true,
-      copyable: false,
-      valueStyle: theme.textTheme.bodyMedium?.copyWith(
-        color: isProblem ? theme.colorScheme.error : null,
-      ),
     );
   }
 
@@ -594,17 +534,20 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     final parserEngine =
         ref.watch(settingStateProvider.select((value) => value.parserEngine));
     final theme = Theme.of(context);
-    return _buildSettingCard(
-      title: t.settings.features,
-      icon: Icons.featured_play_list,
+    return _V4SetCard(
+      title: t.settings.system_integration,
+      icon: Icons.widgets_outlined,
       children: [
-        ListTile(
-          title: Text(t.settings.parser_engine),
-          trailing: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
+        _V4SetRow(
+          title: t.settings.parser_engine,
+          control: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
             child: DropdownButton<String>(
               value: parserEngine,
               isDense: true,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
               onChanged: (value) {
                 if (value != null) {
                   ref
@@ -612,7 +555,6 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                       .setParserEngine(value);
                 }
               },
-              isExpanded: true,
               items: [
                 DropdownMenuItem(
                   value: Config.kParserBuiltin,
@@ -626,57 +568,80 @@ class _SettingPageState extends ConsumerState<SettingPage> {
             ),
           ),
         ),
-        SwitchListTile(
-          title: Text(t.settings.enable_signature),
-          value: enableSignature,
-          onChanged: (bool value) {
+        _v4SwitchRow(
+          t.settings.enable_signature,
+          enableSignature,
+          (bool value) {
             ref.read(settingStateProvider.notifier).setEnableSignature(value);
           },
         ),
-        SwitchListTile(
-          title: Text(t.settings.enable_hash),
-          value: enableHash,
-          onChanged: (bool value) {
+        _v4SwitchRow(
+          t.settings.enable_hash,
+          enableHash,
+          (bool value) {
             ref.read(settingStateProvider.notifier).setEnableHash(value);
           },
         ),
-        SwitchListTile(
-          title: Text(t.settings.enable_security_audit),
-          value: ref.watch(settingStateProvider
+        _v4SwitchRow(
+          t.settings.enable_security_audit,
+          ref.watch(settingStateProvider
               .select((value) => value.enableSecurityAudit)),
-          onChanged: (bool value) {
+          (bool value) {
             ref
                 .read(settingStateProvider.notifier)
                 .setEnableSecurityAudit(value);
           },
         ),
         if (FileAssociationManager.isSupported)
-          ListTile(
-            title: Text(t.settings.file_association),
-            subtitle: Text(
-              _fileAssociationHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.hintColor,
-              ),
-            ),
-            trailing: Row(
+          _V4SetRow(
+            title: t.settings.file_association,
+            desc: _fileAssociationHint,
+            control: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // 只有 Windows 能由应用自己写注册表（macOS 的关联由
                 // `Info.plist` 在打包时声明，运行时改不了）。
                 if (FileAssociationManager.canRegisterItself)
-                  TextButton(
-                    onPressed: _registerFileAssociations,
-                    child: Text(t.settings.file_association_register),
+                  _v4TextAction(
+                    t.settings.file_association_register,
+                    _registerFileAssociations,
                   ),
-                TextButton(
-                  onPressed: () => _openFileAssociationSettings(context),
-                  child: Text(FileAssociationManager.hasSettingsPanel
+                _v4IconAction(
+                  Icons.settings_outlined,
+                  FileAssociationManager.hasSettingsPanel
                       ? t.settings.open_settings
-                      : t.settings.how_to_set),
+                      : t.settings.how_to_set,
+                  () => _openFileAssociationSettings(context),
                 ),
               ],
             ),
+          ),
+        // 安装器默认注册：这是打包行为，运行时可查不可改 —— 与其放一个
+        // 永远灰着的开关，不如把「为什么改不了」写清楚。
+        _V4SetRow(
+          title: t.settings.installer_registration,
+          desc: t.settings.installer_registration_desc,
+          control: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _V4Chip(
+                Platform.isWindows ? 'CANDIDATE' : 'BUILD TIME',
+                tone: _V4ChipTone.violet,
+              ),
+              const SizedBox(width: 6),
+              _v4IconAction(
+                Icons.info_outline,
+                t.settings.installer_registration_help,
+                () => _showInstallerRegistrationHelp(context),
+              ),
+            ],
+          ),
+        ),
+        // Windows 的缩略图处理器开关仍嵌在「系统集成」里，出错时整块可见。
+        if (SystemThumbnailManager.isSupported)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: _buildSystemIconSection(),
           ),
       ],
     );
@@ -838,6 +803,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   }
 
   Widget _buildAppearanceSection() {
+    final theme = Theme.of(context);
     final themeColor =
         ref.watch(themeManagerProvider.select((value) => value.themeColor));
     final themeMode =
@@ -847,26 +813,66 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         ref.watch(settingStateProvider.select((value) => value.language));
     final language = rawLanguage == 'zh' ? 'zh-CN' : rawLanguage;
 
-    return _buildSettingCard(
-      title: t.settings.appearance,
-      icon: Icons.palette,
+    return _V4SetCard(
+      title: t.settings.appearance_language,
+      icon: Icons.palette_outlined,
       children: [
-        ListTile(
-          title: Text(t.settings.language),
-          trailing: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
+        _V4SetRow(
+          title: t.settings.theme_mode,
+          control: SegmentedButton<String>(
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 9),
+              ),
+              textStyle: WidgetStatePropertyAll(theme.textTheme.labelSmall),
+            ),
+            segments: [
+              ButtonSegment(
+                value: Config.kThemeModeLight,
+                label: Text(t.settings.theme_light),
+              ),
+              ButtonSegment(
+                value: Config.kThemeModeDark,
+                label: Text(t.settings.theme_dark),
+              ),
+              ButtonSegment(
+                value: Config.kThemeModeSystem,
+                label: Text(t.settings.theme_follow_system),
+              ),
+            ],
+            selected: {themeMode},
+            onSelectionChanged: (Set<String> value) {
+              final selected = value.first;
+              ref.read(settingStateProvider.notifier).setThemeMode(selected);
+              final mode = switch (selected) {
+                Config.kThemeModeLight => ThemeMode.light,
+                Config.kThemeModeDark => ThemeMode.dark,
+                _ => ThemeMode.system,
+              };
+              ref.read(themeManagerProvider.notifier).setThemeMode(mode);
+            },
+          ),
+        ),
+        _V4SetRow(
+          title: t.settings.language,
+          control: SizedBox(
+            width: 150,
             child: DropdownButton<String>(
               value: language,
+              isDense: true,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
               items: [
                 DropdownMenuItem(
                   value: Config.kLanguageAuto,
                   child: Text(t.settings.language_auto),
                 ),
                 const DropdownMenuItem(value: 'en', child: Text('English')),
-                const DropdownMenuItem(
-                  value: 'zh-CN',
-                  child: Text('简体中文'),
-                ),
+                const DropdownMenuItem(value: 'zh-CN', child: Text('简体中文')),
                 const DropdownMenuItem(
                   value: 'zh-HK',
                   child: Text('繁體中文（香港）'),
@@ -886,97 +892,52 @@ class _SettingPageState extends ConsumerState<SettingPage> {
             ),
           ),
         ),
-        // 主题模式切换
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(t.settings.theme_mode),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: Config.kThemeModeLight,
-                    label: Text('Light'),
-                    icon: Icon(Icons.light_mode, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: Config.kThemeModeDark,
-                    label: Text('Dark'),
-                    icon: Icon(Icons.dark_mode, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: Config.kThemeModeSystem,
-                    label: Text('Auto'),
-                    icon: Icon(Icons.brightness_auto, size: 16),
-                  ),
-                ],
-                selected: {themeMode},
-                onSelectionChanged: (Set<String> value) {
-                  final selected = value.first;
-                  ref
-                      .read(settingStateProvider.notifier)
-                      .setThemeMode(selected);
-                  final mode = switch (selected) {
-                    Config.kThemeModeLight => ThemeMode.light,
-                    Config.kThemeModeDark => ThemeMode.dark,
-                    _ => ThemeMode.system,
-                  };
-                  ref.read(themeManagerProvider.notifier).setThemeMode(mode);
-                },
-              ),
-            ],
-          ),
-        ),
-        ListTile(
-          title: Text(t.settings.theme_color),
-          trailing: Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: Color(themeColor),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
-                width: 1,
+        _V4SetRow(
+          title: t.settings.theme_color,
+          control: InkWell(
+            onTap: _showColorPicker,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Color(themeColor),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.dividerColor.withValues(alpha: 0.2),
+                ),
               ),
             ),
           ),
-          onTap: _showColorPicker,
         ),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(t.settings.max_lines),
-              ),
-              SizedBox(
-                width: 100,
-                child: TextField(
-                  controller: _maxLinesController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    final lines = int.tryParse(value);
-                    if (lines != null) {
-                      ref
-                          .read(uiConfigStateProvider.notifier)
-                          .updateTextMaxLines(lines);
-                    }
-                  },
+        _V4SetRow(
+          title: t.settings.max_lines,
+          control: SizedBox(
+            width: 84,
+            height: 34,
+            child: TextField(
+              controller: _maxLinesController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
                 ),
               ),
-            ],
+              onChanged: (value) {
+                final lines = int.tryParse(value);
+                if (lines != null) {
+                  ref
+                      .read(uiConfigStateProvider.notifier)
+                      .updateTextMaxLines(lines);
+                }
+              },
+            ),
           ),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: TitleWidthSetting(),
         ),
       ],
     );
@@ -985,14 +946,14 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   Widget _buildDebugSection() {
     final enableDebug =
         ref.watch(settingStateProvider.select((value) => value.enableDebug));
-    return _buildSettingCard(
-      title: t.settings.debug,
-      icon: Icons.bug_report,
+    return _V4SetCard(
+      title: t.settings.diagnostics_logs,
+      icon: Icons.bug_report_outlined,
       children: [
-        SwitchListTile(
-          title: Text(t.settings.enable_debug),
-          value: enableDebug,
-          onChanged: (bool value) async {
+        _v4SwitchRow(
+          t.settings.enable_debug,
+          enableDebug,
+          (bool value) async {
             ref.read(settingStateProvider.notifier).setEnableDebug(value);
             // 重新初始化日志系统
             if (!value) {
@@ -1003,99 +964,336 @@ class _SettingPageState extends ConsumerState<SettingPage> {
             }
           },
         ),
-        ListTile(
-          enabled: enableDebug,
-          title: Text(t.settings.open_debug_log),
-          leading: const Icon(Icons.description),
-          onTap: () {
-            final logPath = LoggerInit.instance.logFilePath;
-            if (logPath != null) {
-              openFileInExplorer(logPath);
-            }
-          },
+        _V4SetRow(
+          title: t.settings.open_debug_log,
+          control: _v4IconAction(
+            Icons.description_outlined,
+            t.settings.open_debug_log,
+            !enableDebug
+                ? null
+                : () {
+                    final logPath = LoggerInit.instance.logFilePath;
+                    if (logPath != null) {
+                      openFileInExplorer(logPath);
+                    }
+                  },
+          ),
         ),
-        ListTile(
-          enabled: enableDebug,
-          title: Text(t.settings.open_debug_directory),
-          leading: const Icon(Icons.folder),
-          onTap: () {
-            final logPath = LoggerInit.instance.logFilePath;
-            if (logPath != null) {
-              // 这一项要打开的是目录；此前误传了文件本身，两个入口行为
-              // 完全一样，用户没法自己翻 debug.log.1 之类的轮换文件。
-              openFileInExplorer(File(logPath).parent.path);
-            }
-          },
+        _V4SetRow(
+          title: t.settings.open_debug_directory,
+          control: _v4IconAction(
+            Icons.folder_outlined,
+            t.settings.open_debug_directory,
+            !enableDebug
+                ? null
+                : () {
+                    final logPath = LoggerInit.instance.logFilePath;
+                    if (logPath != null) {
+                      // 这一项要打开的是目录；此前误传了文件本身，两个入口行为
+                      // 完全一样，用户没法自己翻 debug.log.1 之类的轮换文件。
+                      openFileInExplorer(File(logPath).parent.path);
+                    }
+                  },
+          ),
         ),
-        ListTile(
-          enabled: enableDebug,
-          title: Text(t.settings.copy_diagnostics),
-          leading: const Icon(Icons.content_copy),
-          onTap: () async {
-            final logPath = LoggerInit.instance.logFilePath;
-            if (logPath == null || !File(logPath).existsSync()) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(t.settings.diagnostics_none)),
-              );
-              return;
-            }
-            // 刚打开的包可能还停在 IOSink 缓冲里，先落盘再读。
-            await LoggerInit.instance.flush();
-            final file = File(logPath);
-            final report = collectDiagnostics(file.readAsStringSync());
-            if (!mounted) return;
-            if (report.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(t.settings.diagnostics_none)),
-              );
-              return;
-            }
-            // 头部带版本、平台与日志修改时间：旧日志一眼可辨，不用再来回猜。
-            final header = 'AppInfoTool ${packageInfo.version}'
-                ' | platform=${Platform.operatingSystem}'
-                ' | logModified=${file.lastModifiedSync().toIso8601String()}';
-            await Clipboard.setData(ClipboardData(text: '$header\n$report'));
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(t.settings.diagnostics_copied)),
-            );
-          },
+        _V4SetRow(
+          title: t.settings.export_diagnostics,
+          desc: t.settings.export_diagnostics_desc,
+          control: _v4TextAction(
+            t.settings.export_diagnostics,
+            _exportDiagnostics,
+          ),
+        ),
+        _V4SetRow(
+          title: t.settings.copy_diagnostics,
+          control: _v4IconAction(
+            Icons.copy_all_outlined,
+            t.settings.copy_diagnostics,
+            !enableDebug
+                ? null
+                : () async {
+                    final logPath = LoggerInit.instance.logFilePath;
+                    if (logPath == null || !File(logPath).existsSync()) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(t.settings.diagnostics_none)),
+                      );
+                      return;
+                    }
+                    // 刚打开的包可能还停在 IOSink 缓冲里，先落盘再读。
+                    await LoggerInit.instance.flush();
+                    final file = File(logPath);
+                    final report = collectDiagnostics(file.readAsStringSync());
+                    if (!mounted) return;
+                    if (report.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(t.settings.diagnostics_none)),
+                      );
+                      return;
+                    }
+                    // 头部带版本、平台与日志修改时间：旧日志一眼可辨，不用再来回猜。
+                    final header = 'AppInfoTool ${packageInfo.version}'
+                        ' | platform=${Platform.operatingSystem}'
+                        ' | logModified=${file.lastModifiedSync().toIso8601String()}';
+                    await Clipboard.setData(
+                      ClipboardData(text: '$header\n$report'),
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(t.settings.diagnostics_copied)),
+                    );
+                  },
+          ),
+        ),
+        _V4SetRow(
+          title: t.settings.clear_cache,
+          desc: _cacheUsage.isEmpty
+              ? t.settings.cache_empty
+              : t.settings.cache_usage(
+                  icons: CacheManager.formatBytes(_cacheUsage.iconBytes),
+                  logs: CacheManager.formatBytes(_cacheUsage.logBytes),
+                ),
+          control: _v4TextAction(
+            t.settings.clear_cache_action,
+            _cacheUsage.isEmpty ? null : _clearCache,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 缓存清理：先确认，再删，最后报释放了多少。
+  ///
+  /// 删除范围见 [CacheManager]；这里刻意只删「可重建」的东西 —— 配置、
+  /// 最近分析、安装记录、下载的工具都不动，避免清了缓存还得重下 adb。
+  Future<void> _clearCache() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t.settings.clear_cache),
+        content: Text(
+          t.settings.cache_confirm_body(
+            size: CacheManager.formatBytes(_cacheUsage.total),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(t.base.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(t.settings.clear_cache_action),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final freed = await CacheManager.clear();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          t.settings.cache_cleared(size: CacheManager.formatBytes(freed.total)),
+        ),
+      ),
+    );
+    await _loadCacheUsage();
+  }
+
+  /// 把诊断日志另存为文本文件（原型里的「导出」）。
+  ///
+  /// 与「复制诊断」用同一份 [collectDiagnostics]，区别只是落地成文件 ——
+  /// 用户报 issue 时附文件比贴一大段九行剪贴板内容更合适。
+  Future<void> _exportDiagnostics() async {
+    final logPath = LoggerInit.instance.logFilePath;
+    if (logPath == null || !File(logPath).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.settings.diagnostics_none)),
+      );
+      return;
+    }
+    await LoggerInit.instance.flush();
+    final file = File(logPath);
+    final report = collectDiagnostics(file.readAsStringSync());
+    if (report.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.settings.diagnostics_none)),
+      );
+      return;
+    }
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final stamp = '${now.year}$month$day-$hour$minute';
+    final savePath = await FilePicker.platform.saveFile(
+      dialogTitle: t.settings.export_diagnostics,
+      fileName: 'appinfotool-diagnostics-$stamp.txt',
+      type: FileType.custom,
+      allowedExtensions: const ['txt'],
+    );
+    if (savePath == null) return;
+    try {
+      final header = 'AppInfoTool $_versionText'
+          ' | platform=${Platform.operatingSystem}'
+          ' | logModified=${file.lastModifiedSync().toIso8601String()}';
+      await File(savePath).writeAsString('$header\n$report');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            t.settings.export_diagnostics_saved(file: path.basename(savePath)),
+          ),
+        ),
+      );
+    } catch (e) {
+      log.warning('导出诊断日志失败: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.settings.export_diagnostics_failed)),
+      );
+    }
+  }
+
+  /// 「安装器默认注册」的说明：为什么这一项在界面上改不了。
+  Future<void> _showInstallerRegistrationHelp(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t.settings.installer_registration),
+        content: Text(t.settings.installer_registration_help_body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(t.base.close),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 真实语料目录：只由测试侧的 `APPINFOTOOL_SAMPLES` 环境变量提供。
+  ///
+  /// 应用本体不读外部样本 —— 那不是产品能力，而是测试夹具。这里显示它，
+  /// 是为了让「NOT SET」有据可查：设了环境变量的人能看到路径，没设的人
+  /// 能看到这句解释，而不是一个来路不明的 NOT SET。
+  String? get _samplesDir {
+    final value = Platform.environment['APPINFOTOOL_SAMPLES'];
+    if (value == null || value.trim().isEmpty) return null;
+    return value;
+  }
+
+  /// 隐私分组：原型里是独立卡片，内容只有「本机」与「外部样本目录」两行，
+  /// 都是只读陈述，因此没有可交互控件。
+  Widget _buildPrivacySection() {
+    return _V4SetCard(
+      title: t.settings.privacy,
+      icon: Icons.lock_outline,
+      children: [
+        _V4SetRow(
+          title: t.overview.recent_local_only,
+          desc: t.overview.session_local,
+          control: const _V4Chip('ALWAYS ON', tone: _V4ChipTone.mint),
+        ),
+        _V4SetRow(
+          title: t.overview.env_baseline,
+          desc: _samplesDir == null
+              ? t.settings.sample_dir_desc
+              : t.settings.sample_dir_set(path: _samplesDir!),
+          control: _V4Chip(
+            _samplesDir == null ? 'NOT SET' : 'SET',
+            tone: _samplesDir == null ? _V4ChipTone.neutral : _V4ChipTone.mint,
+          ),
         ),
       ],
     );
   }
 
   Widget _buildAboutSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
-          width: 1,
+    final theme = Theme.of(context);
+    return _V4SetCard(
+      title: t.settings.about,
+      icon: Icons.info_outline,
+      onHeaderTap: _showAboutDialog,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              const AppLogo(size: 32),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t.title,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _versionText.isEmpty
+                          ? 'STATIC INSPECTOR'
+                          : '$_versionText · STATIC INSPECTOR',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontFamily: 'monospace',
+                        fontFamilyFallback: const ['Menlo', 'Courier'],
+                        fontSize: 9.5,
+                        color: theme.hintColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const _V4Chip('STABLE', tone: _V4ChipTone.mint),
+              _v4IconAction(
+                Icons.info_outline,
+                t.settings.about,
+                _showAboutDialog,
+              ),
+            ],
+          ),
         ),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ListTile(
-          leading: const Icon(Icons.info),
-          title: Text(t.settings.about),
-          onTap: _showAboutDialog,
+        _V4SetRow(
+          title: t.about.repository,
+          desc: kRepositoryUrl,
+          descMaxLines: 1,
+          descStyle: theme.textTheme.labelSmall?.copyWith(
+            fontFamily: 'monospace',
+            fontFamilyFallback: const ['Menlo', 'Courier'],
+            fontSize: 9.5,
+            color: theme.hintColor,
+          ),
+          control: _v4IconAction(
+            Icons.open_in_new,
+            t.about.open_repository,
+            () => launchUrl(
+              Uri.parse(kRepositoryUrl),
+              mode: LaunchMode.externalApplication,
+            ),
+          ),
         ),
-      ),
+        _V4SetRow(
+          title: t.about.license,
+          control: _v4IconAction(
+            Icons.article_outlined,
+            t.about.license,
+            _showAboutDialog,
+          ),
+        ),
+      ],
     );
   }
 
-  /// 关于对话框。
-  ///
-  /// 结构：应用标识 + 版本 → 一句话定位 → 功能列表 → 项目地址。
-  ///
-  /// 不用 `showAboutDialog`：它固定带一个「查看开源许可」按钮，而许可
-  /// 全文在这个对话框里既放不下也不是用户点开「关于」想看的东西。
-  ///
-  /// **项目地址必须在这里**：早先的版本刻意去掉了仓库链接（理由写在
-  /// 旧注释里），但那让用户想找源码 / 提 issue 时无处可去 —— 桌面工具的
-  /// 「关于」正是放这个的地方。
   void _showAboutDialog() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1262,15 +1460,349 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     );
   }
 
+  /// 导航项到卡片索引的映射：四个分组分别落在 [外观, 工具路径, 诊断, 关于]。
+  static const List<int> _navTargets = <int>[0, 2, 3, 5];
+
   void _jumpToSection(int index) {
+    if (index < 0 || index >= _navTargets.length) return;
     setState(() => _activeSection = index);
-    final context = _sectionKeys[index].currentContext;
-    if (context == null) return;
+    final target = _sectionKeys[_navTargets[index]].currentContext;
+    if (target == null) return;
     Scrollable.ensureVisible(
-      context,
+      target,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
       alignment: 0.04,
+    );
+  }
+
+  /// 没有独立的更新检查通道：先打开 releases 页，至少让用户知道去哪看新版。
+  Future<void> _openReleasesPage() async {
+    await launchUrl(
+      Uri.parse(kReleasesUrl),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  /// 版本号文本。`packageInfo` 在单元测试里没有初始化，返回空串而不是抛错。
+  String get _versionText {
+    try {
+      return 'v${packageInfo.version}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Widget _buildPageHeader() {
+    final theme = Theme.of(context);
+    return PageHeader(
+      kicker: t.settings.kicker,
+      title: t.settings.title,
+      subtitle: t.settings.subtitle,
+      actions: [
+        Text(
+          _versionText,
+          style: theme.textTheme.labelSmall?.copyWith(
+            fontFamily: 'monospace',
+            fontFamilyFallback: const ['Menlo', 'Courier'],
+            fontSize: 10.5,
+            color: theme.hintColor,
+          ),
+        ),
+        IconButton.outlined(
+          onPressed: _openReleasesPage,
+          icon: const Icon(Icons.system_update_alt, size: 16),
+          tooltip: 'Check for updates',
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubNav() {
+    final labels = [
+      t.settings.nav_general,
+      t.settings.nav_devices_install,
+      t.settings.nav_security_diagnostics,
+      t.settings.about,
+    ];
+    final icons = [
+      Icons.grid_view_outlined,
+      Icons.desktop_windows_outlined,
+      Icons.shield_outlined,
+      Icons.info_outline,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < labels.length; i++)
+          _buildNavItem(i, labels[i], icons[i]),
+        const SizedBox(height: 16),
+        _buildPrivacyNote(),
+      ],
+    );
+  }
+
+  Widget _buildNavItem(int index, String label, IconData icon) {
+    final theme = Theme.of(context);
+    final selected = _activeSection == index;
+    final color = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(9),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(9),
+          onTap: () => _jumpToSection(index),
+          child: SizedBox(
+            height: 34,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                children: [
+                  Icon(icon, size: 15, color: color),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: 12,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrivacyNote() {
+    final theme = Theme.of(context);
+    final mint = _v4MintColor(theme);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 13),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        color: theme.colorScheme.surface.withValues(alpha: 0.55),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lock_outline, size: 12, color: mint),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  t.settings.privacy_boundary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontFamilyFallback: const ['Menlo', 'Courier'],
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: mint,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            t.settings.privacy_boundary_note,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 10.5,
+              height: 1.6,
+              color: theme.hintColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsGrid(double width) {
+    final cards = <Widget>[
+      _buildAppearanceSection(),
+      _buildFeaturesSection(),
+      _buildEnvironmentSection(),
+      _buildDebugSection(),
+      _buildPrivacySection(),
+      _buildAboutSection(),
+    ];
+    if (width < 680) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            KeyedSubtree(key: _sectionKeys[i], child: cards[i]),
+          ],
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < cards.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 12),
+          // IntrinsicHeight 让同一行的两张卡片等高，与原型 grid 的
+          // align-items: stretch 一致。
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: KeyedSubtree(key: _sectionKeys[i], child: cards[i]),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: KeyedSubtree(
+                    key: _sectionKeys[i + 1],
+                    child: cards[i + 1],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTitleWidthCard() {
+    return _V4SetCard(
+      title: t.settings.title_width,
+      icon: Icons.view_column_outlined,
+      children: const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: TitleWidthSetting(showLabel: false),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFooter() {
+    final theme = Theme.of(context);
+    final mono = TextStyle(
+      fontFamily: 'monospace',
+      fontFamilyFallback: const ['Menlo', 'Courier'],
+      fontSize: 9,
+      letterSpacing: 0.6,
+      color: theme.hintColor,
+    );
+    final mint = _v4MintColor(theme);
+    final localOnly = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.check, size: 13, color: mint),
+        const SizedBox(width: 6),
+        Text(
+          'LOCAL ONLY',
+          style: mono.copyWith(color: mint, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+    return CustomPaint(
+      painter: _DashedRibbonBorder(color: theme.colorScheme.outlineVariant),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final tail = Text(
+              _versionText.isEmpty
+                  ? 'STATIC INSPECTOR'
+                  : 'STATIC INSPECTOR · $_versionText',
+              style: mono,
+            );
+            if (constraints.maxWidth < 520) {
+              return Wrap(
+                spacing: 16,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  localOnly,
+                  Text('NOTHING SYNCED', style: mono),
+                  Text('NO ACCOUNT', style: mono),
+                  tail,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                localOnly,
+                const SizedBox(width: 18),
+                Text('NOTHING SYNCED', style: mono),
+                const SizedBox(width: 18),
+                Text('NO ACCOUNT', style: mono),
+                const Spacer(),
+                tail,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _v4SwitchRow(
+    String title,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return _V4SetRow(
+      title: title,
+      control: Switch(
+        value: value,
+        onChanged: onChanged,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+
+  Widget _v4TextAction(String label, VoidCallback? onPressed) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        minimumSize: const Size(0, 30),
+        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+      ),
+      child: Text(label),
+    );
+  }
+
+  Widget _v4IconAction(IconData icon, String tooltip, VoidCallback? onPressed) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 17),
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
     );
   }
 
@@ -1282,193 +1814,285 @@ class _SettingPageState extends ConsumerState<SettingPage> {
 
   @override
   Widget build(BuildContext context) {
-    _wideCards = MediaQuery.sizeOf(context).width >= 1100;
-    final sections = <Widget>[
-      _buildEnvironmentSection(),
-      _buildFeaturesSection(),
-      // 只在 Windows 出现：其它平台没有 Shell 缩略图处理器这个概念，
-      // 显示一个永远不可用的开关比不显示更糟（规格 8.2 同一条原则）。
-      if (SystemThumbnailManager.isSupported) _buildSystemIconSection(),
-      _buildAppearanceSection(),
-      _buildDebugSection(),
-      _buildAboutSection(),
-    ];
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 940;
-        final header = PageHeader(
-          title: t.settings.title,
-          subtitle: t.settings.subtitle,
-        );
-        if (!wide) {
-          return ListView(
-            padding: const EdgeInsets.all(18.0),
+        // 原型：内容区左侧 190px 分区导航 + 右侧两列卡片；窄窗口退回单列。
+        final showNav = constraints.maxWidth >= 1000;
+        // 与原型 `.page` 的内边距一致：左 26、右 30。
+        final contentWidth = constraints.maxWidth - 56;
+        final gridWidth = showNav ? contentWidth - 210 : contentWidth;
+        final grid = _buildSettingsGrid(gridWidth);
+        return SingleChildScrollView(
+          controller: _settingsScroll,
+          padding: const EdgeInsets.fromLTRB(26, 4, 30, 26),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              header,
-              const SizedBox(height: 14),
-              ...sections,
-            ],
-          );
-        }
-
-        final navLabels = [
-          t.settings.environment,
-          t.settings.features,
-          if (SystemThumbnailManager.isSupported) t.settings.system_icon.title,
-          t.settings.appearance,
-          t.settings.debug,
-          t.settings.about,
-        ];
-        final icons = [
-          Icons.computer,
-          Icons.tune,
-          if (SystemThumbnailManager.isSupported) Icons.image_outlined,
-          Icons.palette_outlined,
-          Icons.bug_report_outlined,
-          Icons.info_outline,
-        ];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-              child: header,
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 190,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(18, 0, 8, 18),
-                      itemCount: navLabels.length,
-                      itemBuilder: (context, index) {
-                        final selected = index == _activeSection;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Material(
-                            color: selected
-                                ? Theme.of(context)
-                                    .colorScheme
-                                    .primaryContainer
-                                    .withValues(alpha: 0.45)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => _jumpToSection(index),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      icons[index],
-                                      size: 18,
-                                      color: selected
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        navLabels[index],
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: selected
-                                                  ? FontWeight.w600
-                                                  : FontWeight.w400,
-                                            ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+              _buildPageHeader(),
+              const SizedBox(height: 16),
+              if (showNav)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 190, child: _buildSubNav()),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          grid,
+                          const SizedBox(height: 12),
+                          _buildTitleWidthCard(),
+                          const SizedBox(height: 18),
+                          _buildFooter(),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
+                )
+              else ...[
+                grid,
+                const SizedBox(height: 12),
+                _buildTitleWidthCard(),
+                const SizedBox(height: 18),
+                _buildFooter(),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+Color _v4MintColor(ThemeData theme) => theme.brightness == Brightness.dark
+    ? const Color(0xFF5AD6AE)
+    : const Color(0xFF119C72);
+
+Color _v4AmberColor(ThemeData theme) => theme.brightness == Brightness.dark
+    ? const Color(0xFFE9A15C)
+    : const Color(0xFFD6731E);
+
+/// 卡片：标题栏（图标 + 标题 + 可选 chip）与分隔线，行之间用 1px 线分隔。
+class _V4SetCard extends StatelessWidget {
+  const _V4SetCard({
+    required this.title,
+    required this.icon,
+    required this.children,
+    this.onHeaderTap,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+  final VoidCallback? onHeaderTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onHeaderTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(15, 12, 12, 12),
+              child: Row(
+                children: [
+                  Icon(icon, size: 15, color: theme.colorScheme.primary),
+                  const SizedBox(width: 7),
                   Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, body) {
-                        if (_wideCards) {
-                          // 环境/功能两组包含长路径和下拉框，保持整行；
-                          // 其余较短的分组排成两列卡片，避免半宽卡片挤压设置行。
-                          final cardWidth = (body.maxWidth - 40) / 2;
-                          final split = 2;
-                          return SingleChildScrollView(
-                            controller: _settingsScroll,
-                            padding: const EdgeInsets.fromLTRB(4, 0, 18, 18),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (var i = 0; i < split; i++)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 16),
-                                    child: KeyedSubtree(
-                                      key: _sectionKeys[i],
-                                      child: sections[i],
-                                    ),
-                                  ),
-                                Wrap(
-                                  spacing: 16,
-                                  runSpacing: 16,
-                                  crossAxisAlignment: WrapCrossAlignment.start,
-                                  children: [
-                                    for (var i = split;
-                                        i < sections.length;
-                                        i++)
-                                      SizedBox(
-                                        width: cardWidth,
-                                        child: KeyedSubtree(
-                                          key: _sectionKeys[i],
-                                          child: sections[i],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        return ListView(
-                          controller: _settingsScroll,
-                          padding: const EdgeInsets.fromLTRB(4, 0, 18, 18),
-                          children: [
-                            for (var i = 0; i < sections.length; i++)
-                              KeyedSubtree(
-                                key: _sectionKeys[i],
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: sections[i],
-                                ),
-                              ),
-                          ],
-                        );
-                      },
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ],
-        );
-      },
+          ),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: theme.colorScheme.outlineVariant,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: theme.colorScheme.outlineVariant,
+                    ),
+                  children[i],
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
+
+/// 设置行：左侧名称/说明，右侧控件；与原型 `.set-row` 的排布一致。
+class _V4SetRow extends StatelessWidget {
+  const _V4SetRow({
+    required this.title,
+    this.desc,
+    this.descStyle,
+    this.descMaxLines = 2,
+    this.control,
+  });
+
+  final String title;
+  final String? desc;
+  final TextStyle? descStyle;
+  final int descMaxLines;
+  final Widget? control;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (desc != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      desc!,
+                      maxLines: descMaxLines,
+                      overflow: TextOverflow.ellipsis,
+                      style: descStyle ??
+                          theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 10.5,
+                            height: 1.45,
+                            color: theme.hintColor,
+                          ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (control != null) ...[
+            const SizedBox(width: 12),
+            control!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _V4ChipTone { neutral, mint, amber, violet }
+
+/// 原型 chip：等宽小字、紧贴右侧，颜色只用来区分状态。
+class _V4Chip extends StatelessWidget {
+  const _V4Chip(this.label, {this.tone = _V4ChipTone.neutral});
+
+  final String label;
+  final _V4ChipTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = switch (tone) {
+      _V4ChipTone.mint => _v4MintColor(theme),
+      _V4ChipTone.amber => _v4AmberColor(theme),
+      _V4ChipTone.violet => theme.colorScheme.primary,
+      _V4ChipTone.neutral => theme.hintColor,
+    };
+    return Container(
+      height: 23,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(7),
+        color: tone == _V4ChipTone.neutral
+            ? Colors.transparent
+            : color.withValues(alpha: 0.12),
+        border: Border.all(
+          color: tone == _V4ChipTone.neutral
+              ? theme.colorScheme.outlineVariant
+              : Colors.transparent,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontFamilyFallback: const ['Menlo', 'Courier'],
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+/// 页脚虚线边框：原型是 1px 虚线，Material 没有现成的实现。
+class _DashedRibbonBorder extends CustomPainter {
+  _DashedRibbonBorder({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(14)),
+      );
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        canvas.drawPath(metric.extractPath(distance, distance + 4), paint);
+        distance += 8;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRibbonBorder oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class DependencyDownloadDialog extends StatefulWidget {

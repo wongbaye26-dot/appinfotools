@@ -15,6 +15,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/ui/shell/sidebar.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _pumpSidebar(
@@ -27,19 +28,21 @@ Future<void> _pumpSidebar(
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(
-    TranslationProvider(
-      child: MaterialApp(
-        home: Scaffold(
-          body: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AppSidebar(
-                selectedId: 'overview',
-                onItemSelected: (_) {},
-                collapsed: collapsed,
-                onToggleCollapsed: () {},
-              ),
-            ],
+    ProviderScope(
+      child: TranslationProvider(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AppSidebar(
+                  selectedId: 'overview',
+                  onItemSelected: (_) {},
+                  collapsed: collapsed,
+                  onToggleCollapsed: () {},
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -110,10 +113,9 @@ void main() {
       );
     });
 
-    testWidgets('副标题仍然不显示', (tester) async {
+    testWidgets('品牌副标题显示为 PACKAGE INSPECTOR', (tester) async {
       await _pumpSidebar(tester, const Size(1280, 800));
-      expect(_text(tester), isNot(contains(t.base.app_subtitle)),
-          reason: '副标题是纯噪音，还占掉窄栏的纵向空间');
+      expect(_text(tester), contains('PACKAGE INSPECTOR'));
     });
 
     testWidgets('底栏保留本地边界提示', (tester) async {

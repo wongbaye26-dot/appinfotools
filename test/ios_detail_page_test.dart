@@ -377,12 +377,21 @@ void main() {
       expect((platform.end! as Icon).icon, Icons.apple);
     });
 
-    testWidgets('APK 页也有同一行，值不同', (tester) async {
+    testWidgets('APK 页不再重复平台卡片，平台由 Hero 徽章承担', (tester) async {
       await _pumpPage(tester, _apkState());
 
-      final platform = _layoutTitled(tester, t.file_info.platform);
-      expect(platform.value, t.file_info.platform_android);
-      expect((platform.end! as Icon).icon, Icons.android);
+      // 平台信息原先在详情页最前面有一张独立卡，与 Hero 里的 Android
+      // 徽章重复；现在只保留徽章这一处。
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TitleValueLayout &&
+              widget.title == t.file_info.platform,
+        ),
+        findsNothing,
+      );
+      expect(find.text('Android'), findsWidgets);
+      expect(find.byIcon(Icons.android), findsWidgets);
     });
 
     testWidgets('两页的卡片版式一致', (tester) async {

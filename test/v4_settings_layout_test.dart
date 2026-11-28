@@ -28,10 +28,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text(t.settings.environment), findsWidgets);
+    expect(find.text(t.settings.tool_paths), findsWidgets);
     expect(find.text(t.settings.about), findsWidgets);
 
-    await tester.tap(find.text(t.settings.appearance).first);
+    await tester.tap(find.text(t.settings.nav_general).first);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

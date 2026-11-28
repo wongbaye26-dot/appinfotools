@@ -2,7 +2,6 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/theme/v4_theme.dart';
-import 'package:apk_info_tool/ui/shell/sidebar.dart';
 import 'package:apk_info_tool/ui/shell/v4_command_palette.dart';
 import 'package:apk_info_tool/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
@@ -112,16 +111,6 @@ class V4TopBar extends ConsumerWidget {
             selectedId: selectedId,
             filePath: fileState.filePath,
             parsing: parsing,
-          ),
-          const SizedBox(width: 14),
-          Text(
-            AppSidebar.versionText(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
-              fontSize: 8,
-              fontFamily: 'monospace',
-              letterSpacing: 0.2,
-            ),
           ),
           const SizedBox(width: 12),
           Container(

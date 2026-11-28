@@ -189,7 +189,10 @@ ThemeData buildV4Theme({
       color: scheme.surface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      margin: EdgeInsets.zero,
+      // 卡片之间统一的垂直节奏。以前是零外边距，而各 Tab 的卡片列表又没有
+      // 分隔条 —— 两张卡直接贴在一起，边框叠成一条，看起来像一块坏掉的表格。
+      // 间距放在主题里，新加的卡片不用再记得手写 `SizedBox`。
+      margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(V4Radius.card),
         side: BorderSide(color: scheme.outlineVariant),

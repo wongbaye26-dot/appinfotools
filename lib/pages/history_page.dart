@@ -97,6 +97,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
           child: PageHeader(
+            kicker: 'WORKSPACE / HISTORY',
             title: t.history.title,
             subtitle: t.history.subtitle,
             actions: [

@@ -48,16 +48,6 @@ class RecentFileEntry {
   /// 文件名（不含路径）。
   String get fileName => path.split(Platform.pathSeparator).last;
 
-  /// 格式化的分析时间（相对时间）。
-  String timeAgo() {
-    final now = DateTime.now();
-    final diff = now.difference(analyzedAt);
-    if (diff.inSeconds < 60) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${analyzedAt.year}-${analyzedAt.month.toString().padLeft(2, '0')}-${analyzedAt.day.toString().padLeft(2, '0')}';
-  }
 }
 
 /// 最近分析文件管理器。

@@ -40,6 +40,7 @@ import 'package:apk_info_tool/utils/platform.dart';
 import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
+import 'package:ipa_parser/ipa_parser.dart' show X509Parser;
 import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
 import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
@@ -48,6 +49,11 @@ import 'package:apk_info_tool/widgets/security_evidence_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_center.dart';
 import 'package:apk_info_tool/widgets/security_notice_banner.dart';
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
+import 'package:apk_info_tool/widgets/android_components_panel.dart';
+import 'package:apk_info_tool/widgets/android_libraries_panel.dart';
+import 'package:apk_info_tool/widgets/android_manifest_extras.dart';
+import 'package:apk_info_tool/widgets/android_permissions_panel.dart';
+import 'package:apk_info_tool/widgets/android_signature_panel.dart';
 import 'package:apk_info_tool/widgets/copy_icon_button.dart';
 import 'package:apk_info_tool/widgets/detail_tab_view.dart';
 import 'package:apk_info_tool/widgets/export_report_dialog.dart';
@@ -180,8 +186,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   }
 
   String getSdkVersionText(int? sdkVersion) {
-    if (sdkVersion == null) return "";
-    return "$sdkVersion (${AndroidVersion.getAndroidVersion(sdkVersion)})";
+    // 带上正式发布年月：`35 (Android 15, 2024-09)`。只给 API 数字时，
+    // 「targetSdk 30」到底是半年前还是六年前，读者没有参照。
+    return AndroidVersion.describe(sdkVersion);
   }
 
   /// 开始一条 run。失败只记日志，绝不让“历史写不进去”变成“解析失败”。
@@ -925,7 +932,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ]),
     ));
 
-    if (fileState.securityResult != null) {
+    if (fileState.effectiveSecurityResult != null) {
       cards.add(_buildOverviewEvidence(fileState));
     }
 
@@ -961,11 +968,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     ));
 
     // ===== 能力声明（归入「权限」Tab，与 Android 侧的权限/组件对位）=====
-    if (ios.queriesSchemes.hasValue ||
-        ios.urlSchemes.hasValue ||
+    //
+    // 这里必须显式插一个 Permissions 分组头：卡片是按分组头切 Tab 的，
+    // 没有头就会并进上面的 Info.plist，注释和实际显示就对不上。
+    final usageField = parsed.infoPlist?.privacyUsageDescriptions;
+    final usageDescriptions =
+        usageField != null && usageField.hasValue ? usageField.value : null;
+    final hasCapabilityCards = ios.urlSchemes.hasValue ||
+        ios.queriesSchemes.hasValue ||
         ios.backgroundModes.hasValue ||
         ios.requiredDeviceCapabilities.hasValue ||
-        ios.hasMultipleMainApps) {}
+        (usageDescriptions != null && usageDescriptions.isNotEmpty);
+    if (hasCapabilityCards) {
+      cards.add(_SectionHeader(
+          title: t.apk_info.permissions, tab: DetailTab.permissions));
+    }
     // 「注册的 scheme」与「查询的 scheme」是**两个方向**的事实：
     // 前者是本应用被外部唤起的入口，后者是本应用可以唤起别人的白名单。
     // 放在一起但分开陈述，避免读者把两者混为一谈。
@@ -995,6 +1012,47 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         t.ios_info.required_capabilities,
         ios.requiredDeviceCapabilities.value!.join('\n'),
         selectable: true,
+      ));
+    }
+    // 用途说明：iOS 的「权限文案」就是这些 `NS*UsageDescription`。键名本身
+    // 说明了申请的是哪类数据，值则是开发者写给用户的理由 —— 两者都要显示，
+    // 否则读者无法判断「申请了相机」和「为什么申请相机」。
+    //
+    // `null` 是「Info.plist 没读到」，`{}` 是「读到了但一条没声明」，两者
+    // 不能都渲染成空白。
+    if (usageDescriptions != null && usageDescriptions.isNotEmpty) {
+      cards.add(Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                t.ios_info.usage_descriptions,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              for (final entry in usageDescriptions.entries) ...[
+                SelectableText(
+                  entry.key,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 8),
+                  child: Text(
+                    entry.value,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ));
     }
     if (ios.hasMultipleMainApps) {
@@ -1749,7 +1807,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text('default',
+                child: Text(t.apk_info.default_label,
                     style: TextStyle(
                         fontSize: 11, color: colorScheme.onPrimaryContainer)),
               ),
@@ -1959,6 +2017,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 subtitleParts.add(formatFileSize(fileState.fileSize));
               }
               return PageHeader(
+                kicker: fileState.platform == PackagePlatform.ios
+                    ? 'ANALYSIS / IOS'
+                    : 'ANALYSIS / ANDROID',
                 title: (appName != null && appName.isNotEmpty)
                     ? appName
                     : t.nav.analysis,
@@ -2013,7 +2074,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   /// 只显示「当前对象 + 静态分析边界」，不复制左侧卡片的数据；窄屏由
   /// [DetailTabView] 自动隐藏。
   Widget _buildOverviewEvidence(FileState fileState) {
-    final security = fileState.securityResult;
+    final security = fileState.effectiveSecurityResult;
     if (security == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -2228,8 +2289,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             ],
           ),
         ),
-        if (fileState.securityResult != null &&
-            fileState.securityResult!.coverage.entries.isNotEmpty) ...[
+        if (fileState.effectiveSecurityResult != null &&
+            fileState.effectiveSecurityResult!.coverage.entries.isNotEmpty) ...[
           const SizedBox(height: 12),
           card(
             child: Column(
@@ -2254,19 +2315,22 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                         children: [
                           CircularProgressIndicator(
                             value: fileState
-                                    .securityResult!.coverage.entries.isEmpty
+                                    .effectiveSecurityResult!
+                                    .coverage
+                                    .entries
+                                    .isEmpty
                                 ? 0
-                                : (fileState.securityResult!.coverage.entries
+                                : (fileState.effectiveSecurityResult!.coverage.entries
                                             .length -
-                                        fileState.securityResult!.coverage.gaps
+                                        fileState.effectiveSecurityResult!.coverage.gaps
                                             .length) /
-                                    fileState.securityResult!.coverage.entries
+                                    fileState.effectiveSecurityResult!.coverage.entries
                                         .length,
                             strokeWidth: 6,
                             backgroundColor: scheme.surfaceContainerHighest,
                           ),
                           Text(
-                            '${fileState.securityResult!.coverage.entries.length - fileState.securityResult!.coverage.gaps.length}/${fileState.securityResult!.coverage.entries.length}',
+                            '${fileState.effectiveSecurityResult!.coverage.entries.length - fileState.effectiveSecurityResult!.coverage.gaps.length}/${fileState.effectiveSecurityResult!.coverage.entries.length}',
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -2278,7 +2342,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                     Expanded(
                       child: Text(
                         AnalysisReport.coverageSummary(
-                          fileState.securityResult!.coverage,
+                          fileState.effectiveSecurityResult!.coverage,
                           t,
                         ),
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -2293,8 +2357,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             ),
           ),
         ],
-        if (fileState.securityResult?.seal != null ||
-            fileState.securityResult?.baseline != null) ...[
+        if (fileState.effectiveSecurityResult?.seal != null ||
+            fileState.effectiveSecurityResult?.baseline != null) ...[
           const SizedBox(height: 12),
           card(
             child: Column(
@@ -2309,21 +2373,21 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                if (fileState.securityResult?.seal != null) ...[
+                if (fileState.effectiveSecurityResult?.seal != null) ...[
                   _asideKv(
                     theme,
                     scheme,
                     'SEAL',
-                    '${fileState.securityResult!.seal!.state.name.toUpperCase()} · ${fileState.securityResult!.seal!.scheme}',
+                    '${fileState.effectiveSecurityResult!.seal!.state.name.toUpperCase()} · ${fileState.effectiveSecurityResult!.seal!.scheme}',
                   ),
                   const SizedBox(height: 8),
                 ],
-                if (fileState.securityResult?.baseline != null)
+                if (fileState.effectiveSecurityResult?.baseline != null)
                   _asideKv(
                     theme,
                     scheme,
                     'BASELINE',
-                    fileState.securityResult!.baseline!.status.name
+                    fileState.effectiveSecurityResult!.baseline!.status.name
                         .toUpperCase(),
                   ),
               ],
@@ -2354,6 +2418,13 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
             ],
           ),
         ),
+        if (fileState.apkInfo != null) ...[
+          const SizedBox(height: 12),
+          AndroidFeaturesCard(
+            required: fileState.apkInfo!.userFeatures,
+            optional: fileState.apkInfo!.userFeaturesNotRequired,
+          ),
+        ],
       ],
     );
   }
@@ -2363,6 +2434,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       return const [
         DetailTab.overview,
         DetailTab.infoPlist,
+        // iOS 没有 Android 那种权限清单，这里放的是能力声明（scheme /
+        // 后台模式 / 设备能力）与 NS*UsageDescription。
+        DetailTab.permissions,
         DetailTab.frameworks,
         DetailTab.signature,
         DetailTab.security,
@@ -2375,7 +2449,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       DetailTab.manifest,
       DetailTab.components,
       DetailTab.permissions,
+      DetailTab.libraries,
       DetailTab.security,
+      DetailTab.signature,
       DetailTab.files,
       DetailTab.diagnostics,
     ];
@@ -2401,7 +2477,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       counts[DetailTab.frameworks] = ios.nestedBinaries.length;
       counts[DetailTab.files] = 1;
     }
-    final security = fileState.securityResult;
+    final security = fileState.effectiveSecurityResult;
     if (security != null && security.findings.isNotEmpty) {
       counts[DetailTab.security] = security.findings.length;
     }
@@ -2491,6 +2567,29 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
   ) =>
       value == null ? '-' : FieldValueText.describe(value, t, format: format);
 
+  /// 权限区的卡片。
+  ///
+  /// 只有 `extracted` 才渲染成结构化面板；`absent` / `failed` / `unsupported`
+  /// 必须保留 [FieldValueText] 的原文 —— 面板是「逐条解释权限」的，读不到
+  /// 清单时把空列表渲染成「0 项权限」会把「没读到」说成「没有申请」。
+  List<Widget> _buildPermissionCards(FileState fileState) {
+    final field = fileState.analysis?.android?.permissions;
+    final permissions = field?.value;
+    if (field?.status != FieldStatus.extracted || permissions == null) {
+      return [
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.permissions,
+          value: _androidField(field, (v) => (v as List).join('\n')),
+          minLines: 1,
+          maxLines: 8,
+          selectable: true,
+        )),
+      ];
+    }
+    return [AndroidPermissionsPanel(permissions: permissions)];
+  }
+
   /// Android 详情卡片。
   List<Widget> _buildAndroidCards(
     FileState fileState,
@@ -2504,7 +2603,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     return [
       // 平台标识同样放在最前：两页版式一致，这一行是用户
       // 分辨自己在看哪个平台的第一眼依据。
-      _buildPlatformRow(fileState),
       if (apkInfo?.parseFailureReason != null)
         ManifestPartialBanner(
           title: t.apk_info.partial_manifest_title,
@@ -2531,9 +2629,18 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         // 复制按钮**放进卡片里**（`trailing`）。早先它被 `Align` 贴在卡片
         // 下面，于是界面上是一个孤零零的复制图标飘在空白处，看不出属于
         // 哪一项；而且 32×32 的最小尺寸还会把那一行撑高。
-        trailing: CopyIconButton(
-          text: apkInfo?.packageName ?? '',
-          iconSize: 16,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 应用名称语言切换放进 Hero 卡片的右上角：原先它作为独立
+            // `Align` 贴在卡片外，悬在右栏卡片上方，看起来像浮层。
+            if (apkInfo != null && apkInfo.labels.isNotEmpty)
+              _buildLabelLocaleMenu(apkInfo),
+            CopyIconButton(
+              text: apkInfo?.packageName ?? '',
+              iconSize: 16,
+            ),
+          ],
         ),
         details: apkInfo == null
             ? null
@@ -2551,14 +2658,74 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                 (t.apk_info.components, '${apkInfo.components.length}'),
               ]),
       ),
-      // 语言切换菜单
-      if (apkInfo != null && apkInfo.labels.isNotEmpty)
-        Align(
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 4, bottom: 4),
-            child: _buildLabelLocaleMenu(apkInfo),
+      // 基本信息（对齐 ApkInfoPlus 概览）：除 Hero 已展示的身份字段外，
+      // 补齐 reference 概览里的 Application 类 / 编译 SDK / 屏幕 / 密度 /
+      // 语言数量 / 启动 Activity —— 这些字段原先散落在「清单」Tab。
+      if (apkInfo != null)
+        _SectionHeader(title: t.apk_info.basic_info, tab: DetailTab.overview),
+      if (apkInfo != null)
+        _AndroidBasicInfoCard(rows: [
+          (
+            t.apk_info.application_class,
+            apkInfo.application.name ?? '-',
           ),
+          (
+            t.apk_info.compile_sdk,
+            apkInfo.compileSdkVersion == null
+                ? '-'
+                : '${getSdkVersionText(apkInfo.compileSdkVersion)}'
+                    '${apkInfo.compileSdkVersionCodename == null ? '' : ' [${apkInfo.compileSdkVersionCodename}]'}',
+          ),
+          (
+            t.file_info.size,
+            fileState.fileSize == null
+                ? '-'
+                : formatFileSize(fileState.fileSize),
+          ),
+          (
+            t.apk_info.screen_size,
+            apkInfo.supportsScreens.isEmpty
+                ? '-'
+                : apkInfo.supportsScreens.join('  '),
+          ),
+          (
+            t.apk_info.screen_density,
+            apkInfo.densities.isEmpty
+                ? '-'
+                : apkInfo.densities.map((d) {
+                    final n = int.tryParse(d);
+                    return n == null ? d : androidDensityLabel(n);
+                  }).join('  '),
+          ),
+          (
+            t.apk_info.languages,
+            apkInfo.locales.isEmpty
+                ? '-'
+                : t.apk_info.language_count(count: '${apkInfo.locales.length}'),
+          ),
+          (
+            t.apk_info.launcher_activity,
+            apkInfo.launchableActivity.isEmpty
+                ? '-'
+                : apkInfo.launchableActivity
+                    .map((c) => c.name ?? '')
+                    .join('\n'),
+          ),
+        ]),
+      // 证书摘要（对齐 reference 概览的「证书信息」卡）：详情仍在签名 Tab。
+      if (apkInfo != null &&
+          fileState.signature != null &&
+          (fileState.signature!.localCertificates.isNotEmpty ||
+              fileState.signature!.signers.isNotEmpty))
+        _SectionHeader(title: t.apk_info.cert_info, tab: DetailTab.overview),
+      if (apkInfo != null && fileState.signature != null)
+        _AndroidCertSummaryCard(signature: fileState.signature!),
+      // 硬件/软件特性在宽屏时移到右侧栏底部（见 _buildAnalysisAside）；
+      // 窄屏没有右侧栏，就在这里继续显示，避免信息直接消失。
+      if (apkInfo != null && MediaQuery.sizeOf(context).width < 1180)
+        AndroidFeaturesCard(
+          required: apkInfo.userFeatures,
+          optional: apkInfo.userFeaturesNotRequired,
         ),
       // ICP 备案号（工信部要求应用在界面展示的那一串）。
       //
@@ -2577,7 +2744,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           minLines: 1,
           maxLines: 3,
         )),
-      if (fileState.securityResult != null) _buildOverviewEvidence(fileState),
+      if (fileState.effectiveSecurityResult != null) _buildOverviewEvidence(fileState),
       // ===== 文件信息 =====
       _SectionHeader(title: t.file_info.group, tab: DetailTab.files),
       Card(
@@ -2646,7 +2813,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         title: t.apk_info.screen_density,
         value: _androidField(
           fileState.analysis?.android?.densities,
-          (v) => (v as List).join(' '),
+          (v) => (v as List)
+              .map((d) {
+                final n = int.tryParse(d.toString());
+                return n == null ? d.toString() : androidDensityLabel(n);
+              })
+              .join(' '),
         ),
       )),
       Card(
@@ -2657,14 +2829,30 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           (v) => (v as List).join(' '),
         ),
       )),
-      Card(
-          child: TitleValueLayout(
-        title: t.apk_info.languages,
-        value: _androidField(
-          fileState.analysis?.android?.locales,
-          (v) => (v as List).join(' '),
-        ),
-      )),
+      // 语言列表改成「标签 + 本地化名称」逐行显示：只给 `zh-CN ja` 这种串，
+      // 读者还得自己去查每个标签对应哪个语言/地区。
+      if (fileState.analysis?.android?.locales.status == FieldStatus.extracted &&
+          (fileState.analysis?.android?.locales.value?.isNotEmpty ?? false))
+        AndroidLocalesCard(
+          locales: fileState.analysis!.android!.locales.value!
+              .map((e) => e.toString())
+              .toList(),
+        )
+      else
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.languages,
+          value: _androidField(
+            fileState.analysis?.android?.locales,
+            (v) => (v as List).join(' '),
+          ),
+        )),
+      if (apkInfo?.launchableActivity.isNotEmpty ?? false)
+        Card(
+            child: TitleValueLayout(
+          title: t.apk_info.launcher_activity,
+          value: apkInfo!.launchableActivity.map((c) => c.name).join('\n'),
+        )),
       // `null` 是「资源表没读到」，与「没有夜间资源」结论相反，必须分开呈现 ——
       // 与 D5 的字段状态处理同一个道理，只是这里的载体是个 bool?。
       Card(
@@ -2683,17 +2871,20 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           value: apkInfo!.uiModeTypes.join(" "),
         )),
       _SectionHeader(title: t.apk_info.permissions, tab: DetailTab.permissions),
-      Card(
-          child: TitleValueLayout(
-        title: t.apk_info.permissions,
-        value: _androidField(
-          fileState.analysis?.android?.permissions,
-          (v) => (v as List).join('\n'),
+      ..._buildPermissionCards(fileState),
+      // 库识别。XAPK 的外层是归档、不是 APK，`apkInfo.apkPath` 指向的那个
+      // 文件不能被 `ApkReader` 当 APK 打开 —— 那种情况不显示这一组。
+      if (apkInfo != null && !apkInfo.isXapk) ...[
+        _SectionHeader(
+            title: detailTabLabel(DetailTab.libraries, t),
+            tab: DetailTab.libraries),
+        AndroidLibrariesSection(
+          apkPath: apkInfo.apkPath,
+          packageName: apkInfo.packageName,
+          components: apkInfo.components,
+          structure: apkInfo.structure,
         ),
-        minLines: 1,
-        maxLines: textMaxLines,
-        selectable: true,
-      )),
+      ],
       // 只有「文件里确实没有」才整张卡片不显示。`unsupported` / `failed`
       // 这类「我们没读到」**必须显示出来并说明原因** —— 否则读者会以为
       // 文件里没有声明（缺陷 D5 的其中一半）。
@@ -2710,14 +2901,9 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       if (apkInfo?.components.isNotEmpty ?? false) ...[
         _SectionHeader(
             title: t.detail_tab.components, tab: DetailTab.components),
-        Card(
-            child: TitleValueLayout(
-          title: t.apk_info.components,
-          value: DetailRenderer.components(apkInfo, t),
-          minLines: 1,
-          maxLines: textMaxLines,
-          selectable: true,
-        )),
+        // 组件列表改用结构化面板：一行一个组件、按类型分组，高度随内容增长。
+        // 早先是单块文本 + `maxLines` 截断，组件一多就只剩前几行。
+        AndroidComponentsPanel(components: apkInfo!.components),
       ],
       _SectionHeader(title: t.apk_info.structure, tab: DetailTab.files),
       // XAPK / OBB / 结构
@@ -2754,7 +2940,17 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: true,
         )),
-      _SectionHeader(title: t.apk_info.signature_info, tab: DetailTab.files),
+      // 签名单独一个 Tab：证书信息（DN/序列号/有效期/指纹）比文件哈希
+      // 更值得单独看，混在「文件」里每次都得多滚两屏。
+      if (enableSignature && !(apkInfo?.isXapk ?? false)) ...[
+        _SectionHeader(
+            title: t.apk_info.signature_info, tab: DetailTab.signature),
+        AndroidSignaturePanel(
+          signature: fileState.signature,
+          computing: fileState.isComputingSignature,
+        ),
+      ],
+      _SectionHeader(title: t.file_info.group, tab: DetailTab.files),
       // MD5 哈希值
       if (enableHash)
         Card(
@@ -2781,17 +2977,6 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           value: fileState.isComputingHash
               ? t.file_info.computing_hash
               : (fileState.sha256Hash ?? '-'),
-        )),
-      if (enableSignature && !(apkInfo?.isXapk ?? false))
-        Card(
-            child: TitleValueLayout(
-          title: t.apk_info.signature_info,
-          value: fileState.isComputingSignature
-              ? t.file_info.computing_hash
-              : DetailRenderer.signature(fileState.signature, t),
-          minLines: 1,
-          maxLines: textMaxLines,
-          selectable: !fileState.isComputingSignature,
         )),
       _SectionHeader(title: t.apk_info.diagnostics, tab: DetailTab.diagnostics),
       // 解析诊断：加固线索 + 诊断记录
@@ -3317,6 +3502,95 @@ class _SeverityCountChip extends StatelessWidget {
 ///
 /// 用于 iOS 详情页将卡片组织成逻辑组：文件信息、应用信息、容器与二进制、
 /// 签名与授权、文件校验、解析诊断。
+
+/// 概览「基本信息」卡：对齐 ApkInfoPlus 概览的 label → value 行表。
+///
+/// 行数不多、每行高度固定，直接用 [Column] 就能算清高度；不做滚动。
+class _AndroidBasicInfoCard extends StatelessWidget {
+  final List<(String, String)> rows;
+
+  const _AndroidBasicInfoCard({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Card(
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: scheme.outlineVariant),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 9, 16, 9),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 132,
+                    child: Text(
+                      rows[i].$1,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: SelectableText(
+                      rows[i].$2,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 概览「证书信息」摘要卡：只放最关键的四行，完整证书仍在「签名」Tab。
+class _AndroidCertSummaryCard extends StatelessWidget {
+  final SignatureAnalysis signature;
+
+  const _AndroidCertSummaryCard({required this.signature});
+
+  @override
+  Widget build(BuildContext context) {
+    final local = signature.localCertificates.isEmpty
+        ? null
+        : signature.localCertificates.first;
+    final details = local?.details;
+    final signer =
+        signature.signers.isEmpty ? null : signature.signers.first;
+
+    final schemes = <String>{
+      ...signature.verifiedSchemes,
+      ...signature.localCertificates.map((c) => c.scheme),
+    }.where((e) => e.isNotEmpty).join(' · ');
+
+    final subject = details?.subject ?? signer?.subjectDn ?? '-';
+    final notAfter = details?.notAfter;
+    final validUntil = notAfter != null
+        ? notAfter.toUtc().toIso8601String().substring(0, 10)
+        : (signer?.validity ?? '-');
+    final fingerprint = details?.sha256Fingerprint;
+    final sha256 = fingerprint != null
+        ? X509Parser.formatFingerprint(fingerprint)
+        : (signer?.sha256Digest ?? '-');
+
+    return _AndroidBasicInfoCard(rows: [
+      (t.signature.schemes, schemes.isEmpty ? '-' : schemes),
+      (t.signature.subject, subject),
+      (t.signature.valid_until, validUntil),
+      (t.signature.sha256, sha256),
+    ]);
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   final String title;
   final DetailTab? tab;
@@ -3329,7 +3603,7 @@ class _SectionHeader extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
       child: Row(
         children: [
           Container(

@@ -10,6 +10,7 @@ enum DetailTab {
   manifest(Icons.receipt_long_outlined),
   components(Icons.widgets_outlined),
   permissions(Icons.shield_outlined),
+  libraries(Icons.inventory_2_outlined),
   security(Icons.security),
   files(Icons.folder_outlined),
   infoPlist(Icons.description_outlined),
@@ -31,6 +32,7 @@ String detailTabLabel(DetailTab tab, Translations t) => switch (tab) {
       DetailTab.manifest => t.detail_tab.manifest,
       DetailTab.components => t.detail_tab.components,
       DetailTab.permissions => t.detail_tab.permissions,
+      DetailTab.libraries => t.detail_tab.libraries,
       DetailTab.security => t.detail_tab.security,
       DetailTab.files => t.detail_tab.files,
       DetailTab.infoPlist => t.detail_tab.infoPlist,
@@ -103,6 +105,52 @@ class _DetailTabViewState extends State<DetailTabView>
     _tabController.addListener(_onTabChanged);
   }
 
+  /// Tab 分组会随解析进度增减：解析中「概览」可能还没有卡片，解析完成后
+  /// 才出现。TabController 的长度/索引不会自动跟随，否则用户停在「清单」，
+  /// 解析完成后仍停在「清单」。这里在分组变化时重建控制器，并且**解析刚结束
+  /// 时回到「概览」** —— 那是打开一个包最该先看到的东西。
+  @override
+  void didUpdateWidget(covariant DetailTabView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldKeys = oldWidget.tabs.entries
+        .where((e) => e.value.isNotEmpty)
+        .map((e) => e.key)
+        .toList(growable: false);
+    final newKeys =
+        _filteredTabs.map((e) => e.key).toList(growable: false);
+    if (oldKeys.length == newKeys.length &&
+        List.generate(newKeys.length, (i) => oldKeys[i] == newKeys[i])
+            .every((same) => same)) {
+      return;
+    }
+    if (newKeys.isEmpty) return;
+
+    final parsedJustNow = oldWidget.isParsing && !widget.isParsing;
+    var index = 0;
+    if (!parsedJustNow && _tabController.index < oldKeys.length) {
+      final currentKey = oldKeys[_tabController.index];
+      final same = newKeys.indexOf(currentKey);
+      if (same >= 0) index = same;
+    }
+    if (parsedJustNow) {
+      final overview = newKeys.indexOf(DetailTab.overview);
+      index = overview >= 0 ? overview : 0;
+    }
+
+    final previous = _tabController;
+    previous.removeListener(_onTabChanged);
+    _tabController = TabController(
+      length: newKeys.length,
+      vsync: this,
+      initialIndex: index.clamp(0, newKeys.length - 1),
+    );
+    _tabController.addListener(_onTabChanged);
+    // TabBarView 还挂在这个控制器上，立刻 dispose 会抛「使用已 dispose 的
+    // 控制器」；等这一帧画完再释放。
+    WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
+    setState(() {});
+  }
+
   void _onTabChanged() {
     if (mounted && !_tabController.indexIsChanging) {
       setState(() {});
@@ -131,20 +179,6 @@ class _DetailTabViewState extends State<DetailTabView>
   }
 
   @override
-  void didUpdateWidget(covariant DetailTabView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final tabs = _filteredTabs;
-    if (_tabController.length != tabs.length) {
-      _tabController.dispose();
-      _tabController = TabController(
-        length: tabs.length,
-        vsync: this,
-      );
-      _tabController.addListener(_onTabChanged);
-    }
-  }
-
-  @override
   void dispose() {
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
@@ -158,7 +192,7 @@ class _DetailTabViewState extends State<DetailTabView>
     final tabs = _filteredTabs;
 
     if (tabs.isEmpty) {
-      return const Center(child: Text('No data'));
+      return Center(child: Text(t.base.no_data));
     }
 
     // 测试环境：渲染连续列表，确保所有 widget 都在树中可被断言。
@@ -209,7 +243,7 @@ class _DetailTabViewState extends State<DetailTabView>
         if (widget.isParsing) _buildParsingIndicator(colorScheme),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             children: children,
           ),
         ),
@@ -268,6 +302,9 @@ class _DetailTabViewState extends State<DetailTabView>
         ),
         Expanded(
           child: Row(
+            // 右侧栏必须与内容顶部对齐：Row 默认 center，栏比内容短时
+            // 会被垂直居中，顶部就空出一大块。
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: TabBarView(

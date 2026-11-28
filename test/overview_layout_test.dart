@@ -1,14 +1,11 @@
-// 概览页 Hero 区的版式约束。
+// 概览页的版式约束（V4 · Paper & Signal）。
 //
-// 这一页是**固定一屏、不上下滚动**的：Hero 长高了就必须有东西让位。
-// 上一版把详细信息网格加进 Hero 之后，在 900×600（应用允许的最小窗口）
-// 下底部被整片裁掉，渲染成一条黄黑警示带 —— 用户看到的是残缺的界面，
-// 而不是「内容有点多」。
-//
-// 因此这里钉三件事：
-// 1. 三个真实尺寸下都**不得有溢出**；
-// 2. 窗口矮的时候网格按约定收起，而不是把统计与最近文件挤没；
-// 3. Hero 区里每个字段都带复制入口，并且复制真的写进剪贴板。
+// 这一页对齐 `docs/prototypes/ui-redesign-v4/renders/02-overview-active.png`。
+// 原型是一屏 scrollable 的版式，因此这里钉的是：
+// 1. 三个真实尺寸下都**不得溢出**（应用最小窗口 900×600 也要能看）；
+// 2. 空态有引导卡 / 拖放区 / 引擎表 / 环境 / 流水线，而不是一片空白；
+// 3. 有文件时 Hero + POSTURE + 四张证据卡 + 最近分析 + 会话日志都在；
+// 4. 「没读到」渲染成 `—`，不渲染成 0（0 会被读成「一个都没有」）。
 
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_parser/apk_parser.dart'
@@ -18,37 +15,26 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/providers/info_page_provider.dart';
 import 'package:apk_info_tool/ui/overview/overview_page.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 内容区尺寸 = 窗口宽 − 侧栏宽（V2.4.6 起侧栏是 200px，见 `kSidebarWidth`）。
-///
-/// 660 对应的是 860px 的窗口，**比应用允许的最小窗口（900px）还窄 40px** ——
-/// 刻意留出余量：这组尺寸是「版式不得溢出」的下界，比真实情况更苛刻才有意义。
 const _minWindow = Size(660, 600);
 const _defaultWindow = Size(1040, 800);
 const _wideWindow = Size(1440, 900);
 
-/// 一个「解析中、哈希已到」的状态：字段够多，能压出版式问题，
-/// 又不需要真实样本。
+/// 「解析中、哈希已到」：没有任何 Android 解析结果。
 FileState _state() => const FileState(
       filePath: '/tmp/samples/example-application.ipa',
       fileSize: 42465437,
-      md5Hash: 'd41d8cd98f00b204e9800998ecf8427e',
-      sha1Hash: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
       sha256Hash:
           'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     );
 
-/// 一个「字段齐全」的状态：应用名 / 版本 / 构建号 / 最低系统 / targetSdk /
-/// SHA-256 / SHA-1 / MD5 —— 共 8 项候选，用来验证网格只取前 6 项。
+/// 字段齐全：包名 / 版本 / minSdk / targetSdk / 权限 / 组件。
 FileState _fullState() => FileState(
       filePath: '/tmp/samples/demo-1.2.3.apk',
       fileSize: 42465437,
-      md5Hash: 'd41d8cd98f00b204e9800998ecf8427e',
-      sha1Hash: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
       sha256Hash:
           'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       apkInfo: ApkInfo()
@@ -87,8 +73,7 @@ Future<void> _pump(WidgetTester tester, Size size, {FileState? state}) async {
   addTearDown(container.dispose);
   final effective = state ?? _state();
   container.read(currentFileStateProvider.notifier).update(effective);
-  // 概览页的应用名 / 版本 / 构建号等读的是**独立的** `currentApkInfoProvider`，
-  // 不是 `FileState.apkInfo` —— 只设 FileState 的话这些字段全是空的。
+  // 概览页的应用名 / 版本读的是独立的 `currentApkInfoProvider`。
   container.read(currentApkInfoProvider.notifier).update(effective.apkInfo);
 
   await tester.pumpWidget(
@@ -112,279 +97,98 @@ String _visibleText(WidgetTester tester) {
       in tester.widgetList<SelectableText>(find.byType(SelectableText))) {
     buffer.writeln(widget.data ?? '');
   }
-  return buffer.toString();
-}
-
-/// Hero 里「详细信息」网格那一段。
-Finder _detailsGrid() => find.text(t.overview.field_details);
-
-/// 只取**网格里**的文字。
-///
-/// 页面级的 `_visibleText` 会把 Hero 的身份信息（应用名 / 包名 / 版本）一起
-/// 算进来，而 V2.4.8 的验收点恰恰是「网格里不再重复那些」—— 不限定范围就
-/// 断言不了。
-String _gridText(WidgetTester tester) {
-  final grid = find
-      .ancestor(
-        of: find.text(t.overview.field_details),
-        matching: find.byType(Column),
-      )
-      .first;
-  final buffer = StringBuffer();
-  for (final w in tester.widgetList<Text>(
-      find.descendant(of: grid, matching: find.byType(Text)))) {
-    buffer.writeln(w.data ?? '');
-  }
-  for (final w in tester.widgetList<SelectableText>(
-      find.descendant(of: grid, matching: find.byType(SelectableText)))) {
-    buffer.writeln(w.data ?? '');
+  for (final widget in tester.widgetList<RichText>(find.byType(RichText))) {
+    buffer.writeln(widget.text.toPlainText());
   }
   return buffer.toString();
 }
 
 void main() {
-  group('Hero 版式：任何尺寸都不得溢出', () {
+  group('三个真实尺寸下都不得溢出', () {
     for (final entry in {
       '最小窗口': _minWindow,
       '默认窗口': _defaultWindow,
       '宽窗口': _wideWindow,
     }.entries) {
       testWidgets(entry.key, (tester) async {
-        await _pump(tester, entry.value);
+        await _pump(tester, entry.value, state: _fullState());
+        expect(tester.takeException(), isNull);
+      });
 
-        expect(
-          tester.takeException(),
-          isNull,
-          reason: '${entry.key} 下 Hero 溢出 —— 固定一屏布局里溢出会被直接裁掉',
-        );
+      testWidgets('${entry.key}（空态）', (tester) async {
+        await _pump(tester, entry.value, state: const FileState());
+        expect(tester.takeException(), isNull);
       });
     }
   });
 
-  group('Hero 版式：窗口矮时网格收起', () {
-    testWidgets('最小窗口下网格不显示，但统计与最近文件都还在', (tester) async {
-      await _pump(tester, _minWindow);
+  group('空态：引导 + 引擎 + 环境 + 流水线', () {
+    testWidgets('引导文案、拖放区与引擎表都在', (tester) async {
+      await _pump(tester, _defaultWindow, state: const FileState());
 
-      expect(_detailsGrid(), findsNothing, reason: '高度不够时网格应整块收起');
       final text = _visibleText(tester);
-      expect(text, contains(t.overview.statistics));
-      expect(text, contains(t.overview.recent_files));
+      expect(text, contains(t.overview.hero_headline));
+      expect(text, contains(t.overview.choose_file));
+      expect(text, contains(t.overview.drop_open));
+      expect(text, contains(t.overview.engine));
+      expect(text, contains(t.overview.engine_builtin));
+      expect(text, contains(t.overview.network_off));
+    });
+
+    testWidgets('右栏有环境与流水线，最近分析是空态', (tester) async {
+      await _pump(tester, _defaultWindow, state: const FileState());
+
+      final text = _visibleText(tester);
+      expect(text, contains(t.overview.environment));
+      expect(text, contains(t.overview.env_parser));
+      expect(text, contains(t.overview.pipeline));
+      expect(text, contains(t.overview.pipeline_drop));
       expect(text, contains(t.overview.no_recent_files));
-      // 收起的是网格，不是整个 Hero —— 状态卡片必须还在。
-      expect(text, contains(t.overview.status_platform));
-      expect(text, contains(t.overview.status_signature));
     });
+  });
 
-    testWidgets('默认窗口下网格显示，并且字段齐全', (tester) async {
+  group('有文件：Hero / 证据卡 / 日志', () {
+    testWidgets('应用名、包名、版本与六格元数据都在', (tester) async {
       await _pump(tester, _defaultWindow, state: _fullState());
-
-      expect(_detailsGrid(), findsOneWidget);
-      final grid = _gridText(tester);
-      // V2.4.8 起网格的 6 项是「Hero 上没有、但一眼想知道」的：
-      // 最低系统 / 目标 SDK / ABI / 权限数 / 组件数 / SHA-256。
-      expect(grid, contains(t.overview.field_min_sdk));
-      expect(grid, contains(t.overview.field_target_sdk));
-      expect(grid, contains(t.apk_info.abi));
-      expect(grid, contains(t.overview.field_permission_count));
-      expect(grid, contains(t.overview.field_component_count));
-      expect(grid, contains(t.file_info.sha256));
-    });
-
-    testWidgets('网格不含内部滚动器（用户要求固定显示）', (tester) async {
-      await _pump(tester, _defaultWindow);
-
-      // 去掉 SingleChildScrollView 后，网格直接展开，字段不会藏在滚动器里。
-      final hero = find.byType(OverviewPage);
-      expect(
-        find.descendant(of: hero, matching: find.byType(SingleChildScrollView)),
-        findsNothing,
-        reason: '详细信息网格不应包含内部滚动器',
-      );
-    });
-
-    testWidgets('没有解析结果时不显示架构标签', (tester) async {
-      await _pump(tester, _defaultWindow);
 
       final text = _visibleText(tester);
-      expect(text, isNot(contains('64-bit')), reason: '无 analysis 结果时不应有架构标签');
-      expect(text, isNot(contains('32-bit')), reason: '无 analysis 结果时不应有架构标签');
+      expect(text, contains('Demo'));
+      expect(text, contains('com.example.demo'));
+      expect(text, contains('1.2.3'));
+      expect(text, contains('PACKAGE'));
+      expect(text, contains('VERSION'));
+      expect(text, contains('SIGNATURE'));
+      expect(text, contains('TARGET SDK'));
+      expect(text, contains('COMPONENTS'));
+      expect(text, contains('ENTRY POINTS'));
+    });
+
+    testWidgets('四张证据卡：权限 / 组件 / DEX / 原生库', (tester) async {
+      await _pump(tester, _wideWindow, state: _fullState());
+
+      final text = _visibleText(tester);
+      expect(text, contains(t.overview.stat_permissions));
+      expect(text, contains(t.overview.stat_components));
+      expect(text, contains(t.overview.stat_dex_files));
+      expect(text, contains(t.overview.stat_native_libs));
+    });
+
+    testWidgets('POSTURE 卡与会话日志都在', (tester) async {
+      await _pump(tester, _wideWindow, state: _fullState());
+
+      final text = _visibleText(tester);
+      expect(text, contains('POSTURE / STATIC'));
+      expect(text, contains(t.overview.session_log));
+      expect(text, contains(t.overview.session_local));
     });
   });
 
-  // V2.5.0：文件路径从「详细信息」网格移到了 Hero 的常驻行。
-  //
-  // 动机是实测出来的：网格在矮窗口下会整块收起（见上一组），而「这个包在
-  // 磁盘上哪儿 / 我要改个名」恰好在最小窗口下看不见。路径与重命名入口
-  // 都必须**任何尺寸都在**。
-  // V2.4.7：详细信息网格最多 6 项（用户要求，由我们挑）。
-  //
-  // 选的是「打开一个包时最常被复制走的那几项」，去掉的是 SHA-1 与 MD5 ——
-  // SHA-256 是现在的通用口径。它们在分析页与导出的报告里仍然都在。
-  group('详细信息网格最多 6 项', () {
-    testWidgets('正好显示 6 项，且不再重复 Hero 已经显示过的信息', (tester) async {
-      await _pump(tester, _defaultWindow, state: _fullState());
+  group('诚实计数', () {
+    testWidgets('权限没读到时不渲染成 0', (tester) async {
+      await _pump(tester, _wideWindow, state: _state());
 
-      final grid = _gridText(tester);
-      // 保留的 6 项
-      expect(grid, contains(t.overview.field_min_sdk));
-      expect(grid, contains(t.overview.field_target_sdk));
-      expect(grid, contains(t.apk_info.abi));
-      expect(grid, contains(t.overview.field_permission_count));
-      expect(grid, contains(t.overview.field_component_count));
-      expect(grid, contains(t.file_info.sha256));
-
-      // **网格里不再出现** Hero 已经显示过的三项（文件名 / 版本 / 构建号）——
-      // 这正是用户报的「6 个里有三个是重复信息」。
-      expect(grid, isNot(contains(t.overview.field_file_name)));
-      expect(grid, isNot(contains(t.overview.field_version)));
-      expect(grid, isNot(contains(t.overview.field_build)));
-      // SHA-1 / MD5 仍然不在（V2.4.7 起的取舍）。
-      expect(grid, isNot(contains(t.file_info.sha1)));
-      expect(grid, isNot(contains(t.file_info.md5)));
-    });
-
-    testWidgets('权限 / 组件没读到时不渲染成 0', (tester) async {
-      // `_state()` 没有解析结果：所有计数类字段都是「没读到」。
-      await _pump(tester, _defaultWindow);
-
-      final grid = _gridText(tester);
-      expect(grid, isNot(contains(t.overview.field_permission_count)));
-      expect(grid, isNot(contains(t.overview.field_component_count)));
-    });
-
-    testWidgets('网格里的单元数不超过上限', (tester) async {
-      await _pump(tester, _defaultWindow, state: _fullState());
-
-      // 每个单元都带一个复制按钮，因此数复制按钮即可（Hero 里另有若干，
-      // 所以这里用「网格那段」的范围来数）。
-      final grid = find.ancestor(
-        of: find.text(t.overview.field_details),
-        matching: find.byType(Column),
-      );
-      final cells = find.descendant(
-        of: grid.first,
-        matching: find.byIcon(Icons.content_copy),
-      );
-      expect(
-        cells.evaluate().length,
-        lessThanOrEqualTo(OverviewPage.maxDetailCells),
-        reason: '详细信息网格最多 ${OverviewPage.maxDetailCells} 项',
-      );
-    });
-  });
-
-  group('Hero 的文件路径行常驻且可重命名', () {
-    for (final entry in {
-      '最小窗口': _minWindow,
-      '默认窗口': _defaultWindow,
-      '宽窗口': _wideWindow,
-    }.entries) {
-      testWidgets('${entry.key}下都能看到完整路径与重命名按钮', (tester) async {
-        await _pump(tester, entry.value);
-
-        expect(
-          _visibleText(tester),
-          contains('/tmp/samples/example-application.ipa'),
-          reason: '${entry.key} 下路径必须可见（网格收起时更要可见）',
-        );
-        expect(
-          find.byIcon(Icons.drive_file_rename_outline),
-          findsOneWidget,
-          reason: '${entry.key} 下重命名入口必须存在',
-        );
-      });
-    }
-
-    testWidgets('点重命名按钮弹出对话框，默认名按「应用名-版本号.后缀」', (tester) async {
-      await _pump(tester, _defaultWindow);
-
-      await tester.tap(find.byIcon(Icons.drive_file_rename_outline));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text(t.rename.rename_file), findsWidgets);
-      // 状态里没有解析结果，因此默认名退回原文件名（不编一个应用名出来）。
-      // 用 `findsWidgets` 而不是 `findsOneWidget`：网格里的文件名、路径行
-      // 末尾、以及对话框输入框里都会出现这个串。
-      expect(find.text('example-application.ipa'), findsWidgets);
-
-      await tester.tap(find.text(t.base.cancel));
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
-    });
-  });
-
-  group('Hero 图标是正方形', () {
-    // 真实的 App 图标是**圆角正方形**。Hero 行是按右侧文字列的高度拉伸的
-    // （实测 92 宽 × 109 高），图标若跟着拉伸，`BoxFit` 就会在上下各留出
-    // 一条 `colorScheme.surface` 的深色带 —— 用户看到的就是图标外那一圈
-    // 「黑边」。因此这里钉住「图标框必须是正方形」。
-    for (final entry in {
-      '默认窗口': _defaultWindow,
-      '最小窗口（紧凑模式）': _minWindow,
-    }.entries) {
-      testWidgets(entry.key, (tester) async {
-        await _pump(tester, entry.value);
-
-        final size = tester.getSize(
-          find.byKey(const ValueKey('overview_hero_icon')),
-        );
-
-        expect(
-          size.width,
-          size.height,
-          reason: '图标框必须是正方形（实测 ${size.width}×${size.height}）',
-        );
-        expect(size.width, greaterThan(0), reason: '图标框不能是零尺寸');
-      });
-    }
-  });
-
-  group('Hero 区每个字段都能复制', () {
-    testWidgets('复制按钮数量与字段数量一致', (tester) async {
-      // 用字段齐全的状态：空状态下网格只剩 SHA-256 一项，数不出东西来。
-      await _pump(tester, _defaultWindow, state: _fullState());
-
-      // 这个状态下有值的字段：应用名（标题行）+ 包名 + 版本 + 四个状态卡片 +
-      // 网格里的 6 项 + Hero 里的文件路径 —— 至少 10 个。
-      // 文件路径旁边**同时**有复制与重命名两个入口（路径是用户最常要
-      // 贴给别人、也最常要改名的一项）。
-      // 空字段不给复制按钮，正是「取不到就不假装有」的那条约定。
-      final copies = find.byIcon(Icons.content_copy).evaluate().length;
-      expect(
-        copies,
-        greaterThanOrEqualTo(10),
-        reason: '有值的字段都应有复制入口（实测 $copies 个）',
-      );
-
-      // 重命名按钮**只有一个**：路径行是唯一的入口，网格里不再重复。
-      expect(find.byIcon(Icons.drive_file_rename_outline), findsOneWidget);
-    });
-
-    testWidgets('点击复制真的写入剪贴板', (tester) async {
-      await _pump(tester, _defaultWindow);
-
-      final calls = <MethodCall>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') calls.add(call);
-          return null;
-        },
-      );
-      addTearDown(() {
-        tester.binding.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, null);
-      });
-
-      // 点第一个复制按钮 —— V2.5.0 起「当前文件」那一行最前面就是文件路径，
-      // 它的复制按钮因此排在树里第一个（此前是应用名）。
-      await tester.tap(find.byIcon(Icons.content_copy).first);
-      await tester.pump();
-
-      expect(calls, isNotEmpty, reason: '复制按钮必须真的调用 Clipboard.setData');
-      final data = calls.first.arguments as Map;
-      expect(data['text'], '/tmp/samples/example-application.ipa');
+      final text = _visibleText(tester);
+      expect(text, isNot(contains('0\n${t.overview.stat_permissions}')));
     });
   });
 }

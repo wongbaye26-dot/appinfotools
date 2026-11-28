@@ -19,7 +19,10 @@ final currentTitleWidthProvider =
     NotifierProvider<CurrentTitleWidth, double>(CurrentTitleWidth.new);
 
 class TitleWidthSetting extends ConsumerStatefulWidget {
-  const TitleWidthSetting({super.key});
+  const TitleWidthSetting({super.key, this.showLabel = true});
+
+  /// 卡片标题已经写了「标题宽度」时，行内标签就不必重复一遍。
+  final bool showLabel;
 
   @override
   ConsumerState<TitleWidthSetting> createState() => _TitleWidthSettingState();
@@ -40,7 +43,7 @@ class _TitleWidthSettingState extends ConsumerState<TitleWidthSetting> {
         // 滑块
         Row(
           children: [
-            Text(t.settings.title_width),
+            if (widget.showLabel) Text(t.settings.title_width),
             Expanded(
               child: Slider(
                 value: currentWidth,
