@@ -3,12 +3,14 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/report_exporter.dart';
 import 'package:apk_info_tool/utils/report_extras.dart';
+import 'package:apk_info_tool/utils/component_catalog.dart';
 import 'package:apk_info_tool/utils/sbom_builder.dart';
+import 'package:apk_info_tool/utils/spdx_builder.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
 /// 导出格式。
-enum ExportFormat { markdown, json, html, sbom }
+enum ExportFormat { markdown, json, html, sbom, spdx }
 
 /// 导出范围。
 enum ExportScope { full, securityOnly }
@@ -42,14 +44,15 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
         ExportFormat.markdown => 'md',
         ExportFormat.json => 'json',
         ExportFormat.html => 'html',
-        // CycloneDX 就是 JSON，扩展名用 json，文件名带 sbom 后缀便于区分。
-        ExportFormat.sbom => 'json',
+        // CycloneDX / SPDX 都是 JSON，扩展名用 json，文件名带格式后缀区分。
+        ExportFormat.sbom || ExportFormat.spdx => 'json',
       };
 
   String get _suggestedFileName {
     final base = widget.analysis.fileName.value ?? 'package';
     final stem = path.basenameWithoutExtension(base);
     final suffix = switch (_format) {
+      ExportFormat.spdx => '${widget.analysis.platform.name}_spdx',
       // SBOM 只描述组件，范围选择对它没有意义；文件名单独标出。
       ExportFormat.sbom when _scope == ExportScope.full =>
         '${widget.analysis.platform.name}_sbom',
@@ -83,6 +86,12 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
       debugPrint('ExportReportDialog: 采集报告补充数据失败: $error');
     }
 
+    // SBOM 与 SPDX 共用同一份组件身份：先归一化，再交给两个导出器。
+    final components = ComponentCatalog.fromLibraryReport(
+      extras?.libraries,
+      artifactPath: widget.archivePath,
+    );
+
     final content = switch (_format) {
       ExportFormat.markdown => AnalysisReport.render(
           widget.analysis,
@@ -105,7 +114,18 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
             appVersion: widget.analysis.version.value,
             packageName: widget.analysis.packageId.value,
             packageSha256: widget.analysis.sha256.value,
-            components: SbomBuilder.fromLibraryReport(extras?.libraries),
+            components: SbomBuilder.fromComponents(components),
+            timestamp: now,
+          ),
+        ),
+      ExportFormat.spdx => SpdxBuilder.toJsonString(
+          SpdxBuilder.build(
+            appName: widget.analysis.appName.value ??
+                (widget.analysis.fileName.value ?? 'package'),
+            appVersion: widget.analysis.version.value,
+            packageName: widget.analysis.packageId.value,
+            packageSha256: widget.analysis.sha256.value,
+            components: components,
             timestamp: now,
           ),
         ),
@@ -199,6 +219,11 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                         value: ExportFormat.sbom,
                         label: Text('SBOM'),
                         icon: Icon(Icons.inventory_2_outlined),
+                      ),
+                      ButtonSegment(
+                        value: ExportFormat.spdx,
+                        label: Text('SPDX'),
+                        icon: Icon(Icons.account_tree_outlined),
                       ),
                     ],
                     selected: {_format},

@@ -10,6 +10,7 @@
 
 import 'dart:convert';
 
+import 'package:analysis_model/analysis_model.dart' show Component;
 import 'package:crypto/crypto.dart';
 import 'package:apk_parser/apk_parser.dart';
 
@@ -30,6 +31,21 @@ class SbomComponent {
 
 class SbomBuilder {
   static const String specVersion = '1.5';
+
+  /// 从归一化后的组件列表生成 SBOM 组件（与 SPDX 共用同一份身份）。
+  static List<SbomComponent> fromComponents(List<Component> components) => [
+        for (final component in components)
+          SbomComponent(
+            name: component.name,
+            version: component.version,
+            purl: component.purl,
+            properties: {
+              'appinfotool:componentId': component.id,
+              for (final entry in component.relations.entries)
+                'appinfotool:${entry.key.name}': entry.value.join(','),
+            },
+          ),
+      ];
 
   /// 从库识别结果提炼组件：原生库 / 组件 / DEX 三类分组都算「存在证据」。
   static List<SbomComponent> fromLibraryReport(LibraryReport? libraries) {
