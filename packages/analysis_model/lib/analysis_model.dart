@@ -34,3 +34,8 @@ export 'src/container_facts.dart';
 export 'src/artifact_inventory.dart';
 export 'src/load_graph.dart';
 export 'src/crypto_theft.dart';
+
+// V3 分析基础设施：统一组件身份与 Finding 指纹。
+export 'src/v3/component.dart';
+export 'src/v3/finding_fingerprint.dart';
+export 'src/v3/scan_profile.dart';

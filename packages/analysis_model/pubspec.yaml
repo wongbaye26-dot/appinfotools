@@ -6,6 +6,10 @@ publish_to: none
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
+dependencies:
+  # V3 组件身份与 Finding 指纹都要哈希；纯 Dart，不引入 Flutter。
+  crypto: ^3.0.6
+
 dev_dependencies:
   lints: ^5.0.0
   test: ^1.24.0

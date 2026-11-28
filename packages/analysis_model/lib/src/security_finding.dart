@@ -281,6 +281,18 @@ class SecurityEvidence {
   final String? detailCode;
   final Map<String, Object> detailArgs;
 
+  /// 脱敏后的展示值（V3 F01）。
+  ///
+  /// 敏感信息原文**不得**进 `detail`；要么只给脱敏值（`sk-…a1b2`），
+  /// 要么同时给 `detailArgs` 里的可读描述。`null` 表示没有需要脱敏的字段。
+  final String? redactedValue;
+
+  /// 产出这条证据的扫描器 id（如 `secret.regex.v1`）。
+  ///
+  /// 用于规则统计与「为什么这次没扫到」的追溯；`null` 表示旧证据，
+  /// 不代表没有扫描来源。
+  final String? extractorId;
+
   /// 稳定证据 ID；`null` 时由内容派生（FNV-1a）。
   ///
   /// 同一份证据在不同报告里必须得到同一个 ID，才能让发现项引用它。
@@ -294,6 +306,8 @@ class SecurityEvidence {
     this.locationArgs = const {},
     this.detailCode,
     this.detailArgs = const {},
+    this.redactedValue,
+    this.extractorId,
     this.id,
   });
 

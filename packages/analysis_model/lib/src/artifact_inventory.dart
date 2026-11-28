@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 
 /// 包里「有安全意义的制品」清单。
 ///
@@ -154,6 +157,19 @@ enum ArtifactOrigin {
 /// 一条制品记录。
 class ArtifactEntry {
   final String path;
+
+  /// 显式身份；为 null 时用 [stableId] 按路径派生。
+  ///
+  /// 之所以允许外部传入：F04 会让用户从嵌套归档里打开条目，
+  /// 那时「同一路径、不同容器」必须是两个身份。
+  final String? artifactId;
+
+  /// 父容器路径（普通 zip 条目是所在目录；嵌套归档条目是那个归档）。
+  final String? parentPath;
+
+  /// 嵌套归档内的条目名；普通条目为 null。
+  final String? archiveEntry;
+
   final ArtifactKind kind;
   final ArtifactOrigin origin;
   final int sizeBytes;
@@ -176,6 +192,9 @@ class ArtifactEntry {
   const ArtifactEntry({
     required this.path,
     required this.kind,
+    this.artifactId,
+    this.parentPath,
+    this.archiveEntry,
     this.origin = ArtifactOrigin.embedded,
     this.sizeBytes = 0,
     this.arch,
@@ -187,9 +206,54 @@ class ArtifactEntry {
 
   bool get isCode => kind.isCode;
 
+  /// 稳定身份：优先用显式值，否则按规范化路径派生。
+  String get stableId => artifactId ?? ArtifactIdentity.of(path);
+
   @override
   String toString() => 'ArtifactEntry($path, ${kind.name}, '
       '${origin.name}, $sizeBytes bytes)';
+}
+
+/// 制品身份的派生规则（V3 F04 / F05 共用）。
+///
+/// 规则：
+/// - 路径统一 `/`、去前导 `./` 与 `/`、转小写后算 SHA-1 前 16 位，前缀 `art_`；
+/// - 嵌套归档用 `!` 分隔（`assets/x.zip!payload.dex`），父容器是 `!` 之前的部分；
+/// - 普通条目按最后一个 `/` 取父目录，根目录条目为 null。
+///
+/// 不含分析 id、时间、大小 —— 同一路径在同一包里必须每次相同。
+class ArtifactIdentity {
+  const ArtifactIdentity._();
+
+  static String of(String path) {
+    final canonical = _normalize(path);
+    final digest = sha1.convert(utf8.encode(canonical)).toString();
+    return 'art_${digest.substring(0, 16)}';
+  }
+
+  /// 返回 (父容器, 归档内条目名)。
+  static (String?, String?) describe(String path) {
+    final normalized = _normalize(path);
+    final bang = normalized.lastIndexOf('!');
+    if (bang > 0 && bang < normalized.length - 1) {
+      return (normalized.substring(0, bang), normalized.substring(bang + 1));
+    }
+    final slash = normalized.lastIndexOf('/');
+    if (slash <= 0 || slash == normalized.length - 1) return (null, null);
+    return (normalized.substring(0, slash), null);
+  }
+
+  static String _normalize(String path) {
+    var out = path.replaceAll('\\', '/');
+    while (out.startsWith('./')) {
+      out = out.substring(2);
+    }
+    while (out.startsWith('/')) {
+      out = out.substring(1);
+    }
+    out = out.replaceAll(RegExp(r'/+'), '/');
+    return out.trim().toLowerCase();
+  }
 }
 
 /// 载荷探测看到的**文件类型**（按魔数，不按扩展名）。
