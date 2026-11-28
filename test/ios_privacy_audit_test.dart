@@ -67,6 +67,35 @@ SecurityFinding? _byId(SecurityAnalysisResult r, String ruleId) {
   return null;
 }
 
+/// 手工拼一个最小 64 位 Mach-O（可带 LC_ENCRYPTION_INFO_64）。
+///
+/// 加密样本不在 CI 里，FairPlay 的解析/降级只能靠合成输入验证；这里只造
+/// 头部 + 一条命令，不依赖任何真实二进制。
+Uint8List _encryptedMacho({int? cryptId}) {
+  final hasCommand = cryptId != null;
+  final size = 32 + (hasCommand ? 20 : 0);
+  final buffer = Uint8List(size);
+  final data = ByteData.sublistView(buffer);
+  void u32(int offset, int value) =>
+      data.setUint32(offset, value, Endian.little);
+  u32(0, 0xFEEDFACF); // MH_MAGIC_64
+  u32(4, 0x0100000C); // CPU_TYPE_ARM64
+  u32(8, 0); // cpusubtype
+  u32(12, 2); // MH_EXECUTE
+  u32(16, hasCommand ? 1 : 0); // ncmds
+  u32(20, hasCommand ? 20 : 0); // sizeofcmds
+  u32(24, 0); // flags
+  u32(28, 0); // reserved
+  if (hasCommand) {
+    u32(32, 0x2C); // LC_ENCRYPTION_INFO_64
+    u32(36, 20); // cmdsize
+    u32(40, 0x4000); // cryptoff
+    u32(44, 0x8000); // cryptsize
+    u32(48, cryptId); // cryptid
+  }
+  return buffer;
+}
+
 const _usageOnlyPlist = '''
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
@@ -392,6 +421,109 @@ void main() {
       expect(RegExp(r'[\u4e00-\u9fff]').hasMatch(evidence), isTrue,
           reason: '中文界面下证据不能是英文回退：$evidence');
       expect(evidence, isNot(contains('{')));
+    });
+  });
+
+  group('FairPlay 加密（P1-1）', () {
+    test('主可执行 cryptid=1：RULE-F 降级、覆盖缺口、元信息发现', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: _encryptedMacho(cryptId: 1),
+      );
+
+      final ruleF = _byId(result, 'IOS-RULE-F')!;
+      expect(ruleF.confidence, SecurityConfidence.unknown);
+      expect(ruleF.messageCode, 'ios.rule_f_encrypted');
+      expect(ruleF.limitationCode, 'ios.rule_f.limitation_encrypted');
+      expect(ruleF.messageArgs['encrypted'], 1);
+
+      final evidence = _byId(result, 'IOS-ENCRYPTED-BINARY');
+      expect(evidence, isNotNull);
+      expect(evidence!.isMeta, isTrue);
+      expect(evidence.severity, SecuritySeverity.info);
+      expect(evidence.messageCode, 'ios.encrypted_binary');
+      expect(evidence.limitationCode, 'ios.encrypted_binary.limitation');
+      expect(evidence.recommendationCode, 'ios.encrypted_binary.manual_review');
+
+      final scanCoverage = _byId(result, 'IOS-SCAN-COVERAGE')!;
+      expect(scanCoverage.messageCode, 'ios.scan_coverage_encrypted');
+      expect(scanCoverage.messageArgs['encrypted'], 1);
+
+      final coverage = result.coverage.entry('ios.encryption')!;
+      expect(coverage.status, CoverageStatus.notCovered);
+      expect(coverage.noteCode, 'ios.encryption.encrypted');
+      expect(result.hasActualGaps, isTrue);
+
+      final crypto = result.cryptoTheft!;
+      expect(
+        crypto.missing.any((m) => m.args['coverageIncomplete'] == true),
+        isTrue,
+        reason: '加密导致证据链不完整，crypto 的 missing 必须带上该标记',
+      );
+    });
+
+    test('cryptid=0：仍按明文扫描，不制造缺口', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: _encryptedMacho(cryptId: 0),
+      );
+      final ruleF = _byId(result, 'IOS-RULE-F')!;
+      expect(ruleF.messageCode, 'ios.rule_f');
+      expect(result.coverage.entry('ios.encryption')!.status,
+          CoverageStatus.covered);
+      expect(_byId(result, 'IOS-ENCRYPTED-BINARY'), isNull);
+      expect(result.coverage.entry('ios.encryption')!.isGap, isFalse);
+    });
+
+    test('只有嵌套可执行文件加密：覆盖为 partial，仍是未看全', () {
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: _encryptedMacho(cryptId: 0),
+        nestedExecutables: [
+          IosNestedExecutableInput(
+            path: '$_bundlePath/PlugIns/Share.appex/Share',
+            bundlePath: '$_bundlePath/PlugIns/Share.appex',
+            kind: IosBundleKind.appExtension,
+            bytes: _encryptedMacho(cryptId: 1),
+          ),
+        ],
+      );
+      final coverage = result.coverage.entry('ios.encryption')!;
+      expect(coverage.status, CoverageStatus.partial);
+      expect(coverage.noteCode, 'ios.encryption.nested_encrypted');
+      expect(_byId(result, 'IOS-ENCRYPTED-BINARY'), isNotNull);
+      expect(_byId(result, 'IOS-RULE-F')!.messageCode, 'ios.rule_f_encrypted');
+    });
+
+    test('中文界面能本地化加密发现与覆盖说明', () async {
+      addTearDown(() => LocaleSettings.setLocaleRaw('en'));
+      await LocaleSettings.setLocaleRaw('zh-CN');
+
+      final result = IosPrivacyAudit.audit(
+        infoPlist: _plist(
+            infoPlist: '<?xml version="1.0" encoding="UTF-8"?>'
+                '<plist version="1.0"><dict></dict></plist>'),
+        executableBytes: _encryptedMacho(cryptId: 1),
+      );
+      final finding = _byId(result, 'IOS-ENCRYPTED-BINARY')!;
+      final text = AnalysisReport.findingText(finding, t);
+      expect(RegExp(r'[\u4e00-\u9fff]').hasMatch(text), isTrue,
+          reason: '中文界面不能退回英文：$text');
+      expect(text, isNot(contains('{')));
+
+      expect(AnalysisReport.coverageDimensionLabel('ios.encryption', t),
+          'FairPlay 加密');
+      final note = AnalysisReport.coverageNote(
+          result.coverage.entry('ios.encryption')!, t);
+      expect(note, isNotNull);
+      expect(RegExp(r'[\u4e00-\u9fff]').hasMatch(note!), isTrue);
+      expect(note, isNot(contains('{')));
     });
   });
 

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V4 · 03 分析 · Android</title>
+<link rel="stylesheet" href="../assets/v4.css">
+</head>
+<body class="app" data-nav="analysis" data-crumb="WORKSPACE / ANALYSIS / ANDROID" data-state="AURORA NOTES / APK" data-window-title="AppInfoTool — 分析">
+  <main class="main">
+    <div class="page">
+      <header class="page-head" style="margin-bottom:12px">
+        <div>
+          <div class="page-kicker">ANALYSIS <span>/</span> <b>ANDROID</b></div>
+          <h1 class="page-title">Aurora Notes</h1>
+          <p class="page-sub mono" style="font-size:8.5px">com.aurora.notes · 3.20.0 (320) · APK · 18.4 MB · parsed in 2.2s</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn small" aria-label="刷新"><svg class="ic"><use href="#i-refresh"/></svg></button>
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn"><svg class="ic"><use href="#i-compare"/></svg>加入对比</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-shield"/></svg>安全详情</button>
+        </div>
+      </header>
+
+      <div class="tabs-wrap" style="margin-bottom:14px">
+        <div class="tabs" role="tablist" aria-label="分析详情">
+          <span class="tab-pill" aria-hidden="true"></span>
+          <button class="tab" role="tab" aria-selected="false">概览</button>
+          <button class="tab" role="tab" aria-selected="false">清单 <span class="badge">1601</span></button>
+          <button class="tab" role="tab" aria-selected="false">组件 <span class="badge">18</span></button>
+          <button class="tab" role="tab" aria-selected="false">权限 <span class="badge">10</span></button>
+          <button class="tab" role="tab" aria-selected="true">安全 <span class="badge">17</span></button>
+          <button class="tab" role="tab" aria-selected="false">文件 <span class="badge">1601</span></button>
+          <button class="tab" role="tab" aria-selected="false">诊断</button>
+        </div>
+        <span class="chip plain" style="margin-left:auto">STATIC / NO RUNTIME</span>
+      </div>
+
+      <div class="analysis-grid" style="flex:1;min-height:0">
+        <div class="analysis-left">
+          <section class="card app-panel">
+            <div class="app-panel-top">
+              <div class="app-avatar small">A</div>
+              <div style="min-width:0">
+                <h3>Aurora Notes</h3>
+                <p>com.aurora.notes · v3.20.0 (320)</p>
+                <div class="panel-tags">
+                  <span class="chip"><svg class="ic"><use href="#i-android"/></svg>Android</span>
+                  <span class="chip">arm64-v8a · armeabi-v7a</span>
+                  <span class="chip">minSdk 24</span>
+                  <span class="chip">target 36</span>
+                  <span class="chip amber">Debuggable</span>
+                </div>
+              </div>
+              <div class="panel-status">
+                <span class="chip mint"><svg class="ic"><use href="#i-check"/></svg>PARSED</span>
+                <span class="mono" style="font-size:7px;color:var(--ink-3)">v2 / v3 · SIGNATURE VERIFIED</span>
+              </div>
+            </div>
+            <div class="detail-grid">
+              <div class="detail-cell"><div class="small-label">PACKAGE</div><b>com.aurora.notes</b></div>
+              <div class="detail-cell"><div class="small-label">VERSION</div><b>3.20.0 / 320</b></div>
+              <div class="detail-cell"><div class="small-label">INSTALL SIZE</div><b>18.4 MB</b></div>
+              <div class="detail-cell"><div class="small-label">DEX</div><b>1 file · 4,218 classes</b></div>
+              <div class="detail-cell"><div class="small-label">COMPONENTS</div><b>18 · 2 exported</b></div>
+              <div class="detail-cell"><div class="small-label">PERMISSIONS</div><b>10 · 3 dangerous combos</b></div>
+            </div>
+          </section>
+
+          <section class="card finding-list">
+            <div class="card-head" style="padding:15px 20px 10px;margin:0">
+              <div class="card-title"><svg class="ic"><use href="#i-shield"/></svg>STATIC FINDINGS</div>
+              <div style="display:flex;gap:6px;align-items:center"><span class="chip amber">3 HIGH</span><button class="btn small">查看全部 17</button></div>
+            </div>
+            <div class="finding-row">
+              <span class="finding-ic danger"><svg class="ic"><use href="#i-alert"/></svg></span>
+              <div class="finding-body"><b>高权限组合 <span class="chip danger" style="height:17px;font-size:6.5px">优先复核</span></b><p>同时声明短信读取、悬浮窗与开机自启；需结合业务确认是否必要。</p></div>
+              <div class="finding-meta">ANDROID-PERM-COMBINATION<br>HIGH</div>
+            </div>
+            <div class="finding-row">
+              <span class="finding-ic info"><svg class="ic"><use href="#i-code"/></svg></span>
+              <div class="finding-body"><b>DEX 动态加载线索</b><p>检测到 DexClassLoader 调用点；仅代表具备动态加载能力，不等于已加载外部代码。</p></div>
+              <div class="finding-meta">ANDROID-DEX-LOADER<br>REVIEW</div>
+            </div>
+            <div class="finding-row">
+              <span class="finding-ic"><svg class="ic"><use href="#i-info"/></svg></span>
+              <div class="finding-body"><b>覆盖范围说明</b><p>Payload 探测覆盖 21 / 64 个候选，2 个截断维度已计入覆盖缺口。</p></div>
+              <div class="finding-meta">COVERAGE-PARTIAL<br>INFO</div>
+            </div>
+          </section>
+
+          <section class="card evidence">
+            <div class="card-head" style="margin-bottom:0"><div class="card-title"><svg class="ic"><use href="#i-layers"/></svg>STRUCTURE EVIDENCE</div><div style="display:flex;gap:6px"><span class="chip plain">SCHEMA V8</span><span class="chip mint">INVENTORY COMPLETE</span></div></div>
+            <div class="evidence-grid">
+              <div class="evidence-box"><div class="small-label">ZIP ENTRIES</div><b>1601</b><small>ALL FILE ENTRIES</small></div>
+              <div class="evidence-box"><div class="small-label">SECURITY ARTIFACTS</div><b>17</b><small>DEX · SO · ASSET · RES</small></div>
+              <div class="evidence-box"><div class="small-label">LOAD NODES</div><b>2</b><small>RESOLVED IN PACKAGE</small></div>
+              <div class="evidence-box"><div class="small-label">LOAD EDGES</div><b>1</b><small>NO DANGLING EDGE</small></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="analysis-right">
+          <section class="card cov-panel">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-activity"/></svg>COVERAGE</div><span class="chip amber">2 GAPS</span></div>
+            <div class="gauge-row">
+              <div class="gauge"><b>85%</b></div>
+              <div class="cov-copy"><b>11 / 13 维度</b><small>9 covered · 2 partial<br>缺口会降低相关结论置信度</small></div>
+            </div>
+            <div class="cov-list">
+              <div class="cov-row"><svg class="ic"><use href="#i-check"/></svg><span>Manifest &amp; permissions</span><span>FULL</span></div>
+              <div class="cov-row"><svg class="ic"><use href="#i-check"/></svg><span>DEX structure / strings</span><span>FULL</span></div>
+              <div class="cov-row part"><svg class="ic"><use href="#i-alert"/></svg><span>Payload probe</span><span>PARTIAL</span></div>
+              <div class="cov-row part"><svg class="ic"><use href="#i-alert"/></svg><span>Split sampling</span><span>N/A</span></div>
+              <div class="cov-row"><svg class="ic"><use href="#i-check"/></svg><span>Signature &amp; resources</span><span>FULL</span></div>
+            </div>
+          </section>
+
+          <section class="card card-pad">
+            <div class="card-head" style="margin-bottom:8px"><div class="card-title"><svg class="ic"><use href="#i-lock"/></svg>INTEGRITY</div><span class="chip mint">VERIFIED</span></div>
+            <div class="cov-list" style="margin-top:0">
+              <div class="cov-row"><span>SEAL</span><span>v2 + v3</span></div>
+              <div class="cov-row"><span>SCHEME</span><span>APK Signature Scheme</span></div>
+              <div class="cov-row"><span>DIGEST</span><span>972c…a71e</span></div>
+              <div class="cov-row"><span>BASELINE</span><span>NO MATCH ENTRY</span></div>
+            </div>
+          </section>
+
+          <section class="scope">
+            <h3>SCOPE / STATIC ONLY</h3>
+            <p>只读解析，不执行应用代码、不访问网络。所有结论可回到规则 ID 与文件。</p>
+            <div class="mini"><svg class="ic"><use href="#i-info"/></svg><span>覆盖缺口 ≠ 恶意；仅降低结论置信度。</span></div>
+          </section>
+        </div>
+      </div>
+      <div class="footnote"><span>V4 / PAPER &amp; SIGNAL · ANALYSIS / ANDROID</span><span>SCHEMA V8 · 1440×1024</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

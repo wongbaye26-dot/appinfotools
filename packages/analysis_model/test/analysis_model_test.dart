@@ -239,6 +239,47 @@ void main() {
       expect(withLimitation.hasActualGaps, isFalse);
     });
 
+    test('artifacts / loadGraph 在 withFinding、withLimitation 后保留', () {
+      const inventory = ArtifactInventory(
+        entries: [
+          ArtifactEntry(
+            path: 'classes.dex',
+            kind: ArtifactKind.dex,
+            sizeBytes: 10,
+          ),
+        ],
+        totalEntries: 2,
+        inventoriedEntries: 1,
+        entriesComplete: false,
+      );
+      const graph = LoadGraph(
+        nodes: [
+          LoadNode(
+            id: 'classes.dex',
+            kind: LoadNodeKind.dex,
+            presentInPackage: true,
+          ),
+        ],
+        complete: false,
+      );
+      const result = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        artifacts: inventory,
+        loadGraph: graph,
+      );
+
+      final withFinding =
+          result.withFinding(finding(severity: SecuritySeverity.info));
+      expect(withFinding.artifacts, same(inventory));
+      expect(withFinding.loadGraph, same(graph));
+
+      final withLimitation =
+          result.withLimitation(const AnalysisNote('x', 'y'));
+      expect(withLimitation.artifacts, same(inventory));
+      expect(withLimitation.loadGraph, same(graph));
+    });
+
     test('includesRuntimeEvidence 默认 false（本工具不做运行时分析）', () {
       const result =
           SecurityAnalysisResult(engineVersion: 'e', rulesVersion: 'r');
@@ -474,6 +515,91 @@ void main() {
       expect(plain.recommendationArgs, isEmpty);
       expect(plain.relationshipCode, isNull);
       expect(plain.limitationCode, isNull);
+    });
+  });
+
+  group('Evidence — 稳定 ID 与检索', () {
+    test('相同证据得到相同 ID，内容变化得到不同 ID', () {
+      const a = SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'classes.dex',
+        detail: 'okhttp',
+      );
+      const b = SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'classes.dex',
+        detail: 'okhttp',
+      );
+      const c = SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'classes.dex',
+        detail: 'retrofit',
+      );
+      expect(a.evidenceId, b.evidenceId);
+      expect(a.evidenceId, startsWith('ev_'));
+      expect(a.evidenceId, isNot(c.evidenceId));
+    });
+
+    test('Finding 暴露 evidenceIds，结果级 evidence 去重且保序', () {
+      const a = SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'classes.dex',
+        detail: 'first',
+      );
+      const b = SecurityEvidence(
+        source: SecurityEvidenceSource.dexString,
+        location: 'classes.dex',
+        detail: 'second',
+      );
+      final f1 = SecurityFinding(
+        ruleId: 'R1',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'f1',
+        evidence: const [a, b],
+        recommendation: 'r',
+      );
+      final f2 = SecurityFinding(
+        ruleId: 'R2',
+        platform: SecurityPlatform.android,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'f2',
+        evidence: const [a],
+        recommendation: 'r',
+      );
+      expect(f1.evidenceIds, <String>[a.evidenceId, b.evidenceId]);
+      final result = SecurityAnalysisResult(
+        engineVersion: 'test',
+        rulesVersion: 'test',
+        findings: [f1, f2],
+      );
+      expect(result.evidence, <SecurityEvidence>[a, b]);
+    });
+  });
+
+  group('Coverage — failed / notScanned 是缺口', () {
+    test('failed / notScanned 计入 gap，且排序比 notCovered 更差', () {
+      const failed = CoverageEntry(
+        id: 'x.failed',
+        status: CoverageStatus.failed,
+      );
+      const notScanned = CoverageEntry(
+        id: 'x.notCovered',
+        status: CoverageStatus.notScanned,
+      );
+      const notCovered = CoverageEntry(
+        id: 'x.notCovered',
+        status: CoverageStatus.notCovered,
+      );
+      expect(failed.isGap, isTrue);
+      expect(notScanned.isGap, isTrue);
+      final merged = const AnalysisCoverage(entries: [notCovered])
+          .merge(const AnalysisCoverage(entries: [notScanned]));
+      expect(merged.entry('x.notCovered')!.status, CoverageStatus.notScanned);
     });
   });
 }

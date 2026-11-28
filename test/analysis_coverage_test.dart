@@ -129,6 +129,13 @@ void main() {
       // 这里显式给一个值，而不是靠 `meta.locales` 去凑 —— 那正是旧实现的
       // 缺陷：覆盖量由「内容的形状」推断，而不是由读取方的结果。
       int? arscEntryCount = 5,
+      ArtifactInventory? artifacts,
+      LoadGraph? loadGraph,
+      PayloadProbeResult? payloadProbe,
+      int? splitTotal,
+      int? splitAudited,
+      int? nativeLibraryTotal,
+      List<String> nativeSkipped = const [],
     }) =>
         AndroidSecurityAudit.audit(
           meta: ApkMeta()..permissionRequests = const [],
@@ -137,6 +144,13 @@ void main() {
           manifestParsed: manifestParsed,
           manifestFailureReason: manifestParsed ? null : 'manifest truncated',
           arscEntryCount: arscEntryCount,
+          artifacts: artifacts,
+          loadGraph: loadGraph,
+          payloadProbe: payloadProbe,
+          splitTotal: splitTotal,
+          splitAudited: splitAudited,
+          nativeLibraryTotal: nativeLibraryTotal,
+          nativeSkipped: nativeSkipped,
         );
 
     test('结构正常的 DEX 下各维度都是 covered', () {
@@ -254,6 +268,113 @@ void main() {
       final result = auditWith(dexEntries: const []);
 
       expect(result.network.isEmpty, isTrue);
+    });
+
+    test('制品清单与加载链进入正式结果，并形成结构化覆盖', () {
+      const inventory = ArtifactInventory(
+        entries: [
+          ArtifactEntry(
+            path: 'classes.dex',
+            kind: ArtifactKind.dex,
+            sizeBytes: 1024,
+          ),
+        ],
+        totalEntries: 9,
+        inventoriedEntries: 1,
+        entriesComplete: false,
+        skippedCodes: ['inventory.entries_truncated'],
+      );
+      const graph = LoadGraph(
+        nodes: [
+          LoadNode(
+            id: 'classes.dex',
+            kind: LoadNodeKind.dex,
+            resolvedPath: 'classes.dex',
+            presentInPackage: true,
+          ),
+        ],
+        danglingEdgeIds: ['classes.dex->libmissing.so'],
+        complete: false,
+      );
+      final result = auditWith(
+        dexEntries: [DexBytes('classes.dex', _fixture('real-netprobe.dex'))],
+        artifacts: inventory,
+        loadGraph: graph,
+        payloadProbe: const PayloadProbeResult(
+          entriesProbed: 2,
+          entriesTotal: 5,
+          complete: false,
+          noteCodes: ['payload.candidates_skipped'],
+        ),
+        splitTotal: 12,
+        splitAudited: 8,
+      );
+
+      expect(result.artifacts, same(inventory), reason: '制品清单必须原样进入结果，不能算完就丢');
+      expect(result.loadGraph, same(graph));
+      expect(
+        result.coverage.entry('android.artifacts')!.status,
+        CoverageStatus.partial,
+      );
+      expect(
+        result.coverage.entry('android.artifacts')!.noteCode,
+        'android.artifacts.truncated',
+      );
+      expect(
+        result.coverage.entry('android.payloadProbe')!.status,
+        CoverageStatus.partial,
+      );
+      expect(result.coverage.entry('android.payloadProbe')!.covered, 2);
+      expect(result.coverage.entry('android.payloadProbe')!.limit, 5);
+      expect(
+        result.coverage.entry('android.loadGraph')!.status,
+        CoverageStatus.partial,
+      );
+      expect(
+        result.coverage.entry('android.loadGraph')!.noteCode,
+        'android.load_graph.incomplete',
+      );
+      expect(
+        result.coverage.entry('android.splitSampling')!.status,
+        CoverageStatus.partial,
+      );
+      expect(result.coverage.entry('android.splitSampling')!.covered, 8);
+      expect(result.coverage.entry('android.splitSampling')!.limit, 12);
+      expect(result.hasActualGaps, isTrue, reason: '这些是真实的覆盖缺口，不是恒真的方法论局限');
+    });
+
+    test('原生库只打开一部分时该维度是 partial，而不是 covered', () {
+      final result = auditWith(
+        dexEntries: const [],
+        nativeEntries: [
+          NativeLibraryBytes('lib/arm64-v8a/libfoo.so', Uint8List(0)),
+        ],
+        nativeLibraryTotal: 3,
+      );
+
+      final entry = result.coverage.entry('android.nativeLibraries')!;
+      expect(entry.status, CoverageStatus.partial);
+      expect(entry.covered, 1);
+      expect(entry.limit, 3);
+      expect(entry.noteCode, 'android.native_libraries.partial');
+      expect(result.hasActualGaps, isTrue);
+    });
+
+    test('制品清单与加载链未提供时标 notScanned，而不是伪造空结果', () {
+      final result = auditWith(
+        dexEntries: [DexBytes('classes.dex', _fixture('real-netprobe.dex'))],
+      );
+
+      expect(result.artifacts, isNull);
+      expect(result.loadGraph, isNull);
+      expect(
+        result.coverage.entry('android.artifacts')!.status,
+        CoverageStatus.notScanned,
+      );
+      expect(
+        result.coverage.entry('android.loadGraph')!.status,
+        CoverageStatus.notScanned,
+      );
     });
 
     test('DEX 结构不可信时结构维度降级为 partial，不是 covered', () {
@@ -454,14 +575,16 @@ void main() {
       expect(text, isNot(contains(t.coverage.all_covered)));
     });
 
-    test('coverageStatusText 覆盖四态且互不相同', () {
+    test('coverageStatusText 覆盖六态且互不相同', () {
       final texts = [
         for (final status in CoverageStatus.values)
           AnalysisReport.coverageStatusText(status, t),
       ];
 
-      expect(texts.toSet(), hasLength(4), reason: '四态必须能分开渲染');
+      expect(texts.toSet(), hasLength(6), reason: '六态必须能分开渲染');
       expect(texts, contains(t.coverage.not_applicable));
+      expect(texts, contains(t.coverage.not_scanned));
+      expect(texts, contains(t.coverage.failed));
     });
 
     test('没有 coverage 时 summary 不崩、返回「没有缺口」', () {
@@ -670,6 +793,12 @@ void main() {
       'failed': 1,
       'path': 'assets/x',
       'size': 64,
+      'cryptid': 1,
+      'probed': 2,
+      'nodes': 3,
+      'edges': 4,
+      'covered': 2,
+      'audited': 2,
     };
 
     CoverageEntry entryWith(String code) => CoverageEntry(

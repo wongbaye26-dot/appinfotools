@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V3 · 08 状态与浮层</title>
+<link rel="stylesheet" href="../assets/v3.css">
+<style>
+  .state-box .btn { height: 27px; padding: 0 10px; margin: 0 3px; font-size: 9px; }
+  .state-box .chip { height: 18px; font-size: 7.5px; padding: 0 6px; }
+  .dialog-stage { padding: 11px; }
+  .modal .opt { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .modal .opt > div { border: 1px solid var(--line-2); border-radius: 4px; padding: 7px 8px; font-size: 8.5px; color: var(--ink-2); }
+  .modal .opt > div.active { border-color: #3d5523; background: #16210f; color: var(--lime); }
+  .modal .opt small { display: block; color: var(--muted); font-size: 7.5px; margin-top: 2px; }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 9px; }
+  .rename-table { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  .rename-row { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 8px; }
+  .rename-row:first-child { border-top: 0; }
+  .rename-row.head { color: var(--muted); font-size: 7.5px; letter-spacing: .08em; }
+  .rename-row .new { color: var(--lime); }
+</style>
+</head>
+<body class="app" data-nav="analysis" data-window-title="AppInfoTool — 状态与浮层" data-crumb="DESIGN SYSTEM / STATES" data-state="EMPTY / LOADING / PARTIAL / FAILURE" data-status-left="STATES · FAILURE NEVER RENDERS DETAILS" data-status-right="1440×1024 · PROTOTYPE">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div class="page-head-main">
+          <div class="kicker">DESIGN SYSTEM <span class="slash">/</span> <b>STATES &amp; OVERLAYS</b></div>
+          <h1>状态与对话框</h1>
+          <p class="page-sub" style="font-size:10px;color:var(--muted);">解析页必须让“未加载、加载中、部分结果、失败”一眼可辨；失败不渲染无意义详情。</p>
+        </div>
+        <div class="page-actions"><span class="chip mono">COMPONENT SPEC · V3</span></div>
+      </header>
+
+      <div class="states-grid">
+        <section class="card state-card">
+          <div class="state-head"><b>EMPTY</b><span>· 未选择文件</span><span class="chip">GUIDE</span></div>
+          <div class="state-stage"><div class="state-box"><div class="state-ico"><svg class="ic"><use href="#i-upload"/></svg></div><h3>还没有打开安装包</h3><p>拖入 APK / IPA，或从本地选择。解析全程在本机完成。</p><button class="btn primary"><svg class="ic"><use href="#i-folder"/></svg>选择文件</button></div></div>
+        </section>
+
+        <section class="card state-card">
+          <div class="state-head"><b>LOADING</b><span>· 解析中</span><span class="chip amber">可取消</span></div>
+          <div class="state-stage"><div class="state-box"><div class="spinner"></div><h3>正在解析 Aurora Notes</h3><p>读取 DEX 与资源表… 62%</p><div class="bar"><span></span></div><button class="btn">取消解析</button></div></div>
+        </section>
+
+        <section class="card state-card">
+          <div class="state-head"><b>PARTIAL</b><span>· 部分结果</span><span class="chip amber">覆盖缺口</span></div>
+          <div class="state-stage" style="display:block;padding-top:0;"><div class="partial-strip"><svg class="ic"><use href="#i-alert"/></svg><span>21 / 64 个 payload 候选未探测；以下结论置信度已降低。</span></div><div class="state-box" style="max-width:none;text-align:left;padding:12px;"><div style="display:flex;gap:5px;flex-wrap:wrap;"><span class="chip lime">清单完整</span><span class="chip amber">payload 部分</span><span class="chip">签名已验证</span></div><p style="margin-top:8px;">仍可查看已确认的结构与发现；缺口会单独列出。</p><button class="btn small">查看覆盖详情</button></div></div>
+        </section>
+
+        <section class="card state-card">
+          <div class="state-head"><b>FAILURE</b><span>· 失败</span><span class="chip red">不渲染详情</span></div>
+          <div class="state-stage"><div class="state-box"><div class="state-ico" style="color:var(--red);border-color:#5d2a26;background:#1d1210;"><svg class="ic"><use href="#i-alert"/></svg></div><h3>无法解析这个安装包</h3><p>文件可能损坏，或不是有效的 APK / IPA。<br>原始错误：EOCD not found</p><button class="btn primary">重试</button><button class="btn">选择其他文件</button></div></div>
+        </section>
+      </div>
+
+      <div class="dialog-grid">
+        <section class="card dialog-card">
+          <div class="state-head"><b>EXPORT REPORT</b><span>· 导出报告</span><span class="chip">MD / JSON</span></div>
+          <div class="dialog-stage"><div class="modal">
+            <h3>导出解析报告</h3><p>选择格式与范围，导出后可离线保存或附在工单里。</p>
+            <div class="opt"><div class="active">Markdown<small>适合阅读与粘贴</small></div><div>JSON<small>适合自动化</small></div><div class="active">完整报告<small>包含所有字段与证据</small></div><div>仅安全检测<small>只含 security 节点</small></div></div>
+            <p style="margin-bottom:0;font-size:7.5px;">文件不会上传；导出包含本次解析的诊断信息。</p>
+            <div class="actions"><button class="btn">取消</button><button class="btn primary">导出…</button></div>
+          </div></div>
+        </section>
+
+        <section class="card dialog-card">
+          <div class="state-head"><b>BATCH RENAME</b><span>· 批量重命名</span><span class="chip">PREVIEW FIRST</span></div>
+          <div class="dialog-stage"><div class="modal">
+            <h3>批量重命名 · 3 个文件</h3><p>按应用名 + 版本生成；冲突会自动追加序号，不会覆盖已有文件。</p>
+            <div class="rename-table">
+              <div class="rename-row head"><span>当前文件名</span><span>新文件名</span></div>
+              <div class="rename-row"><span>217_091915.apk</span><span class="new">Aurora Notes-3.20.0.apk</span></div>
+              <div class="rename-row"><span>SUN.ipa</span><span class="new">SUN-1.8.3.ipa</span></div>
+              <div class="rename-row"><span>notes-old.apk</span><span class="new">Aurora Notes-2.9.0.apk</span></div>
+            </div>
+            <div class="actions"><button class="btn">取消</button><button class="btn primary">重命名 3 个文件</button></div>
+          </div></div>
+        </section>
+      </div>
+      <div class="footnote"><span>V3 / SIGNAL ROOM · STATES &amp; OVERLAYS</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

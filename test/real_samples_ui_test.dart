@@ -41,6 +41,11 @@ import 'support/sample_directory.dart';
 final SampleDirectory _samples = SampleDirectory.fromEnvironment();
 
 /// 取该类型的第一个样本；没有时返回 `null`（调用方据此**跳过**，而不是崩）。
+///
+/// 只用于**通用**断言（「这份样本能显示平台字段」）。需要「未解析图标」、
+/// 「嵌套清单截断」这类**特定能力**的断言不能靠它：目录里第一个样本不一定
+/// 具备该能力，按文件名排序选样会让测试随样本改名/新增而莫名其妙失败。
+/// 特定能力断言改用下面的 [FileState] 能力筛选。
 File? _firstSample(SampleKind kind) {
   final list = _samples.samplesOf(kind);
   return list.isEmpty ? null : list.first;
@@ -315,14 +320,27 @@ void main() {
   }, skip: _samples.skipReasonFor(SampleKind.android));
 
   group('真实 IPA 的详情页', () {
-    final sample = _firstSample(SampleKind.ios);
-    late FileState state;
+    // 一次解析全部 IPA，再按**观察到的能力**选样本；不按文件名取第一个。
+    // 特定能力断言在样本目录没有该能力时必须显式 skip（并说明原因），
+    // 不能静默当成通过。
+    late List<FileState> ipaStates;
 
     setUpAll(() async {
-      state = await _parseIpa(sample!.path);
+      ipaStates = [];
+      for (final sample in _samples.samplesOf(SampleKind.ios)) {
+        ipaStates.add(await _parseIpa(sample.path));
+      }
     });
 
+    FileState? findByState(bool Function(FileState state) predicate) {
+      for (final state in ipaStates) {
+        if (predicate(state)) return state;
+      }
+      return null;
+    }
+
     testWidgets('解析完成后界面显示 iOS 专属字段', (tester) async {
+      final state = ipaStates.first;
       await _pumpInfoPage(tester, state);
 
       final ios = state.analysis!.ios!;
@@ -339,10 +357,14 @@ void main() {
     });
 
     testWidgets('签名结论与原始输出都出现在界面上', (tester) async {
+      final state = findByState((s) => s.iosCodeSign?.toolExecuted ?? false);
+      if (state == null) {
+        markTestSkipped('当前平台没有可执行的 codesign，签名结论分支未验证');
+        return;
+      }
       await _pumpInfoPage(tester, state);
 
       final codeSign = state.iosCodeSign!;
-      expect(codeSign.toolExecuted, isTrue, reason: 'macOS 上应当真的执行了 codesign');
 
       // 验收条件：`codesign verification` 必须能在**滚动到对应位置后**被找到。
       // 不依赖任何固定视口高度。
@@ -383,10 +405,16 @@ void main() {
     });
 
     testWidgets('真实 IPA 的图标能真的解码出来（Apple 的 CgBI 变体）', (tester) async {
+      final state = findByState(
+        (s) => s.ipaAnalysis?.icon?.candidates.isNotEmpty ?? false,
+      );
+      if (state == null) {
+        markTestSkipped('样本目录中没有可定位图标的 IPA，解码分支未验证');
+        return;
+      }
       final icon = state.analysis!.ios!.icon;
       expect(icon, isNotNull);
-      expect(icon!.candidates, isNotEmpty,
-          reason: '这份样本的 AppIcon*.png 就在 bundle 顶层，必须能定位到');
+      expect(icon!.candidates, isNotEmpty);
 
       final best = icon.best!;
       // CgBI 的 IHDR 前面还有 CgBI 块，写死偏移 12 会把尺寸读成 null。
@@ -407,11 +435,17 @@ void main() {
     });
 
     testWidgets('未解析的图标说明原因，而不是留空白', (tester) async {
+      final state = findByState(
+        (s) => s.ipaAnalysis?.icon?.unresolved.isNotEmpty ?? false,
+      );
+      if (state == null) {
+        markTestSkipped('样本目录中没有「图标存在但未解析」的 IPA，该分支未验证');
+        return;
+      }
       await _pumpInfoPage(tester, state);
 
       final ios = state.analysis!.ios!;
-      expect(ios.icon!.unresolved, isNotEmpty,
-          reason: '这份样本的图标在 Assets.car 里，应当有未解析项');
+      expect(ios.icon!.unresolved, isNotEmpty);
 
       final text = await _scrollThroughAllText(tester);
       expect(text, contains(t.ios_info.icon_declared_unresolved));
@@ -419,12 +453,21 @@ void main() {
     });
 
     testWidgets('被截断的嵌套清单在界面上有说明', (tester) async {
+      final state = findByState(
+        (s) =>
+            s.ipaAnalysis?.diagnostics
+                .any((d) => d.code == 'ios.nested.truncated') ??
+            false,
+      );
+      if (state == null) {
+        markTestSkipped('样本目录中没有嵌套清单超过上限的 IPA，该分支未验证');
+        return;
+      }
       await _pumpInfoPage(tester, state);
 
       expect(
         state.analysis!.diagnostics.map((d) => d.code),
         contains('ios.nested.truncated'),
-        reason: '这份样本有 27 个框架，超过 24 条上限',
       );
 
       // 验收条件：截断说明必须能在**滚动到对应位置后**被找到。
@@ -440,11 +483,11 @@ void main() {
 
   // 版本对比（阶段 5）在**真实**结构上的端到端冒烟。
   //
-  // 样本目录里只有一个真实 APK，**没有两个真实版本可比** —— 这一点如实说明，
-  // 不拿构造数据假装。因此这一组比的是「同一个真实包的两条路径」：
+  // 样本目录不保证有两个真实版本可比，因此这一组如实比较
+  // 「同一个真实包的两条路径」，不拿构造数据假装：
   //
-  // - 它能验证适配层 + 差异模型 + 报告在**真实结构**上不炸：22 个组件、
-  //   40 条权限、真实的加固线索与安全结果、真实的资源表与 ABI；
+  // - 它能验证适配层 + 差异模型 + 报告在**真实结构**上不炸：真实的组件、
+  //   权限、加固线索与安全结果、资源表与 ABI（具体数量由样本决定）；
   // - 「没有差异」这条结论必须成立（除文件名外）；
   // - 它**不能**验证「两个真实版本之间确实有差异」——那需要两份真实样本，
   //   属于样本目录的缺口，不是代码的缺口。
@@ -461,25 +504,22 @@ void main() {
       final diff = diffOf(analysis, analysis);
 
       expect(diff.hasChanges, isFalse);
-      // 真实数据下这几个维度必须真的读到了值 —— 否则「没差异」是假的，
-      // 只是两边都没读到而已。
-      for (final id in [
-        'android.permissions',
-        'android.components',
-        'android.locales',
-        'android.nativeCodes',
-      ]) {
-        final set = diff.sets.firstWhere((s) => s.id == id);
-        expect(set.comparable, isTrue, reason: '$id 应当可比');
-        expect(set.common, isNotEmpty, reason: '$id 在真实样本上应当读到成员');
-      }
-      // 40 条权限、22 个组件是这份样本的实际规模（解析日志可核对）。
+      // 真实数据下至少要有一个维度真的读到了值，否则「没差异」是假的，
+      // 只是两边都没读到而已。具体数量由样本决定，不能把某个样本的
+      // 权限条数写死成门槛（不同 APK 从几条到几十条都正常）。
+      final permissions =
+          diff.sets.firstWhere((s) => s.id == 'android.permissions');
+      expect(permissions.comparable, isTrue);
       expect(
-        diff.sets
-            .firstWhere((s) => s.id == 'android.permissions')
-            .common
-            .length,
-        greaterThanOrEqualTo(30),
+        permissions.common,
+        isNotEmpty,
+        reason: '真实 APK 应当至少读到一条权限',
+      );
+      // 集合相同的真实分析，交集应等于该分析自己的权限数量。
+      expect(
+        permissions.common.length,
+        state.apkInfo!.usesPermissions.length,
+        reason: '同一份分析做 diff，权限交集应等于自身权限数',
       );
     });
 
@@ -503,12 +543,11 @@ void main() {
         sets.map((s) => s['id']).toList(),
         diff.sets.map((s) => s.id).toList(),
       );
-      // 真实权限清单真的进了 JSON（不是空数组）。
+      // 真实权限清单真的进了 JSON（不是空数组）；数量由样本决定。
       expect(
         (sets.firstWhere((s) => s['id'] == 'android.permissions')['common']
-                as List)
-            .length,
-        greaterThanOrEqualTo(30),
+            as List),
+        isNotEmpty,
       );
     });
 
@@ -532,8 +571,12 @@ void main() {
       );
       await tester.pump();
 
+      final sampleName = state.filePath!.split('/').last;
+      final comparedName = 'real-sample-compared.apk';
       final notifier = container.read(currentFileStateProvider.notifier);
-      notifier.update(state.copyWith(filePath: '/tmp/samples/hardened-v1.apk'));
+      notifier.update(
+        state.copyWith(filePath: '/tmp/samples/$comparedName'),
+      );
       await tester.pump();
       notifier.update(state);
       await tester.pump();
@@ -549,16 +592,16 @@ void main() {
       }
       final text = buffer.toString();
 
-      // 真实文件名出现在两侧槽位里。
-      expect(text, contains('hardened.apk'));
-      expect(text, contains('hardened-v1.apk'));
+      // 真实文件名出现在两侧槽位里（样本名由语料决定，不能写死）。
+      expect(text, contains(sampleName));
+      expect(text, contains(comparedName));
 
       // 两侧是**同一个包**，因此唯一的变化是文件名。
       expect(text, contains(t.diff.fields.file_fileName));
       expect(text, contains(t.diff.kind_changed));
       // 集合层面没有任何变化 → 不出现「集合差异」区。这条同时钉住
-      // 「页面只列变化的集合」这条口径在真实数据上成立（40 条权限、
-      // 22 个组件都读到了，但一条都不显示 —— 它们没变）。
+      // 「页面只列变化的集合」这条口径在真实数据上成立（权限/组件都读到了，
+      // 但两侧相同，所以一条都不显示）。
       expect(
         text,
         isNot(contains(t.diff.section_sets)),

@@ -20,6 +20,7 @@ class IosCryptoTheftChain {
     PayloadProbeResult? payloadProbe,
     SealCheck? seal,
     BaselineMatch? baseline,
+    bool encryptedBinary = false,
   }) {
     final wallet = signals.hitsOf(walletSdkMarkers);
     final key = signals.hitsOf(keyMaterialMarkers);
@@ -63,12 +64,14 @@ class IosCryptoTheftChain {
     final coverageIncomplete =
         (payloadProbe != null && !payloadProbe.complete) ||
             (loadGraph != null && !loadGraph.complete) ||
-            (artifacts != null && !artifacts.entriesComplete);
+            (artifacts != null && !artifacts.entriesComplete) ||
+            encryptedBinary;
 
     final blindSpots = <String>[
       if (payloadProbe != null && !payloadProbe.complete) 'payloadUnavailable',
       if (loadGraph != null && !loadGraph.complete) 'artifactsPartial',
       if (artifacts != null && !artifacts.entriesComplete) 'artifactsPartial',
+      if (encryptedBinary) 'encryptedBinary',
     ];
 
     // 中文话术只作为「来源」段的线索，命中原文进证据。

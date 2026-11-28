@@ -98,6 +98,27 @@ class SystemThumbnailStatus {
       registeredPath.isNotEmpty &&
       dllPath.isNotEmpty &&
       registeredPath != dllPath;
+
+  /// 是否拿到了真实状态（而不是 `unknown()` / 通道异常后的退化值）。
+  ///
+  /// 原生 `getStatus` 在 Windows 上一定会填 DLL 路径；路径为空说明没查到，
+  /// 不能把「没查到」当成「已经停用」。
+  bool get isKnown => dllPath.isNotEmpty;
+}
+
+/// 点一次「启用 / 停用」之后，界面应该按哪种结果提示。
+enum ThumbnailToggleOutcome {
+  /// 从不可用变成可用（或者已经把 HKCU 注册指向当前 DLL）。
+  enabled,
+
+  /// 停用成功，HKCU 和 HKLM 都没有残留。
+  disabled,
+
+  /// 停用了本应用的 HKCU 项，但机器级 HKLM 注册还在；Explorer 可能继续调用。
+  disabledMachineWide,
+
+  /// 操作失败，或查不到真实状态。
+  failed,
 }
 
 /// Windows「系统文件图标」的管理入口。
@@ -157,10 +178,11 @@ class SystemThumbnailManager {
     }
   }
 
-  /// 启动时调用：只在**确实需要**时写注册表。
+  /// 显式注册的辅助入口（当前启动路径**不再调用**）。
   ///
-  /// 不无脑 [register]：每次启动重写一遍没必要，也会把「用户已停用」这件事
-  /// 搅浑 —— 那个状态由 `Config.systemIconEnabled` 在调用方判断。
+  /// P1-7 之后只有设置页的「启用」会写注册表；这里保留纯判据，供测试和
+  /// 未来的显式操作复用，避免「启动时顺手注册」又悄悄回来。
+  /// 不无脑 [register]：已指向当前 DLL 时重写没必要。
   static Future<SystemThumbnailStatus> ensureRegistered() async {
     final status = await getStatus();
     if (!needsRegistration(status)) return status;
@@ -190,6 +212,33 @@ class SystemThumbnailManager {
     } on MissingPluginException {
       return const SystemThumbnailStatus.unknown();
     }
+  }
+
+  /// 把「操作前的状态 + 操作后的真实状态」归类成诚实的结果。
+  ///
+  /// 纯函数，便于在非 Windows 上单测；设置页只负责按结果选文案。
+  /// 判据：
+  /// - 查不到真实状态 → failed，绝不当作停用成功；
+  /// - 启用的唯一成功条件是 `usable == true`；
+  /// - 停用后只要还有 HKLM 注册，就不能说「已停用」，因为 Explorer 仍会调用；
+  /// - 停用后 HKCU 还指向当前 DLL（`registered == true`）→ failed。
+  static ThumbnailToggleOutcome classifyToggle({
+    required bool wasUsable,
+    required SystemThumbnailStatus status,
+  }) {
+    if (!status.isKnown) return ThumbnailToggleOutcome.failed;
+    if (!wasUsable) {
+      return status.usable
+          ? ThumbnailToggleOutcome.enabled
+          : ThumbnailToggleOutcome.failed;
+    }
+    if (status.machineWideRegistered) {
+      return ThumbnailToggleOutcome.disabledMachineWide;
+    }
+    if (status.registered || status.usable) {
+      return ThumbnailToggleOutcome.failed;
+    }
+    return ThumbnailToggleOutcome.disabled;
   }
 
   /// 通知 Shell「关联变了」。

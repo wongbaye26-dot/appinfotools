@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V4 · 08 状态与浮层</title>
+<link rel="stylesheet" href="../assets/v4.css">
+<style>
+  .state-card{min-height:190px}
+  .state-stage{margin:8px}
+  .state-box{padding:8px}
+  .state-box .btn{height:26px}
+  .dialog-card{min-height:250px}
+  .dialog-stage{padding:8px}
+</style>
+</head>
+<body class="app" data-nav="analysis" data-crumb="DESIGN SYSTEM / STATES &amp; OVERLAYS" data-state="EMPTY / LOADING / PARTIAL / FAILURE" data-window-title="AppInfoTool — 状态与浮层">
+  <main class="main">
+    <div class="page">
+      <header class="page-head" style="margin-bottom:12px">
+        <div>
+          <div class="page-kicker">DESIGN SYSTEM <span>/</span> <b>STATES &amp; OVERLAYS</b></div>
+          <h1 class="page-title">状态与对话框</h1>
+          <p class="page-sub">解析页必须让“未加载、加载中、部分结果、失败”一眼可辨；失败不渲染无意义详情。</p>
+        </div>
+        <div class="page-actions"><span class="chip plain">COMPONENT SPEC · V4</span></div>
+      </header>
+
+      <div class="states-grid" style="margin-bottom:12px">
+        <section class="card state-card">
+          <div class="state-head"><b>EMPTY</b>· 未选择文件<span class="chip plain">GUIDE</span></div>
+          <div class="state-stage">
+            <div class="state-box">
+              <div class="state-ico"><svg class="ic"><use href="#i-upload"/></svg></div>
+              <h3>还没有打开安装包</h3>
+              <p>拖入 APK / IPA，或从本地选择。解析全程在本机完成。</p>
+              <button class="btn grad">选择文件</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card state-card">
+          <div class="state-head"><b>LOADING</b>· 解析中<span class="chip plain">可取消</span></div>
+          <div class="state-stage">
+            <div class="state-box">
+              <div class="spinner"></div>
+              <h3>正在解析 Aurora Notes</h3>
+              <p>读取 DEX 与资源表… 62%</p>
+              <div class="bar"><i></i></div>
+              <button class="btn">取消解析</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card state-card">
+          <div class="state-head"><b>PARTIAL</b>· 部分结果<span class="chip amber">覆盖缺口</span></div>
+          <div class="state-stage" style="align-items:flex-start">
+            <div style="width:100%;position:relative;z-index:1">
+              <div class="partial-strip"><svg class="ic"><use href="#i-alert"/></svg><span>21 / 64 个 payload 候选未探测；以下结论置信度已降低。</span></div>
+              <div class="state-box" style="max-width:none;text-align:left;padding:10px 12px 4px">
+                <div style="display:flex;gap:5px;flex-wrap:wrap"><span class="chip mint">清单完整</span><span class="chip amber">payload 部分</span><span class="chip">签名已验</span></div>
+                <p style="margin-top:7px">仍可查看已确认的结构与发现；缺口会单独列出。</p>
+                <button class="btn">查看覆盖详情</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card state-card">
+          <div class="state-head"><b>FAILURE</b>· 失败<span class="chip danger">不渲染详情</span></div>
+          <div class="state-stage">
+            <div class="state-box">
+              <div class="state-ico" style="color:var(--danger);border-color:rgba(217,58,85,.25);background:var(--danger-soft)"><svg class="ic"><use href="#i-alert"/></svg></div>
+              <h3>无法解析这个安装包</h3>
+              <p>文件可能损坏，或不是有效的 APK / IPA。原始错误：EOCD not found</p>
+              <button class="btn grad">重试</button><button class="btn">选择其他文件</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="dialog-grid" style="flex:1;min-height:0">
+        <section class="card dialog-card">
+          <div class="state-head"><b>EXPORT REPORT</b>· 导出报告<span class="chip plain">MD / JSON</span></div>
+          <div class="dialog-stage">
+            <div class="modal">
+              <h3>导出解析报告</h3>
+              <p>选择格式与范围，导出后可离线保存或附在工单里。</p>
+              <div class="opt-grid">
+                <div class="opt active">Markdown<small>适合阅读与粘贴</small></div>
+                <div class="opt">JSON<small>适合自动化</small></div>
+                <div class="opt active">完整报告<small>包含所有字段与证据</small></div>
+                <div class="opt">仅安全检测<small>只含 security 节点</small></div>
+              </div>
+              <p style="margin-bottom:0">文件不会上传；导出包包含本次解析的诊断信息。</p>
+              <div class="modal-actions"><button class="btn">取消</button><button class="btn grad">导出…</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card dialog-card">
+          <div class="state-head"><b>BATCH RENAME</b>· 批量重命名<span class="chip plain">PREVIEW FIRST</span></div>
+          <div class="dialog-stage">
+            <div class="modal">
+              <h3>批量重命名 · 3 个文件</h3>
+              <p>按应用名 + 版本生成；冲突会自动追加序号，不会覆盖已有文件。</p>
+              <div class="rename-table">
+                <div class="rename-row"><span>当前文件名</span><span>新文件名</span></div>
+                <div class="rename-row"><span>217_091915.apk</span><span class="new">Aurora Notes-3.20.0.apk</span></div>
+                <div class="rename-row"><span>SUN.ipa</span><span class="new">SUN-1.8.3.ipa</span></div>
+                <div class="rename-row"><span>notes-old.apk</span><span class="new">Aurora Notes-2.9.0.apk</span></div>
+              </div>
+              <div class="modal-actions"><button class="btn">取消</button><button class="btn grad">重命名 3 个文件</button></div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="footnote"><span>V4 / PAPER &amp; SIGNAL · STATES &amp; OVERLAYS</span><span>NEVER RENDER DETAILS ON FAILURE · 1440×1024</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

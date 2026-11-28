@@ -2,11 +2,12 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/report_exporter.dart';
+import 'package:apk_info_tool/utils/report_extras.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
 /// 导出格式。
-enum ExportFormat { markdown, json }
+enum ExportFormat { markdown, json, html }
 
 /// 导出范围。
 enum ExportScope { full, securityOnly }
@@ -17,9 +18,14 @@ enum ExportScope { full, securityOnly }
 class ExportReportDialog extends StatefulWidget {
   final PackageAnalysisResult analysis;
 
+  /// 安装包路径。给了才能把「库识别」写进报告（需要重新读 DEX / 原生库）；
+  /// 为 `null` 时报告退回不含库识别的旧结构，不会假装「没有 SDK」。
+  final String? archivePath;
+
   const ExportReportDialog({
     super.key,
     required this.analysis,
+    this.archivePath,
   });
 
   @override
@@ -34,6 +40,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
   String get _fileExtension => switch (_format) {
         ExportFormat.markdown => 'md',
         ExportFormat.json => 'json',
+        ExportFormat.html => 'html',
       };
 
   String get _suggestedFileName {
@@ -53,18 +60,40 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
     // 范围选择必须真的生效：早先 `_scope` 只影响了建议文件名，
     // 用户选「仅安全检测」仍然会导出一整份报告。
     final securityOnly = _scope == ExportScope.securityOnly;
+
+    // 权限分级与库识别是异步的，而报告渲染是纯函数 —— 先采集再渲染。
+    // 采集失败只让这两块缺席，不影响报告本体。
+    ReportExtras? extras;
+    try {
+      extras = await ReportExtras.collect(
+        result: widget.analysis,
+        archivePath: widget.archivePath,
+      );
+    } catch (error) {
+      debugPrint('ExportReportDialog: 采集报告补充数据失败: $error');
+    }
+
     final content = switch (_format) {
       ExportFormat.markdown => AnalysisReport.render(
           widget.analysis,
           t,
           generatedAt: now,
           securityOnly: securityOnly,
+          extras: extras,
         ),
       ExportFormat.json => AnalysisReport.renderJson(
           widget.analysis,
           generatedAt: now,
           t: t,
           securityOnly: securityOnly,
+          extras: extras,
+        ),
+      ExportFormat.html => AnalysisReport.renderHtml(
+          widget.analysis,
+          t,
+          generatedAt: now,
+          securityOnly: securityOnly,
+          extras: extras,
         ),
     };
 
@@ -103,7 +132,7 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
         ],
       ),
       content: SizedBox(
-        width: 400,
+        width: 440,
         child: _exporting
             ? Column(
                 mainAxisSize: MainAxisSize.min,
@@ -139,6 +168,11 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                         value: ExportFormat.json,
                         label: Text('JSON'),
                         icon: Icon(Icons.code),
+                      ),
+                      ButtonSegment(
+                        value: ExportFormat.html,
+                        label: Text('HTML'),
+                        icon: Icon(Icons.language),
                       ),
                     ],
                     selected: {_format},
@@ -193,12 +227,9 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest
-                          .withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: theme.dividerColor.withValues(alpha: 0.15),
-                      ),
+                      color: colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colorScheme.outlineVariant),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

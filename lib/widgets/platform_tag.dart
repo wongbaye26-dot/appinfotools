@@ -1,4 +1,5 @@
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/theme/v4_theme.dart';
 import 'package:flutter/material.dart';
 
 /// 平台标签：文字 + 颜色的小徽章。
@@ -45,9 +46,9 @@ class PlatformTag extends StatelessWidget {
   /// 标签颜色。
   static Color colorOf(PackagePlatform platform, ThemeData theme) =>
       switch (platform) {
-        PackagePlatform.android => Colors.green,
-        PackagePlatform.ios => Colors.grey,
-        PackagePlatform.unknown => theme.hintColor,
+        PackagePlatform.android => V4Colors.mint,
+        PackagePlatform.ios => V4Colors.blue,
+        PackagePlatform.unknown => theme.colorScheme.onSurfaceVariant,
       };
 
   @override
@@ -56,11 +57,11 @@ class PlatformTag extends StatelessWidget {
     final color = colorOf(platform, theme);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Text(
         labelOf(platform),

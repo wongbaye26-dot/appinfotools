@@ -192,26 +192,16 @@ Root: HKA; Subkey: "Software\Classes\AppInfoTool.apkm\shell\open\command"; Value
 Root: HKA; Subkey: "Software\Classes\.apkm\OpenWithProgids"; ValueType: string; ValueName: "AppInfoTool.apkm"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\.apkm"; ValueType: string; ValueName: ""; ValueData: "AppInfoTool.apkm"; Flags: uninsdeletevalue; Tasks: associate
 
-; 缩略图处理器（`IThumbnailProvider`）。
+; 缩略图处理器（`IThumbnailProvider`）——安装器**不再默认注册**。
 ;
-; **没有这一段，资源管理器只会用上面写的 `DefaultIcon`** —— 也就是应用自己的
-; 图标，于是所有 .apk / .ipa 长得一模一样。注册了处理器，Explorer 才会去问
-; `appinfotool_thumbnail.dll` 要「这个包自己的图标」。
+; 按 P1-7：缩略图登记会往 HKCU 写 CLSID/ShellEx，属于往系统里装东西，安装时
+; 不能在用户不知情时发生。新安装默认关闭；用户必须在应用「设置 → 系统文件
+; 图标」里显式点「启用」才会写注册表。这里保留说明，不保留任何 `[Registry]`
+; 写入行。
 ;
-; CLSID 必须与 `windows/thumbnail/thumbnail_provider.cpp` 的
-; `kThumbnailProviderClsid` 一致；ShellEx 下的那个 GUID 是
-; `IID_IThumbnailProvider`（`{E357FCCD-…-234630154E96}`，注释里不用转义）。
-; 这里**只写 HKCU**：应用停用/启用也只操作 HKCU，装成 HKLM 会导致「应用说已停用、Explorer 仍在调用」。
-; 应用自己启动时也会写一份 HKCU（便携版靠它），两边指向同一个 DLL。
-;
-; **GUID 必须写成 `{{...}`**：Inno 把参数值里的 `{` 当成常量起始，
-; 单个 `{9C4A7E52-…}` 会被解析成「未知常量」（编译报
-; `Unknown constant "9C4A7E52-…"`）。`{{` 才是字面量 `{`。
-Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; ValueType: string; ValueName: ""; ValueData: "AppInfoTool thumbnail provider"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: ""; ValueData: "{app}\appinfotool_thumbnail.dll"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}\InprocServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\.apk\ShellEx\{{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Classes\.ipa\ShellEx\{{E357FCCD-A995-4576-B01F-234630154E96}"; ValueType: string; ValueName: ""; ValueData: "{{9C4A7E52-3B7D-4E31-9A4C-6D2F8B1E5A70}"; Flags: uninsdeletevalue
+; 旧版本（<=2.10.6）安装器写过这些 HKCU 键。升级安装不会自动删除它们：
+; 那些用户仍会看到缩略图，直到在设置页点「停用」，或手工清理。
+; 这是有意的保守选择——静默删除用户已有的 UI 集成同样是一种未经同意的系统变更。
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

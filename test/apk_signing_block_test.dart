@@ -296,5 +296,31 @@ void main() {
       final schemes = _parse('test/fixtures/apk/signed-v1-only.apk');
       expect(schemes.signingCertificate, isNull);
     });
+
+    test('v2/v3 两个方案各留一份证书，DER 完全相同', () {
+      final schemes = _parse('test/fixtures/apk/signed-v2-v3.apk');
+      final certificates = schemes.certificates;
+
+      expect(certificates, isNotEmpty);
+      // 夹具是 apksigner 一次签出来的：v2、v3 用同一张证书，所以这里应当
+      // 是两份记录、同一个指纹。按方案去重会掩盖「某一方案没带证书」，
+      // 因此故意保留重复。
+      expect(
+        certificates.map((c) => c.scheme).toSet(),
+        containsAll(<String>['v2', 'v3']),
+      );
+      expect(certificates.every((c) => c.signerIndex == 0), isTrue);
+      expect(
+        certificates.map((c) => sha256.convert(c.der).toString()).toSet(),
+        hasLength(1),
+        reason: '同一张证书，只是被两个方案各签了一次',
+      );
+      expect(certificates.first.der, schemes.signingCertificate);
+    });
+
+    test('只有 v1 签名时完整证书链为空', () {
+      expect(
+          _parse('test/fixtures/apk/signed-v1-only.apk').certificates, isEmpty);
+    });
   });
 }

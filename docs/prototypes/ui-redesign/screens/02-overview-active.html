@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>02 · 概览 / 已打开文件</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+</head>
+<body class="app" data-nav="overview" data-window-title="AppInfoTool — 概览" data-window-state="Aurora Notes · 已解析">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">工作台 <span class="sep">/</span> 概览</div>
+          <h1>概览</h1>
+          <p>当前文件的关键结构、安全线索与最近记录。</p>
+        </div>
+        <div class="actions">
+          <button class="btn"><svg class="ic"><use href="#i-compare"/></svg>批量重命名</button>
+          <button class="btn"><svg class="ic"><use href="#i-folder"/></svg>打开文件</button>
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-scan"/></svg>查看详情</button>
+        </div>
+      </header>
+
+      <section class="card current-card">
+        <div class="current-main">
+          <div class="app-tile">A</div>
+          <div style="min-width:0;">
+            <div class="current-title">Aurora Notes</div>
+            <div class="current-package">com.aurora.notes · 3.20.0 (320)</div>
+            <div class="current-chips">
+              <span class="chip green"><svg class="ic"><use href="#i-android"/></svg>Android</span>
+              <span class="chip">arm64-v8a · armeabi-v7a</span>
+              <span class="chip">minSdk 24 · target 36</span>
+              <span class="chip amber">Debuggable</span>
+            </div>
+            <div class="current-actions">
+              <button class="btn small"><svg class="ic"><use href="#i-layers"/></svg>13 个标签页</button>
+              <button class="btn small"><svg class="ic"><use href="#i-terminal"/></svg>查看诊断</button>
+            </div>
+          </div>
+        </div>
+        <div class="current-side">
+          <div class="security-kicker"><svg class="ic" style="width:13px;height:13px"><use href="#i-alert"/></svg>静态安全线索</div>
+          <div class="security-number"><b>17</b><span>项发现 · 3 项需优先复核</span></div>
+          <div class="severity-bars">
+            <div class="sev"><b>3</b>需优先</div>
+            <div class="sev"><b>7</b>可复核</div>
+            <div class="sev"><b>7</b>提示</div>
+          </div>
+          <div class="security-side-note">覆盖 11 / 13 个维度 · 2 个缺口已标注</div>
+        </div>
+      </section>
+
+      <section class="metric-grid">
+        <div class="card metric"><div><div class="v">10</div><div class="k">权限</div></div><svg class="ic"><use href="#i-shield"/></svg></div>
+        <div class="card metric"><div><div class="v">18</div><div class="k">组件</div></div><svg class="ic"><use href="#i-grid"/></svg></div>
+        <div class="card metric"><div><div class="v">1</div><div class="k">DEX 文件</div></div><svg class="ic"><use href="#i-file"/></svg></div>
+        <div class="card metric"><div><div class="v">2</div><div class="k">原生库</div></div><svg class="ic"><use href="#i-box"/></svg></div>
+      </section>
+
+      <section class="card recent-card">
+        <div class="card-head" style="padding:17px 18px 12px; margin-bottom:0; border-bottom:1px solid var(--line);">
+          <div><div class="card-title">最近文件</div><div class="card-sub">本地缓存，不会上传。</div></div>
+          <button class="btn small ghost">管理</button>
+        </div>
+        <div class="recent-list">
+          <div class="recent-row">
+            <div class="file-cell"><div class="file-icon">APK</div><div style="min-width:0"><div class="file-name">Aurora Notes · 3.20.0</div><div class="file-meta">com.aurora.notes · 18.4 MB</div></div></div>
+            <div><span class="chip green">Android</span></div>
+            <div class="recent-time">今天 14:32</div>
+            <button class="btn icon small" aria-label="更多"><svg class="ic"><use href="#i-more"/></svg></button>
+          </div>
+          <div class="recent-row">
+            <div class="file-cell"><div class="file-icon ios">IPA</div><div style="min-width:0"><div class="file-name">SUN · 1.8.3</div><div class="file-meta">com.overall.sun · 40.5 MB</div></div></div>
+            <div><span class="chip">iOS</span></div>
+            <div class="recent-time">昨天 18:07</div>
+            <button class="btn icon small" aria-label="更多"><svg class="ic"><use href="#i-more"/></svg></button>
+          </div>
+          <div class="recent-row">
+            <div class="file-cell"><div class="file-icon">APK</div><div style="min-width:0"><div class="file-name">Aurora Notes · 2.9.0</div><div class="file-meta">com.aurora.notes · 16.1 MB</div></div></div>
+            <div><span class="chip green">Android</span></div>
+            <div class="recent-time">11 月 21 日</div>
+            <button class="btn icon small" aria-label="更多"><svg class="ic"><use href="#i-more"/></svg></button>
+          </div>
+        </div>
+      </section>
+      <div class="footnote">Prototype · Overview / Active</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

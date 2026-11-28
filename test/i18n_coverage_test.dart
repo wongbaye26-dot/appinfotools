@@ -368,6 +368,7 @@ void main() {
       'coverage.dimensions.ios_infoPlist': 'Info.plist 是文件名，不是术语',
       'coverage.summary_join:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
       'diff.fields.file_sha256': 'SHA-256 是算法名',
+      'security.evidence_artifact_hash': 'SHA-256 是算法名',
       'ios_info.code_signature_dir': '目录名 _CodeSignature',
       'ios_info.codesign_cdhash': 'Apple 的技术标识 CDHash',
       'ios_info.device_ipad': 'Apple 产品名',
@@ -391,6 +392,11 @@ void main() {
       'security.finding_texts.android_permission_rule_with_note:ko':
           '纯占位符模板 {description} ({note})，韩文用 ASCII 括号',
       'diff.sets.android_nativeCodes': 'ABI 是技术缩写，不翻译',
+      // 对比页叙述句的拼接标点：韩文本来就用 ASCII 逗号 / 分号 / 句号，
+      // 与 en 逐字节相同是**唯一正确**的结果（同上面 security 的分隔符条目）。
+      'diff.list_sep:ko': '韩文用 ASCII 逗号，与 en 相同是正常结果',
+      'diff.sentence_sep:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
+      'diff.sentence_end:ko': '韩文句号是「.」加空格，与 en 相同是正常结果',
       'ios_info.bundle_kind_app_extension:ja': 'Apple 的官方日文写法就是 App Extension',
     };
 

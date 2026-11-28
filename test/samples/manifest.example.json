@@ -1,0 +1,12 @@
+{
+  "samples": [
+    {
+      "file": "217_0919155004.apk",
+      "kind": "android",
+      "sha256": "REPLACE_WITH_SHA256_64_HEX",
+      "expectedFindingRules": ["ANDROID-PERM-COMBINATION"],
+      "expectedEvidenceSources": ["manifest"],
+      "expectedCoverageIds": ["android.manifest", "android.dex.strings"]
+    }
+  ]
+}

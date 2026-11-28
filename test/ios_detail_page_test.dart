@@ -31,7 +31,12 @@ import 'package:ipa_parser/ipa_parser.dart'
         IosIconSource,
         IosUnresolvedIcon,
         IpaContainer,
-        IpaInfoPlist;
+        IpaInfoPlist,
+        MachOByteOrder,
+        MachOEncryptionInfo,
+        MachOFile,
+        MachOFileType,
+        MachOImage;
 
 const _appPath = 'Payload/Example.app';
 
@@ -78,7 +83,7 @@ final _infoPlist = IpaInfoPlist(
       const FieldValue.extracted(['demo'], source: FieldSource.infoPlist),
 );
 
-IpaAnalysis _ipa() => IpaAnalysis(
+IpaAnalysis _ipa({bool encrypted = false}) => IpaAnalysis(
       container: const IpaContainer(
         bundles: [_mainApp],
         payloadApps: [_mainApp],
@@ -88,6 +93,25 @@ IpaAnalysis _ipa() => IpaAnalysis(
       ),
       mainApp: _mainApp,
       infoPlist: _infoPlist,
+      executable: encrypted
+          ? const MachOFile(images: [
+              MachOImage(
+                offset: 0,
+                size: 4096,
+                byteOrder: MachOByteOrder.little,
+                is64Bit: true,
+                cpuType: 0x0100000C,
+                cpuSubtype: 0,
+                fileType: MachOFileType.execute,
+                encryption: MachOEncryptionInfo(
+                  cryptOffset: 0x4000,
+                  cryptSize: 0x8000,
+                  cryptId: 1,
+                  is64Bit: true,
+                ),
+              ),
+            ])
+          : null,
       executablePath: '$_appPath/Example',
       icon: const IosIconResolution(
         unresolved: [
@@ -206,6 +230,23 @@ void main() {
       expect(find.byType(IosHeroCard), findsOneWidget);
     });
 
+    testWidgets('FairPlay 加密时先给出范围提示，而不是让读者自己猜', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa(encrypted: true)));
+      expect(tester.takeException(), isNull);
+
+      expect(find.text(t.security.encryption_banner_title), findsOneWidget);
+      expect(
+        find.textContaining('1 executable(s)'),
+        findsOneWidget,
+        reason: '提示要写明有几个可执行文件是密文',
+      );
+    });
+
+    testWidgets('未加密时没有 FairPlay 提示（不制造假警告）', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+      expect(find.text(t.security.encryption_banner_title), findsNothing);
+    });
+
     testWidgets('卡片顺序与 APK 页一致：文件 → 平台 → 版本 → 容器 …', (tester) async {
       await _pumpPage(tester, _ipaState(analysis: _ipa()));
       final titles = _cardTitles(tester);
@@ -218,9 +259,8 @@ void main() {
         expect(ia, lessThan(ib), reason: '「$a」应当排在「$b」前面');
       }
 
-      // 平台标识刻意排在最前 —— 它是两页唯一的分辨依据，应该第一眼看到。
-      before(t.file_info.platform, t.file_info.file);
-      before(t.file_info.file, t.apk_info.version_name);
+      // iOS Tab 顺序：概览 → Info.plist → 嵌套框架 → 签名 → 安全 → 文件 → 诊断。
+      before(t.file_info.platform, t.apk_info.version_name);
       before(t.apk_info.version_name, t.ios_info.minimum_os);
       before(t.ios_info.minimum_os, t.ios_info.container_section);
       before(t.ios_info.container_section, t.ios_info.signature_section);
@@ -337,12 +377,21 @@ void main() {
       expect((platform.end! as Icon).icon, Icons.apple);
     });
 
-    testWidgets('APK 页也有同一行，值不同', (tester) async {
+    testWidgets('APK 页不再重复平台卡片，平台由 Hero 徽章承担', (tester) async {
       await _pumpPage(tester, _apkState());
 
-      final platform = _layoutTitled(tester, t.file_info.platform);
-      expect(platform.value, t.file_info.platform_android);
-      expect((platform.end! as Icon).icon, Icons.android);
+      // 平台信息原先在详情页最前面有一张独立卡，与 Hero 里的 Android
+      // 徽章重复；现在只保留徽章这一处。
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TitleValueLayout &&
+              widget.title == t.file_info.platform,
+        ),
+        findsNothing,
+      );
+      expect(find.text('Android'), findsWidgets);
+      expect(find.byIcon(Icons.android), findsWidgets);
     });
 
     testWidgets('两页的卡片版式一致', (tester) async {
@@ -395,6 +444,42 @@ void main() {
       expect(text, contains(t.ios_info.no_main_app));
       // 即便读不出应用信息，也要能确认这是个 iOS 包。
       expect(text, contains(t.file_info.platform_ios));
+    });
+  });
+
+  group('IPA 概览 — 基本信息与证书摘要', () {
+    testWidgets('概览给出发行商关注的字段，而不是把清单里的值藏起来', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      final text = _visibleText(tester);
+      // 与 Android 的「基本信息」对位：这几项是打开包第一眼要看的东西。
+      for (final label in [
+        t.apk_info.basic_info,
+        t.ios_info.bundle_id,
+        t.ios_info.executable,
+        t.ios_info.minimum_os,
+        t.ios_info.device_family,
+        t.ios_info.architectures,
+      ]) {
+        expect(text, contains(label), reason: '概览缺少「$label」');
+      }
+
+      // 基本信息卡是「标签 + 值」的行表（不是 TitleValueLayout），
+      // 所以按可见文本断言值，而不是按控件类型。
+      expect(text, contains('com.example.demo'));
+    });
+
+    testWidgets('没有签名材料时说「没有」，而不是画一张空卡', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      final text = _visibleText(tester);
+      expect(text, contains(t.ios_info.certificate_chain));
+      // 合成数据里没有 certificateChain：必须落到「暂无数据」。
+      expect(
+        find.text(t.base.no_data),
+        findsWidgets,
+        reason: '缺少材料时应给出明确空态',
+      );
     });
   });
 }

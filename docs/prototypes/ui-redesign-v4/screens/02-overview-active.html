@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V4 · 02 概览 · 当前目标</title>
+<link rel="stylesheet" href="../assets/v4.css">
+</head>
+<body class="app" data-nav="overview" data-crumb="WORKSPACE / TARGET" data-state="AURORA NOTES / PARSED" data-window-title="AppInfoTool — 概览">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div>
+          <div class="page-kicker">WORKSPACE <span>/</span> <b>ACTIVE TARGET</b></div>
+          <h1 class="page-title">Aurora Notes</h1>
+          <p class="page-sub mono" style="font-size:9px">com.aurora.notes · 3.20.0 (320) · ANDROID · 18.4 MB · 静态解析完成</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn"><svg class="ic"><use href="#i-compare"/></svg>加入对比</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-arrow"/></svg>查看详情</button>
+        </div>
+      </header>
+
+      <div class="overview-grid">
+        <section class="card current-card">
+          <div class="current-top">
+            <div class="app-avatar">A</div>
+            <div class="current-meta">
+              <h3>Aurora Notes</h3>
+              <p>com.aurora.notes · v3.20.0 (320)</p>
+              <div class="current-badges">
+                <span class="chip"><svg class="ic"><use href="#i-android"/></svg>Android</span>
+                <span class="chip">arm64-v8a · armeabi-v7a</span>
+                <span class="chip">minSdk 24</span>
+                <span class="chip amber">Debuggable</span>
+              </div>
+            </div>
+            <div class="current-file"><span>FILE</span><b>18.4 MB</b><span>SHA-256</span><b>972c…a71e</b></div>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-cell"><div class="small-label">PACKAGE</div><b>com.aurora.notes</b></div>
+            <div class="meta-cell"><div class="small-label">VERSION</div><b>3.20.0 (320)</b></div>
+            <div class="meta-cell"><div class="small-label">SIGNATURE</div><b>v2 / v3 · VERIFIED</b></div>
+            <div class="meta-cell"><div class="small-label">TARGET SDK</div><b>36</b></div>
+            <div class="meta-cell"><div class="small-label">COMPONENTS</div><b>18 exported · 2 launchers</b></div>
+            <div class="meta-cell"><div class="small-label">ENTRY POINTS</div><b>MainActivity · BootReceiver</b></div>
+          </div>
+        </section>
+
+        <section class="card posture">
+          <div class="posture-top">
+            <div>
+              <h3>POSTURE / STATIC</h3>
+              <div class="big">17<small>项发现</small></div>
+            </div>
+            <span class="chip amber">3 项需优先复核</span>
+          </div>
+          <div class="sev">
+            <span><i style="background:var(--danger)"></i>3 HIGH</span>
+            <span><i style="background:var(--warn)"></i>7 REVIEW</span>
+            <span><i style="background:var(--accent)"></i>7 INFO</span>
+          </div>
+          <div class="cov-line"><span>覆盖 11 / 13 维度</span><span style="color:var(--ink-2)">85%</span></div>
+          <div class="cov-track"><i style="width:85%"></i></div>
+          <div class="next-list">
+            <div class="next-row"><svg class="ic"><use href="#i-shield"/></svg>查看安全发现<span>17</span></div>
+            <div class="next-row"><svg class="ic"><use href="#i-layers"/></svg>检查结构证据<span>1601</span></div>
+            <div class="next-row"><svg class="ic"><use href="#i-download"/></svg>导出完整报告<span>MD / JSON</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="stats">
+        <div class="stat"><svg class="ic"><use href="#i-shield"/></svg><div class="stat-num">10</div><div class="stat-label">权限</div><div class="stat-sub">3 个危险权限组合</div></div>
+        <div class="stat"><svg class="ic"><use href="#i-grid"/></svg><div class="stat-num">18</div><div class="stat-label">组件</div><div class="stat-sub">2 个 exported activity</div></div>
+        <div class="stat"><svg class="ic"><use href="#i-file"/></svg><div class="stat-num">1</div><div class="stat-label">DEX 文件</div><div class="stat-sub">4,218 classes · 完整</div></div>
+        <div class="stat"><svg class="ic"><use href="#i-box"/></svg><div class="stat-num">2</div><div class="stat-label">原生库</div><div class="stat-sub">arm64 + armeabi-v7a</div></div>
+      </section>
+
+      <div class="overview-grid" style="grid-template-columns:minmax(0,1.55fr) minmax(300px,.78fr);flex:1;min-height:0">
+        <section class="card table-card" style="display:flex;flex-direction:column">
+          <div class="table-head">
+            <div class="table-title"><svg class="ic"><use href="#i-clock"/></svg>最近分析</div>
+            <div style="display:flex;gap:6px;align-items:center"><span class="chip plain">LOCAL ONLY</span><button class="btn small">管理</button></div>
+          </div>
+          <table class="table">
+            <thead><tr><th>FILE</th><th>PLATFORM</th><th>SECURITY</th><th>LAST OPENED</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><b>Aurora Notes · 3.20.0</b><small>com.aurora.notes · 18.4 MB</small></td><td><span class="platform" style="color:var(--mint)"><svg class="ic"><use href="#i-android"/></svg>ANDROID</span></td><td><span class="chip mint">17 findings</span></td><td class="muted">TODAY 14:32</td><td class="right muted">···</td></tr>
+              <tr><td><b>SUN · 1.8.3</b><small>com.overall.sun · 40.5 MB</small></td><td><span class="platform" style="color:var(--accent)"><svg class="ic"><use href="#i-apple"/></svg>IOS</span></td><td><span class="chip amber">17 findings</span></td><td class="muted">YESTERDAY 18:07</td><td class="right muted">···</td></tr>
+              <tr><td><b>Aurora Notes · 2.9.0</b><small>com.aurora.notes · 16.1 MB</small></td><td><span class="platform" style="color:var(--mint)"><svg class="ic"><use href="#i-android"/></svg>ANDROID</span></td><td><span class="chip">9 findings</span></td><td class="muted">NOV 21</td><td class="right muted">···</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:auto;padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center"><span class="small-label" style="margin:0">按时间倒序 · 最多 10 条</span><button class="btn small">清空历史</button></div>
+        </section>
+        <section class="card session-card">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-terminal"/></svg>SESSION LOG</div><span class="chip plain">READ-ONLY</span></div>
+          <div class="terminal">
+            <div>14:31:58 <b>parse.apk ok</b></div>
+            <div>14:31:59 manifest 1601 entries</div>
+            <div>14:32:00 dex.scan 1 file / 4218 cls</div>
+            <div>14:32:00 seal.v2v3 <span class="ok">verified</span></div>
+            <div>14:32:01 coverage 11 / 13 partial</div>
+            <div>14:32:01 findings 17 total / 3 high</div>
+            <div style="margin-top:8px;color:var(--ink-3)">No runtime evidence. No upload.</div>
+          </div>
+          <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center"><span class="small-label" style="margin:0">LOG IS LOCAL · NEVER UPLOADED</span><button class="btn small">打开日志</button></div>
+        </section>
+      </div>
+      <div class="footnote"><span>V4 / PAPER &amp; SIGNAL · OVERVIEW / ACTIVE</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

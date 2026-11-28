@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V3 · 05 版本对比</title>
+<link rel="stylesheet" href="../assets/v3.css">
+</head>
+<body class="app" data-nav="diff" data-window-title="AppInfoTool — 版本对比" data-crumb="WORKSPACE / COMPARE" data-state="2 FILES LOADED" data-status-left="FIELD DIFF · NO RUNTIME" data-status-right="UNKNOWN ≠ CHANGED">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div class="page-head-main">
+          <div class="kicker">WORKSPACE <span class="slash">/</span> <b>COMPARE</b></div>
+          <h1>版本对比</h1>
+          <p class="page-sub" style="font-size:10px;color:var(--muted);">选择两个安装包，查看字段与集合差异；无法比较的项单独标注。</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn"><svg class="ic"><use href="#i-refresh"/></svg>重新选择</button>
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出对比</button>
+        </div>
+      </header>
+
+      <div class="compare-strip">
+        <div class="slot-card">
+          <div class="slot-tag">OLD</div>
+          <div style="min-width:0;">
+            <div class="slot-name">Aurora Notes · 2.9.0</div>
+            <div class="cell-sub">com.aurora.notes · 16.1 MB</div>
+            <div class="slot-meta"><span>1 DEX</span><span>8 permissions</span><span>9 findings</span></div>
+          </div>
+          <span class="chip" style="margin-left:auto;">APK</span>
+        </div>
+        <div class="compare-arrow"><svg class="ic"><use href="#i-arrow"/></svg></div>
+        <div class="slot-card target">
+          <div class="slot-tag">NEW</div>
+          <div style="min-width:0;">
+            <div class="slot-name">Aurora Notes · 3.20.0</div>
+            <div class="cell-sub">com.aurora.notes · 18.4 MB</div>
+            <div class="slot-meta"><span>2 DEX</span><span>10 permissions</span><span>17 findings</span></div>
+          </div>
+          <span class="chip lime" style="margin-left:auto;">APK</span>
+        </div>
+      </div>
+
+      <div class="card diff-summary">
+        <div class="summary-item"><b>12</b><span>字段变化</span></div>
+        <div class="summary-item"><b>3</b><span>集合变化</span></div>
+        <div class="summary-item warn"><b>2</b><span>无法比较</span></div>
+        <div style="margin-left:auto;display:flex;gap:6px;"><span class="chip lime">全部</span><span class="chip">字段 12</span><span class="chip">集合 3</span><span class="chip amber">无法比较 2</span></div>
+      </div>
+
+      <div class="diff-layout">
+        <section class="card">
+          <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-compare"/></svg>FIELD DIFF</div><div class="right"><span class="chip">SORTED BY IMPACT</span></div></div>
+          <table class="dense diff-table">
+            <thead><tr><th>FIELD</th><th>2.9.0 / OLD</th><th>3.20.0 / NEW</th><th>CHANGE</th></tr></thead>
+            <tbody>
+              <tr><td><div class="cell-main">版本名称</div><div class="cell-sub mono">versionName</div></td><td class="old">2.9.0</td><td class="new">3.20.0</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">版本号</div><div class="cell-sub mono">versionCode</div></td><td class="old">290</td><td class="new">320</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">安装包大小</div><div class="cell-sub mono">file.size</div></td><td class="old">16.1 MB</td><td class="new">18.4 MB</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">targetSdk</div><div class="cell-sub mono">manifest.targetSdk</div></td><td class="old">34</td><td class="new">36</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">权限数量</div><div class="cell-sub mono">permissions.count</div></td><td class="old">8</td><td class="new">10</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">DEX 数量</div><div class="cell-sub mono">dex.count</div></td><td class="old">1</td><td class="new">2</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">原生库</div><div class="cell-sub mono">native.abis</div></td><td class="old">arm64-v8a</td><td class="new">arm64-v8a, armeabi-v7a</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">安全发现</div><div class="cell-sub mono">security.findings</div></td><td class="old">9</td><td class="new">17</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">签名方案</div><div class="cell-sub mono">signature.schemes</div></td><td class="old">v2</td><td class="new">v2, v3</td><td><span class="chip lime">CHANGED</span></td></tr>
+              <tr><td><div class="cell-main">签名详情</div><div class="cell-sub mono">signature.cert</div></td><td class="old muted">未读取</td><td class="new muted">未读取</td><td><span class="chip amber">UNKNOWN</span></td></tr>
+              <tr><td><div class="cell-main">资源表</div><div class="cell-sub mono">resources.table</div></td><td class="old muted">未读取</td><td class="new muted">未读取</td><td><span class="chip amber">UNKNOWN</span></td></tr>
+            </tbody>
+          </table>
+          <div class="table-foot">还有 3 个字段变化未展开 <span class="mono">SHOW ALL 12</span></div>
+        </section>
+
+        <aside class="diff-side">
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-info"/></svg>SUMMARY</div><div class="right"><span class="chip">READ-ONLY</span></div></div>
+            <div class="card-body" style="padding:11px 13px;">
+              <p style="margin:0 0 10px;font-size:9.5px;line-height:1.6;color:var(--muted);">两个版本包名一致；新版本增加 1 个 DEX、1 组 ABI 与 2 条权限，安全发现从 9 项增至 17 项。</p>
+              <div class="quick-row"><svg class="ic"><use href="#i-shield"/></svg><span>新增权限</span><span class="meta">2</span></div>
+              <div class="quick-row"><svg class="ic"><use href="#i-code"/></svg><span>新增 DEX</span><span class="meta">1</span></div>
+              <div class="quick-row"><svg class="ic"><use href="#i-alert"/></svg><span>新增安全线索</span><span class="meta">8</span></div>
+            </div>
+          </section>
+          <section class="card" style="border-color:#4b3a22;">
+            <div class="card-head"><div class="card-title" style="color:var(--amber)"><svg class="ic"><use href="#i-info"/></svg>2 项无法比较</div></div>
+            <div class="card-body" style="padding:10px 13px;font-size:9px;line-height:1.6;color:var(--muted);">签名详情与资源表本次未同时读取。它们被归入“无法比较”，不计为差异，也不代表相同。</div>
+          </section>
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-terminal"/></svg>DIFF POLICY</div></div>
+            <div class="card-body" style="padding:10px 13px;">
+              <div class="scope-list">
+                <div class="scope-item"><svg class="ic"><use href="#i-check"/></svg><span>只列出实际变化的字段。</span></div>
+                <div class="scope-item"><svg class="ic"><use href="#i-check"/></svg><span>集合差异按新增/移除展示。</span></div>
+                <div class="scope-item warn"><svg class="ic"><use href="#i-alert"/></svg><span>未知 ≠ 差异；也不代表安全。</span></div>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </div>
+      <div class="footnote"><span>V3 / SIGNAL ROOM · COMPARE / 2.9.0 → 3.20.0</span><span>1440×1024 · PROTOTYPE ONLY</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

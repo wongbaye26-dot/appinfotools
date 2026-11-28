@@ -587,6 +587,7 @@ class IosPrivacyAudit {
     // 「网络」一节在 iOS 上**永远是空的**，而「数据发到哪」正是用户最想知道的。
     final domainSet = <String>{};
     final ipSet = <String>{};
+    final networkClues = <NetworkClue>[];
     // 主动请求权限的证据：API 名 → 命中的选择子（含冒号的原样）。
     final requestedByApi = <String, Set<String>>{};
     final requestSources = <String, Set<String>>{};
@@ -607,6 +608,11 @@ class IosPrivacyAudit {
     // 超出单文件预算的可执行文件**个数**。`truncated` 只回答「有没有」，
     // 而规则 F 的否定结论要写出「几个超预算 / 几个没读到」。
     var overBudgetCount = 0;
+    // FairPlay 加密证据：主可执行文件的 cryptid，以及所有**实际解析到**
+    // 且仍被加密的可执行文件。与 Android 的「DEX 加密 / 截断」同一条纪律：
+    // 密文里的字符串扫描看不到明文，否定结论必须降级。
+    int? mainCryptId;
+    final encryptedPaths = <String>[];
 
     // 「盗 U」信号：在下面那次字符串遍历里顺带收集，不额外解码一遍。
     final cryptoSignals = IosCryptoSignals();
@@ -653,6 +659,16 @@ class IosPrivacyAudit {
       // Mach-O 只解析一次：引用表与选择子表都要用。
       final macho = MachOParser.parse(bytes);
       onStage?.call('strings:${target.path}:macho-parsed');
+
+      // FairPlay：同一个 Mach-O 解析结果里顺手记录 cryptid，不重复解析。
+      // 主可执行文件单独记 `mainCryptId`，用来区分「主应用加密」与
+      // 「只有某个嵌套扩展/框架加密」—— 两者对静态否定结论的影响不同。
+      if (target.path == mainPath) {
+        mainCryptId = macho.primary?.encryption?.cryptId;
+      }
+      if (macho.images.any((image) => image.isEncrypted)) {
+        encryptedPaths.add(target.path);
+      }
 
       // 引用表：`__objc_classrefs` / `__objc_selrefs` 的槽位解出来的类名
       // 与选择子名。这是 iOS 侧的「结构化引用」一级，比裸字符串强。
@@ -701,7 +717,13 @@ class IosPrivacyAudit {
 
       onStage?.call('strings:${target.path}:methname-done');
       void consume(String str, {bool unicode = false}) {
-        NetworkEndpoints.collect(str, domainSet, ipSet);
+        NetworkEndpoints.collect(
+          str,
+          domainSet,
+          ipSet,
+          clues: networkClues,
+          sourcePath: target.path,
+        );
         // 「盗 U」信号复用这一次遍历：钱包框架 / 助记词 / 剪贴板 / 链上地址。
         cryptoSignals.collect(str, target.path);
         // 中文话术必须赶在 `_markerPattern` 早退之前收 —— 那张 21 条标记表
@@ -907,6 +929,9 @@ class IosPrivacyAudit {
       // 分母是**包里一共有的**可执行文件数，不是「传进来准备扫的」。
       // 截断掉的那些 bundle 连打开都没打开，不能因为没进这个列表就消失。
       final uncoveredTotal = unscanned.length + unparsedNested;
+      // 被 FairPlay 加密的也算「打开了但没看到明文」：不能因为文件可读就
+      // 说“每个可执行文件都覆盖了”。与 `ios.encryption` 覆盖维度互相印证。
+      final encryptedTotal = encryptedPaths.length;
       findings.add(SecurityFinding(
         ruleId: 'IOS-SCAN-COVERAGE',
         platform: SecurityPlatform.ios,
@@ -914,27 +939,39 @@ class IosPrivacyAudit {
         category: SecurityCategory.other,
         severity: SecuritySeverity.info,
         confidence: SecurityConfidence.confirmed,
-        finding: uncoveredTotal == 0
-            ? 'API usage clue scanning covered ${scannedPaths.length} of '
-                '$executablesLimit executables, $scanned bytes in total. '
-                'Every executable was covered.'
-            : 'API usage clue scanning covered ${scannedPaths.length} of '
-                '$executablesLimit executables, $scanned bytes in total. '
-                'Executables not covered: $uncoveredTotal.',
-        messageCode:
-            uncoveredTotal == 0 ? 'ios.scan_coverage' : 'ios.scan_coverage_gap',
+        finding: encryptedTotal > 0
+            ? 'API usage clue scanning opened ${scannedPaths.length} of '
+                '$executablesLimit executables, $scanned bytes in total, but '
+                '$encryptedTotal executable(s) are FairPlay-encrypted: their '
+                'strings and selectors are ciphertext, so those contents are '
+                'not meaningfully covered.'
+            : uncoveredTotal == 0
+                ? 'API usage clue scanning covered ${scannedPaths.length} of '
+                    '$executablesLimit executables, $scanned bytes in total. '
+                    'Every executable was covered.'
+                : 'API usage clue scanning covered ${scannedPaths.length} of '
+                    '$executablesLimit executables, $scanned bytes in total. '
+                    'Executables not covered: $uncoveredTotal.',
+        messageCode: encryptedTotal > 0
+            ? 'ios.scan_coverage_encrypted'
+            : (uncoveredTotal == 0
+                ? 'ios.scan_coverage'
+                : 'ios.scan_coverage_gap'),
         messageArgs: {
           'total': executablesLimit,
           'scanned': scannedPaths.length,
           'bytes': scanned,
           if (uncoveredTotal > 0) 'uncovered': uncoveredTotal,
+          if (encryptedTotal > 0) 'encrypted': encryptedTotal,
         },
         evidence: [
           for (final path in scannedPaths)
             SecurityEvidence(
               source: SecurityEvidenceSource.machoSymbol,
               location: path,
-              detail: 'scanned',
+              detail: encryptedPaths.contains(path)
+                  ? 'scanned (FairPlay ciphertext; plaintext not visible)'
+                  : 'scanned',
             ),
           for (final entry in unscanned)
             SecurityEvidence(
@@ -1893,6 +1930,55 @@ class IosPrivacyAudit {
       ));
     }
 
+    // ---- FairPlay 加密：不是“发现风险”，是“有内容看不见” ----
+    //
+    // App Store 下发的 IPA 常见 `cryptid == 1`：`__TEXT` 里的字符串是密文。
+    // 静态扫描仍然会跑，但“没找到上传/钱包特征”不能当成“没有”。这条发现
+    // 是元信息（isMeta），用于把范围说清楚，而不是给应用扣风险分。
+    if (encryptedPaths.isNotEmpty) {
+      final encryptedCount = encryptedPaths.length;
+      final firstEncrypted = encryptedPaths.first;
+      final mainEncrypted = mainCryptId != null && mainCryptId != 0;
+      findings.add(SecurityFinding(
+        ruleId: 'IOS-ENCRYPTED-BINARY',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: mainEncrypted
+            ? 'The main executable is FairPlay-encrypted (cryptid=$mainCryptId): '
+                'its __TEXT bytes are ciphertext, so the string/symbol scan '
+                'cannot see the original code or literals.'
+            : '$encryptedCount executable(s) are FairPlay-encrypted: their '
+                'ciphertext was not visible to the string/symbol scan.',
+        messageCode: 'ios.encrypted_binary',
+        messageArgs: {
+          'count': encryptedCount,
+          'path': firstEncrypted,
+          'cryptid': mainCryptId ?? 1,
+          'mainEncrypted': mainEncrypted,
+        },
+        evidence: [
+          for (final path in encryptedPaths.take(8))
+            SecurityEvidence(
+              source: SecurityEvidenceSource.machoSymbol,
+              location: path,
+              detail: 'LC_ENCRYPTION_INFO cryptid=1 (encrypted __TEXT range)',
+            ),
+        ],
+        limitation: 'Encrypted __TEXT content cannot be inspected statically: '
+            'strings, Objective-C selectors and literal addresses inside that '
+            'range are not visible. Absence of a marker in this scan is not '
+            'evidence that the app cannot perform the behaviour.',
+        limitationCode: 'ios.encrypted_binary.limitation',
+        recommendation: 'Decrypt the binary in a controlled environment or '
+            'obtain a decrypted build before drawing conclusions about '
+            'capabilities that may be hidden in the encrypted range.',
+        recommendationCode: 'ios.encrypted_binary.manual_review',
+        isMeta: true,
+      ));
+    }
+
     // ---- 规则 F：未发现上传/网络特征 ----
     if (!hasUpload) {
       final noExecutable = executableBytes == null || executableBytes.isEmpty;
@@ -1900,7 +1986,11 @@ class IosPrivacyAudit {
       // 此前只判「有没有可执行字节」：单个可执行文件超过预算、只扫了前
       // 一段时，报告仍然给 `confirmed` +「未发现」，读者会理解成「这个应用
       // 不联网/不上传」。
-      final incomplete = overBudgetCount > 0 || unscanned.isNotEmpty;
+      // 密文同样属于「没看清」：`IOS-RULE-F` 看的是明文里的上传特征，
+      // FairPlay 加密后 `__TEXT` 是密文，找不到不代表没有。
+      final encrypted = encryptedPaths.isNotEmpty;
+      final incomplete =
+          overBudgetCount > 0 || unscanned.isNotEmpty || encrypted;
       final percent = attempted <= 0 ? 0 : (scanned * 100 ~/ attempted);
       findings.add(SecurityFinding(
         ruleId: 'IOS-RULE-F',
@@ -1910,29 +2000,44 @@ class IosPrivacyAudit {
         confidence: (noExecutable || incomplete)
             ? SecurityConfidence.unknown
             : SecurityConfidence.confirmed,
-        finding: incomplete
-            ? 'No network upload characteristics were found in the part of '
-                'the executable content this scan examined, but that part is '
-                'incomplete: $scanned of $attempted bytes ($percent%), '
-                '$overBudgetCount executable(s) exceeded the scan budget and '
-                '${unscanned.length} could not be read. The unexamined part '
-                'could contain upload markers, so this does not mean the app '
-                'has no network behaviour.'
-            : 'No network upload characteristics were found within the '
-                'current analysis scope (no hits for NSURLSession, multipart '
-                'or common networking library markers). This does not mean the '
-                'app has no network behaviour; it only means this scan found '
-                'none.',
-        messageCode: incomplete ? 'ios.rule_f_truncated' : 'ios.rule_f',
-        messageArgs: incomplete
+        finding: encrypted
+            ? 'No network upload characteristics were found in the plaintext '
+                'content this scan could read, but ${encryptedPaths.length} '
+                'executable(s) are FairPlay-encrypted: the encrypted __TEXT '
+                'range ($scanned of $attempted bytes scanned) is ciphertext, '
+                'so this does not mean the app has no upload behaviour.'
+            : incomplete
+                ? 'No network upload characteristics were found in the part of '
+                    'the executable content this scan examined, but that part '
+                    'is incomplete: $scanned of $attempted bytes ($percent%), '
+                    '$overBudgetCount executable(s) exceeded the scan budget '
+                    'and ${unscanned.length} could not be read. The unexamined '
+                    'part could contain upload markers, so this does not mean '
+                    'the app has no network behaviour.'
+                : 'No network upload characteristics were found within the '
+                    'current analysis scope (no hits for NSURLSession, multipart '
+                    'or common networking library markers). This does not mean '
+                    'the app has no network behaviour; it only means this scan '
+                    'found none.',
+        messageCode: encrypted
+            ? 'ios.rule_f_encrypted'
+            : (incomplete ? 'ios.rule_f_truncated' : 'ios.rule_f'),
+        messageArgs: encrypted
             ? {
                 'scannedBytes': scanned,
                 'totalBytes': attempted,
                 'percent': percent,
-                'overBudget': overBudgetCount,
-                'unread': unscanned.length,
+                'encrypted': encryptedPaths.length,
               }
-            : const {},
+            : incomplete
+                ? {
+                    'scannedBytes': scanned,
+                    'totalBytes': attempted,
+                    'percent': percent,
+                    'overBudget': overBudgetCount,
+                    'unread': unscanned.length,
+                  }
+                : const {},
         // 证据不能为空：模型约定每条发现都要能指回「在哪里看的」。
         // 此前这里是 `const []`，于是「未发现上传」在报告里没有任何可核对
         // 的范围说明 —— 读者无法判断那是在多大范围内得出的。
@@ -1960,18 +2065,25 @@ class IosPrivacyAudit {
             },
           ),
         ],
-        limitation: incomplete
-            ? 'Part of the executable content was not examined (scan budget '
-                'or unreadable nested binaries), so this "not found" '
-                'conclusion covers only the scanned part.'
-            : 'ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings are '
-                'scanned (main executable plus nested executables). Code in the '
-                'shared dyld cache, code loaded at runtime, Swift small-string '
-                'constants and .strings / localization resources are outside '
-                'the coverage.',
-        limitationCode: incomplete
-            ? 'ios.rule_f.limitation_incomplete'
-            : 'ios.rule_f.limitation',
+        limitation: encrypted
+            ? 'FairPlay-encrypted executables were not decrypted: the '
+                'ciphertext was scanned as bytes, so upload markers hidden in '
+                'the encrypted __TEXT range cannot be found by this static '
+                'scan.'
+            : incomplete
+                ? 'Part of the executable content was not examined (scan budget '
+                    'or unreadable nested binaries), so this "not found" '
+                    'conclusion covers only the scanned part.'
+                : 'ASCII, UTF-8 Unicode and UTF-16 (LE/BE) strings are '
+                    'scanned (main executable plus nested executables). Code in '
+                    'the shared dyld cache, code loaded at runtime, Swift '
+                    'small-string constants and .strings / localization '
+                    'resources are outside the coverage.',
+        limitationCode: encrypted
+            ? 'ios.rule_f.limitation_encrypted'
+            : (incomplete
+                ? 'ios.rule_f.limitation_incomplete'
+                : 'ios.rule_f.limitation'),
         recommendation: 'To confirm, combine this with runtime traffic '
             'observation (not provided in this version).',
         recommendationCode: 'ios.rule_f.runtime_traffic',
@@ -2111,6 +2223,46 @@ class IosPrivacyAudit {
                     '${unscanned.length} executable(s) were not scanned',
                     {'count': unscanned.length},
                   )),
+      ),
+      CoverageEntry.noted(
+        // FairPlay：回答「可执行文件的明文是否真的看得到」。`cryptid == 0`
+        // 只是「已解密」；没有加密命令（`null`）不等于「确认未加密」，标成
+        // notApplicable 而不是 covered，避免把“没这条命令”读成“验证通过”。
+        id: 'ios.encryption',
+        status: (mainCryptId != null && mainCryptId != 0)
+            ? CoverageStatus.notCovered
+            : (encryptedPaths.isNotEmpty
+                ? CoverageStatus.partial
+                : (mainCryptId == 0
+                    ? CoverageStatus.covered
+                    : CoverageStatus.notApplicable)),
+        note: (mainCryptId != null && mainCryptId != 0)
+            ? (
+                'ios.encryption.encrypted',
+                'The main executable is FairPlay-encrypted (cryptid=$mainCryptId); '
+                    'its __TEXT range is ciphertext',
+                {'cryptid': mainCryptId},
+              )
+            : (encryptedPaths.isNotEmpty
+                ? (
+                    'ios.encryption.nested_encrypted',
+                    '${encryptedPaths.length} executable(s) are '
+                        'FairPlay-encrypted; their __TEXT ranges are ciphertext',
+                    {'count': encryptedPaths.length},
+                  )
+                : (mainCryptId == 0
+                    ? (
+                        'ios.encryption.decrypted',
+                        'The main executable is marked decrypted (cryptid=0)',
+                        const <String, Object>{},
+                      )
+                    : (
+                        'ios.encryption.no_marker',
+                        'No readable LC_ENCRYPTION_INFO command was found; '
+                            'this is not a confirmation that the executable '
+                            'is plaintext',
+                        const <String, Object>{},
+                      ))),
       ),
       CoverageEntry.noted(
         id: 'ios.macho.strings',
@@ -2300,6 +2452,7 @@ class IosPrivacyAudit {
       network: NetworkFacts(
         domains: domainSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
         ips: ipSet.take(NetworkEndpoints.maxEndpoints).toList()..sort(),
+        clues: networkClues,
       ),
       coverage: coverage,
       cryptoTheft: IosCryptoTheftChain.assess(
@@ -2311,6 +2464,7 @@ class IosPrivacyAudit {
         payloadProbe: payloadProbe,
         seal: seal,
         baseline: baseline,
+        encryptedBinary: encryptedPaths.isNotEmpty,
       ),
       seal: seal,
       baseline: baseline,

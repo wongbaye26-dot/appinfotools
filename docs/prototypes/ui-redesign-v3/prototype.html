@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AppInfoTool — Signal Room · V3 Prototype</title>
+<style>
+  :root{
+    --bg:#070b0f; --panel:#0b1116; --panel-2:#101820; --line:#22303a; --line-2:#2f424e;
+    --ink:#e9eef2; --ink-2:#b8c5cd; --muted:#7f909b; --faint:#55636e;
+    --lime:#c4f36a; --teal:#5bd6c4; --amber:#f0b35e; --red:#ff6b5f;
+    --mono:"SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;background-image:radial-gradient(#16232b .6px,transparent .6px);background-size:24px 24px}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1280px;margin:0 auto;padding:64px 36px 72px}
+  .kicker{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+  .hero{display:flex;justify-content:space-between;gap:42px;align-items:flex-start;margin-bottom:40px}
+  h1{font-size:52px;line-height:1.02;letter-spacing:-.045em;margin:16px 0 18px;font-weight:640}
+  h1 em{font-style:normal;color:var(--lime)}
+  .lede{max-width:650px;color:var(--ink-2);font-size:13.5px;line-height:1.8;margin:0}
+  .meta{border-left:1px solid var(--line);padding-left:22px;min-width:216px;font-family:var(--mono);font-size:9px;line-height:2.1;color:var(--muted)}
+  .meta b{color:var(--ink);font-weight:500}
+  .meta .live{color:var(--lime)}
+  .tokens{display:flex;flex-wrap:wrap;gap:8px;margin:26px 0 34px}
+  .tokens span{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--muted);font-family:var(--mono);font-size:8.5px}
+  .tokens i{width:12px;height:12px;border-radius:3px;display:block}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .shot{display:block;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .16s ease,border-color .16s ease}
+  .shot:hover{transform:translateY(-3px);border-color:#3b5046}
+  .shot img{width:100%;display:block;border-bottom:1px solid var(--line)}
+  .shot-meta{display:flex;gap:12px;align-items:flex-start;padding:13px 15px 15px}
+  .num{font-family:var(--mono);font-size:9px;color:var(--lime);padding-top:2px}
+  .shot h3{margin:0 0 4px;font-size:12.5px;font-weight:560;letter-spacing:-.01em}
+  .shot p{margin:0;color:var(--muted);font-size:9px;line-height:1.5}
+  .arrow{margin-left:auto;color:var(--lime);font-family:var(--mono);font-size:13px;padding-top:2px}
+  .foot{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;color:var(--faint);font-family:var(--mono);font-size:8.5px;letter-spacing:.02em}
+  .foot b{color:var(--muted);font-weight:500}
+  @media(max-width:900px){.hero{flex-direction:column}.grid{grid-template-columns:1fr}h1{font-size:38px}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <div class="kicker">AppInfoTool · UI Redesign · V3</div>
+        <h1>Signal<br><em>Room.</em></h1>
+        <p class="lede">面向静态安装包检查的深色工作台。不是把信息堆满，而是让“当前对象、证据、覆盖缺口、下一步”在同一视线高度内成立。V3 与 V1 的暖白工作台是两种方向，便于对比选择。</p>
+      </div>
+      <div class="meta">
+        <div>VERSION <b>V3 · 8 SCREENS</b></div>
+        <div>CANVAS <b>1440 × 1024</b></div>
+        <div>BASE <b>2.10.6</b></div>
+        <div>STATUS <b class="live">PROTOTYPE / NO LOGIC</b></div>
+      </div>
+    </div>
+
+    <div class="tokens">
+      <span><i style="background:#070b0f"></i>VOID #070b0f</span>
+      <span><i style="background:#101820"></i>PANEL #101820</span>
+      <span><i style="background:#c4f36a"></i>LIME #c4f36a</span>
+      <span><i style="background:#5bd6c4"></i>TEAL #5bd6c4</span>
+      <span><i style="background:#f0b35e"></i>AMBER #f0b35e</span>
+      <span><i style="background:#ff6b5f"></i>RED #ff6b5f</span>
+    </div>
+
+    <div class="grid">
+      <a class="shot" href="screens/01-overview-empty.html">
+        <img src="renders/01-overview-empty.png" alt="概览空态">
+        <div class="shot-meta"><span class="num">01</span><div><h3>概览 · 空态</h3><p>从“没有目标”开始：支持格式、分析管线、环境状态。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/02-overview-active.html">
+        <img src="renders/02-overview-active.png" alt="概览工作台">
+        <div class="shot-meta"><span class="num">02</span><div><h3>概览 · 当前目标</h3><p>目标身份、安全姿态、结构与最近记录集中在一屏。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/03-analysis-apk.html">
+        <img src="renders/03-analysis-apk.png" alt="Android 分析">
+        <div class="shot-meta"><span class="num">03</span><div><h3>分析 · Android</h3><p>证据优先：覆盖仪表、静态线索、Artifact / Load Graph。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/04-analysis-ipa.html">
+        <img src="renders/04-analysis-ipa.png" alt="iOS 分析">
+        <div class="shot-meta"><span class="num">04</span><div><h3>分析 · iOS</h3><p>FairPlay 密文、签名失败与嵌套截断在同一层级解释。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/05-diff.html">
+        <img src="renders/05-diff.png" alt="版本对比">
+        <div class="shot-meta"><span class="num">05</span><div><h3>版本对比</h3><p>字段变化、集合变化、无法比较三类分开表达。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/06-install.html">
+        <img src="renders/06-install.png" alt="安装到设备">
+        <div class="shot-meta"><span class="num">06</span><div><h3>安装 · 设备</h3><p>设备、选项、安装日志并排；安装与运行分析分离。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/07-settings.html">
+        <img src="renders/07-settings.png" alt="设置">
+        <div class="shot-meta"><span class="num">07</span><div><h3>设置</h3><p>外观、系统集成、工具路径、诊断与隐私边界。</p></div><span class="arrow">↗</span></div>
+      </a>
+      <a class="shot" href="screens/08-states.html">
+        <img src="renders/08-states.png" alt="状态与浮层">
+        <div class="shot-meta"><span class="num">08</span><div><h3>状态与浮层</h3><p>Empty / Loading / Partial / Failure，导出与批量重命名。</p></div><span class="arrow">↗</span></div>
+      </a>
+    </div>
+
+    <div class="foot">
+      <span><b>PROTOTYPE ONLY.</b> 未修改 Flutter 源码与业务逻辑；页面为静态 HTML。</span>
+      <span>V3 / SIGNAL ROOM · 1440×1024 · 2026-11-27</span>
+    </div>
+  </div>
+</body>
+</html>

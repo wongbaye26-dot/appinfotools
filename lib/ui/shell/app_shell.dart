@@ -1,3 +1,4 @@
+import 'package:apk_info_tool/pages/history_page.dart';
 import 'package:apk_info_tool/pages/home_page.dart';
 import 'package:apk_info_tool/pages/install_page.dart';
 import 'package:apk_info_tool/pages/setting_page.dart';
@@ -6,22 +7,21 @@ import 'package:apk_info_tool/ui/diff/diff_page.dart';
 import 'package:apk_info_tool/ui/overview/overview_page.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/ui/shell/sidebar.dart';
+import 'package:apk_info_tool/ui/shell/v4_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// 应用全局外壳。
+/// 应用全局外壳（V4 · Paper & Signal）。
 ///
-/// 桌面端：左侧固定侧边栏（`kSidebarWidth`，200px）+ 右侧主内容区。
-/// 窄窗口（< 600）：侧边栏收叠，通过后续添加的响应式机制处理。
+/// 视觉结构：
+/// - 暖纸工作区 + 极淡点阵；
+/// - 左侧浮动白色侧边栏（宽 [kSidebarWidth]，可收至 [kSidebarCollapsedWidth]）；
+/// - 右侧顶部命令条（位置 / 当前目标状态 / 版本）+ 页面内容。
 ///
-/// 采用渐进式重构策略：
-/// - Phase 1：侧边栏 + 现有页面（保留各页面的 Scaffold/AppBar）
-/// - Phase 3：统一标题栏，移除子页面 AppBar
+/// 页面仍各自管理 `Scaffold` 与页内 `PageHeader`；外壳只负责 navigational
+/// chrome，业务解析、导出、安装流程一行未动。
 ///
 /// 主内容区通过 [IndexedStack] 保持各页面状态，切换时不丢失解析进度。
-///
-/// 各页面可通过 [ShellNavigation] provider 请求切换导航目标，
-/// 无需直接操作 AppShell 的状态。
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
@@ -30,16 +30,16 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  // 落地页是「概览」：它承担引导职责（Hero 横幅、快捷操作、拖放区、
-  // 最近文件）。早先默认停在「分析」页，用户打开应用看到的是一张空表格。
+  // 落地页仍是「概览」：Hero / 拖放 / 最近文件都在这里。
   String _selectedNavId = 'overview';
 
-  // 「安装」导航项一度被移除（当时的页面只是个「开发中」占位，点进去什么也
-  // 做不了）。现在安装是真的能用了 —— 选包、USB/无线连设备、安装都在这一页
-  // 完成 —— 于是它回到导航里，分析页顶栏那个重复入口同时删掉。
+  /// 用户主动收起侧栏。窄窗口下会强制进入图标栏，不覆盖这个选择。
+  bool _collapsed = false;
+
   static const _pageKeys = [
     'overview',
     'analysis',
+    'history',
     'install',
     'diff',
     'settings'
@@ -53,20 +53,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     _pages = [
       const OverviewPage(),
       const HomePage(),
+      const HistoryPage(),
       const InstallPage(),
       const DiffPage(),
       const SettingPage(),
     ];
 
-    // 差异页的数据源（`parsedFileCacheProvider`）靠**监听解析结果**来累积，
-    // 而监听只在它被创建之后才生效。若直到用户点进差异页才第一次读它，
-    // 「解析 A → 解析 B → 进差异页」这条路径上缓存从没活过，两个包都会丢。
-    // 在这里先读一次把它唤醒 —— 只读一次，之后由解析流程驱动。
+    // 差异页的数据源靠监听解析结果累积；必须在外壳创建时唤醒。
     ref.read(parsedFileCacheProvider);
-    // 图标副本也一样：它靠监听累积，而**必须在对第一个包解析完成之前**就
-    // 建起来。否则「解析 A → 解析 B → 进差异页」这条路径上，进差异页那一刻
-    // 才第一次读它，A 与 B 的 `ApkInfo` 早已被 dispose，一个图标也留不下 ——
-    // 那正是用户报的「左侧包没有图标」。
     ref.read(parsedFileIconsProvider);
   }
 
@@ -79,11 +73,6 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    // 监听外部页面发起的导航请求。
-    //
-    // 判据是**序号是否变化**，而不是 target 是否不同 —— 后者会让
-    // 「从概览点前往分析 → 手动切回概览 → 再点前往分析」的第二次失效
-    // （目标没变，listener 不触发）。
     ref.listen(shellNavigationProvider, (prev, next) {
       if (prev != null && prev.seq == next.seq) return;
       if (_pageKeys.contains(next.target) && _selectedNavId != next.target) {
@@ -91,17 +80,64 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < kSidebarCompactBreakpoint;
+    final collapsed = _collapsed || compact;
+    final selectedIndex = _pageKeys.indexOf(_selectedNavId);
+
     return Scaffold(
-      body: Row(
+      body: Stack(
         children: [
-          AppSidebar(
-            selectedId: _selectedNavId,
-            onItemSelected: _onNavSelected,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: V4DotGridPainter(
+                  scheme.onSurface.withValues(
+                    alpha: theme.brightness == Brightness.dark ? 0.05 : 0.028,
+                  ),
+                ),
+              ),
+            ),
           ),
-          Expanded(
-            child: IndexedStack(
-              index: _pageKeys.indexOf(_selectedNavId),
-              children: _pages,
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 22, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppSidebar(
+                    selectedId: _selectedNavId,
+                    onItemSelected: _onNavSelected,
+                    collapsed: collapsed,
+                    onToggleCollapsed: compact
+                        ? null
+                        : () => setState(() => _collapsed = !_collapsed),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        V4TopBar(selectedId: _selectedNavId),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: IndexedStack(
+                            index: selectedIndex,
+                            children: [
+                              for (var i = 0; i < _pages.length; i++)
+                                TickerMode(
+                                  enabled: i == selectedIndex,
+                                  child: _pages[i],
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

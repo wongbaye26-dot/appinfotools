@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V3 · 04 分析 / iOS</title>
+<link rel="stylesheet" href="../assets/v3.css">
+</head>
+<body class="app" data-nav="analysis" data-window-title="AppInfoTool — 分析" data-crumb="WORKSPACE / ANALYSIS / IOS" data-state="SUN / IPA" data-status-left="STATIC ONLY · NO SAMPLE EXECUTION" data-status-right="FAIRPLAY CIPHERTEXT · PARTIAL COVERAGE">
+  <main class="main">
+    <div class="page">
+      <header class="page-head">
+        <div class="page-head-main">
+          <div class="kicker">ANALYSIS <span class="slash">/</span> <b>IOS</b></div>
+          <h1>SUN</h1>
+          <p class="page-sub mono" style="font-size:10px;">com.overall.sun · 1.8.3 (183) · IPA · 40.5 MB · static parse complete</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn icon"><svg class="ic"><use href="#i-refresh"/></svg></button>
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn"><svg class="ic"><use href="#i-compare"/></svg>加入对比</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-shield"/></svg>安全详情</button>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <a class="tab active" href="#">概览</a>
+        <a class="tab" href="#">Info.plist</a>
+        <a class="tab" href="#">嵌套框架 <span class="count">27</span></a>
+        <a class="tab" href="#">签名</a>
+        <a class="tab" href="#">安全 <span class="count">17</span></a>
+        <a class="tab" href="#">文件</a>
+        <a class="tab" href="#">诊断</a>
+      </nav>
+
+      <div class="scope-banner">
+        <svg class="ic"><use href="#i-lock"/></svg>
+        <div><b>FairPlay 加密 / 主可执行文件明文不可见。</b> 检测到 <span class="mono">LC_ENCRYPTION_INFO cryptid=1</span>；依赖明文的目标字符串、调用点与 payload 结论已降级为“未知”，而不是“未发现”。</div>
+        <span class="chip amber" style="margin-left:auto;flex-shrink:0;">CRYPTID 1</span>
+      </div>
+
+      <div class="analysis-layout">
+        <div class="analysis-main">
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-crosshair"/></svg>APPLICATION</div><div class="right"><span class="chip lime">PARSED</span><span class="chip amber">SIGNATURE FAILED</span></div></div>
+            <div class="card-body">
+              <div class="app-identity">
+                <div class="app-avatar" style="background:#1b2b3a;color:#9cc9ff;">S</div>
+                <div>
+                  <div class="app-name">SUN</div>
+                  <div class="app-id">com.overall.sun · 1.8.3 (183)</div>
+                  <div class="identity-tags"><span class="chip"><svg class="ic"><use href="#i-apple"/></svg>iOS</span><span class="chip">iOS 13.0+</span><span class="chip">arm64</span><span class="chip amber">FairPlay · cryptid 1</span></div>
+                </div>
+                <div style="margin-left:auto;text-align:right;"><span class="chip red">未通过 codesign</span><div class="mono" style="font-size:8px;color:var(--faint);margin-top:5px;">EMBEDDED.MOBILIEPROVISION</div></div>
+              </div>
+              <div class="detail-grid">
+                <div class="detail-cell"><div class="k">BUNDLE ID</div><div class="v mono">com.overall.sun</div></div>
+                <div class="detail-cell"><div class="k">VERSION</div><div class="v mono">1.8.3 / 183</div></div>
+                <div class="detail-cell"><div class="k">INSTALL SIZE</div><div class="v mono">40.5 MB</div></div>
+                <div class="detail-cell"><div class="k">MAIN MACH-O</div><div class="v mono">arm64 · 15 images</div></div>
+                <div class="detail-cell"><div class="k">NESTED FRAMEWORKS</div><div class="v mono">27 total · 24 parsed</div></div>
+                <div class="detail-cell"><div class="k">CODESIGN</div><div class="v mono" style="color:var(--red)">CodeResources mismatch</div></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-shield"/></svg>STATIC FINDINGS</div><div class="right"><span class="chip amber">3 HIGH</span><button class="btn small">查看全部 17</button></div></div>
+            <div class="finding-row">
+              <div class="finding-icon red"><svg class="ic"><use href="#i-alert"/></svg></div>
+              <div class="finding-main"><div class="finding-title">签名校验未通过 <span class="chip red">优先复核</span></div><div class="finding-desc">embedded.mobileprovision 与 CodeResources 无法形成完整信任链；可能是测试签名、重签或损坏。</div></div>
+              <div class="finding-code">IOS-SIGNATURE-INVALID</div>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon amber"><svg class="ic"><use href="#i-lock"/></svg></div>
+              <div class="finding-main"><div class="finding-title">加密内容覆盖缺口</div><div class="finding-desc">主二进制为 FairPlay 密文；字符串、调用点与动态加载证据只能覆盖部分内容。</div></div>
+              <div class="finding-code">IOS-ENCRYPTED-BINARY</div>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon amber"><svg class="ic"><use href="#i-layers"/></svg></div>
+              <div class="finding-main"><div class="finding-title">嵌套框架截断</div><div class="finding-desc">共 27 个嵌套包，本轮仅解析前 24 个；剩余 3 个未纳入静态扫描。</div></div>
+              <div class="finding-code">IOS-NESTED-TRUNCATED</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-database"/></svg>ENCRYPTION &amp; SIGNATURE EVIDENCE</div><div class="right"><span class="chip">MACH-O</span></div></div>
+            <div class="evidence-box">
+              <div class="evidence-cell"><div class="k">FAIRPLAY CRYPTID</div><div class="v" style="color:var(--amber)">1</div></div>
+              <div class="evidence-cell"><div class="k">NESTED PARSED</div><div class="v">24 / 27</div></div>
+              <div class="evidence-cell"><div class="k">CODESIGN</div><div class="v" style="color:var(--red)">MISMATCH</div></div>
+              <div class="evidence-cell"><div class="k">SIGNING</div><div class="v" style="color:var(--muted)">AD-HOC</div></div>
+            </div>
+            <div class="card-body" style="padding-top:8px;padding-bottom:8px;">
+              <div class="session-line"><span>MAIN EXECUTABLE</span><span class="mono">Payload/SUN.app/SUN</span></div>
+              <div class="session-line"><span>ENCRYPTION RANGE</span><span class="mono">__TEXT · cryptoff 0x4000</span></div>
+              <div class="session-line"><span>CONCLUSION</span><span style="color:var(--amber)">静态负结论降级为未知</span></div>
+            </div>
+          </section>
+        </div>
+
+        <aside class="analysis-side">
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-activity"/></svg>COVERAGE</div><div class="right"><span class="chip amber">2 GAPS</span></div></div>
+            <div class="card-body">
+              <div class="coverage-gauge"><div class="gauge"><b>78%</b></div><div class="coverage-meta"><b>7 / 9</b><span>7 covered · 2 partial</span><span style="color:var(--amber)">Encryption + nesting</span></div></div>
+              <div class="coverage-list">
+                <div class="coverage-item"><svg class="ic ok"><use href="#i-check"/></svg><span>Info.plist / usage</span><span class="state">FULL</span></div>
+                <div class="coverage-item"><svg class="ic ok"><use href="#i-check"/></svg><span>CodeResources</span><span class="state">FULL</span></div>
+                <div class="coverage-item"><svg class="ic warn"><use href="#i-lock"/></svg><span>Mach-O 明文字符串</span><span class="state" style="color:var(--amber)">ENCRYPTED</span></div>
+                <div class="coverage-item"><svg class="ic warn"><use href="#i-layers"/></svg><span>嵌套框架</span><span class="state" style="color:var(--amber)">24 / 27</span></div>
+                <div class="coverage-item"><svg class="ic ok"><use href="#i-check"/></svg><span>图标 / 资源</span><span class="state">FULL</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-lock"/></svg>TRUST</div><div class="right"><span class="chip red">FAILED</span></div></div>
+            <div class="card-body" style="padding:10px 13px;">
+              <div class="session-line"><span>SIGNING</span><span>Ad-hoc / 重签</span></div>
+              <div class="session-line"><span>TEAM ID</span><span style="color:var(--muted)">未读取</span></div>
+              <div class="session-line"><span>FAIRPLAY</span><span style="color:var(--amber)">cryptid 1</span></div>
+              <div class="session-line"><span>CODESIGN</span><span style="color:var(--red)">存在但不匹配</span></div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-info"/></svg>SCOPE</div></div>
+            <div class="card-body" style="padding:11px 13px;">
+              <div class="scope-list">
+                <div class="scope-item"><svg class="ic"><use href="#i-check"/></svg><span>不执行应用，不访问网络。</span></div>
+                <div class="scope-item warn"><svg class="ic"><use href="#i-alert"/></svg><span>FairPlay 密文无法做完整字符串/调用点分析。</span></div>
+                <div class="scope-item"><svg class="ic"><use href="#i-check"/></svg><span>签名失败 ≠ 恶意；需结合来源判断。</span></div>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </div>
+      <div class="footnote"><span>V3 / SIGNAL ROOM · ANALYSIS / IOS</span><span>FAIRPLAY · SCHEMA V8 · 1440×1024</span></div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

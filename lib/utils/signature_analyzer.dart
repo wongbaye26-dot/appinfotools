@@ -4,9 +4,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:analysis_model/analysis_model.dart';
+import 'package:apk_parser/apk_parser.dart'
+    show ApkReader, ApkSigningSchemes, parseApkSigningBlock;
 import 'package:apk_info_tool/utils/command_tools.dart';
 import 'package:crypto/crypto.dart';
-import 'package:apk_parser/apk_parser.dart' show parseApkSigningBlock;
+import 'package:ipa_parser/ipa_parser.dart'
+    show CmsContentExtractor, X509CertificateInfo, X509Parser;
 import 'package:apk_info_tool/utils/java_runtime.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 
@@ -65,6 +68,37 @@ class SignatureSigner {
       validity == null;
 }
 
+/// 本地读出的一张签名证书。
+///
+/// 来源只有两处，都是**结构事实**：
+/// - v2 / v3 / v3.1：APK Signing Block 里每个签名者的 X.509 DER；
+/// - v1：`META-INF/<name>.RSA|.DSA|.EC` 这个 PKCS#7 签名块里的证书集合。
+///
+/// [details] 是纯解析结果，**不代表证书可信、也不代表签名有效** —— 任何人都
+/// 能把一张证书塞进上述两个位置。指纹的用途只有一个：和官方公布的值比对。
+class SignatureCertificate {
+  /// 来源方案：`v1` / `v2` / `v3` / `v3.1`。
+  final String scheme;
+
+  /// 同一方案内的签名者序号；v1 里是证书在 PKCS#7 集合中的顺序。
+  final int signerIndex;
+
+  final X509CertificateInfo details;
+
+  const SignatureCertificate({
+    required this.scheme,
+    required this.signerIndex,
+    required this.details,
+  });
+
+  /// SHA-256 指纹（小写十六进制，无分隔符），读不出时为 `null`。
+  String? get sha256 => details.sha256Fingerprint;
+
+  @override
+  String toString() =>
+      'SignatureCertificate($scheme #$signerIndex, ${details.subject})';
+}
+
 /// `apksigner verify` 的结构化结果。
 class SignatureAnalysis {
   final SignatureStatus status;
@@ -98,6 +132,13 @@ class SignatureAnalysis {
   /// **它不是「签名有效」的证据**：任何人都能把一张证书塞进签名块。
   final String? localCertificateSha256;
 
+  /// 本地读出的全部证书（v2 → v3 → v3.1 → v1，各自按签名者顺序）。
+  ///
+  /// 与 [localCertificateSha256] 的关系：那个为了兼容旧界面只保留 v2+ 的
+  /// 第一张；这里是完整清单，v1 的 PKCS#7 证书也在其中。空表示「一个都没读到」，
+  /// **不表示「没有签名」**（可能是没有 v1 证书、也可能读取被预算拒绝）。
+  final List<SignatureCertificate> localCertificates;
+
   const SignatureAnalysis({
     required this.status,
     this.verifiedSchemes = const {},
@@ -108,16 +149,19 @@ class SignatureAnalysis {
     this.error,
     this.toolExecuted = false,
     this.localCertificateSha256,
+    this.localCertificates = const [],
   });
 
   /// 工具不可用时的结果。**不是**「签名无效」。
   factory SignatureAnalysis.toolUnavailable(
     String reason, {
     String? localCertificateSha256,
+    List<SignatureCertificate> localCertificates = const [],
   }) =>
       SignatureAnalysis(
         status: SignatureStatus.toolUnavailable,
         localCertificateSha256: localCertificateSha256,
+        localCertificates: localCertificates,
         error: reason,
       );
 
@@ -147,6 +191,7 @@ class SignatureAnalyzer {
   }) async {
     // 先把**结构事实**读出来：不管 apksigner 在不在，证书指纹都是能拿到的。
     final localCert = readLocalCertificateSha256(apkPath);
+    final localCertificates = await readLocalCertificates(apkPath);
 
     final resolved = apksignerPath ?? CommandTools.findApkSignerPath();
     if (resolved == null || resolved.isEmpty) {
@@ -154,6 +199,7 @@ class SignatureAnalyzer {
       return SignatureAnalysis.toolUnavailable(
         'apksigner not found',
         localCertificateSha256: localCert,
+        localCertificates: localCertificates,
       );
     }
 
@@ -178,6 +224,7 @@ class SignatureAnalyzer {
       return SignatureAnalysis.toolUnavailable(
         'cannot execute apksigner: $e',
         localCertificateSha256: localCert,
+        localCertificates: localCertificates,
       );
     }
 
@@ -215,6 +262,7 @@ class SignatureAnalyzer {
         error: 'apksigner timed out after ${timeout.inSeconds}s',
         toolExecuted: true,
         localCertificateSha256: localCert,
+        localCertificates: localCertificates,
       );
     }
 
@@ -226,6 +274,7 @@ class SignatureAnalyzer {
       stdout: stdoutBuffer.toString(),
       stderr: stderrBuffer.toString(),
       localCertificateSha256: localCert,
+      localCertificates: localCertificates,
     );
   }
 
@@ -237,13 +286,94 @@ class SignatureAnalyzer {
   ///
   /// 失败一律返回 `null`：读不出指纹不该让签名分析失败。
   static String? readLocalCertificateSha256(String apkPath) {
+    final schemes = _readSigningSchemes(apkPath);
+    final cert = schemes?.signingCertificate;
+    if (cert == null) return null;
+    return sha256.convert(cert).toString();
+  }
+
+  /// 读出 APK 里全部签名证书：v2/v3/v3.1 来自签名块，v1 来自 `META-INF`。
+  ///
+  /// **只读结构，不验证任何签名**。读取失败的部分直接缺席（不编造），
+  /// 空列表的含义是「一张都没读到」，不是「这个包没签名」。
+  ///
+  /// v1 的证书藏在 PKCS#7 签名块（`.RSA` / `.DSA` / `.EC`）里，不在 `.SF`
+  /// 里；只认 `META-INF` 顶层的条目 —— 子目录下的同名文件不是 JAR 签名材料。
+  static Future<List<SignatureCertificate>> readLocalCertificates(
+    String apkPath,
+  ) async {
+    final out = <SignatureCertificate>[];
+
+    // v2 / v3 / v3.1：签名块里每个签名者的每一张证书。
+    final schemes = _readSigningSchemes(apkPath);
+    if (schemes != null) {
+      for (final certificate in schemes.certificates) {
+        final details = X509Parser.parse(certificate.der);
+        if (details == null) {
+          log.warning(
+            'SignatureAnalyzer: ${certificate.scheme} 证书无法解析 '
+            '(${certificate.der.length} bytes)',
+          );
+          continue;
+        }
+        out.add(SignatureCertificate(
+          scheme: certificate.scheme,
+          signerIndex: certificate.signerIndex,
+          details: details,
+        ));
+      }
+    }
+
+    // v1：PKCS#7 里可能是一张或多张证书。
+    final reader = ApkReader();
+    try {
+      await reader.open(apkPath);
+      final names = <String>[
+        ...reader.listFiles(extension: '.rsa'),
+        ...reader.listFiles(extension: '.dsa'),
+        ...reader.listFiles(extension: '.ec'),
+      ].where(_isTopLevelMetaInf).toList()
+        ..sort();
+      for (final name in names) {
+        final bytes = reader.readFile(name);
+        if (bytes == null || bytes.isEmpty) continue;
+        final cms = CmsContentExtractor.extractCertificates(bytes);
+        for (var i = 0; i < cms.certificates.length; i++) {
+          out.add(SignatureCertificate(
+            scheme: 'v1',
+            signerIndex: i,
+            details: cms.certificates[i],
+          ));
+        }
+        if (cms.certificates.isEmpty) {
+          log.warning('SignatureAnalyzer: $name 里没有可读证书 (${cms.failure})');
+        }
+      }
+    } catch (e) {
+      // 归档打不开、预算拒绝、条目损坏 —— 都只是「v1 证书缺席」。
+      log.warning('SignatureAnalyzer: 读取 v1 签名证书失败: $e');
+    } finally {
+      reader.close();
+    }
+
+    return out;
+  }
+
+  /// JAR 签名材料只可能出现在 `META-INF` 顶层。
+  static bool _isTopLevelMetaInf(String name) {
+    final parts = name.split('/');
+    return parts.length == 2 && parts[0].toUpperCase() == 'META-INF';
+  }
+
+  /// 读 APK 尾部的 APK Signing Block；读不出返回 `null`。
+  static ApkSigningSchemes? _readSigningSchemes(String apkPath) {
     RandomAccessFile? raf;
     try {
       final file = File(apkPath);
       final length = file.lengthSync();
       if (length < 32) return null;
       raf = file.openSync();
-      final schemes = parseApkSigningBlock(
+      return parseApkSigningBlock(
         fileLength: length,
         read: (offset, count) {
           if (offset < 0 || count <= 0 || offset + count > length) {
@@ -253,11 +383,8 @@ class SignatureAnalyzer {
           return raf.readSync(count);
         },
       );
-      final cert = schemes.signingCertificate;
-      if (cert == null) return null;
-      return sha256.convert(cert).toString();
     } catch (e) {
-      log.warning('SignatureAnalyzer: 读取签名证书失败: $e');
+      log.warning('SignatureAnalyzer: 读取签名块失败: $e');
       return null;
     } finally {
       raf?.closeSync();
@@ -285,6 +412,7 @@ class SignatureAnalyzer {
     required String stdout,
     String stderr = '',
     String? localCertificateSha256,
+    List<SignatureCertificate> localCertificates = const [],
   }) {
     final status = _determineStatus(exitCode, stdout, stderr);
     // 运行时缺失时 apksigner 根本没跑起来，不能标成「执行过」。
@@ -302,6 +430,7 @@ class SignatureAnalyzer {
           : null,
       toolExecuted: !runtimeMissing,
       localCertificateSha256: localCertificateSha256,
+      localCertificates: localCertificates,
     );
   }
 

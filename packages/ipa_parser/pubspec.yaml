@@ -15,6 +15,9 @@ dependencies:
       ref: cb3a07c80d6a475ef8d36e5642bc2691612d074e
   archive_safety:
     path: ../archive_safety
+  # 证书指纹（SHA-256/SHA-1/MD5）要按字节算：调用方拿到 DER 就能直接算出，
+  # 不必自己再依赖一份摘要实现。
+  crypto: ^3.0.6
   xml: ^6.5.0
 
 dev_dependencies:

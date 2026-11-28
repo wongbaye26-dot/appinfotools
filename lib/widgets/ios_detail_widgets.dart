@@ -46,6 +46,7 @@ class IosHeroCard extends StatelessWidget {
   /// 做成一等参数而不是让调用方在卡片下面再贴一个 `Align` —— 那样复制按钮
   /// 会飘在卡片外的空白里，看起来和这张卡片没关系。
   final Widget? trailing;
+  final Widget? details;
 
   const IosHeroCard({
     super.key,
@@ -56,6 +57,7 @@ class IosHeroCard extends StatelessWidget {
     this.architectureLabel,
     this.icon,
     this.trailing,
+    this.details,
   });
 
   @override
@@ -66,156 +68,163 @@ class IosHeroCard extends StatelessWidget {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: _iosAccentBorder(context),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colorScheme.outlineVariant),
       ),
-      color: _iosAccentBg(context),
+      color: colorScheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 大图标。尺寸与圆角取自 `PackageIconMetrics`（与概览页 Hero
-            // 同一份定义）。
-            Container(
-              key: const ValueKey('package_icon_box'),
-              width: PackageIconMetrics.heroSide,
-              height: PackageIconMetrics.heroSide,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(
-                  PackageIconMetrics.radiusOf(PackageIconMetrics.heroSide),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: icon != null
-                  ? IosIconThumbnail(
-                      resolution: icon,
-                      size: PackageIconMetrics.heroSide,
-                    )
-                  : Center(
-                      child: Icon(
-                        Icons.app_shortcut,
-                        size: 32,
-                        color: theme.hintColor.withValues(alpha: 0.4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 大图标。尺寸与圆角取自 `PackageIconMetrics`（与概览页 Hero
+                // 同一份定义）。
+                Container(
+                  key: const ValueKey('package_icon_box'),
+                  width: PackageIconMetrics.heroSide,
+                  height: PackageIconMetrics.heroSide,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: BorderRadius.circular(
+                      PackageIconMetrics.radiusOf(PackageIconMetrics.heroSide),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
-                    ),
-            ),
-            const SizedBox(width: 16),
-            // 应用信息
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 平台徽标
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: iosAccent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: iosAccent.withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.apple,
-                          size: 12,
-                          color: iosAccent,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'iOS',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: iosAccent,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // 应用名
-                  Text(
-                    appName.isNotEmpty ? appName : '-',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  // Bundle ID（等宽字体）
-                  SelectableText(
-                    bundleId,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.hintColor,
-                      fontFamily: 'monospace',
-                      fontFamilyFallback: const ['Menlo', 'Courier'],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // 版本号 + 架构位数
-                  //
-                  // 位数与版本并排而不是另起一行：它是「这个包能不能装在老
-                  // 设备上」的答案，属于**同一眼的判断**。用 `Wrap` 是因为
-                  // 窄窗口下两者放不进一行。
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          version.isNotEmpty
-                              ? (buildNumber.isNotEmpty
-                                  ? 'v$version ($buildNumber)'
-                                  : 'v$version')
-                              : '-',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      if (architectureLabel != null)
-                        ArchBadge(label: architectureLabel!, fontSize: 11),
                     ],
                   ),
+                  clipBehavior: Clip.antiAlias,
+                  child: icon != null
+                      ? IosIconThumbnail(
+                          resolution: icon,
+                          size: PackageIconMetrics.heroSide,
+                        )
+                      : Center(
+                          child: Icon(
+                            Icons.app_shortcut,
+                            size: 32,
+                            color: theme.hintColor.withValues(alpha: 0.4),
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 16),
+                // 应用信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 平台徽标
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: iosAccent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: iosAccent.withValues(alpha: 0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.apple,
+                              size: 12,
+                              color: iosAccent,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'iOS',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: iosAccent,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // 应用名
+                      Text(
+                        appName.isNotEmpty ? appName : '-',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      // Bundle ID（等宽字体）
+                      SelectableText(
+                        bundleId,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.hintColor,
+                          fontFamily: 'monospace',
+                          fontFamilyFallback: const ['Menlo', 'Courier'],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // 版本号 + 架构位数
+                      //
+                      // 位数与版本并排而不是另起一行：它是「这个包能不能装在老
+                      // 设备上」的答案，属于**同一眼的判断**。用 `Wrap` 是因为
+                      // 窄窗口下两者放不进一行。
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest
+                                  .withValues(
+                                alpha: 0.5,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              version.isNotEmpty
+                                  ? (buildNumber.isNotEmpty
+                                      ? 'v$version ($buildNumber)'
+                                      : 'v$version')
+                                  : '-',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          if (architectureLabel != null)
+                            ArchBadge(label: architectureLabel!, fontSize: 11),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  trailing!,
                 ],
-              ),
+              ],
             ),
-            if (trailing != null) ...[
-              const SizedBox(width: 8),
-              trailing!,
+            if (details != null) ...[
+              const SizedBox(height: 16),
+              details!,
             ],
           ],
         ),

@@ -111,12 +111,13 @@ class Config {
   static final enableSecurityAudit = ConfigItem("enable_security_audit", true);
   static final enableDebug = ConfigItem("enable_debug", false);
 
-  /// 是否在启动时自动注册「系统文件图标」（Windows Shell 缩略图处理器）。
+  /// 用户上一次成功启用/停用「系统文件图标」的结果。
   ///
-  /// 默认**开**：装完就该看到每个包自己的图标，而不是所有 `.apk` 长一个样。
-  /// 设置页的「停用」会把它写成 false —— 下次启动不会再自动打开，
-  /// 否则那个开关等于没关。
-  static final systemIconEnabled = ConfigItem("system_icon_enabled", true);
+  /// 默认**关**：缩略图处理器要写注册表，不能在用户不知情时自动装进系统。
+  /// 应用启动**不会**读取它去自动注册；只有设置页点击「启用」才会注册。
+  /// 保留这个键是为了记录用户意图，并让升级后的设置页仍能说明当前偏好；
+  /// 真正的功能状态以注册表查询结果 `SystemThumbnailStatus` 为准。
+  static final systemIconEnabled = ConfigItem("system_icon_enabled", false);
 
   static const kParserBuiltin = "builtin";
   static const kParserAapt2 = "aapt2";
@@ -124,7 +125,10 @@ class Config {
   static final maxLines = ConfigItem("max_lines", 6);
   // 注意：`Color.value` 已废弃（Flutter 3.27+），`toARGB32()` 返回等值的
   // 32 位 ARGB int，与既有持久化数据兼容。
-  static final themeColor = ConfigItem("theme_color", Colors.blue.toARGB32());
+  static final themeColor = ConfigItem(
+    "theme_color",
+    const Color(0xFF6A57F2).toARGB32(),
+  );
   static final titleWidth = ConfigItem("title_width", 100.0);
   static final language = ConfigItem("language", kLanguageAuto);
 
@@ -143,6 +147,9 @@ class Config {
   /// 都要重新问 adb。无线设备靠它免去重新输入 IP。
   static final knownDevices = ConfigItem("known_devices", "[]");
 
+  /// 安装页的最近安装记录（JSON 数组，见 `InstallHistoryManager`）。
+  static final installHistory = ConfigItem("install_history", "[]");
+
   static final List<ConfigItem> _globalItems = [
     aapt2Path,
     apksignerPath,
@@ -159,6 +166,7 @@ class Config {
     enableDebug,
     systemIconEnabled,
     knownDevices,
+    installHistory,
     maxLines,
     themeColor,
     titleWidth,

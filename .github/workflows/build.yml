@@ -6,6 +6,7 @@ on:
       - "v*"
     branches:
       - main
+      - "feature/**"
   pull_request:
   workflow_dispatch:
 
@@ -144,13 +145,19 @@ jobs:
 
   # 外部真实样本测试：**单独一个 job**，让「跑没跑 / 为什么没跑」一眼可见。
   #
-  # 样本不进版本库（体积大、且属于用户数据），因此 CI 上必然是跳过的。
-  # 把它从 `flutter test` 里拎出来单列，是为了不让「跳过」被读成一个
-  # 不起眼的 `~11` —— 那正是「整体绿着、关键测试其实没跑」的经典形态。
+  # 样本不进版本库（体积大、且属于用户数据）。普通 PR / main 推送允许显式
+  # 跳过着跑；**发布 tag 则必须真实跑过**，除非仓库变量
+  # `APPINFOTOOL_ALLOW_NO_SAMPLES=1` 给出书面豁免。`create-release` 依赖这个
+  # job，因此「CI 全绿但真实样本从没跑过」不再能产出 Release。
   external-samples:
     name: External samples (needs APPINFOTOOL_SAMPLES)
     needs: quality
     runs-on: ubuntu-latest
+    env:
+      APPINFOTOOL_SAMPLES: ${{ vars.APPINFOTOOL_SAMPLES }}
+      APPINFOTOOL_SAMPLES_ARCHIVE_URL: ${{ secrets.APPINFOTOOL_SAMPLES_ARCHIVE_URL }}
+      APPINFOTOOL_SAMPLE_MANIFEST: ${{ vars.APPINFOTOOL_SAMPLE_MANIFEST }}
+      APPINFOTOOL_ALLOW_NO_SAMPLES: ${{ vars.APPINFOTOOL_ALLOW_NO_SAMPLES }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -158,30 +165,84 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
+      - name: Download real-sample archive
+        # 样本不进仓库。仓库 secret 提供 zip 下载地址（可以是私有对象存储
+        # 的短期签名 URL）；secret 为空时保持原来的手工路径/显式豁免行为。
+        if: ${{ env.APPINFOTOOL_SAMPLES_ARCHIVE_URL != '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/appinfotool-samples"
+          curl -fL --retry 3 --retry-delay 2 "$APPINFOTOOL_SAMPLES_ARCHIVE_URL"             -o "$RUNNER_TEMP/appinfotool-samples.zip"
+          unzip -q "$RUNNER_TEMP/appinfotool-samples.zip"             -d "$RUNNER_TEMP/appinfotool-samples"
+          # 压缩包允许有一个顶层目录；找到第一个样本所在目录作为根。
+          root="$(dirname "$(find "$RUNNER_TEMP/appinfotool-samples" -type f             \( -name '*.apk' -o -name '*.ipa' -o -name '*.xapk'                -o -name '*.apkm' -o -name '*.apks' \) | head -1)")"
+          if [ -z "$root" ] || [ "$root" = "." ]; then
+            echo "::error title=样本压缩包为空::下载的 zip 中没有 apk/ipa 样本。"
+            exit 1
+          fi
+          echo "APPINFOTOOL_SAMPLES=$root" >> "$GITHUB_ENV"
+          echo "::notice::真实样本已下载：$root"
+
+      - name: Require samples or explicit exemption
+        # 没有样本时不能静默绿。普通分支显式警告后跳过；tag 直接阻断，
+        # 除非仓库变量 APPINFOTOOL_ALLOW_NO_SAMPLES=1 明确豁免。
+        run: |
+          set -euo pipefail
+          if [ -n "${APPINFOTOOL_SAMPLES:-}" ]; then
+            if [ ! -d "${APPINFOTOOL_SAMPLES}" ]; then
+              echo "::error title=真实样本路径无效::\
+          APPINFOTOOL_SAMPLES=${APPINFOTOOL_SAMPLES} 不是目录。\
+          发布门禁不能把「路径配错」当成「没有样本」。"
+              exit 1
+            fi
+            echo "APPINFOTOOL_REQUIRE_SAMPLES=1" >> "$GITHUB_ENV"
+            echo "::notice::真实样本已配置：${APPINFOTOOL_SAMPLES}"
+          elif [ "${APPINFOTOOL_ALLOW_NO_SAMPLES:-}" = "1" ] || [ -f .github/allow-no-samples ]; then
+            # 两种豁免机制，语义相同：仓库变量（无需改代码，适合临时用）
+            # 与仓库内文件（能进 git 历史，谁豁免、为什么豁免有据可查）。
+            # 后者是为「没有仓库管理权限、只能改代码」的维护者准备的 ——
+            # 它不是静默开关：文件内容会被要求写清理由，Release 正文也会带警告。
+            echo "APPINFOTOOL_REQUIRE_SAMPLES=0" >> "$GITHUB_ENV"
+            echo "::warning title=真实样本门禁已豁免::\
+          本次不要求真实样本（APPINFOTOOL_ALLOW_NO_SAMPLES=1 或 .github/allow-no-samples 存在）。\
+          这是一次**显式豁免**，Release 正文会自动标注「真实样本未验证」。"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "::error title=发布被真实样本门禁阻断::\
+          打 tag 时未配置 APPINFOTOOL_SAMPLES，也没有 APPINFOTOOL_ALLOW_NO_SAMPLES=1。\
+          真实样本 E2E 未跑过，不能发布。请配置仓库变量 APPINFOTOOL_SAMPLES \
+          （runner 上可读的目录），或显式设置豁免变量。"
+            exit 1
+          else
+            echo "APPINFOTOOL_REQUIRE_SAMPLES=0" >> "$GITHUB_ENV"
+            echo "::warning title=外部真实样本测试未执行::\
+          非发布分支未配置 APPINFOTOOL_SAMPLES，真实样本测试将跳过；\
+          这不代表端到端通过，只是本次分支未执行。"
+          fi
+
+      - name: Resolve sample manifest
+        # 清单本身可以进仓库（只有文件名和 SHA，不含样本内容）。
+        run: |
+          set -euo pipefail
+          if [ -z "${APPINFOTOOL_SAMPLE_MANIFEST:-}" ]              && [ -f test/samples/manifest.json ]              && [ -n "${APPINFOTOOL_SAMPLES:-}" ]; then
+            echo "APPINFOTOOL_SAMPLE_MANIFEST=test/samples/manifest.json" >> "$GITHUB_ENV"
+            echo "::notice::使用仓库内样本清单 test/samples/manifest.json"
+          fi
+          if [ -n "${APPINFOTOOL_SAMPLES:-}" ]              && [ -z "${APPINFOTOOL_SAMPLE_MANIFEST:-}" ]; then
+            echo "::error title=真实样本缺少清单::已配置样本目录，但没有 \`APPINFOTOOL_SAMPLE_MANIFEST\` 或 test/samples/manifest.json。"
+            exit 1
+          fi
+
       - name: Install Dependencies
         run: |
           flutter pub get --enforce-lockfile
           dart run build_runner build --delete-conflicting-outputs
-
-      - name: Report sample availability
-        # 缺样本是**环境限制**（不是失败），但必须显式说出来，
-        # 否则「CI 全绿」会被读成「端到端也验过了」。
-        run: |
-          if [ -n "${APPINFOTOOL_SAMPLES:-}" ]; then
-            echo "::notice::APPINFOTOOL_SAMPLES 已配置：$APPINFOTOOL_SAMPLES"
-          else
-            echo "::warning title=外部真实样本测试未执行::\
-          CI 未配置 APPINFOTOOL_SAMPLES，端到端真实样本测试将整体跳过。\
-          这是环境限制（样本体积大且属于用户数据，不入库），不是产品缺陷；\
-          但也意味着**本次 CI 没有验证过真实 APK/IPA**。\
-          本地跑法：APPINFOTOOL_SAMPLES=/path/to/samples flutter test test/real_samples_test.dart test/real_samples_ui_test.dart"
-          fi
 
       - name: External sample tests (逐条打印跳过原因)
         # `--reporter expanded` 会把每条 Skip 与它的原因单独打出来，
         # 而不是汇总成一个计数。
         run: |
           flutter test test/real_samples_test.dart test/real_samples_ui_test.dart \
+            test/real_samples_smoke_test.dart test/sample_regression_test.dart \
             --reporter expanded
 
   build-windows:
@@ -618,6 +679,27 @@ jobs:
             build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64-Setup.exe
             build/windows/x64/installer/Release/AppInfoTool-*-Windows-x86_64.zip
 
+      - name: Runtime smoke (portable package, launch only)
+        # 只验证打包产物能启动；APK 分析、报告导出、Explorer 缩略图/关联、
+        # 安装器与卸载需要交互式桌面，见 tool/runtime_smoke/README.md 的人工
+        # 验收清单。这里不把「启动成功」冒充成完整三平台验收。
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $V = "${{ steps.version.outputs.version }}"
+          $zip = "build/windows/x64/installer/Release/AppInfoTool-$V-Windows-x86_64.zip"
+          if (-not (Test-Path $zip)) { throw "portable zip not found: $zip" }
+          $dir = Join-Path $env:RUNNER_TEMP 'appinfotool-portable'
+          Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $exe = Get-ChildItem -Path $dir -Recurse -Filter apk_info_tool.exe -File |
+            Select-Object -First 1
+          if (-not $exe) {
+            Write-Host "::error title=Windows portable missing exe::zip expanded without apk_info_tool.exe ($dir)"
+            throw "apk_info_tool.exe not found in portable zip"
+          }
+          & tool/runtime_smoke/windows.ps1 -ExePath $exe.FullName
+
   build-macos:
     needs: quality
     runs-on: macos-latest
@@ -704,6 +786,12 @@ jobs:
           hdiutil detach -quiet "$MOUNT"
           echo "DMG 校验通过：$DMG"
 
+      - name: Runtime smoke (launch only)
+        # 只验证 .app 能启动；IPA 分析、报告导出与文件打开流程见
+        # tool/runtime_smoke/README.md 的人工验收清单。
+        run: |
+          tool/runtime_smoke/macos.sh             "build/macos/Build/Products/Release/AppInfoTool.app"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -756,7 +844,7 @@ jobs:
           # 而它跟构建本身毫无关系 —— 加重试，别让基础设施抖动浪费一次发布。
           sudo apt-get -o Acquire::Retries=3 update
           # sudo apt-get install -y cmake clang
-          sudo apt-get -o Acquire::Retries=3 install -y ninja-build libgtk-3-dev
+          sudo apt-get -o Acquire::Retries=3 install -y ninja-build libgtk-3-dev xvfb
 
           flutter pub get --enforce-lockfile
           # 与 quality job 保持一致：不带 --delete-conflicting-outputs 时，
@@ -832,6 +920,13 @@ jobs:
           # 那是工程名不是产物名，不随这里改。
           mv *.AppImage AppInfoTool-${{ steps.version.outputs.version }}-Linux-x86_64.AppImage
 
+      - name: Runtime smoke (AppImage launch only)
+        # 只验证 AppImage 能在 Xvfb 下启动；APK 分析与报告导出见
+        # tool/runtime_smoke/README.md 的人工验收清单。
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          tool/runtime_smoke/linux.sh             "AppInfoTool-${V}-Linux-x86_64.AppImage"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -839,12 +934,14 @@ jobs:
           path: '*.AppImage'
 
   create-release:
-    # 只要 **Windows 与 macOS** 成功就出 Release：用户要的是这两个平台的发行版，
-    # 而 Linux 的 AppImage 依赖 linuxdeploy 这类外部下载，把它设成硬依赖会让
-    # 一次无关的下载失败把整个发行版卡掉。Linux 成功就一并附上，失败只少一个文件。
-    needs: [build-windows, build-macos, build-linux]
+    # Windows 与 macOS 构建成功、且**真实样本门禁成功**才出 Release。
+    # 前者的原因是用户要这两个平台的发行版；Linux 的 AppImage 依赖
+    # linuxdeploy 这类外部下载，把它设成硬依赖会让一次无关的下载失败把整个
+    # 发行版卡掉，Linux 成功就一并附上、失败只少一个文件。
+    # 后者的原因是：真实样本从未跑过的构建不能因为「单元测试全绿」就发布。
+    needs: [build-windows, build-macos, build-linux, external-samples]
     runs-on: ubuntu-latest
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.build-windows.result == 'success' && needs.build-macos.result == 'success' }}
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.build-windows.result == 'success' && needs.build-macos.result == 'success' && needs.build-linux.result == 'success' && needs.external-samples.result == 'success' }}
     # 显式声明：新建仓库的默认 `GITHUB_TOKEN` 权限是**只读**，不声明的话
     # `action-gh-release` 会以 403 失败。只给这一个 job，不放工作流顶层 ——
     # 工作流也跑 `pull_request`，顶层给写权限等于让同仓 PR 能推代码。
@@ -1003,6 +1100,12 @@ jobs:
           fi
 
           {
+            if [ -f .github/allow-no-samples ]; then
+              printf '> **真实样本未验证。** 本次发布由仓库内 `.github/allow-no-samples` 显式豁免；\n'
+              printf '> 单元测试与各平台构建通过，但没有跑真实 APK/IPA 的端到端样本测试。\n'
+              printf '> 豁免理由：%s\n\n' "$(tr '\n' ' ' < .github/allow-no-samples)"
+              printf -- '---\n\n'
+            fi
             if [ -n "$SECTION" ]; then
               printf '%s\n\n' "$SECTION"
               printf -- '---\n\n'

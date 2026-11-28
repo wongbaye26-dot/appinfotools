@@ -20,7 +20,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Flutter-Dart-blue?style=flat-square" alt="Flutter">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platforms">
-  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS-3DDC84?style=flat-square" alt="Android">
+  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS%20%7C%20AAB-3DDC84?style=flat-square" alt="Android">
   <img src="https://img.shields.io/badge/iOS-IPA-000000?style=flat-square" alt="iOS">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
@@ -43,8 +43,10 @@
 
 | 平台 | 格式 | 能力 |
 |---|---|---|
-| Android | APK / XAPK / APKM / APKS | 应用名（多语言）、包名、版本、SDK 区间、屏幕与密度、ABI、权限、组件（Activity/Service/Receiver/Provider 及其导出状态）、分包与 OBB、文件结构（DEX / 原生库 / 顶层目录）|
+| Android | APK / XAPK / APKM / APKS / AAB | 应用名（多语言）、包名、版本、SDK 区间（含系统发布年月）、屏幕与密度、ABI、硬件/软件特性（必需与可选，带平台说明）、语言列表（标签 + 本地化名称 + 自称）、启动 Activity、权限、组件（Activity/Service/Receiver/Provider 及其导出状态）、分包与 OBB、文件结构（DEX / 原生库 / 顶层目录）|
 | iOS | IPA | Bundle ID、版本与 Build、最低系统版本、设备族、可执行文件、嵌套 Bundle 与 Framework、URL Scheme、设备能力、Mach-O 架构、**`Assets.car` 资产目录** |
+
+> **AAB 的范围**：`.aab` 是 Play 的分发格式，没有根级清单、没有 `resources.arsc`，也没有 APK Signing Block。因此对 AAB 只展示清单与资源表能支撑的信息（包名、版本、min/target SDK、多语言标签、图标、DEX 与原生库条目、结构统计），**不显示签名、库识别与安装入口** —— 那些结论对 AAB 不成立，显示「未签名」才是误导。
 
 ### iOS 图标：从 `Assets.car` 里真的取出图
 
@@ -67,14 +69,17 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 能力 | 说明 |
 |---|---|
 | 权限审计 | 按权限逐条给出风险等级、用途与判定依据；`maxSdkVersion` 与 `uses-permission-sdk-23` 等版本条件不会被丢弃 |
+| 权限说明 | 权限 Tab 换成逐条表格：Android 官方标题与说明（跟随界面语言）、`protectionLevel` 原始位掩码与标志位（privileged / runtime / appop …）、以及按**能读到什么/能做什么**分出的五档风险分组。风险分级是本工具的策略，卡片里固定写明「不等于恶意」 |
 | OCR / 敏感数据线索 | 扫描 DEX 中的字符串标记，提示证件识别、截图、相册读取等能力 |
 | 代码级取证 | DEX 三层递进：**结构 → 方法引用 → 调用点**。「代码引用了」与「字符串里提到了」分开陈述，调用点还能回答「在哪个方法的哪个偏移」 |
 | 原生库符号 | 读取 ELF `.dynsym` 与 Mach-O `LC_SYMTAB`，按**精确符号名**匹配导入的系统能力（`system` / `dlopen` / `ptrace` / `socket` …）|
 | 原生库加固 | 逐个 `.so` 检查 `PT_GNU_STACK`（可执行栈）、`PT_GNU_RELRO`、`DT_FLAGS` / `DT_FLAGS_1`（BIND_NOW），并按 ABI 去重 |
 | 伪装检测 | `lib/<abi>/*.so` 的内容若实际是 DEX —— 运行时会 `DexClassLoader` 加载，静态分析的结论对那部分不成立 |
 | 签名方案 | 解析 APK Signing Block **与 `META-INF` 的 v1 两件套**，区分「未签名 / 只有 v1 / v2 / v3 / v3.1」—— 「有签名」「只有 v1」与「根本没签」是三件不同的事 |
+| 证书详情 | 不装 `apksigner`/Java 也能从包里直接读证书：v1 走 `META-INF/*.RSA` 的 PKCS#7，v2/v3/v3.1 走 Signing Block；展示主题/签发者 DN、序列号、有效期、签名与公钥算法、RSA/EC 位数、SHA-256 / SHA-1 / MD5 指纹。iOS 侧同一套渲染用于描述文件证书链 |
 | 清单配置 | `debuggable`、`allowBackup`、导出组件、**ContentProvider 专项**（authorities / `grantUriPermissions` / `readPermission`+`writePermission` 是否只护住一个方向）、`networkSecurityConfig`（**真的展开那份 XML**，不因属性被忽略就跳过）|
 | 第三方 SDK | 25 个服务类包名前缀（推送 / 统计 / 归因 / 支付 / 地图 / 验证码 / 风控 / 崩溃上报 …），按 DEX `string_ids` 精确索引而非字节扫描；**版本号**取自 `META-INF/maven/**/pom.properties` |
+| 库识别 | 内置 LibChecker-Rules（3053 条规则，Apache-2.0）离线匹配：按 `.so` 文件名认原生库并按 ABI 合并体积、按组件名/Intent action 认 SDK、按 DEX 包名前缀认 Java 库，另含 Kotlin / Jetpack Compose / 加固壳标记。未识别的原生库按体积单列，规则数据当前为上游 `dataVersion 50`，可在**设置 → 安全与诊断 → 库识别规则**里直接导入上游 `portable-v5.zip`（离线、立即生效，坏包会报错并保留原规则），也可在打包时用 `python3 tool/sync_libchecker_rules.py <portable-v5 解包目录>` 重新生成（见 `assets/libchecker/README.md`）。SDK 图标随包内置 197 个 SVG（`assets/libchecker/icons.json`，`flutter_svg` 渲染）；没有图标的规则回退到首字母色块 |
 | 数据回传分析 | 识别网络库、上传接口与域名 / IP，标注「已确认 / 疑似 / 仅具备能力」 |
 | 隐私清单 | iOS 侧检查 `Info.plist` 用途说明、`PrivacyInfo.xcprivacy` 声明（含**必需理由 API** `NSPrivacyAccessedAPITypes`），以及「声明了权限但没调用 API」的双向对照 |
 | 权限请求 | iOS 侧从 `__TEXT,__objc_methname` 的**选择子表**读「代码真的会申请哪些权限」—— 比用途说明强一档；Android 侧区分 signature 级权限（声明了也拿不到） |
@@ -85,11 +90,11 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 分析覆盖 | 逐维度给出「已覆盖 / 部分覆盖 / 未覆盖 / 本次不适用」，界面、Markdown 与 JSON 读同一份数据 |
 | 风险分级 | P0–P3 / INFO / **UNKNOWN** —— 「无法确认」与「低风险」严格分开，覆盖不足不会被显示成绿色 |
 
-Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐权限条目、iOS 侧 30 条；分级按**来源稀有度**而非一律高危 ——
+Android 侧 **47 个规则 id**（含 7 条组合规则及其升级变体）+ 33 条逐权限条目、iOS 侧 **44 个规则 id**（按代码里 `ANDROID-*` / `IOS-*` 去重统计）；分级按**来源稀有度**而非一律高危 ——
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 组合规则 C 的等级**跟着证据强度走**：同一方法体内两个调用点给 P1，只有整包层面共现给 P2。
 
-### 安装到设备（Android）
+### 安装到设备（Android / iOS）
 
 分析完的下一步通常是「装上去看看」。安装页把这套流程做完整了 —— 选包、连设备、
 安装、看日志都在同一个页面里，不必再开终端敲 `adb`。
@@ -108,14 +113,19 @@ Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐
 > 必然失败（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`），而重打包的包签名几乎一定
 > 与已装版本不同 —— 这正是本工具的用户最常撞上的一种失败。
 
-**目前只支持 Android。** iOS 的门槛不在工具，而在签名：IPA 必须「为这台设备
-签过」才装得上，App Store 包与砸壳包一律装不上，只有企业签与 Ad-Hoc 有意义。
-方案评估在 [`docs/notes/install-support-eval.md`](docs/notes/install-support-eval.md)，尚未实现。
+**iOS（.ipa）走 libimobiledevice。** 选择 `.ipa` 后安装页换成 iOS 设备卡，
+用 `idevice_id` 枚举设备、`ideviceinstaller -i` 安装，日志进同一个控制台。
+工具不自带（`brew install libimobiledevice ideviceinstaller`），缺失时页面
+给出安装指引而不是空列表。
+
+> iOS 的门槛不在工具，而在签名：IPA 必须「为这台设备签过」才装得上，
+> App Store 包与砸壳包一律装不上，只有企业签与 Ad-Hoc 有意义。装不上时
+> 控制台会原样保留 `ideviceinstaller` 的报错，便于判断是签名还是设备信任问题。
 
 ### 界面
 
 - **概览页**：一屏看完 —— 当前文件状态、平台/大小/签名/安全四个状态卡、统计与最近文件
-- **详情页**：六个 Tab（概览 / 应用 / 权限 / 结构 / 签名 / 安全），APK 与 IPA 语义一致
+- **详情页**：Android 九个 Tab（概览 / 清单 / 组件 / 权限 / 库识别 / 安全 / 签名 / 文件 / 诊断），iOS 为（概览 / Info.plist / 权限 / 框架 / 签名 / 安全 / 文件 / 诊断），两平台语义一致
 - **安装页**：选包 → 连设备（USB 自动出现 / 无线配对）→ 安装，带安装日志与分包选择
 - **版本对比**：选两个已解析的包做结构化差异（字段级 + 权限 / 组件 / 原生符号 / 域名等集合级），
   三态呈现，且把「我们没读到」与「文件里没有」严格分开；可导出 Markdown / JSON 对比报告
@@ -124,7 +134,7 @@ Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐
   Windows 上安装包会写一份机器级关联，程序每次启动再补一份用户级关联（`HKCU`，无需管理员），
   macOS 提示在 Finder 的「显示简介 → 打开方式」里设置 —— 系统里没有对应的设置面板，所以不会假装能跳过去
 - **单实例**：Windows 上双击第二个包不会开新窗口 —— 路径交给已经开着的窗口，直接在里面换文件
-- **导出**：分析报告（Markdown / JSON）、应用图标（PNG / SVG / 原始文件）
+- **导出**：分析报告（Markdown / JSON / HTML，**schema v11** 含权限分级、库识别与包内证书字段）、应用图标（PNG / SVG / 原始文件）
 - **重命名**：按应用名或「名称+版本」批量命名
 - **明暗主题** + 多语言界面
 
@@ -132,9 +142,13 @@ Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐
 
 `.apk` / `.ipa` 可以在资源管理器里显示各自应用的真实图标，而不是统一的文件图标。
 
-**默认关闭**，需要在「设置 → 系统文件图标」里点一次「启用」——这项功能要往注册表写
-缩略图处理器登记项，那是往系统里装东西，不该在用户不知情时发生。「停用」只删本项目
-写的那两个键，不碰其它应用，也不改 `.apk` 的默认打开方式。
+**默认关闭**。安装器和应用启动都**不会**写缩略图注册；需要在「设置 → 系统文件图标」
+里点一次「启用」才会写 HKCU。这项功能会往系统里装东西，不该在用户不知情时发生。
+
+「停用」会删除本项目的 HKCU 登记，并尝试清理旧版写在 HKLM 的机器级登记；没有管理员
+权限时 HKLM 删不掉，界面会明确提示“未能完全停用”，不会假报成功。它不碰其它应用，
+也不改 `.apk` 的默认打开方式。升级安装不会自动删除旧版已写入的 HKCU 登记；需要停用时
+请在设置页操作。
 
 实现是一个 in-proc COM 缩略图处理器 + 一个独立进程的解析器：DLL 由 `explorer.exe`
 加载，因此**不能**在里面跑解析逻辑——那会把崩溃风险带进桌面进程。DLL 只负责起子进程
@@ -247,6 +261,7 @@ Android 与 iOS 解析器互不依赖，只共享 `analysis_model` 与 `archive_
   `aapt2` 核对清单与资源、`apksigner` / `codesign` 核对签名、`assetutil` 核对 iOS 资产目录、
   `libcompression`（Apple 系统库）核对 LZFSE、`actool`（Xcode 自带）生成资产目录夹具
 - **夹具用真实产物**，不手拼字节 —— 手拼样本会带着与解析器相同的错误假设，等于自证
+- **真实样本门禁**：用 `APPINFOTOOL_SAMPLES` 指向样本目录运行真实 APK/IPA E2E；发布 tag 的 CI 在未配置样本且未显式设置 `APPINFOTOOL_ALLOW_NO_SAMPLES=1` 时**阻断发布**，不会把「跳过」当成通过
 
 ## 已知局限
 

@@ -20,7 +20,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Flutter-Dart-blue?style=flat-square" alt="Flutter">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platforms">
-  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS-3DDC84?style=flat-square" alt="Android">
+  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS%20%7C%20AAB-3DDC84?style=flat-square" alt="Android">
   <img src="https://img.shields.io/badge/iOS-IPA-000000?style=flat-square" alt="iOS">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
@@ -43,7 +43,7 @@ It builds on the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTo
 
 | Platform | Formats | What you get |
 |---|---|---|
-| Android | APK / XAPK / APKM / APKS | App name (all locales), package ID, version, SDK range, screens & densities, ABIs, permissions, components (Activity/Service/Receiver/Provider with exported state), split APKs and OBB, file structure (DEX / native libs / top-level dirs) |
+| Android | APK / XAPK / APKM / APKS / AAB | App name (all locales), package ID, version, SDK range, screens & densities, ABIs, permissions, components (Activity/Service/Receiver/Provider with exported state), split APKs and OBB, file structure (DEX / native libs / top-level dirs) |
 | iOS | IPA | Bundle ID, version and build, minimum OS, device family, executable, nested bundles and frameworks, URL schemes, device capabilities, Mach-O architectures, and the **`Assets.car` asset catalog** |
 
 ### iOS icons: actually decoding `Assets.car`
@@ -124,7 +124,7 @@ it is not implemented.
   On Windows the app writes the registry itself (`HKCU`, no admin rights needed); on macOS it explains
   how to set it in Finder's *Get Info → Open with*, because macOS has no such settings pane and this
   project does not pretend otherwise
-- **Export** — analysis report (Markdown / JSON), app icons (PNG / SVG / original file)
+- **Export** — analysis report (Markdown / JSON / HTML, schema v11 with permission grades, library identification and in-package certificate fields), app icons (PNG / SVG / original file)
 - **Rename** — rename by app name, or name + version
 - **Light/dark themes** and a multilingual UI
 
@@ -133,11 +133,17 @@ it is not implemented.
 `.apk` / `.ipa` files can show their own app icon in File Explorer instead of the generic
 file icon.
 
-**Off by default.** Turn it on once under Settings → System file icons. The feature
-writes a thumbnail-handler registration under the registry (per-user `HKCU`), which is
-installing something into your system — it should not happen behind your back.
-Disabling it removes exactly the two keys this app wrote; it does not touch other
-handlers or change the default app for `.apk`.
+**Off by default.** Neither the installer nor app startup writes a thumbnail
+registration; you must turn it on under Settings → System file icons, which writes a
+per-user `HKCU` entry. This feature installs something into your system — it should not
+happen behind your back.
+
+Disabling removes this app's `HKCU` entry and attempts to clean up the machine-wide
+(`HKLM`) entry written by older versions. Without administrator rights the `HKLM` entry
+cannot be removed; the UI then says it could not fully disable the feature instead of
+claiming success. It does not touch other handlers or change the default app for `.apk`.
+Upgrading does not automatically delete a `HKCU` registration written by an older
+version; use the settings toggle to disable it.
 
 The design is an in-proc COM thumbnail handler plus an out-of-process parser. Explorer
 loads the handler into itself, so the parsing must **not** run there — a crash would take
@@ -251,6 +257,7 @@ The Android and iOS parsers do not depend on each other; they share only `analys
   `aapt2` for the manifest and resources, `apksigner` / `codesign` for signatures, `assetutil` for iOS asset catalogs,
   `libcompression` (Apple's system library) for LZFSE, and `actool` (bundled with Xcode) to generate asset-catalog fixtures
 - **Fixtures are real artifacts**, never hand-assembled bytes — a hand-built sample carries the same wrong assumptions as the parser, which makes the test self-confirming
+- **Real-sample gate**: run real APK/IPA E2E with `APPINFOTOOL_SAMPLES` pointing at a sample directory; a release tag is **blocked** when samples are missing and `APPINFOTOOL_ALLOW_NO_SAMPLES=1` is not explicitly set, so a skip is never treated as a pass
 
 ## Known limitations
 

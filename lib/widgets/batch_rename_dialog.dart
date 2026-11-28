@@ -196,32 +196,78 @@ class _BatchRenameDialogState extends State<BatchRenameDialog> {
                       itemBuilder: (context, index) {
                         final plan = plans[index];
                         final item = _items[index];
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(
-                            switch (item.identity.platform) {
-                              PackageIdentityPlatform.ios => Icons.phone_iphone,
-                              PackageIdentityPlatform.android => Icons.android,
-                              PackageIdentityPlatform.unknown =>
-                                Icons.insert_drive_file_outlined,
-                            },
-                            size: 18,
-                            color: theme.colorScheme.onSurfaceVariant,
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 9,
                           ),
-                          title: Text(
-                            p.basename(plan.sourcePath),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            plan.newName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: plan.isNoop
-                                  ? theme.colorScheme.onSurfaceVariant
-                                  : theme.colorScheme.primary,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant,
                             ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant,
+                                  ),
+                                ),
+                                child: Icon(
+                                  switch (item.identity.platform) {
+                                    PackageIdentityPlatform.ios =>
+                                      Icons.phone_iphone,
+                                    PackageIdentityPlatform.android =>
+                                      Icons.android,
+                                    PackageIdentityPlatform.unknown =>
+                                      Icons.insert_drive_file_outlined,
+                                  },
+                                  size: 15,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 5,
+                                child: Text(
+                                  p.basename(plan.sourcePath),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Icon(
+                                Icons.arrow_forward,
+                                size: 13,
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.55),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 6,
+                                child: Text(
+                                  plan.newName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontFamily: 'monospace',
+                                    color: plan.isNoop
+                                        ? theme.colorScheme.onSurfaceVariant
+                                        : theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       },

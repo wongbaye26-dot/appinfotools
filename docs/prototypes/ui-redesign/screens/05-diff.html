@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>05 · 版本对比</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+</head>
+<body class="app" data-nav="diff" data-window-title="AppInfoTool — 版本对比" data-window-state="2 个文件已选">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">工作区 <span class="sep">/</span> 版本对比</div>
+          <h1>版本对比</h1>
+          <p>选择两个安装包，查看字段与集合差异；无法比较的项会单独标注。</p>
+        </div>
+        <div class="actions">
+          <button class="btn"><svg class="ic"><use href="#i-refresh"/></svg>重新选择</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-download"/></svg>导出对比报告</button>
+        </div>
+      </header>
+
+      <section class="slot-grid">
+        <div class="card slot">
+          <div class="file-icon">APK</div>
+          <div style="min-width:0"><div class="slot-name">Aurora Notes · 2.9.0</div><div class="slot-meta">com.aurora.notes · 16.1 MB</div></div>
+          <span class="chip green">旧版本</span>
+        </div>
+        <div class="vs"><div class="circle"><svg class="ic"><use href="#i-arrow"/></svg></div></div>
+        <div class="card slot">
+          <div class="file-icon">APK</div>
+          <div style="min-width:0"><div class="slot-name">Aurora Notes · 3.20.0</div><div class="slot-meta">com.aurora.notes · 18.4 MB</div></div>
+          <span class="chip blue">新版本</span>
+        </div>
+      </section>
+
+      <section class="card diff-summary">
+        <div class="diff-count"><b>12</b><span>字段变化</span></div>
+        <div class="divider-v"></div>
+        <div class="diff-count"><b>3</b><span>集合变化</span></div>
+        <div class="divider-v"></div>
+        <div class="diff-count"><b style="color:var(--amber)">2</b><span>无法比较</span></div>
+        <div class="diff-filters">
+          <span class="filter active">全部</span>
+          <span class="filter">字段 12</span>
+          <span class="filter">集合 3</span>
+          <span class="filter">无法比较 2</span>
+        </div>
+      </section>
+
+      <section class="diff-body">
+        <div class="card diff-list" style="min-height:0; overflow:hidden;">
+          <div class="card-head" style="padding:15px 16px 10px; margin-bottom:0; border-bottom:1px solid var(--line);">
+            <div><div class="card-title">字段差异</div><div class="card-sub">只列出实际变化的字段。</div></div>
+            <span class="chip">按重要性排序</span>
+          </div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-file"/></svg>版本名称</div><span class="value-old">2.9.0</span><span class="value-new">3.20.0</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-file"/></svg>版本号</div><span class="value-old">290</span><span class="value-new">320</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-file"/></svg>安装包大小</div><span class="value-old">16.1 MB</span><span class="value-new">18.4 MB</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-shield"/></svg>targetSdk</div><span class="value-old">34</span><span class="value-new">36</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-shield"/></svg>权限数量</div><span class="value-old">8</span><span class="value-new">10</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-box"/></svg>DEX 数量</div><span class="value-old">1</span><span class="value-new">2</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-layers"/></svg>原生库</div><span class="value-old">arm64-v8a</span><span class="value-new">arm64-v8a, armeabi-v7a</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-alert"/></svg>安全发现</div><span class="value-old">9 项</span><span class="value-new">17 项</span></div>
+          <div class="diff-row"><div class="diff-key"><svg class="ic"><use href="#i-lock"/></svg>签名方案</div><span class="value-old">v2</span><span class="value-new">v2 / v3</span></div>
+          <div style="padding:10px 16px; color:var(--muted); font-size:10px; border-top:1px solid var(--line);">还有 3 项字段变化未展开</div>
+        </div>
+
+        <aside class="card restore-card" style="align-self:start;">
+          <div class="card-head" style="margin-bottom:2px;"><div class="card-title"><svg class="ic"><use href="#i-info"/></svg>对比摘要</div></div>
+          <div style="font-size:10.5px; color:var(--muted); line-height:1.6;">两个版本包名一致；新版本增加 1 个 DEX、1 组 ABI 与 2 条权限。安全发现从 9 项增至 17 项，需结合新增能力复核。</div>
+          <div class="divider" style="margin:4px 0;"></div>
+          <div class="restore-item"><svg class="ic"><use href="#i-layers"/></svg>新增权限<span class="plus"><svg class="ic"><use href="#i-arrow"/></svg></span></div>
+          <div class="restore-item"><svg class="ic"><use href="#i-file"/></svg>新增 DEX<span class="plus"><svg class="ic"><use href="#i-arrow"/></svg></span></div>
+          <div class="restore-item"><svg class="ic"><use href="#i-shield"/></svg>新增安全线索<span class="plus"><svg class="ic"><use href="#i-arrow"/></svg></span></div>
+          <div class="banner" style="margin-top:3px; padding:9px 10px; background:var(--blue-soft); border-color:#d5e0fb; color:#1e419c;">
+            <svg class="ic"><use href="#i-info"/></svg><div><b style="font-size:10px;">2 项无法比较</b><p style="font-size:9.5px;">签名详情与资源表未同时读取，已归入“无法比较”，不算差异。</p></div>
+          </div>
+        </aside>
+      </section>
+      <div class="footnote">Prototype · Diff</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

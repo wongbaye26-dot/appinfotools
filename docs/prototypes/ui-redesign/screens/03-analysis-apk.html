@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>03 · 分析 / Android</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+</head>
+<body class="app" data-nav="analysis" data-window-title="AppInfoTool — 分析" data-window-state="Aurora Notes · APK">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">工作区 <span class="sep">/</span> 分析 <span class="sep">/</span> Android</div>
+          <h1>Aurora Notes</h1>
+          <p>com.aurora.notes · 3.20.0 (320) · 静态解析完成，未执行应用代码。</p>
+        </div>
+        <div class="actions">
+          <button class="btn icon"><svg class="ic"><use href="#i-refresh"/></svg></button>
+          <button class="btn"><svg class="ic"><use href="#i-download"/></svg>导出报告</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-compare"/></svg>加入对比</button>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <span class="tab active">概览</span>
+        <span class="tab">清单</span>
+        <span class="tab">组件 <span class="count">18</span></span>
+        <span class="tab">权限 <span class="count">10</span></span>
+        <span class="tab">安全 <span class="count">17</span></span>
+        <span class="tab">文件 <span class="count">1601</span></span>
+        <span class="tab">诊断</span>
+      </nav>
+
+      <section class="detail-grid">
+        <div class="detail-col">
+          <div class="card card-pad">
+            <div class="card-head">
+              <div class="card-title"><svg class="ic"><use href="#i-box"/></svg>应用信息</div>
+              <span class="chip green"><span class="badge-dot"></span>解析完成</span>
+            </div>
+            <div class="info-grid">
+              <div class="info-cell"><div class="info-k">包名</div><div class="info-v mono">com.aurora.notes</div></div>
+              <div class="info-cell"><div class="info-k">版本</div><div class="info-v">3.20.0 (320)</div></div>
+              <div class="info-cell"><div class="info-k">安装包大小</div><div class="info-v">18.4 MB</div></div>
+              <div class="info-cell"><div class="info-k">SDK</div><div class="info-v">min 24 / target 36</div></div>
+              <div class="info-cell"><div class="info-k">ABI</div><div class="info-v mono">arm64-v8a, armeabi-v7a</div></div>
+              <div class="info-cell"><div class="info-k">签名</div><div class="info-v">v2 / v3 · 已验证</div></div>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap;">
+              <span class="chip">内置解析器</span><span class="chip">无 split</span><span class="chip">DEX 1</span><span class="chip">资源表 1</span>
+            </div>
+          </div>
+
+          <div class="card card-pad" style="flex:1;">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><svg class="ic"><use href="#i-shield"/></svg>静态安全线索</div>
+                <div class="card-sub">只描述静态证据；不是恶意软件判定。</div>
+              </div>
+              <button class="btn small">查看全部 17 项</button>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon"><svg class="ic"><use href="#i-alert"/></svg></div>
+              <div style="min-width:0; flex:1;"><div class="finding-title">高权限组合 <span class="chip amber">需优先复核</span></div><div class="finding-desc">同时声明短信读取、悬浮窗与开机自启；需结合业务确认是否必要。</div></div>
+              <span class="finding-code">ANDROID-PERM-COMBINATION</span>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon blue"><svg class="ic"><use href="#i-layers"/></svg></div>
+              <div style="min-width:0; flex:1;"><div class="finding-title">DEX 动态加载线索</div><div class="finding-desc">检测到 DexClassLoader 调用点；仅代表具备动态加载能力，不等于已加载外部代码。</div></div>
+              <span class="finding-code">ANDROID-DEX-LOADER</span>
+            </div>
+            <div class="finding-row">
+              <div class="finding-icon"><svg class="ic"><use href="#i-info"/></svg></div>
+              <div style="min-width:0; flex:1;"><div class="finding-title">覆盖范围说明</div><div class="finding-desc">payload 探测覆盖 21 / 64 个候选，2 个截断维度已计入覆盖缺口。</div></div>
+              <span class="finding-code">COVERAGE-PARTIAL</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-col">
+          <div class="card card-pad">
+            <div class="card-head">
+              <div class="card-title"><svg class="ic"><use href="#i-activity"/></svg>分析覆盖</div>
+              <span class="chip amber">2 个缺口</span>
+            </div>
+            <div class="coverage-ring">
+              <div class="ring"><b>85%</b></div>
+              <div class="coverage-meta"><b>11 / 13 维度</b><div>9 个完整 · 2 个部分<br>缺口会降低相关结论的置信度</div></div>
+            </div>
+            <div class="coverage-list">
+              <div class="coverage-row"><span class="status"></span>清单与权限<span class="val">完整</span></div>
+              <div class="coverage-row"><span class="status"></span>DEX 结构 / 字符串<span class="val">完整</span></div>
+              <div class="coverage-row"><span class="status partial"></span>Payload 探测<span class="val">21 / 64</span></div>
+              <div class="coverage-row"><span class="status partial"></span>分片采样<span class="val">未适用</span></div>
+              <div class="coverage-row"><span class="status"></span>原生库 / 加固<span class="val">完整</span></div>
+              <div class="coverage-row"><span class="status"></span>签名 / 资源表<span class="val">完整</span></div>
+            </div>
+          </div>
+
+          <div class="card card-pad">
+            <div class="card-head">
+              <div class="card-title"><svg class="ic"><use href="#i-layers"/></svg>结构证据</div>
+              <span class="chip">v8</span>
+            </div>
+            <div class="info-grid" style="grid-template-columns:1fr 1fr;">
+              <div class="info-cell"><div class="info-k">ZIP 条目</div><div class="info-v mono">1601</div></div>
+              <div class="info-cell"><div class="info-k">安全条目</div><div class="info-v mono">17</div></div>
+              <div class="info-cell"><div class="info-k">加载节点</div><div class="info-v mono">2</div></div>
+              <div class="info-cell"><div class="info-k">加载边</div><div class="info-v mono">1</div></div>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:12px;">
+              <span class="chip green">inventory 完整</span><span class="chip green">load graph 完整</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="footnote">Prototype · Analysis / Android</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

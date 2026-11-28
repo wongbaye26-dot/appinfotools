@@ -37,7 +37,7 @@ import 'support/sample_directory.dart';
 /// **不要在文件顶层直接读环境变量再压成 `const []`**：那样「目录里没有 APK」
 /// 与「根本没配环境变量」会长得一模一样，前者会让 `sample!` 崩在 null-check 上。
 /// 五种情况由 [SampleDirectory] 分别给出可理解的原因。
-final SampleDirectory _samples = SampleDirectory.fromEnvironment();
+final SampleDirectory _samples = SampleDirectory.discover();
 
 /// 打印一段带标题的内容，便于人工核对。
 void _dump(String title, String body) {

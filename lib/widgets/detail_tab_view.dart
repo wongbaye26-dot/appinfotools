@@ -1,4 +1,5 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/ui/detail_tab_bus.dart';
 import 'package:flutter/material.dart';
 
 /// 详情页 Tab 配置。
@@ -7,11 +8,20 @@ import 'package:flutter/material.dart';
 /// `Translations`，写死英文会让中文界面下出现英文 Tab 名。
 enum DetailTab {
   overview(Icons.info_outline),
-  application(Icons.apps),
+  manifest(Icons.receipt_long_outlined),
+  components(Icons.widgets_outlined),
   permissions(Icons.shield_outlined),
-  structure(Icons.folder_outlined),
+  libraries(Icons.inventory_2_outlined),
+  security(Icons.security),
+  files(Icons.folder_outlined),
+  infoPlist(Icons.description_outlined),
+  frameworks(Icons.layers_outlined),
   signature(Icons.verified_outlined),
-  security(Icons.security);
+  diagnostics(Icons.monitor_heart_outlined),
+
+  // 兼容旧调用；新页面不再使用这两个分组。
+  application(Icons.apps),
+  structure(Icons.folder_outlined);
 
   final IconData icon;
   const DetailTab(this.icon);
@@ -20,11 +30,18 @@ enum DetailTab {
 /// 取 Tab 的本地化标签。
 String detailTabLabel(DetailTab tab, Translations t) => switch (tab) {
       DetailTab.overview => t.detail_tab.overview,
-      DetailTab.application => t.detail_tab.application,
+      DetailTab.manifest => t.detail_tab.manifest,
+      DetailTab.components => t.detail_tab.components,
       DetailTab.permissions => t.detail_tab.permissions,
-      DetailTab.structure => t.detail_tab.structure,
-      DetailTab.signature => t.detail_tab.signature,
+      DetailTab.libraries => t.detail_tab.libraries,
       DetailTab.security => t.detail_tab.security,
+      DetailTab.files => t.detail_tab.files,
+      DetailTab.infoPlist => t.detail_tab.infoPlist,
+      DetailTab.frameworks => t.detail_tab.frameworks,
+      DetailTab.signature => t.detail_tab.signature,
+      DetailTab.diagnostics => t.detail_tab.diagnostics,
+      DetailTab.application => t.detail_tab.application,
+      DetailTab.structure => t.detail_tab.structure,
     };
 
 /// 详情页 Tab 视图。
@@ -39,12 +56,24 @@ class DetailTabView extends StatefulWidget {
   final String? parseStageLabel;
   final VoidCallback? onCancelParse;
 
+  /// 宽屏右侧上下文栏；窄屏不渲染。只放静态说明，不进入 TabBarView。
+  final Widget? aside;
+
+  /// 可选 Tab 计数（条目数/权限数/发现数等）。
+  final Map<DetailTab, int>? tabCounts;
+
+  /// 期望的 Tab 顺序；不同平台可以有不同顺序。
+  final List<DetailTab>? tabOrder;
+
   const DetailTabView({
     super.key,
     required this.tabs,
     this.isParsing = false,
     this.parseStageLabel,
     this.onCancelParse,
+    this.aside,
+    this.tabCounts,
+    this.tabOrder,
   });
 
   @override
@@ -75,6 +104,66 @@ class _DetailTabViewState extends State<DetailTabView>
       vsync: this,
     );
     _tabController.addListener(_onTabChanged);
+    DetailTabBus.requests.addListener(_onTabRequest);
+  }
+
+  /// 响应别处（如概览里的「查看证书详情」）发来的跳转请求。
+  ///
+  /// 目标分组当前不可见时直接忽略 —— 解析尚未产出该分组、或窄屏把右栏
+  /// 收起来时，跳到不存在的 Tab 只会让人以为点击没生效。
+  void _onTabRequest() {
+    if (!mounted) return;
+    final request = DetailTabBus.requests.value;
+    if (request == null) return;
+    final ordered = _orderedTabs(_filteredTabs);
+    final index = ordered.indexWhere((e) => e.key.name == request.tab);
+    if (index < 0 || index >= _tabController.length) return;
+    if (_tabController.index != index) _tabController.animateTo(index);
+  }
+
+  /// Tab 分组会随解析进度增减：解析中「概览」可能还没有卡片，解析完成后
+  /// 才出现。TabController 的长度/索引不会自动跟随，否则用户停在「清单」，
+  /// 解析完成后仍停在「清单」。这里在分组变化时重建控制器，并且**解析刚结束
+  /// 时回到「概览」** —— 那是打开一个包最该先看到的东西。
+  @override
+  void didUpdateWidget(covariant DetailTabView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldKeys = oldWidget.tabs.entries
+        .where((e) => e.value.isNotEmpty)
+        .map((e) => e.key)
+        .toList(growable: false);
+    final newKeys = _filteredTabs.map((e) => e.key).toList(growable: false);
+    if (oldKeys.length == newKeys.length &&
+        List.generate(newKeys.length, (i) => oldKeys[i] == newKeys[i])
+            .every((same) => same)) {
+      return;
+    }
+    if (newKeys.isEmpty) return;
+
+    final parsedJustNow = oldWidget.isParsing && !widget.isParsing;
+    var index = 0;
+    if (!parsedJustNow && _tabController.index < oldKeys.length) {
+      final currentKey = oldKeys[_tabController.index];
+      final same = newKeys.indexOf(currentKey);
+      if (same >= 0) index = same;
+    }
+    if (parsedJustNow) {
+      final overview = newKeys.indexOf(DetailTab.overview);
+      index = overview >= 0 ? overview : 0;
+    }
+
+    final previous = _tabController;
+    previous.removeListener(_onTabChanged);
+    _tabController = TabController(
+      length: newKeys.length,
+      vsync: this,
+      initialIndex: index.clamp(0, newKeys.length - 1),
+    );
+    _tabController.addListener(_onTabChanged);
+    // TabBarView 还挂在这个控制器上，立刻 dispose 会抛「使用已 dispose 的
+    // 控制器」；等这一帧画完再释放。
+    WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
+    setState(() {});
   }
 
   void _onTabChanged() {
@@ -86,22 +175,27 @@ class _DetailTabViewState extends State<DetailTabView>
   List<MapEntry<DetailTab, List<Widget>>> get _filteredTabs =>
       widget.tabs.entries.where((e) => e.value.isNotEmpty).toList();
 
-  @override
-  void didUpdateWidget(covariant DetailTabView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final tabs = _filteredTabs;
-    if (_tabController.length != tabs.length) {
-      _tabController.dispose();
-      _tabController = TabController(
-        length: tabs.length,
-        vsync: this,
-      );
-      _tabController.addListener(_onTabChanged);
-    }
+  /// 按平台指定的顺序排列；未列出的分组放最后，保持稳定。
+  List<MapEntry<DetailTab, List<Widget>>> _orderedTabs(
+    List<MapEntry<DetailTab, List<Widget>>> tabs,
+  ) {
+    final order = widget.tabOrder;
+    if (order == null) return tabs;
+    final indexed = tabs.indexed.toList()
+      ..sort((a, b) {
+        final ai = order.indexOf(a.$2.key);
+        final bi = order.indexOf(b.$2.key);
+        final aOrder = ai < 0 ? order.length : ai;
+        final bOrder = bi < 0 ? order.length : bi;
+        final byOrder = aOrder.compareTo(bOrder);
+        return byOrder != 0 ? byOrder : a.$1.compareTo(b.$1);
+      });
+    return [for (final e in indexed) e.$2];
   }
 
   @override
   void dispose() {
+    DetailTabBus.requests.removeListener(_onTabRequest);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
@@ -114,7 +208,7 @@ class _DetailTabViewState extends State<DetailTabView>
     final tabs = _filteredTabs;
 
     if (tabs.isEmpty) {
-      return const Center(child: Text('No data'));
+      return Center(child: Text(t.base.no_data));
     }
 
     // 测试环境：渲染连续列表，确保所有 widget 都在树中可被断言。
@@ -132,7 +226,7 @@ class _DetailTabViewState extends State<DetailTabView>
     List<MapEntry<DetailTab, List<Widget>>> tabs,
   ) {
     final children = <Widget>[];
-    for (final entry in tabs) {
+    for (final entry in _orderedTabs(tabs)) {
       children.add(
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
@@ -165,7 +259,7 @@ class _DetailTabViewState extends State<DetailTabView>
         if (widget.isParsing) _buildParsingIndicator(colorScheme),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             children: children,
           ),
         ),
@@ -179,45 +273,81 @@ class _DetailTabViewState extends State<DetailTabView>
     ColorScheme colorScheme,
     List<MapEntry<DetailTab, List<Widget>>> tabs,
   ) {
+    final orderedTabs = _orderedTabs(tabs);
     return Column(
       children: [
         if (widget.isParsing) _buildParsingIndicator(colorScheme),
-        Container(
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withValues(alpha: 0.2),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: colorScheme.onSurface,
+                borderRadius: BorderRadius.circular(999),
               ),
+              labelColor: colorScheme.surface,
+              unselectedLabelColor: colorScheme.onSurfaceVariant,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
+              labelStyle: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+              unselectedLabelStyle:
+                  theme.textTheme.labelLarge?.copyWith(fontSize: 12),
+              tabs: orderedTabs.map((e) {
+                final count = widget.tabCounts?[e.key];
+                final label = detailTabLabel(e.key, t);
+                return Tab(
+                  height: 30,
+                  text: count != null && count > 0 ? '$label  $count' : label,
+                );
+              }).toList(),
             ),
-          ),
-          child: TabBar(
-            controller: _tabController,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelStyle: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-            unselectedLabelStyle: theme.textTheme.labelLarge,
-            tabs: tabs
-                .map((e) => Tab(
-                      icon: Icon(e.key.icon, size: 18),
-                      text: detailTabLabel(e.key, t),
-                    ))
-                .toList(),
           ),
         ),
         Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: tabs
-                .map((e) => ListView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      children: e.value,
-                    ))
-                .toList(),
+          child: Row(
+            // 右侧栏必须与内容顶部对齐：Row 默认 center，栏比内容短时
+            // 会被垂直居中，顶部就空出一大块。
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: orderedTabs
+                      .map((e) => ListView(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            children: e.value,
+                          ))
+                      .toList(),
+                ),
+              ),
+              if (widget.aside != null &&
+                  MediaQuery.sizeOf(context).width >= 1180) ...[
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 286,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(0, 8, 10, 8),
+                    child: widget.aside!,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],

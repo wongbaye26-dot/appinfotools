@@ -4,9 +4,17 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/utils/analysis_diagnostic_text.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
+import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/android_metadata.dart'
+    show AndroidPermissionRisk, AndroidProtectionBase;
+import 'package:apk_info_tool/utils/format.dart';
+import 'package:apk_info_tool/utils/html_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
+import 'package:apk_info_tool/utils/report_extras.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
+import 'package:apk_parser/apk_parser.dart'
+    show LibraryGroup, LibraryHit, LibraryReport, NativeLibraryEntry;
 import 'package:ipa_parser/ipa_parser.dart'
     show IosAuthorizationVerdict, IosIconConfiguration;
 import 'package:path/path.dart' as path;
@@ -41,6 +49,7 @@ class AnalysisReport {
     Translations t, {
     required DateTime generatedAt,
     bool securityOnly = false,
+    ReportExtras? extras,
   }) {
     final sb = StringBuffer();
 
@@ -50,11 +59,16 @@ class AnalysisReport {
       _conclusion(sb, result, t);
       switch (result.platform) {
         case PackagePlatform.android:
-          _androidSection(sb, result, t);
+          _androidSection(sb, result, t, extras);
         case PackagePlatform.ios:
           _iosSection(sb, result, t);
         case PackagePlatform.unknown:
           break;
+      }
+      // 库识别与权限说明都是「界面有、导出没有」的事实。放在平台段之后：
+      // 它们描述的是包里的内容，不是风险结论。
+      if (result.platform == PackagePlatform.android) {
+        _librariesSection(sb, t, extras?.libraries);
       }
       // 分包一致性单列一节。放在平台段之后、安全段之前：它是**结构事实**，
       // 不是风险结论 —— 混进安全段会被读成「发现了风险」。
@@ -220,6 +234,7 @@ class AnalysisReport {
     StringBuffer sb,
     PackageAnalysisResult result,
     Translations t,
+    ReportExtras? extras,
   ) {
     final android = result.android;
     if (android == null) return;
@@ -258,7 +273,23 @@ class AnalysisReport {
     // 权限现在是 `FieldValue`：只有**确实读到**才列清单。
     // 「这个来源不报权限」不能渲染成「没有声明权限」。
     final permissions = android.permissions.value ?? const <String>[];
-    if (permissions.isNotEmpty) {
+    final facts = extras?.permissions;
+    if (facts != null && facts.isNotEmpty) {
+      sb
+        ..writeln()
+        ..writeln('### ${t.apk_info.permissions} (${facts.length})')
+        ..writeln()
+        ..writeln('| ${t.report.column_permission} | ${t.report.column_risk} '
+            '| ${t.report.column_protection} | ${t.report.column_description} |')
+        ..writeln('| --- | --- | --- | --- |');
+      for (final fact in facts) {
+        sb.writeln(
+          '| `${_cell(fact.name)}` | ${_riskLabel(t, fact.risk)} '
+          '| ${_protectionLabel(t, fact)} '
+          '| ${_cell(fact.description ?? t.apk_info.permission_no_description)} |',
+        );
+      }
+    } else if (permissions.isNotEmpty) {
       sb
         ..writeln()
         ..writeln('### ${t.apk_info.permissions} (${permissions.length})')
@@ -308,6 +339,154 @@ class AnalysisReport {
 
     sb.writeln();
   }
+
+  /// Markdown 表格单元格里的 `|` 与换行必须转义，否则一行会拆成多列。
+  static String _cell(String value) =>
+      value.replaceAll('|', r'\|').replaceAll('\n', ' ').trim();
+
+  static String _riskLabel(Translations t, AndroidPermissionRisk risk) =>
+      switch (risk) {
+        AndroidPermissionRisk.high => t.apk_info.permission_risk_high,
+        AndroidPermissionRisk.sensitive => t.apk_info.permission_risk_sensitive,
+        AndroidPermissionRisk.normal => t.apk_info.permission_risk_normal,
+        AndroidPermissionRisk.system => t.apk_info.permission_risk_system,
+        AndroidPermissionRisk.unknown => t.apk_info.permission_risk_unknown,
+      };
+
+  /// 保护级别原文：等级 + 原始位掩码。没有记录时写 `—`，不写成 normal。
+  static String _protectionLabel(Translations t, PermissionFact fact) {
+    final base = fact.base;
+    if (base == null) return '—';
+    final label = switch (base) {
+      AndroidProtectionBase.normal => t.apk_info.permission_base_normal,
+      AndroidProtectionBase.dangerous => t.apk_info.permission_base_dangerous,
+      AndroidProtectionBase.signature => t.apk_info.permission_base_signature,
+      AndroidProtectionBase.signatureOrSystem =>
+        t.apk_info.permission_base_signature_or_system,
+      AndroidProtectionBase.internal => t.apk_info.permission_base_internal,
+    };
+    final raw = fact.raw;
+    return raw == null ? label : '$label · 0x${raw.toRadixString(16)}';
+  }
+
+  static String _hitText(LibraryHit hit) {
+    final details = <String>[
+      if (hit.abis.isNotEmpty) hit.abis.join(', '),
+      if (hit.size > 0) formatFileSize(hit.size),
+    ];
+    return details.isEmpty ? hit.name : '${hit.name} (${details.join(', ')})';
+  }
+
+  static void _libraryGroupLines(
+    StringBuffer sb,
+    String heading,
+    List<LibraryGroup> groups,
+  ) {
+    if (groups.isEmpty) return;
+    sb
+      ..writeln()
+      ..writeln('### $heading')
+      ..writeln();
+    for (final group in groups) {
+      sb.writeln(
+        '- ${group.label} (${group.count}): '
+        '${group.hits.map(_hitText).join('; ')}',
+      );
+    }
+  }
+
+  /// 「库识别」一节。`null` 表示**没有采集**，此时整节不出现 ——
+  /// 输出「未识别到 SDK」会把「没跑」说成「没有」。
+  static void _librariesSection(
+    StringBuffer sb,
+    Translations t,
+    LibraryReport? libs,
+  ) {
+    if (libs == null) return;
+    sb
+      ..writeln()
+      ..writeln('## ${t.detail_tab.libraries}')
+      ..writeln()
+      ..writeln('- ${t.libraries.identified_sdks(count: libs.sdkCount)}')
+      ..writeln('- ${t.libraries.rule_version(version: libs.dataVersion)}');
+    if (libs.dexScanned) {
+      sb.writeln('- ${t.report.dex_classes(count: libs.dexClasses)}');
+    }
+    if (libs.dexTruncated) {
+      sb.writeln('- ${t.libraries.truncated(limit: 400000)}');
+    }
+    final tech = <String>[
+      if (libs.kotlin) 'Kotlin',
+      if (libs.compose) 'Jetpack Compose',
+    ];
+    if (tech.isNotEmpty) {
+      sb.writeln('- ${t.report.tech_markers}: ${tech.join(' · ')}');
+    }
+    if (libs.sdkCount == 0 &&
+        libs.unmatchedNative.isEmpty &&
+        libs.dexClasses == 0) {
+      sb
+        ..writeln()
+        ..writeln(t.libraries.no_hits);
+    }
+
+    _libraryGroupLines(sb, t.libraries.native_section, libs.nativeGroups);
+    _libraryGroupLines(
+      sb,
+      t.libraries.components_section,
+      libs.componentGroups,
+    );
+    _libraryGroupLines(sb, t.libraries.dex_section, libs.dexGroups);
+
+    if (libs.unmatchedNative.isNotEmpty) {
+      sb
+        ..writeln()
+        ..writeln('### ${t.libraries.unmatched_section}')
+        ..writeln()
+        ..writeln(t.libraries.unmatched_hint);
+      for (final lib in libs.unmatchedNative) {
+        sb.writeln(
+          '- ${lib.name} (${lib.abi}, ${formatFileSize(lib.size)})',
+        );
+      }
+    }
+    sb.writeln();
+  }
+
+  static Map<String, dynamic> _libraryGroupJson(LibraryGroup group) => {
+        'label': group.label,
+        'ruleId': group.rule.id,
+        'iconId': group.iconId,
+        'hits': [
+          for (final hit in group.hits)
+            {
+              'name': hit.name,
+              'source': hit.source.name,
+              'abis': hit.abis,
+              'sizeBytes': hit.size,
+              if (hit.componentType != null)
+                'componentType': hit.componentType!.name,
+            },
+        ],
+      };
+
+  static Map<String, dynamic> _librariesJson(LibraryReport libs) => {
+        'dataVersion': libs.dataVersion,
+        'identifiedSdkCount': libs.sdkCount,
+        'dexClasses': libs.dexClasses,
+        'dexTruncated': libs.dexTruncated,
+        'kotlin': libs.kotlin,
+        'compose': libs.compose,
+        'native': [for (final g in libs.nativeGroups) _libraryGroupJson(g)],
+        'components': [
+          for (final g in libs.componentGroups) _libraryGroupJson(g),
+        ],
+        'dex': [for (final g in libs.dexGroups) _libraryGroupJson(g)],
+        'unmatchedNative': [
+          for (final NativeLibraryEntry lib in libs.unmatchedNative)
+            {'name': lib.name, 'abi': lib.abi, 'sizeBytes': lib.size},
+        ],
+      };
 
   static void _iosSection(
     StringBuffer sb,
@@ -944,10 +1123,17 @@ class AnalysisReport {
       'android.arsc' => d.android_arsc,
       'android.cleartextPolicy' => d.android_cleartextPolicy,
       'android.signature' => d.android_signature,
+      // Stage B 新增的结构化证据维度。
+      'android.artifacts' => d.android_artifacts,
+      'android.payloadProbe' => d.android_payloadProbe,
+      'android.loadGraph' => d.android_loadGraph,
+      'android.nativeLibraries' => d.android_nativeLibraries,
+      'android.splitSampling' => d.android_splitSampling,
       'ios.infoPlist' => d.ios_infoPlist,
       'ios.usageDescriptions' => d.ios_usageDescriptions,
       'ios.privacyManifest' => d.ios_privacyManifest,
       'ios.executables' => d.ios_executables,
+      'ios.encryption' => d.ios_encryption,
       'ios.macho.strings' => d.ios_macho_strings,
       'ios.unicodeStrings' => d.ios_unicodeStrings,
       'ios.machoSites' => d.ios_machoSites,
@@ -1003,6 +1189,8 @@ class AnalysisReport {
     // iOS 规则 F 的同类参数：超预算的可执行文件数、完全没读到的个数。
     final overBudget = finding.messageArgs['overBudget'];
     final unread = finding.messageArgs['unread'];
+    // FairPlay：密文可执行文件数量（规则 F 的加密分支）。
+    final encrypted = finding.messageArgs['encrypted'];
     final uncovered = finding.messageArgs['uncovered'];
     final modes = finding.messageArgs['modes'];
     final name = finding.messageArgs['name'];
@@ -1143,6 +1331,24 @@ class AnalysisReport {
       'ios.ocr_capability' => f.ios_ocr_capability,
       'ios.rule_c' => f.ios_rule_c,
       'ios.rule_f' => f.ios_rule_f,
+      'ios.encrypted_binary' => (() {
+          final count = finding.messageArgs['count'];
+          final path = finding.messageArgs['path'];
+          if (count == null || path is! String) return null;
+          return f.ios_encrypted_binary(count: count, path: path);
+        })(),
+      // FairPlay 加密时的否定结论：密文里的内容没看见，不能说“未发现”。
+      'ios.rule_f_encrypted' => (scannedBytes == null ||
+              totalBytes == null ||
+              percent == null ||
+              encrypted == null)
+          ? null
+          : f.ios_rule_f_encrypted(
+              encrypted: encrypted,
+              scannedBytes: scannedBytes,
+              totalBytes: totalBytes,
+              percent: percent,
+            ),
       // 截断时的否定结论（与 Android 的 `android.rule_f_truncated` 同构）。
       'ios.rule_f_truncated' => (scannedBytes == null ||
               totalBytes == null ||
@@ -1163,6 +1369,15 @@ class AnalysisReport {
       'ios.scan_coverage' => (total == null || scanned == null || bytes == null)
           ? null
           : f.ios_scan_coverage(total: total, scanned: scanned, bytes: bytes),
+      'ios.scan_coverage_encrypted' =>
+        (total == null || scanned == null || bytes == null || encrypted == null)
+            ? null
+            : f.ios_scan_coverage_encrypted(
+                total: total,
+                scanned: scanned,
+                bytes: bytes,
+                encrypted: encrypted,
+              ),
       'ios.scan_coverage_gap' =>
         (total == null || scanned == null || bytes == null || uncovered == null)
             ? null
@@ -1410,6 +1625,8 @@ class AnalysisReport {
         f.ios_ocr_capability_confirm_input_and_sink,
       'ios.rule_c.manual_review' => f.ios_rule_c_manual_review,
       'ios.rule_f.runtime_traffic' => f.ios_rule_f_runtime_traffic,
+      'ios.encrypted_binary.manual_review' =>
+        f.ios_encrypted_binary_manual_review,
       'ios.url_schemes.manual_review' => f.ios_url_schemes_manual_review,
       'ios.scan_coverage.manual_review' => f.ios_scan_coverage_manual_review,
       'android.unicode_phrase.review' => f.android_unicode_phrase_review,
@@ -1574,6 +1791,8 @@ class AnalysisReport {
       'ios.privacy_info.limitation' => f.ios_privacy_info_limitation,
       'ios.rule_f.limitation' => f.ios_rule_f_limitation,
       'ios.rule_f.limitation_incomplete' => f.ios_rule_f_limitation_incomplete,
+      'ios.rule_f.limitation_encrypted' => f.ios_rule_f_limitation_encrypted,
+      'ios.encrypted_binary.limitation' => f.ios_encrypted_binary_limitation,
       'android.permission_sdk23_conditional.limitation' =>
         f.android_permission_sdk23_conditional_limitation,
       'android.debuggable.limitation' => f.android_debuggable_limitation,
@@ -2070,6 +2289,8 @@ class AnalysisReport {
     final size = a['size'];
     // 字符串池实际偏移（标准 AXML 为 8；加固包会被诱饵 chunk 推后）。
     final offset = a['offset'];
+    // AAB 资源表的失败原因（清单字段仍可信，只是资源引用没落点）。
+    final aabFailure = a['failure'];
 
     final String? localized = switch (note.code) {
       'ios.url_schemes.unreadable' =>
@@ -2208,6 +2429,10 @@ class AnalysisReport {
                 largest: largest,
                 standard: standard,
               ),
+      // AAB 资源表失败：清单字段仍然可信，只是资源引用没有落点。
+      'android.aab_resources_unresolved' => aabFailure == null
+          ? null
+          : n.android_aab_resources_unresolved(failure: aabFailure),
       'android.manifest.unknown_chunk' => (count == null || chunks == null)
           ? null
           : n.android_manifest_unknown_chunk(count: count, chunks: chunks),
@@ -2346,6 +2571,14 @@ class AnalysisReport {
     // SDK 盘点的覆盖说明要用「截断几个 / 读不出几个」。
     final truncated = entry.noteArgs['truncated'];
     final failed = entry.noteArgs['failed'];
+    // FairPlay 覆盖说明里的 cryptid。
+    final cryptid = entry.noteArgs['cryptid'];
+    // Stage B 结构化覆盖说明的参数。
+    final probed = entry.noteArgs['probed'];
+    final nodes = entry.noteArgs['nodes'];
+    final edges = entry.noteArgs['edges'];
+    final coveredArg = entry.noteArgs['covered'];
+    final audited = entry.noteArgs['audited'];
 
     final String? localized = switch (code) {
       'android.manifest.unparsed' =>
@@ -2377,6 +2610,30 @@ class AnalysisReport {
         n.android_dex_no_traversable_bodies,
       'android.dex.desynced_bodies' =>
         count == null ? null : n.android_dex_desynced_bodies(count: count),
+      'android.artifacts.not_provided' => n.android_artifacts_not_provided,
+      'android.artifacts.scope' => (count == null || total == null)
+          ? null
+          : n.android_artifacts_scope(count: count, total: total),
+      'android.artifacts.truncated' => n.android_artifacts_truncated,
+      'android.payload.not_provided' => n.android_payload_not_provided,
+      'android.payload.no_candidates' => n.android_payload_no_candidates,
+      'android.payload.truncated' => (probed == null || total == null)
+          ? null
+          : n.android_payload_truncated(probed: probed, total: total),
+      'android.load_graph.not_provided' => n.android_load_graph_not_provided,
+      'android.load_graph.incomplete' => (nodes == null || edges == null)
+          ? null
+          : n.android_load_graph_incomplete(nodes: nodes, edges: edges),
+      'android.native_libraries.not_provided' =>
+        n.android_native_libraries_not_provided,
+      'android.native_libraries.partial' =>
+        (coveredArg == null || total == null)
+            ? null
+            : n.android_native_libraries_partial(
+                covered: coveredArg, total: total),
+      'android.split_sampling.truncated' => (audited == null || total == null)
+          ? null
+          : n.android_split_sampling_truncated(audited: audited, total: total),
       'android.native_symbols.not_provided' =>
         n.android_native_symbols_not_provided,
       'android.native_symbols.skipped_for_budget' => count == null
@@ -2432,6 +2689,12 @@ class AnalysisReport {
       'ios.privacy_manifest.absent' => n.ios_privacy_manifest_absent,
       'ios.executables.unscanned' =>
         count == null ? null : n.ios_executables_unscanned(count: count),
+      'ios.encryption.encrypted' =>
+        cryptid == null ? null : n.ios_encryption_encrypted(cryptid: cryptid),
+      'ios.encryption.nested_encrypted' =>
+        count == null ? null : n.ios_encryption_nested_encrypted(count: count),
+      'ios.encryption.decrypted' => n.ios_encryption_decrypted,
+      'ios.encryption.no_marker' => n.ios_encryption_no_marker,
       'ios.executables.truncated' => (count == null || total == null)
           ? null
           : n.ios_executables_truncated(count: count, total: total),
@@ -2470,6 +2733,8 @@ class AnalysisReport {
         CoverageStatus.partial => t.coverage.partial,
         CoverageStatus.notCovered => t.coverage.not_covered,
         CoverageStatus.notApplicable => t.coverage.not_applicable,
+        CoverageStatus.notScanned => t.coverage.not_scanned,
+        CoverageStatus.failed => t.coverage.failed,
       };
 
   static void _diagnostics(
@@ -2596,7 +2861,14 @@ class AnalysisReport {
   ///    entitlements、URL scheme、嵌套 bundle…），每个字段自带 status / source。
   /// 8：新增顶层 `security`（盗 U 评估/制品清单/加载链/密封/官方基线）；
   ///    既有键名/类型不变。
-  static const int reportSchemaVersion = 8;
+  /// 9：新增 `fieldStatus` 之外的契约文件（`docs/contracts`），结构未破坏。
+  /// 10：新增 `application.permissionDetails`（权限风险与保护级别）与顶层
+  ///     `libraries`（库识别分组）。两者都是**可选**键：没有采集到时整体不出现，
+  ///     而不是输出空数组假装「没有权限 / 没有 SDK」。
+  /// 11：`signatureSummary.certificates` —— 包内证书的完整字段（序列号、
+  ///     有效期、算法、密钥长度、SHA-256/SHA-1/MD5）。此前只有 apksigner
+  ///     的签名者与 iOS 证书链的四个公开字段，界面能看到、导出拿不到。
+  static const int reportSchemaVersion = 11;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -2610,11 +2882,34 @@ class AnalysisReport {
           'diagnosticCode': value.diagnosticCode,
       };
 
+  /// 自包含 HTML 报告。渲染同一份 JSON 数据，避免三种格式结论漂移。
+  static String renderHtml(
+    PackageAnalysisResult result,
+    Translations t, {
+    required DateTime generatedAt,
+    bool securityOnly = false,
+    AnalysisRun? analysisRun,
+    ReportExtras? extras,
+  }) =>
+      HtmlReport.render(
+        jsonDecode(renderJson(
+          result,
+          generatedAt: generatedAt,
+          t: t,
+          securityOnly: securityOnly,
+          analysisRun: analysisRun,
+          extras: extras,
+        )) as Map<String, dynamic>,
+        t,
+      );
+
   static String renderJson(
     PackageAnalysisResult result, {
     required DateTime generatedAt,
     required Translations t,
     bool securityOnly = false,
+    AnalysisRun? analysisRun,
+    ReportExtras? extras,
   }) {
     final security = result.security;
     final findings = <Map<String, dynamic>>[
@@ -2627,17 +2922,9 @@ class AnalysisReport {
             'severity': f.severity.name,
             'confidence': f.confidence.name,
             'finding': f.finding,
+            'evidenceIds': f.evidenceIds,
             'evidence': [
-              for (final e in f.evidence)
-                {
-                  'source': e.source.name,
-                  'location': e.location,
-                  'detail': e.detail,
-                  // 与 findings 的 `*Code` 同构：程序按 code 取本地化文案，
-                  // `location` / `detail` 是英文回退。
-                  'locationCode': e.locationCode,
-                  'detailCode': e.detailCode,
-                },
+              for (final e in f.evidence) _evidenceJson(e),
             ],
             'dataSource': f.dataSource,
             'dataTransform': f.dataTransform,
@@ -2666,6 +2953,18 @@ class AnalysisReport {
       // 对齐。用文件 SHA-256 前 16 位 + 生成时间戳。
       'reportId': _reportId(result, generatedAt),
       'generatedAt': generatedAt.toUtc().toIso8601String(),
+      'analysisRun': analysisRun == null
+          ? null
+          : {
+              'id': analysisRun.id,
+              'toolVersion': analysisRun.toolVersion,
+              'appName': analysisRun.appName,
+              'platform': analysisRun.platform.name,
+              'packageSha256': analysisRun.packageSha256,
+              'startedAt': analysisRun.startedAt.toUtc().toIso8601String(),
+              'completedAt': analysisRun.completedAt?.toUtc().toIso8601String(),
+              'status': analysisRun.status.code,
+            },
 
       // 输入文件身份。SHA-256 缺失时是 null 而不是空串 —— 空串会被读成
       // 「哈希就是空的」。
@@ -2714,6 +3013,21 @@ class AnalysisReport {
           // 此前它只散落在逐权限的发现项里，消费者要拿这份清单
           // 得先解析 findings —— 那是把结构化数据当文本用。
           'permissions': result.android?.permissions.value ?? const <String>[],
+          // 权限的**分级**不是界面装饰：同一个权限名在不同版本里的保护级别会变，
+          // 归档时只存名字，半年后无法解释「当时为什么把它算作敏感」。
+          // 只有采集到说明时才出现 —— 缺失不等于空数组。
+          if (extras?.permissions case final facts?)
+            'permissionDetails': [
+              for (final fact in facts)
+                {
+                  'name': fact.name,
+                  'shortName': fact.shortName,
+                  'risk': fact.risk.name,
+                  'protection': fact.base?.name,
+                  'protectionLevel': fact.raw,
+                  'flags': fact.flags,
+                },
+            ],
         },
 
         // 签名只给**结论**：平台特有的细节（方案、指纹、退出码）留在各自的
@@ -2740,6 +3054,12 @@ class AnalysisReport {
             'toolExecuted': s.toolExecuted,
             'exitCode': s.exitCode,
           },
+          // 证书事实（v11）：平台无关，Android 本地读取 + iOS 证书链。
+          // null = 没采集；空数组 = 采集过但没有证书。
+          if (extras?.certificates case final certificates?)
+            'certificates': [
+              for (final certificate in certificates) certificate.toJson(),
+            ],
           if (result.ios?.codeSign case final c?) ...{
             'codesignStatus': c.status.name,
             'toolExecuted': c.toolExecuted,
@@ -2775,6 +3095,10 @@ class AnalysisReport {
         },
       },
 
+      if (!securityOnly)
+        if (extras?.libraries case final libs?)
+          'libraries': _librariesJson(libs),
+
       'securitySummary': security == null
           ? null
           : {
@@ -2793,17 +3117,34 @@ class AnalysisReport {
               'highestRiskSeverity': worst?.severity.name,
             },
 
-      // Phase C：顶层 `security` 对象。当前只有 cryptoTheft 有值；
-      // artifacts/loadGraph/seal/baseline 在 D/E 阶段接入（先保留 null，
-      // 让消费者可以稳定解析五个键）。
+      // Phase C：顶层 `security` 对象。
+      //
+      // v8 schema 早已为 artifacts/loadGraph 预留键与完整 $defs；2.10.7
+      // Stage B 只是把引擎已经算出的值真正写进来，因此**不升 schema 版本**。
+      // `null` 仍然表示「本次未产出」，不是「包里没有制品/加载边」。
       'security': security == null
           ? null
           : {
+              'evidence': [
+                for (final ev in security.evidence)
+                  {
+                    'id': ev.evidenceId,
+                    'source': ev.source.name,
+                    'location': ev.location,
+                    'detail': ev.detail,
+                    'locationCode': ev.locationCode,
+                    'detailCode': ev.detailCode,
+                  },
+              ],
               'cryptoTheft': security.cryptoTheft == null
                   ? null
                   : _cryptoTheftJson(security.cryptoTheft!),
-              'artifacts': null,
-              'loadGraph': null,
+              'artifacts': security.artifacts == null
+                  ? null
+                  : _artifactInventoryJson(security.artifacts!),
+              'loadGraph': security.loadGraph == null
+                  ? null
+                  : _loadGraphJson(security.loadGraph!),
               'seal': security.seal == null ? null : _sealJson(security.seal!),
               'baseline': security.baseline == null
                   ? null
@@ -2815,6 +3156,17 @@ class AnalysisReport {
       'network': {
         'domains': security?.network.domains ?? const <String>[],
         'ips': security?.network.ips ?? const <String>[],
+        'clues': [
+          if (security != null)
+            for (final clue in security.network.clues)
+              {
+                'id': clue.id,
+                'type': clue.type.name,
+                'value': clue.value,
+                if (clue.sourcePath != null) 'sourcePath': clue.sourcePath,
+                if (clue.context != null) 'context': clue.context,
+              },
+        ],
       },
 
       // 分包一致性。`null` 表示**没查**（单 APK 或本次未做这项检查）——
@@ -2892,6 +3244,15 @@ class AnalysisReport {
     return '${encoder.convert(map)}\n';
   }
 
+  static Map<String, dynamic> _evidenceJson(SecurityEvidence evidence) => {
+        'id': evidence.evidenceId,
+        'source': evidence.source.name,
+        'location': evidence.location,
+        'detail': evidence.detail,
+        'locationCode': evidence.locationCode,
+        'detailCode': evidence.detailCode,
+      };
+
   static Map<String, dynamic> _cryptoTheftJson(
     CryptoTheftAssessment assessment,
   ) =>
@@ -2909,14 +3270,7 @@ class AnalysisReport {
               'supported': entry.supported,
               'ruleIds': entry.ruleIds,
               'evidence': [
-                for (final ev in entry.evidence)
-                  {
-                    'source': ev.source.name,
-                    'location': ev.location,
-                    'detail': ev.detail,
-                    'locationCode': ev.locationCode,
-                    'detailCode': ev.detailCode,
-                  },
+                for (final ev in entry.evidence) _evidenceJson(ev),
               ],
               'noteCodes': entry.noteCodes,
             },
@@ -2944,6 +3298,54 @@ class AnalysisReport {
         'expectedFingerprintPrefixes': baseline.expectedFingerprintPrefixes,
         'actualFingerprintPrefixes': baseline.actualFingerprintPrefixes,
         'noteCodes': baseline.noteCodes,
+      };
+
+  static Map<String, dynamic> _artifactInventoryJson(
+    ArtifactInventory inventory,
+  ) =>
+      {
+        'entries': [
+          for (final entry in inventory.entries)
+            {
+              'path': entry.path,
+              'kind': entry.kind.name,
+              'origin': entry.origin.name,
+              'sizeBytes': entry.sizeBytes,
+              'arch': entry.arch,
+              'sha256': entry.sha256,
+              'contentScanned': entry.contentScanned,
+              'skipCode': entry.skipCode,
+              'suspicionCodes': entry.suspicionCodes,
+            },
+        ],
+        'totalEntries': inventory.totalEntries,
+        'inventoriedEntries': inventory.inventoriedEntries,
+        'entriesComplete': inventory.entriesComplete,
+        'skippedCodes': inventory.skippedCodes,
+      };
+
+  static Map<String, dynamic> _loadGraphJson(LoadGraph graph) => {
+        'nodes': [
+          for (final node in graph.nodes)
+            {
+              'id': node.id,
+              'kind': node.kind.name,
+              'resolvedPath': node.resolvedPath,
+              'presentInPackage': node.presentInPackage,
+            },
+        ],
+        'edges': [
+          for (final edge in graph.edges)
+            {
+              'fromId': edge.fromId,
+              'toId': edge.toId,
+              'kind': edge.kind.name,
+              'source': edge.source.name,
+              'location': edge.location,
+            },
+        ],
+        'danglingEdgeIds': graph.danglingEdgeIds,
+        'complete': graph.complete,
       };
 
   static Map<String, dynamic> _sealJson(SealCheck seal) => {

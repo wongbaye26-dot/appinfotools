@@ -16,7 +16,9 @@
 library;
 
 import 'analysis_coverage.dart';
+import 'artifact_inventory.dart';
 import 'crypto_theft.dart';
+import 'load_graph.dart';
 import 'network_facts.dart';
 import 'official_baseline.dart';
 import 'package_seal.dart';
@@ -279,6 +281,11 @@ class SecurityEvidence {
   final String? detailCode;
   final Map<String, Object> detailArgs;
 
+  /// 稳定证据 ID；`null` 时由内容派生（FNV-1a）。
+  ///
+  /// 同一份证据在不同报告里必须得到同一个 ID，才能让发现项引用它。
+  final String? id;
+
   const SecurityEvidence({
     required this.source,
     required this.location,
@@ -287,7 +294,41 @@ class SecurityEvidence {
     this.locationArgs = const {},
     this.detailCode,
     this.detailArgs = const {},
+    this.id,
   });
+
+  /// 证据中心使用的稳定 ID。
+  String get evidenceId => id ?? _deriveEvidenceId();
+
+  String _deriveEvidenceId() {
+    final buffer = StringBuffer()
+      ..write(source.name)
+      ..write('|')
+      ..write(location)
+      ..write('|')
+      ..write(locationCode ?? '')
+      ..write('|')
+      ..write(detailCode ?? detail)
+      ..write('|');
+    final keys = detailArgs.keys.toList()..sort();
+    for (final key in keys) {
+      buffer
+        ..write(key)
+        ..write('=')
+        ..write(detailArgs[key])
+        ..write(';');
+    }
+    return 'ev_${_fnv1a64(buffer.toString()).substring(0, 12)}';
+  }
+
+  static String _fnv1a64(String value) {
+    var hash = 0xcbf29ce484222325;
+    for (final unit in value.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(16, '0');
+  }
 
   @override
   String toString() => 'SecurityEvidence(${source.label} @ $location: $detail)';
@@ -316,6 +357,10 @@ class SecurityFinding {
 
   /// 支撑该结论的原始证据。空列表意味着这条发现没有依据 —— 不允许出现。
   final List<SecurityEvidence> evidence;
+
+  /// 该发现引用的证据 ID 列表；顺序与 [evidence] 一致。
+  List<String> get evidenceIds =>
+      evidence.map((item) => item.evidenceId).toList(growable: false);
 
   /// 可能的数据来源（照片、OCR 文本、设备标识……）；没有则为 `null`。
   ///
@@ -555,6 +600,16 @@ class SecurityAnalysisResult {
   /// 官方基线匹配；`null` = 未做/无基线库。
   final BaselineMatch? baseline;
 
+  /// 制品清单（路径、类型、来源、大小）。`null` = 本次没有产出该事实，
+  /// **不是**「包里没有任何制品」。
+  ///
+  /// 这是事实层数据，不含恶意性判断；规则层仍用 findings 表达结论。
+  final ArtifactInventory? artifacts;
+
+  /// 加载链（谁加载了谁、目标是否在包内）。`null` = 本次没有产出该事实，
+  /// **不是**「没有任何加载行为」。
+  final LoadGraph? loadGraph;
+
   const SecurityAnalysisResult({
     required this.engineVersion,
     required this.rulesVersion,
@@ -566,7 +621,21 @@ class SecurityAnalysisResult {
     this.cryptoTheft,
     this.seal,
     this.baseline,
+    this.artifacts,
+    this.loadGraph,
   });
+
+  /// 本次分析引用的全部证据，按 evidenceId 去重并保持首次出现顺序。
+  List<SecurityEvidence> get evidence {
+    final seen = <String>{};
+    final result = <SecurityEvidence>[];
+    for (final finding in findings) {
+      for (final item in finding.evidence) {
+        if (seen.add(item.evidenceId)) result.add(item);
+      }
+    }
+    return result;
+  }
 
   /// 各等级发现数量。
   Map<SecuritySeverity, int> countBySeverity() {
@@ -593,6 +662,8 @@ class SecurityAnalysisResult {
       cryptoTheft: cryptoTheft,
       seal: seal,
       baseline: baseline,
+      artifacts: artifacts,
+      loadGraph: loadGraph,
     );
   }
 
@@ -613,6 +684,8 @@ class SecurityAnalysisResult {
       cryptoTheft: cryptoTheft,
       seal: seal,
       baseline: baseline,
+      artifacts: artifacts,
+      loadGraph: loadGraph,
     );
   }
 

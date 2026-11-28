@@ -39,9 +39,16 @@ class PageHeader extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.actions = const [],
+    this.kicker,
   });
 
   final String title;
+
+  /// 标题上方的小号全大写导语（例如 `WORKSPACE / TARGET`）。
+  ///
+  /// V4 原型每一页都有这一行：它告诉用户"我在哪一层工作区"，比单独一个
+  /// 页面标题更像工作台。为空时不占高度。
+  final String? kicker;
 
   /// 副标题：一句话说明这一页干什么。可以没有（例如分析页紧跟 Tab 栏）。
   final String? subtitle;
@@ -61,6 +68,24 @@ class PageHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (kicker != null) ...[
+                Text(
+                  kicker!,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    fontFamilyFallback: const ['Menlo', 'Courier'],
+                    fontSize: 10,
+                    letterSpacing: 1.4,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.7,
+                    ),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+              ],
               Text(
                 title,
                 // 标题也钉成一行：动作区（`Wrap`）在 `Row` 里按**自身固有宽度**
@@ -70,8 +95,9 @@ class PageHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                  fontSize: 32,
                 ),
               ),
               if (subtitle != null) ...[
@@ -81,8 +107,11 @@ class PageHeader extends StatelessWidget {
                   // 一行到底：见类文档「副标题只占一行」。
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.hintColor),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
                 ),
               ],
             ],

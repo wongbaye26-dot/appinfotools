@@ -135,6 +135,30 @@ class IpaAnalysis {
 
   bool get hasMainApp => mainApp != null;
 
+  /// 主可执行文件的 FairPlay 加密信息。
+  ///
+  /// `null` 表示 Mach-O 里没有可读的 `LC_ENCRYPTION_INFO` —— **不是**
+  /// 「已确认未加密」。iOS 主应用被 App Store 加密时这里会给出
+  /// `cryptid == 1`，安全审计据此把静态否定结论降级。
+  MachOEncryptionInfo? get mainEncryption => executable?.primary?.encryption;
+
+  /// 主可执行文件是否仍被 FairPlay 加密。
+  bool get isMainEncrypted => mainEncryption?.isEncrypted ?? false;
+
+  /// 当前解析到的、仍被 FairPlay 加密的可执行文件路径（主应用 + 嵌套）。
+  ///
+  /// 嵌套项只统计**实际解析过**的二进制；被数量/字节预算挡在门外的不在
+  /// 这里，它们由安全审计的 `ios.executables` 覆盖率单独表达。
+  List<String> get encryptedExecutablePaths => [
+        if (isMainEncrypted) executablePath ?? 'main executable',
+        for (final nested in nestedBinaries)
+          if (nested.macho?.images.any((image) => image.isEncrypted) ?? false)
+            nested.path,
+      ];
+
+  /// 容器里是否有任何一个已解析的可执行文件仍被 FairPlay 加密。
+  bool get hasEncryptedExecutable => encryptedExecutablePaths.isNotEmpty;
+
   /// 带上安全审计结果的新副本。
   ///
   /// 两阶段解析用：先构造 `security == null` 的 [IpaAnalysis] 让 UI 立刻显示

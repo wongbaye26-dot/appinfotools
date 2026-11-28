@@ -48,6 +48,15 @@ class NetworkEndpoints {
   /// IPv4 字面量。
   static final RegExp _ipPattern = RegExp(r'\b(\d{1,3}\.){3}\d{1,3}\b');
 
+  /// 完整 URL / WebSocket。末尾标点在调用处裁掉。
+  static final RegExp _fullUrlPattern =
+      RegExp(r'(?:https?|wss?)://[^\s<>"]+', caseSensitive: false);
+
+  /// IPv6 只收至少含 `::` 或两个冒号的形态，避免误收时间/版本号。
+  static final RegExp _ipv6Pattern = RegExp(
+    r'(?<![0-9a-fA-F:])(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}(?![0-9a-fA-F:])',
+  );
+
   /// 认可的顶级域。
   ///
   /// 与 [_bareDomainPattern] 里那份**必须一致** —— 两处各写一份，加一个 TLD
@@ -79,21 +88,44 @@ class NetworkEndpoints {
   static void collect(
     String value,
     Set<String> domains,
-    Set<String> ips,
-  ) {
+    Set<String> ips, {
+    List<NetworkClue>? clues,
+    String? sourcePath,
+  }) {
     if (domains.length >= maxEndpoints && ips.length >= maxEndpoints) return;
     // 所有模式都要求主机名里有点（IPv4 / 域名 / URL host）；没有点的字符串
     // 连正则都不用跑。Mach-O 里绝大多数 ASCII 串是符号名，这一条过滤掉了
     // 大部分无意义的正则调用。
-    if (!value.contains('.')) return;
+    if (!value.contains('.') && !value.contains(':')) return;
+    // 完整 URL / WebSocket 先收：保留 scheme、host、port、path，供 UI 核对。
+    if (clues != null) {
+      for (final match in _fullUrlPattern.allMatches(value)) {
+        var raw = match.group(0)!;
+        while (raw.isNotEmpty && '.,;)]}'.contains(raw[raw.length - 1])) {
+          raw = raw.substring(0, raw.length - 1);
+        }
+        if (raw.length < 8) continue;
+        final lower = raw.toLowerCase();
+        final type = lower.startsWith('ws://') || lower.startsWith('wss://')
+            ? NetworkClueType.websocket
+            : NetworkClueType.url;
+        _addClue(clues, type, raw, sourcePath);
+      }
+    }
     for (final match in _urlPattern.allMatches(value)) {
       final host = match.group(1)!;
       // IP 归 `ips`，不混进域名清单 —— 两张表混着放，读者分不清
       // 「写了域名」与「写了地址」，版本对比也会错位。
       if (_ipPattern.hasMatch(host)) {
         ips.add(host);
+        if (clues != null) {
+          _addClue(clues, NetworkClueType.ipv4, host, sourcePath);
+        }
       } else if (_plausibleHost(host)) {
         domains.add(host);
+        if (clues != null) {
+          _addClue(clues, NetworkClueType.domain, host, sourcePath);
+        }
       }
     }
     for (final match in _bareDomainPattern.allMatches(value)) {
@@ -102,11 +134,51 @@ class NetworkEndpoints {
       final raw = match.group(0)!;
       final cut = raw.indexOf(RegExp('[:/]'));
       final host = cut < 0 ? raw : raw.substring(0, cut);
-      if (_plausibleHost(host)) domains.add(host);
+      if (_plausibleHost(host)) {
+        domains.add(host);
+        if (clues != null) {
+          _addClue(clues, NetworkClueType.domain, host, sourcePath);
+        }
+      }
     }
     for (final match in _ipPattern.allMatches(value)) {
-      ips.add(match.group(0)!);
+      final ip = match.group(0)!;
+      ips.add(ip);
+      if (clues != null) {
+        _addClue(clues, NetworkClueType.ipv4, ip, sourcePath);
+      }
     }
+    if (clues != null) {
+      for (final match in _ipv6Pattern.allMatches(value)) {
+        final ip = match.group(0)!;
+        if (!ip.contains('::') && ':'.allMatches(ip).length < 2) continue;
+        _addClue(clues, NetworkClueType.ipv6, ip, sourcePath);
+      }
+    }
+  }
+
+  static void _addClue(
+    List<NetworkClue> clues,
+    NetworkClueType type,
+    String value,
+    String? sourcePath,
+  ) {
+    if (clues.length >= maxEndpoints * 4) return;
+    final id = NetworkClue.createId(
+      type: type,
+      value: value,
+      sourcePath: sourcePath,
+    );
+    for (final clue in clues) {
+      if (clue.id == id) return;
+    }
+    clues.add(NetworkClue(
+      id: id,
+      type: type,
+      value: value,
+      sourcePath: sourcePath,
+      context: value.length > 160 ? value.substring(0, 160) : value,
+    ));
   }
 
   /// 一次性把一串字符串归纳成 [NetworkFacts]（去重、限量、排序）。

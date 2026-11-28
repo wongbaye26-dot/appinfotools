@@ -131,6 +131,16 @@ bool _isArchiveApk(String apkPath) {
   return extension == '.xapk' || extension == '.apkm' || extension == '.apks';
 }
 
+/// 路径是不是 AAB（含 `app.aab.1` 这类重名后缀）。
+///
+/// 不能只看 `path.extension`：下载器把重名文件存成 `app.aab.1` 时，扩展名是
+/// `.1`，但内容仍然是 AAB。白名单已经接受这种路径，解析分支必须跟上，
+/// 否则它会掉进 APK 流程并报「清单缺失」，层次就错了。
+bool _isAabPath(String apkPath) {
+  final lower = apkPath.toLowerCase();
+  return lower.endsWith('.aab') || RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
+}
+
 String _archiveTypeFromExtension(String extension) {
   if (extension == '.apkm') return 'APKM';
   if (extension == '.apks') return 'APKS';
@@ -310,6 +320,16 @@ Future<ApkInfo?> getApkInfo(
   final extension = path.extension(apk).toLowerCase();
   bool zipAsArchive = false;
 
+  // AAB 单独一条路：它没有 manifest.json（不是 XAPK），也不能 adb install
+  // （不是可分发的 APK 集合），所以必须在下面的 `.zip` 检测与
+  // `_isArchiveApk` 分支**之前**拦下来。
+  //
+  // 也刻意不看 Config.parserEngine：aapt2 只认 AXML，而 AAB 的清单是
+  // protobuf XML，外部工具读不了，只有内置解析器能解释它。
+  if (_isAabPath(apk)) {
+    return await _getAabInfo(apk, apkInfo, onStage: onStage);
+  }
+
   if (extension == '.zip') {
     final zipType = await _detectZipContentType(apk);
     log.fine("getApkInfo: ZIP content type=$zipType");
@@ -404,51 +424,64 @@ Future<ApkInfo?> getApkInfo(
           apkInfo.securityResult = await _auditExtractedBaseApk(
             baseApkPath,
             splitApkPaths: splitPaths,
+            // 包里声明的分包数与**实际提取/审计**的分包数分开：
+            // 提取上限 50 时，剩下的分包不能因为没被提取就当不存在。
+            splitDeclaredTotal: apkInfo.archiveApks.length - 1,
           );
+          var builtinApplied = false;
           try {
-            final aaptPath = CommandTools.findAapt2Path();
-            if (aaptPath == null || aaptPath.isEmpty) {
-              throw Exception(t.parse.please_set_path(name: 'aapt2'));
-            }
-            final aapt2Sw = Stopwatch()..start();
-            final result = await Aapt2Task.run(
-              aaptPath,
-              ['dump', 'badging', baseApkPath],
-              onStarted: onTaskStarted,
+            builtinApplied = await _applyBuiltInBaseMetadata(
+              baseApkPath,
+              apkInfo,
             );
-            aapt2Ms = aapt2Sw.elapsedMilliseconds;
-            // 取消：不是失败，也不该继续走后面的图标加载。
-            if (result.cancelled) {
-              throw const ApkParseCancelledException();
-            }
-            if (result.isSuccess) {
-              final originalPath = apkInfo.apkPath;
-              apkInfo.apkPath = baseApkPath;
-              final parseSw = Stopwatch()..start();
-              parseApkInfoFromOutput(result.stdout.toString(), apkInfo);
-              parseMs = parseSw.elapsedMilliseconds;
-              // 仅在打包文件不包含图标时，才从 base APK 加载图标
-              if (apkInfo.mainIconImage == null) {
-                iconSw
-                  ..reset()
-                  ..start();
-                final iconImage = await apkInfo.loadIcon();
-                if (iconImage != null) {
-                  apkInfo.mainIconImage = iconImage;
-                }
-                iconMs += iconSw.elapsedMilliseconds;
-              }
-              apkInfo.apkPath = originalPath;
-            }
-          } on ApkParseCancelledException {
-            // 用户取消不是「base APK 解析失败」—— 必须往上抛，否则会被记成
-            // 一条无关的警告，然后继续走后面的图标加载，白等一场。
-            rethrow;
           } catch (e) {
-            log.warning("getApkInfo: base APK parse failed: $e");
-            // aapt2 缺失/失败时改用内置解析器补齐元数据，避免把
-            // 「解析器没运行」显示成组件/ABI/语言不可用。
-            await _applyBuiltInBaseMetadata(baseApkPath, apkInfo);
+            log.warning('getApkInfo: builtin base parse failed: $e');
+          }
+          if (!builtinApplied) {
+            try {
+              final aaptPath = CommandTools.findAapt2Path();
+              if (aaptPath == null || aaptPath.isEmpty) {
+                throw Exception(t.parse.please_set_path(name: 'aapt2'));
+              }
+              final aapt2Sw = Stopwatch()..start();
+              final result = await Aapt2Task.run(
+                aaptPath,
+                ['dump', 'badging', baseApkPath],
+                onStarted: onTaskStarted,
+              );
+              aapt2Ms = aapt2Sw.elapsedMilliseconds;
+              // 取消：不是失败，也不该继续走后面的图标加载。
+              if (result.cancelled) {
+                throw const ApkParseCancelledException();
+              }
+              if (result.isSuccess) {
+                final originalPath = apkInfo.apkPath;
+                apkInfo.apkPath = baseApkPath;
+                final parseSw = Stopwatch()..start();
+                parseApkInfoFromOutput(result.stdout.toString(), apkInfo);
+                parseMs = parseSw.elapsedMilliseconds;
+                // 仅在打包文件不包含图标时，才从 base APK 加载图标
+                if (apkInfo.mainIconImage == null) {
+                  iconSw
+                    ..reset()
+                    ..start();
+                  final iconImage = await apkInfo.loadIcon();
+                  if (iconImage != null) {
+                    apkInfo.mainIconImage = iconImage;
+                  }
+                  iconMs += iconSw.elapsedMilliseconds;
+                }
+                apkInfo.apkPath = originalPath;
+              }
+            } on ApkParseCancelledException {
+              // 用户取消不是「base APK 解析失败」—— 必须往上抛，否则会被记成
+              // 一条无关的警告，然后继续走后面的图标加载，白等一场。
+              rethrow;
+            } catch (e) {
+              // 走到这里说明内置解析也没成：两条路都失败，界面上会显示
+              // 解析诊断，而不是把一个半空的包当成正常包。
+              log.warning("getApkInfo: base APK parse failed: $e");
+            }
           }
         }
       }
@@ -632,27 +665,41 @@ Future<ApkInfo?> getApkInfo(
 /// 无法取消。图标渲染必须留在主 isolate —— `ApkInfo` 持有 `dart:ui` 的
 /// `Image`，不能跨 isolate 传递。
 
-/// 用内置 `ApkReader` 给 XAPK base APK 补元数据（aapt2 缺失/失败时）。
-Future<void> _applyBuiltInBaseMetadata(
+/// 用内置 `ApkReader` 解析 XAPK/APKM/APKS 的 base APK。
+///
+/// 分包容器的元数据此前只来自 `aapt2 dump badging`，于是没装 Android SDK
+/// 的机器上分包包只剩 manifest.json 里那几个字段，图标与组件全缺。内置
+/// 解析器本来就能读 APK，这里把它提到前面：**aapt2 从必需变成兜底**。
+///
+/// 返回 `false` 表示内置解析没拿到清单 —— 调用方仍可退回 aapt2。
+Future<bool> _applyBuiltInBaseMetadata(
   String baseApkPath,
   ApkInfo apkInfo,
 ) async {
   final reader = apk_parser.ApkReader();
   try {
     final open = await reader.open(baseApkPath);
-    if (!open.isOk) return;
+    if (!open.isOk) return false;
     final meta = await reader.parse();
-    if (meta == null) return;
+    if (meta == null) return false;
     final originalPath = apkInfo.apkPath;
     apkInfo.apkPath = baseApkPath;
     _applyMetaToApkInfo(meta, apkInfo);
     if (apkInfo.mainIconImage == null) {
+      // 图标渲染要 arsc 资源表：不预先交给渲染器，XML/自适应图标就只能
+      // 依赖 aapt2 dump resources —— 那正是这里要摆脱的东西。
+      final arsc = reader.arscParser?.getAllResources() ??
+          const <int, apk_parser.ResourceInfo>{};
+      if (arsc.isNotEmpty) apkInfo.arscResources = arsc;
       final icon = await apkInfo.loadIcon();
+      apkInfo.arscResources = null;
       if (icon != null) apkInfo.mainIconImage = icon;
     }
     apkInfo.apkPath = originalPath;
+    return true;
   } catch (e) {
     log.warning('_applyBuiltInBaseMetadata failed: $e');
+    return false;
   } finally {
     reader.close();
   }
@@ -705,10 +752,12 @@ SecurityFinding _splitCertMismatchFinding(String? packageId) {
 Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
   String baseApkPath, {
   List<String> splitApkPaths = const [],
+  int? splitDeclaredTotal,
 }) async {
   final reader = apk_parser.ApkReader();
   final splitReaders = <apk_parser.ApkReader>[];
   final splitReadersByName = <String, apk_parser.ApkReader>{};
+  var splitAudited = 0;
   try {
     final openResult = await reader.open(baseApkPath);
     if (!openResult.isOk) {
@@ -750,6 +799,7 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
           continue;
         }
         final label = path.basename(splitPath);
+        splitAudited++;
         final splitCert = splitMeta.signingSchemes?.signingCertificate;
         final splitCertSha =
             splitCert == null ? null : contentDigest('sha256', splitCert);
@@ -853,6 +903,8 @@ Future<SecurityAnalysisResult?> _auditExtractedBaseApk(
       loadGraph: loadGraph,
       payloadProbe: payloadProbe,
       methodScanResult: methodScan,
+      splitTotal: splitDeclaredTotal ?? splitApkPaths.length,
+      splitAudited: splitAudited,
       seal: mergedSeal,
       baseline: baseline,
     );
@@ -984,8 +1036,9 @@ PayloadProbeResult _probePayloadsForBase(
   // 整条读取会让 64 条 8 MiB 的资源包白解压 512 MiB。
   const probeBytes = 64 * 1024;
   final inputs = <PayloadProbeInput>[];
+  var candidateCount = 0;
+  var skipped = 0;
   for (final entry in inventory.entries) {
-    if (inputs.length >= maxEntries) break;
     final path = entry.path;
     final candidate = path.startsWith('assets/') ||
         entry.kind == ArtifactKind.dex ||
@@ -993,19 +1046,36 @@ PayloadProbeResult _probePayloadsForBase(
         entry.kind == ArtifactKind.assetBinary ||
         entry.kind == ArtifactKind.script;
     if (!candidate) continue;
-    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) continue;
+    candidateCount++;
+    if (inputs.length >= maxEntries) {
+      skipped++;
+      continue;
+    }
+    if (entry.sizeBytes <= 0 || entry.sizeBytes > maxEntryBytes) {
+      skipped++;
+      continue;
+    }
     var source = reader;
     var sourcePath = path;
     if (path.startsWith('split:')) {
       final slash = path.indexOf('/', 'split:'.length);
-      if (slash <= 0) continue;
+      if (slash <= 0) {
+        skipped++;
+        continue;
+      }
       final label = path.substring('split:'.length, slash);
       source = splitReaders[label] ?? reader;
-      if (source == reader) continue;
+      if (source == reader) {
+        skipped++;
+        continue;
+      }
       sourcePath = path.substring(slash + 1);
     }
     final bytes = source.readFilePrefix(sourcePath, maxBytes: probeBytes);
-    if (bytes == null || bytes.isEmpty) continue;
+    if (bytes == null || bytes.isEmpty) {
+      skipped++;
+      continue;
+    }
     final head =
         bytes.length <= headBytes ? bytes : bytes.sublist(0, headBytes);
     final dot = path.lastIndexOf('.');
@@ -1018,7 +1088,15 @@ PayloadProbeResult _probePayloadsForBase(
       declaredExtension: dot > 0 ? path.substring(dot).toLowerCase() : null,
     ));
   }
-  return apk_parser.PayloadProbe.scan(inputs);
+  final scanned = apk_parser.PayloadProbe.scan(inputs);
+  if (skipped == 0 && candidateCount == inputs.length) return scanned;
+  return PayloadProbeResult(
+    signals: scanned.signals,
+    entriesProbed: scanned.entriesProbed,
+    entriesTotal: candidateCount,
+    complete: false,
+    noteCodes: [...scanned.noteCodes, 'payload.candidates_skipped']..sort(),
+  );
 }
 
 /// base APK 的密封校验：有 v2 优先 v2，否则 v1。
@@ -1159,6 +1237,77 @@ Future<SplitConsistencyReport> _checkSplitConsistency({
     checkedCount: attempted.length,
     totalCount: splitEntries.length,
   );
+}
+
+/// 解析 AAB（Android App Bundle）。
+///
+/// AAB 与 APK 的差别不只是「多一层目录」：它没有根级清单、没有
+/// `resources.arsc`、也没有 APK Signing Block，因此不能进 `parse_task` 的
+/// APK 流程。这里只做三件事：解包条目、读 proto 清单、读 `resources.pb`。
+///
+/// 失败也返回 [ApkInfo] 而不是 null —— 调用方把 null 当成「用户选错了
+/// 文件」，而这里的失败是「文件存在但读不了」，两者必须能分开。
+Future<ApkInfo> _getAabInfo(
+  String apk,
+  ApkInfo apkInfo, {
+  void Function(ApkParseStage stage)? onStage,
+}) async {
+  apkInfo.archiveType = 'AAB';
+  // AAB 是分发格式，不能安装；isXapk 保持 false，界面据此关闭签名、原生库、
+  // 分包区块 —— 这些区块对 AAB 本来就不适用（它没有根级签名/清单/dex）。
+  onStage?.call(ApkParseStage.openContainer);
+
+  final reader = apk_parser.AabReader();
+  final info = await reader.read(apk);
+  if (info == null) {
+    apkInfo.parseFailureReason =
+        reader.lastFailure ?? 'the AAB archive could not be opened';
+    apkInfo.totalSize = apkInfo.apkSize;
+    onStage?.call(ApkParseStage.done);
+    return apkInfo;
+  }
+
+  apkInfo.packageName = info.packageName;
+  apkInfo.versionCode = info.versionCode;
+  apkInfo.versionName = info.versionName;
+  // AabInfo 用 minSdkVersion 这个名字；ApkInfo 的历史字段叫 sdkVersion。
+  apkInfo.sdkVersion = info.minSdkVersion;
+  apkInfo.targetSdkVersion = info.targetSdkVersion;
+  apkInfo.label = info.label;
+  apkInfo.labels.addAll(info.labels);
+  apkInfo.icons.addAll(info.iconPaths);
+  apkInfo.mainIconPath = info.mainIconPath;
+  apkInfo.nativeCodes = List<String>.of(info.structure.abis);
+  apkInfo.locales = List<String>.of(info.locales);
+  apkInfo.densities =
+      info.densities.map((density) => '$density').toList(growable: true);
+  apkInfo.structure = info.structure;
+  apkInfo.totalSize = apkInfo.apkSize;
+
+  // 只有清单本身读出来时，字段才有来源可言；否则保持 unknown。
+  if (info.failureReason == null) {
+    apkInfo.manifestSource = FieldSource.builtinParser;
+  }
+  apkInfo.parseFailureReason = info.failureReason;
+  // resources.pb 失败是「部分成功」：清单字段仍然可信，只有 label / icon /
+  // versionName 的引用解不出来。单独记录原因，不能混进 parseFailureReason
+  // （那会让诊断说成「AndroidManifest.xml 读不出来」，层次就错了）。
+  apkInfo.aabResourceFailure = info.resourceFailure;
+
+  if (info.failureReason == null) {
+    try {
+      // AAB 本身就是 ZIP，位图图标可以从条目路径直接解码；proto XML 图标
+      // 没有 AXML 的结构，渲染器会失败并写入 iconResolutionNotes。
+      final icon = await apkInfo.loadIcon();
+      if (icon != null) apkInfo.mainIconImage ??= icon;
+    } catch (e) {
+      // 图标只是展示层信息，失败不能反过来毁掉已经读到的清单。
+      log.warning('_getAabInfo: 图标加载失败: $e');
+    }
+  }
+
+  onStage?.call(ApkParseStage.done);
+  return apkInfo;
 }
 
 Future<ApkInfo?> _getApkInfoBuiltin(
@@ -1554,6 +1703,13 @@ class ApkInfo {
   /// 分开是因为界面上必须能区分「没查到」与「没查」。
   String? parseFailureReason;
 
+  /// AAB 的 `base/resources.pb` 读不出来 / 解析失败的原因。
+  ///
+  /// 与 [parseFailureReason] 分开：资源表失败时清单字段（包名、版本、
+  /// minSdk…）**仍然可信**，只是 label / icon / versionName 的引用解析不出来。
+  /// 混进 parseFailureReason 会让诊断误报成「Manifest 读不出来」。
+  String? aabResourceFailure;
+
   /// 分包（XAPK / APKM / APKS）一致性校验的结果。
   ///
   /// `null` 表示**没查**（单 APK，或没有可用的解包目录），与「查了、没发现
@@ -1582,6 +1738,19 @@ class ApkInfo {
         'AndroidManifest.xml could not be parsed: $failure',
         messageArgs: {'failure': failure},
         source: manifestSource,
+      ));
+    }
+
+    // AAB 资源表失败：清单读出来了，但 label / icon 的引用没有落点。
+    // 单独一条诊断，避免与「清单读不出来」混为一谈。
+    final aabResource = aabResourceFailure;
+    if (aabResource != null) {
+      out.add(AnalysisDiagnostic.warning(
+        'android.aab_resources_unresolved',
+        'The AAB resource table could not be resolved: $aabResource. '
+            'Label, icon and version name references may be missing.',
+        messageArgs: {'failure': aabResource},
+        source: FieldSource.builtinParser,
       ));
     }
 
@@ -2335,6 +2504,9 @@ class ApkInfo {
     totalSize = null;
     originalText = "";
     securityResult = null;
+    // 失败原因不清空的话，换一个能解析的文件后旧的「读不出来」仍会显示。
+    parseFailureReason = null;
+    aabResourceFailure = null;
   }
 }
 

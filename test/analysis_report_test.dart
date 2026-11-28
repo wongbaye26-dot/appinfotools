@@ -9,6 +9,7 @@
 
 import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
@@ -532,6 +533,116 @@ void main() {
       expect(json, contains('"limitations"'));
     });
 
+    test('FairPlay 加密发现与 ios.encryption 覆盖进入 JSON/Markdown，且不升 schema', () {
+      final security = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        findings: [
+          const SecurityFinding(
+            ruleId: 'IOS-ENCRYPTED-BINARY',
+            platform: SecurityPlatform.ios,
+            category: SecurityCategory.other,
+            severity: SecuritySeverity.info,
+            confidence: SecurityConfidence.confirmed,
+            finding: 'FairPlay-encrypted executable content',
+            evidence: [
+              SecurityEvidence(
+                source: SecurityEvidenceSource.machoSymbol,
+                location: 'Payload/Example.app/Example',
+                detail: 'LC_ENCRYPTION_INFO cryptid=1',
+              ),
+            ],
+            recommendation: 'review decrypted build',
+            messageCode: 'ios.encrypted_binary',
+            messageArgs: {'count': 1, 'path': 'Example'},
+            recommendationCode: 'ios.encrypted_binary.manual_review',
+            limitationCode: 'ios.encrypted_binary.limitation',
+            isMeta: true,
+          ),
+        ],
+        coverage: AnalysisCoverage(entries: [
+          CoverageEntry.noted(
+            id: 'ios.encryption',
+            status: CoverageStatus.notCovered,
+            note: (
+              'ios.encryption.encrypted',
+              'main encrypted',
+              {'cryptid': 1},
+            ),
+          ),
+        ]),
+      );
+
+      final json = AnalysisReport.renderJson(
+        _android(security: security),
+        generatedAt: _at,
+        t: t,
+      );
+      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"IOS-ENCRYPTED-BINARY"'));
+      expect(json, contains('"id": "ios.encryption"'));
+      expect(json, contains('"noteCode": "ios.encryption.encrypted"'));
+      expect(json, contains('FairPlay-encrypted executable content'));
+
+      final report = AnalysisReport.render(
+        _android(security: security),
+        t,
+        generatedAt: _at,
+      );
+      expect(report,
+          contains(AnalysisReport.coverageDimensionLabel('ios.encryption', t)));
+      expect(report, contains('1 executable(s) are FairPlay-encrypted'));
+    });
+
+    test('Android 制品清单与加载链接入 JSON，且不升 schema', () {
+      const security = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        artifacts: ArtifactInventory(
+          entries: [
+            ArtifactEntry(
+              path: 'classes.dex',
+              kind: ArtifactKind.dex,
+              sizeBytes: 4096,
+              contentScanned: true,
+            ),
+          ],
+          totalEntries: 9,
+          inventoriedEntries: 1,
+          entriesComplete: false,
+          skippedCodes: ['inventory.entries_truncated'],
+        ),
+        loadGraph: LoadGraph(
+          nodes: [
+            LoadNode(
+              id: 'classes.dex',
+              kind: LoadNodeKind.dex,
+              resolvedPath: 'classes.dex',
+              presentInPackage: true,
+            ),
+          ],
+          danglingEdgeIds: ['classes.dex->libmissing.so'],
+          complete: false,
+        ),
+      );
+
+      final json = AnalysisReport.renderJson(
+        _android(security: security),
+        generatedAt: _at,
+        t: t,
+      );
+      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"artifacts"'));
+      expect(json, contains('"loadGraph"'));
+      expect(json, contains('"totalEntries": 9'));
+      expect(json, contains('"entriesComplete": false'));
+      expect(json, contains('"path": "classes.dex"'));
+      expect(json, contains('"kind": "dex"'));
+      expect(json, contains('"danglingEdgeIds"'));
+      expect(json, contains('"classes.dex->libmissing.so"'));
+      expect(json, contains('"complete": false'));
+    });
+
     test('schema 版本随结构变化递增，且本版新增的字段确实在', () {
       // 自带一条**带全部 code 的**发现项：上面那个 `security` 夹具没有发现项，
       // 拿它断言只会测到「没有 findings 时也不崩」。
@@ -573,7 +684,7 @@ void main() {
       // v4：B11 给 findings[] 与 evidence[] 补了稳定 code。
       // 版本号与字段**必须一起断言** —— 只改号不加字段（或反之）都会让
       // 消费脚本的判断落空。
-      expect(json, contains('"reportSchemaVersion": 8'));
+      expect(json, contains('"reportSchemaVersion": 11'));
       for (final field in [
         '"messageCode"',
         '"recommendationCode"',
@@ -840,6 +951,65 @@ void main() {
         securityOnly: true,
       );
       expect(report, isNot(contains('## ${t.report.split_section}')));
+    });
+  });
+  group('HTML 报告', () {
+    test('HTML 报告包含真实字段、覆盖与静态声明', () {
+      final html = AnalysisReport.renderHtml(_android(), t, generatedAt: _at);
+      expect(html, startsWith('<!doctype html>'));
+      expect(html, contains('AppInfoTool'));
+      expect(html, contains('com.example.app'));
+      expect(html, contains('COVERAGE GAPS'));
+      expect(html, contains(t.html_report.static_note));
+      expect(html, isNot(contains('<script')));
+    });
+  });
+
+  group('v9 报告契约', () {
+    test('v9 报告带 analysisRun 头、evidenceIds 与聚合 evidence', () {
+      const evidence = SecurityEvidence(
+        source: SecurityEvidenceSource.machoSymbol,
+        location: 'Payload/Example.app/Example',
+        detail: 'LC_ENCRYPTION_INFO cryptid=1',
+      );
+      const finding = SecurityFinding(
+        ruleId: 'IOS-ENCRYPTED-BINARY',
+        platform: SecurityPlatform.ios,
+        category: SecurityCategory.other,
+        severity: SecuritySeverity.info,
+        confidence: SecurityConfidence.confirmed,
+        finding: 'FairPlay-encrypted executable content',
+        evidence: [evidence],
+        recommendation: 'review decrypted build',
+      );
+      final security = SecurityAnalysisResult(
+        engineVersion: 'e',
+        rulesVersion: 'r',
+        findings: const [finding],
+      );
+      final run = AnalysisRun(
+        id: 'analysis_1_abcdef12',
+        toolVersion: '2.11.0',
+        platform: PackagePlatform.android,
+        packagePath: '/tmp/example.apk',
+        packageSha256: 'abc123',
+        startedAt: _at,
+        completedAt: _at.add(const Duration(seconds: 2)),
+        status: AnalysisRunStatus.success,
+      );
+
+      final json = AnalysisReport.renderJson(
+        _android(security: security),
+        generatedAt: _at,
+        t: t,
+        analysisRun: run,
+      );
+      expect(json, contains('"reportSchemaVersion": 11'));
+      expect(json, contains('"id": "analysis_1_abcdef12"'));
+      expect(json, contains('"status": "success"'));
+      expect(json, contains('"evidenceIds"'));
+      expect(json, contains(evidence.evidenceId));
+      expect(json, contains('"id": "${evidence.evidenceId}"'));
     });
   });
 }

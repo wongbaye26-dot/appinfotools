@@ -4,6 +4,7 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:apk_info_tool/apkparser/analysis_builder.dart';
 import 'package:apk_info_tool/apkparser/apk_info.dart';
 import 'package:apk_info_tool/ipaparser/ipa_analysis.dart';
+import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/file_hash.dart';
 import 'package:apk_info_tool/utils/ios_codesign_analyzer.dart';
@@ -133,6 +134,24 @@ class FileState {
   /// `null` 表示未启用安全检测，或分析尚未完成。
   final SecurityAnalysisResult? securityResult;
 
+  /// 本文件的安全检测结论。
+  ///
+  /// 两个平台把产物放在不同位置：iOS 由解析事件单独写进 [securityResult]，
+  /// Android 的审计结果挂在 [ApkInfo.securityResult] 上（worker 直接写在
+  /// 模型里）。概览页与分析页只想知道「这个文件有没有结论」，因此统一从
+  /// 这里取 —— 否则 Android 会一直渲染成「未做安全分析」。
+  SecurityAnalysisResult? get effectiveSecurityResult =>
+      securityResult ?? apkInfo?.securityResult;
+
+  /// 当前解析对应的 AnalysisRun id。
+  ///
+  /// null 表示本轮没有成功创建 run（例如旧入口/存储不可用）；不能把
+  /// “没记录”渲染成“已保存”。
+  final String? analysisRunId;
+
+  /// 当前 AnalysisRun 的生命周期状态。
+  final AnalysisRunStatus? analysisRunStatus;
+
   const FileState({
     this.filePath,
     this.fileSize,
@@ -146,6 +165,8 @@ class FileState {
     this.signature,
     this.isComputingSignature = false,
     this.securityResult,
+    this.analysisRunId,
+    this.analysisRunStatus,
   });
 
   /// 当前文件的平台。
@@ -259,6 +280,8 @@ class FileState {
     Object? signature = _unset,
     Object? isComputingSignature = _unset,
     Object? securityResult = _unset,
+    Object? analysisRunId = _unset,
+    Object? analysisRunStatus = _unset,
   }) {
     return FileState(
       filePath:
@@ -289,6 +312,12 @@ class FileState {
       securityResult: identical(securityResult, _unset)
           ? this.securityResult
           : securityResult as SecurityAnalysisResult?,
+      analysisRunId: identical(analysisRunId, _unset)
+          ? this.analysisRunId
+          : analysisRunId as String?,
+      analysisRunStatus: identical(analysisRunStatus, _unset)
+          ? this.analysisRunStatus
+          : analysisRunStatus as AnalysisRunStatus?,
     );
   }
 
@@ -315,7 +344,9 @@ class FileState {
           other.isComputingHash == isComputingHash &&
           identical(other.signature, signature) &&
           other.isComputingSignature == isComputingSignature &&
-          identical(other.securityResult, securityResult);
+          identical(other.securityResult, securityResult) &&
+          other.analysisRunId == analysisRunId &&
+          other.analysisRunStatus == analysisRunStatus;
 
   @override
   int get hashCode => Object.hash(

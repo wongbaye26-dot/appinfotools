@@ -24,7 +24,9 @@ import 'package:ipa_parser/ipa_parser.dart'
         IosIconResolution,
         IosIconSource,
         IpaContainer,
-        MachOFile;
+        MachOFile,
+        X509CertificateInfo,
+        X509Parser;
 
 /// 详情页的纯文本渲染。
 ///
@@ -137,13 +139,28 @@ class DetailRenderer {
 
     if (analysis.status == SignatureStatus.toolUnavailable) {
       sb.writeln(t.signature.tool_hint);
-      // 没装工具时**仍然**能给出证书指纹 —— 那是结构事实，不需要密码学验证。
-      // 但必须说清楚它不是「签名有效」的证据，否则会被当成结论用。
-      final local = analysis.localCertificateSha256;
-      if (local != null && local.isNotEmpty) {
-        sb.writeln(t.signature.local_cert_sha256(value: local));
-        sb.writeln(t.signature.local_cert_hint);
+    }
+
+    // 包里读到的证书：这是**结构事实**，不需要密码学验证。必须说清楚它不是
+    // 「签名有效」的证据，否则会被当成结论用。
+    if (analysis.localCertificates.isNotEmpty) {
+      sb.writeln('');
+      sb.writeln(t.signature.local_certificates(
+        count: analysis.localCertificates.length,
+      ));
+      for (final certificate in analysis.localCertificates) {
+        sb.writeln('');
+        sb.writeln('[${certificate.scheme}] '
+            '${t.signature.signer(index: certificate.signerIndex + 1)}');
+        sb.write(certificateDetails(certificate.details, t, indent: '  '));
       }
+      sb.writeln('');
+      sb.writeln(t.signature.local_certificate_hint);
+    } else if (analysis.localCertificateSha256 case final local?
+        when local.isNotEmpty) {
+      // 旧数据/旧路径只有这一个值，没有完整证书；照旧展示。
+      sb.writeln(t.signature.local_cert_sha256(value: local));
+      sb.writeln(t.signature.local_cert_hint);
     }
 
     if (analysis.verifiedSchemes.isNotEmpty) {
@@ -187,6 +204,82 @@ class DetailRenderer {
     }
 
     return sb.toString().trimRight();
+  }
+
+  /// 单张证书的公开字段（Android / iOS 共用）。
+  ///
+  /// 只打印**证书里写了什么**：主体、签发者、序列号、有效期、算法、三种指纹。
+  /// 不做信任链判断、不判断证书是否过期 —— 那些需要时间和策略，不属于渲染层。
+  static String certificateDetails(
+    X509CertificateInfo details,
+    Translations t, {
+    String indent = '',
+    bool includeSubjectAndIssuer = true,
+  }) {
+    final sb = StringBuffer();
+    void line(String value) => sb.writeln('$indent$value');
+
+    if (includeSubjectAndIssuer) {
+      if (details.subject case final subject? when subject.isNotEmpty) {
+        line('${t.signature.subject}: $subject');
+      }
+      if (details.issuer case final issuer? when issuer.isNotEmpty) {
+        line('${t.signature.issuer}: $issuer');
+      }
+    }
+    if (details.serialNumberHex case final serial? when serial.isNotEmpty) {
+      line('${t.signature.serial_number}: $serial');
+    }
+    if (details.notBefore case final notBefore?) {
+      line('${t.signature.valid_from}: ${_utcTimestamp(notBefore)}');
+    }
+    if (details.notAfter case final notAfter?) {
+      line('${t.signature.valid_until}: ${_utcTimestamp(notAfter)}');
+    }
+    if (details.signatureAlgorithm case final algorithm?
+        when algorithm.isNotEmpty) {
+      line('${t.signature.signature_algorithm}: $algorithm');
+    }
+    if (details.publicKeyAlgorithm case final algorithm?
+        when algorithm.isNotEmpty) {
+      line('${t.signature.key_algorithm}: '
+          '${_keyDescription(details, t)}');
+    }
+    if (details.sha256Fingerprint case final sha256? when sha256.isNotEmpty) {
+      line('${t.signature.sha256}: '
+          '${X509Parser.formatFingerprint(sha256)}');
+    }
+    if (details.sha1Fingerprint case final sha1? when sha1.isNotEmpty) {
+      line('${t.signature.sha1}: ${X509Parser.formatFingerprint(sha1)}');
+    }
+    if (details.md5Fingerprint case final md5? when md5.isNotEmpty) {
+      line('${t.signature.md5}: ${X509Parser.formatFingerprint(md5)}');
+    }
+    return sb.toString();
+  }
+
+  /// `RSA (2048 bits)` / `EC (256 bits, prime256v1)`；缺长度时只说算法。
+  static String _keyDescription(
+    X509CertificateInfo details,
+    Translations t,
+  ) {
+    final algorithm = details.publicKeyAlgorithm ?? '';
+    final bits = details.publicKeyBits;
+    final curve = details.publicKeyCurve;
+    if (bits == null && curve == null) return algorithm;
+    final parts = <String>[
+      if (bits != null) t.signature.key_size_bits(bits: bits),
+      if (curve != null && curve.isNotEmpty) curve,
+    ];
+    return '$algorithm (${parts.join(', ')})';
+  }
+
+  /// 证书时间是 UTC 秒级；`toIso8601String()` 会多出 `.000`，去掉更接近
+  /// openssl / keytool 的显示习惯。
+  static String _utcTimestamp(DateTime value) {
+    final utc = value.toUtc();
+    final iso = utc.toIso8601String();
+    return iso.endsWith('.000Z') ? '${iso.substring(0, iso.length - 5)}Z' : iso;
   }
 
   /// 渲染容器结构概览（DEX 数量、原生库、ABI、顶层目录）。
@@ -498,15 +591,16 @@ class DetailRenderer {
           '${t.ios_info.certificate_count(count: chain.certificates.length)}');
       for (final certificate in chain.certificates) {
         sb.writeln('    ${t.ios_info.certificate_entry(
-          subject: certificate.subjectCommonName ?? '-',
-          issuer: certificate.issuerCommonName ?? '-',
+          subject: certificate.subjectCommonName ?? certificate.subject ?? '-',
+          issuer: certificate.issuerCommonName ?? certificate.issuer ?? '-',
         )}');
-        final notAfter = certificate.notAfter;
-        if (notAfter != null) {
-          sb.writeln('      ${t.ios_info.certificate_valid_until(
-            date: notAfter.toIso8601String().split('T').first,
-          )}');
-        }
+        // 主体/签发者已经在上面的 entry 行里，这里只补其余字段。
+        sb.write(certificateDetails(
+          certificate,
+          t,
+          indent: '      ',
+          includeSubjectAndIssuer: false,
+        ));
       }
       sb.writeln('    ${t.ios_info.certificate_material_note}');
     }

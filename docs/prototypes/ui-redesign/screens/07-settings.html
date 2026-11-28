@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>07 · 设置</title>
+<link rel="stylesheet" href="../assets/prototype.css">
+</head>
+<body class="app" data-nav="settings" data-window-title="AppInfoTool — 设置" data-window-state="设置">
+  <main class="main">
+    <div class="content">
+      <header class="page-head">
+        <div>
+          <div class="eyebrow">工作区 <span class="sep">/</span> 设置</div>
+          <h1>设置</h1>
+          <p>本地优先：分析结果、缓存与日志都只保存在这台电脑。</p>
+        </div>
+        <div class="actions">
+          <span class="chip">v2.10.7 · 预览</span>
+          <button class="btn small"><svg class="ic"><use href="#i-refresh"/></svg>检查更新</button>
+        </div>
+      </header>
+
+      <section class="settings-wrap" style="flex:1;">
+        <nav class="settings-nav">
+          <div class="item active"><svg class="ic"><use href="#i-grid"/></svg>常规</div>
+          <div class="item"><svg class="ic"><use href="#i-phone"/></svg>设备与安装</div>
+          <div class="item"><svg class="ic"><use href="#i-shield"/></svg>安全与诊断</div>
+          <div class="item"><svg class="ic"><use href="#i-info"/></svg>关于</div>
+          <div style="margin-top:14px; padding:10px; border:1px solid var(--line); border-radius:9px; background:var(--panel-2);">
+            <div style="font-size:10px; font-weight:600; margin-bottom:4px;">隐私边界</div>
+            <div style="font-size:9.5px; line-height:1.5; color:var(--muted);">不执行样本代码，不上传安装包；开关只影响本机系统集成。</div>
+          </div>
+        </nav>
+
+        <div class="settings-stack">
+          <div class="card setting-card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-grid"/></svg>外观与语言</div><span class="chip">立即生效</span></div>
+            <div class="setting-row">
+              <div><div class="setting-name">主题</div><div class="setting-desc">跟随系统，或固定浅色 / 深色。</div></div>
+              <div class="setting-control"><div class="segmented"><span class="active">跟随系统</span><span>浅色</span><span>深色</span></div></div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-name">界面语言</div><div class="setting-desc">部分技术术语保持英文，便于与报告对照。</div></div>
+              <div class="setting-control"><div class="select">简体中文<svg class="ic"><use href="#i-chevron"/></svg></div></div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-name">紧凑列表</div><div class="setting-desc">减少表格行高，适合大屏浏览。</div></div>
+              <div class="setting-control"><span class="toggle"></span></div>
+            </div>
+          </div>
+
+          <div class="card setting-card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-layers"/></svg>系统集成</div><span class="chip amber">需手动启用</span></div>
+            <div class="setting-row">
+              <div><div class="setting-name">在资源管理器中显示应用图标</div><div class="setting-desc">默认关闭，仅在本机注册缩略图处理器；不会修改应用文件。升级不会自动删除旧版本写入的注册表项。</div></div>
+              <div class="setting-control"><span class="toggle"></span></div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-name">文件关联</div><div class="setting-desc">仅注册 .apk / .ipa 的“打开方式”，不抢占系统默认程序。</div></div>
+              <div class="setting-control"><span class="toggle on"></span></div>
+            </div>
+            <div class="banner" style="margin-top:10px; padding:9px 10px;">
+              <svg class="ic"><use href="#i-info"/></svg>
+              <div><b style="font-size:10px;">关闭时可能提示“未能完全停用”</b><p style="font-size:9.5px;">如果检测到旧的 HKLM 机器级注册，Explorer 仍可能使用缩略图。需要管理员权限才能清理。</p></div>
+            </div>
+          </div>
+
+          <div class="card setting-card">
+            <div class="card-head"><div class="card-title"><svg class="ic"><use href="#i-phone"/></svg>工具路径</div><button class="btn small">自动检测</button></div>
+            <div class="setting-row">
+              <div><div class="setting-name">adb</div><div class="setting-desc">用于安装 APK / XAPK 与设备管理。</div></div>
+              <div class="setting-control"><span class="path">/opt/homebrew/bin/adb</span><span class="chip green">可用</span></div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-name">Java</div><div class="setting-desc">某些签名与安装工具需要；未配置时相关功能会明确降级。</div></div>
+              <div class="setting-control"><span class="path">/usr/bin/java</span><span class="chip">未检测</span></div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-name">诊断日志</div><div class="setting-desc">记录解析阶段与失败原因，不包含安装包内容。</div></div>
+              <div class="setting-control"><button class="btn small"><svg class="ic"><use href="#i-download"/></svg>导出</button><button class="btn small">打开目录</button></div>
+            </div>
+          </div>
+
+          <div class="card setting-card" style="display:flex; align-items:center; gap:14px;">
+            <img src="../assets/logo.png" class="about-logo" alt="AppInfoTool">
+            <div style="flex:1;"><div class="about-name">AppInfoTool</div><div class="about-meta">2.10.7 预览 · 静态分析工具 · 本地运行</div></div>
+            <div style="display:flex; gap:8px; align-items:center;"><span class="chip">更新通道：稳定版</span><button class="btn small"><svg class="ic"><use href="#i-download"/></svg>下载更新</button></div>
+          </div>
+        </div>
+      </section>
+      <div class="footnote">Prototype · Settings</div>
+    </div>
+  </main>
+  <script src="../assets/icons.js"></script>
+  <script src="../assets/shell.js"></script>
+</body>
+</html>

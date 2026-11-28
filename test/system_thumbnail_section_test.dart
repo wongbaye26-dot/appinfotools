@@ -312,6 +312,65 @@ void main() {
       );
     });
   });
+  group('启用/停用结果必须诚实', () {
+    test('unknown 状态不能当作停用成功', () {
+      expect(
+        SystemThumbnailManager.classifyToggle(
+          wasUsable: true,
+          status: const SystemThumbnailStatus.unknown(),
+        ),
+        ThumbnailToggleOutcome.failed,
+      );
+    });
+
+    test('启用成功只有 usable=true 才算', () {
+      expect(
+        SystemThumbnailManager.classifyToggle(
+          wasUsable: false,
+          status: _status(registered: true),
+        ),
+        ThumbnailToggleOutcome.enabled,
+      );
+      expect(
+        SystemThumbnailManager.classifyToggle(
+          wasUsable: false,
+          status: _status(),
+        ),
+        ThumbnailToggleOutcome.failed,
+      );
+    });
+
+    test('停用成功要求 HKCU 与 HKLM 都没有残留', () {
+      expect(
+        SystemThumbnailManager.classifyToggle(
+          wasUsable: true,
+          status: _status(),
+        ),
+        ThumbnailToggleOutcome.disabled,
+      );
+    });
+
+    test('HKLM 还在时不能说「已停用」', () {
+      expect(
+        SystemThumbnailManager.classifyToggle(
+          wasUsable: true,
+          status: _status(registered: true, machineWideRegistered: true),
+        ),
+        ThumbnailToggleOutcome.disabledMachineWide,
+      );
+    });
+
+    test('停用后 HKCU 仍指向当前 DLL → failed', () {
+      expect(
+        SystemThumbnailManager.classifyToggle(
+          wasUsable: true,
+          status: _status(registered: true),
+        ),
+        ThumbnailToggleOutcome.failed,
+      );
+    });
+  });
+
   group('启动时是否要写注册表', () {
     // 判据在 `SystemThumbnailManager.needsRegistration`，是纯函数 —— 这里直接
     // 断言规则本身，不依赖 Windows 平台（`isSupported` 在 macOS 上是 false，

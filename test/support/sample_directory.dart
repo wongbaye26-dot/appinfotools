@@ -59,6 +59,12 @@ class SampleDirectory {
   /// 生效的目录路径；未配置时为 `null`。
   final String? path;
 
+  /// 路径的来源：`env`（显式环境变量）/ `auto`（自动探测命中）/ `null`。
+  final String? source;
+
+  /// 自动探测时实际检查过的路径（按顺序）；显式配置时为空。
+  final List<String> probed;
+
   final SampleDirStatus status;
 
   /// 目录里的普通文件数（不递归、不含子目录）。
@@ -76,6 +82,8 @@ class SampleDirectory {
     required this.fileCount,
     required this.androidSamples,
     required this.iosSamples,
+    this.source,
+    this.probed = const [],
   });
 
   /// 按类型取样本。
@@ -91,7 +99,9 @@ class SampleDirectory {
   String? skipReasonFor(SampleKind kind) {
     switch (status) {
       case SampleDirStatus.notConfigured:
-        return '未设置 APPINFOTOOL_SAMPLES，外部真实样本测试未执行';
+        final where = probed.isEmpty ? '' : '（找过：${probed.join('、')}）';
+        return '未设置 APPINFOTOOL_SAMPLES，自动探测也没有可用样本目录$where；'
+            '外部真实样本测试未执行';
       case SampleDirStatus.missing:
         return 'APPINFOTOOL_SAMPLES 指向的路径不存在或不是目录：$path';
       case SampleDirStatus.empty:
@@ -119,7 +129,7 @@ class SampleDirectory {
       SampleDirStatus.noSupportedSamples => '无受支持样本',
       SampleDirStatus.ready => '可用',
     };
-    return '样本目录[$where] path=${path ?? '-'} '
+    return '样本目录[$where] source=${source ?? '-'} path=${path ?? '-'} '
         'files=$fileCount android=${androidSamples.length} ios=${iosSamples.length}';
   }
 
@@ -200,4 +210,69 @@ class SampleDirectory {
     String name = 'APPINFOTOOL_SAMPLES',
   ]) =>
       SampleDirectory.scan(path: Platform.environment[name]);
+
+  /// 真实样本目录的默认探测位置（按优先级）。
+  ///
+  /// 顺序上「仓库内的 samples/」优先，因为开发时最常把样本放在项目旁边；
+  /// 之后才是用户下载/文档/桌面下约定俗成的目录名。
+  static List<String> defaultCandidates() {
+    final home = Platform.environment['HOME'] ?? '';
+    return [
+      'samples',
+      'test/samples',
+      if (home.isNotEmpty) ...['$home/Downloads/AppInfoTool Samples'],
+      if (home.isNotEmpty) ...['$home/Documents/AppInfoTool Samples'],
+      if (home.isNotEmpty) ...['$home/Desktop/AppInfoTool Samples'],
+    ];
+  }
+
+  /// 解析实际使用的样本目录：显式环境变量优先，否则依次探测候选位置。
+  ///
+  /// 显式配置了但不可用时**不回退**自动探测 —— 用户已经指定了位置，静默换
+  /// 成别的目录会让人以为「我配的那个生效了」。此时返回该路径的扫描结果，
+  /// 跳过原因会指出具体是「不存在 / 为空 / 没有受支持样本」。
+  factory SampleDirectory.discover({
+    List<String>? candidates,
+    String envName = 'APPINFOTOOL_SAMPLES',
+    Map<String, String>? environment,
+  }) {
+    final env = environment ?? Platform.environment;
+    final explicit = env[envName];
+    if (explicit != null && explicit.isNotEmpty) {
+      final scan = SampleDirectory.scan(path: explicit);
+      return SampleDirectory._(
+        path: scan.path,
+        status: scan.status,
+        fileCount: scan.fileCount,
+        androidSamples: scan.androidSamples,
+        iosSamples: scan.iosSamples,
+        source: 'env',
+        probed: const [],
+      );
+    }
+
+    final probed = candidates ?? defaultCandidates();
+    for (final candidate in probed) {
+      final scan = SampleDirectory.scan(path: candidate);
+      if (scan.status == SampleDirStatus.ready) {
+        return SampleDirectory._(
+          path: scan.path,
+          status: scan.status,
+          fileCount: scan.fileCount,
+          androidSamples: scan.androidSamples,
+          iosSamples: scan.iosSamples,
+          source: 'auto',
+          probed: probed,
+        );
+      }
+    }
+    return SampleDirectory._(
+      path: null,
+      status: SampleDirStatus.notConfigured,
+      fileCount: 0,
+      androidSamples: const [],
+      iosSamples: const [],
+      probed: probed,
+    );
+  }
 }

@@ -12,6 +12,8 @@ import 'package:analysis_model/analysis_model.dart';
 import 'package:test/test.dart';
 
 void main() {
+  _structuredClueTests();
+
   group('URL 主机名', () {
     test('带 scheme 的只保留主机名，不带路径', () {
       final facts = NetworkEndpoints.fromStrings([
@@ -107,6 +109,71 @@ void main() {
 
     test('端口与路径不影响主机名提取', () {
       expectDomains('www.example.com:8080/x', ['www.example.com']);
+    });
+  });
+}
+
+void _structuredClueTests() {
+  group('结构化网络线索', () {
+    test('URL/WebSocket/IPv4/域名都保留完整值与来源', () {
+      final domains = <String>{};
+      final ips = <String>{};
+      final clues = <NetworkClue>[];
+      NetworkEndpoints.collect(
+        'ws://socket.example.org/live and https://api.example.com/v1 and 10.0.0.7',
+        domains,
+        ips,
+        clues: clues,
+        sourcePath: 'classes.dex',
+      );
+      expect(clues.where((c) => c.type == NetworkClueType.url), isNotEmpty);
+      expect(
+          clues.where((c) => c.type == NetworkClueType.websocket), isNotEmpty);
+      expect(clues.where((c) => c.type == NetworkClueType.ipv4), isNotEmpty);
+      expect(clues.where((c) => c.type == NetworkClueType.domain), isNotEmpty);
+      final url = clues.firstWhere((c) => c.type == NetworkClueType.url);
+      expect(url.value, contains('https://api.example.com/v1'));
+      expect(url.sourcePath, 'classes.dex');
+    });
+
+    test('同一线索重复出现只保留一条，ID 稳定', () {
+      final clues = <NetworkClue>[];
+      NetworkEndpoints.collect(
+        'https://api.example.com/x',
+        <String>{},
+        <String>{},
+        clues: clues,
+        sourcePath: 'classes.dex',
+      );
+      NetworkEndpoints.collect(
+        'https://api.example.com/x',
+        <String>{},
+        <String>{},
+        clues: clues,
+        sourcePath: 'classes.dex',
+      );
+      expect(clues.where((c) => c.type == NetworkClueType.url), hasLength(1));
+      final id = NetworkClue.createId(
+        type: NetworkClueType.url,
+        value: 'https://api.example.com/x',
+        sourcePath: 'classes.dex',
+      );
+      expect(clues.any((c) => c.id == id), isTrue);
+    });
+
+    test('IPv6 字面量进入线索但不混入域名', () {
+      final domains = <String>{};
+      final ips = <String>{};
+      final clues = <NetworkClue>[];
+      NetworkEndpoints.collect(
+        'http://[2001:db8::1]:8080/api',
+        domains,
+        ips,
+        clues: clues,
+        sourcePath: 'main',
+      );
+      expect(clues.where((c) => c.type == NetworkClueType.ipv6), isNotEmpty);
+      expect(domains.any((d) => d.contains(':')), isFalse);
     });
   });
 }

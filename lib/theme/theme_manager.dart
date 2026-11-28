@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:apk_info_tool/config.dart';
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/theme/v4_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -40,21 +41,15 @@ class ThemeState {
 
   Color get _seed => Color(themeColor);
 
-  ThemeData get lightTheme => ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _seed,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
+  ThemeData get lightTheme => buildV4Theme(
+        seed: _seed,
+        brightness: Brightness.light,
         fontFamily: getFontFamily(),
       );
 
-  ThemeData get darkTheme => ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _seed,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
+  ThemeData get darkTheme => buildV4Theme(
+        seed: _seed,
+        brightness: Brightness.dark,
         fontFamily: getFontFamily(),
       );
 }

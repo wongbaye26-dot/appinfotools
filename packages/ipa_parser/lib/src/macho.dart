@@ -49,6 +49,55 @@ class ChainedFixups {
   const ChainedFixups({required this.dataOffset, required this.dataSize});
 }
 
+/// `LC_ENCRYPTION_INFO` / `LC_ENCRYPTION_INFO_64` 的内容。
+///
+/// Apple 的 FairPlay 分发会把 `__TEXT` 的一部分加密，并在 Mach-O 里留下
+/// 这段范围与 `cryptid`：
+///
+/// - `cryptid == 0`：该切片已解密（App Store 下载后、或开发构建）；
+/// - `cryptid == 1`：该切片仍被加密，静态字符串/符号扫描看到的是密文；
+/// - 其他值：保留/未知，同样不能当成「已解密」。
+///
+/// **没有这个命令不等于 `cryptid == 0`**：动态库通常没有加密命令。解析层
+/// 因此用 `null` 表示「文件里没有可读的加密信息」，绝不用 `false` 冒充
+/// 「确认未加密」。
+class MachOEncryptionInfo {
+  /// 被加密范围的起始偏移（相对本切片）。
+  final int cryptOffset;
+
+  /// 被加密范围的字节数。
+  final int cryptSize;
+
+  /// 加密标识。`0` = 已解密，`1` = 加密，其他值保留。
+  final int cryptId;
+
+  /// 命令本身是 `LC_ENCRYPTION_INFO_64`（64 位布局）。
+  ///
+  /// 两种命令的字段布局完全相同，区别只在命令号；保留此字段是为了让证据
+  /// 能指回原始命令，而不是在展示层重新猜。
+  final bool is64Bit;
+
+  const MachOEncryptionInfo({
+    required this.cryptOffset,
+    required this.cryptSize,
+    required this.cryptId,
+    required this.is64Bit,
+  });
+
+  /// 该切片是否仍被加密。
+  ///
+  /// 只有 `cryptid == 1` 是 FairPlay 的「加密」；其他非零值按「不可当作
+  /// 已解密」处理，但不臆测其含义。
+  bool get isEncrypted => cryptId == 1;
+
+  /// 是否明确读到了「已解密」。
+  bool get isDecrypted => cryptId == 0;
+
+  @override
+  String toString() => 'MachOEncryptionInfo(cryptid=$cryptId, '
+      'cryptoff=$cryptOffset, cryptsize=$cryptSize, is64=$is64Bit)';
+}
+
 /// 一个 Mach-O 节（`section` / `section_64`）。
 ///
 /// **为什么需要节而不是只要段**：`__TEXT` 段里既有代码也有好几张字符串表，
@@ -282,6 +331,19 @@ class MachOImage {
   /// 为 `false` 时，「没有导入符号」不能读成「没有能力」—— 那是「没查」。
   final bool symbolsRead;
 
+  /// FairPlay 加密信息（`LC_ENCRYPTION_INFO` / `LC_ENCRYPTION_INFO_64`）。
+  ///
+  /// `null` 表示文件里没有可读的加密命令 —— **不是**「确认未加密」。动态库
+  /// 通常没有这条命令，而 iOS 主可执行文件若被 FairPlay 加密则会有
+  /// `cryptid == 1`。安全审计据此判断「静态字符串扫描看到的是不是密文」。
+  final MachOEncryptionInfo? encryption;
+
+  /// 该切片是否被 FairPlay 加密（`cryptid == 1`）。
+  ///
+  /// 只回答「有加密命令且要求加密」；没有命令时返回 `false`，调用方必须用
+  /// [encryption] 的 `null` 区分「未加密」与「没有加密信息」。
+  bool get isEncrypted => encryption?.isEncrypted ?? false;
+
   const MachOImage({
     required this.offset,
     required this.size,
@@ -308,6 +370,7 @@ class MachOImage {
     this.symtab,
     this.symbols = const [],
     this.symbolsRead = false,
+    this.encryption,
   });
 
   /// **导入**的符号（`N_UNDF | N_EXT`）：这个镜像从外部拿到的能力。
@@ -491,6 +554,12 @@ class MachOParser {
   static const int _lcVersionMinIphoneos = 0x25;
   static const int _lcVersionMinTvos = 0x2F;
   static const int _lcVersionMinWatchos = 0x30;
+
+  /// `LC_ENCRYPTION_INFO` / `LC_ENCRYPTION_INFO_64`。
+  ///
+  /// 两者字段布局相同：`cmd, cmdsize, cryptoff, cryptsize, cryptid`。
+  static const int _lcEncryptionInfo = 0x21;
+  static const int _lcEncryptionInfo64 = 0x2C;
 
   /// `LC_FUNCTION_STARTS`：函数起始地址表（ULEB128 增量编码）。
   ///
@@ -766,6 +835,7 @@ class MachOParser {
     int? entryOffset;
     MachOSymtab? symtab;
     ChainedFixups? chainedFixups;
+    MachOEncryptionInfo? encryption;
     int? functionStartOffset;
     int? functionStartSize;
 
@@ -839,6 +909,23 @@ class MachOParser {
             if (dataoff != null && datasize != null) {
               functionStartOffset = dataoff;
               functionStartSize = datasize;
+            }
+          }
+        case _lcEncryptionInfo:
+        case _lcEncryptionInfo64:
+          // encryption_info_command: cmd + cmdsize + cryptoff + cryptsize
+          // + cryptid，五个 32 位字段共 20 字节。
+          if (cmdsize >= 20) {
+            final cryptoff = _readUint32(data, cursor + 8, byteOrder);
+            final cryptsize = _readUint32(data, cursor + 12, byteOrder);
+            final cryptid = _readUint32(data, cursor + 16, byteOrder);
+            if (cryptoff != null && cryptsize != null && cryptid != null) {
+              encryption = MachOEncryptionInfo(
+                cryptOffset: cryptoff,
+                cryptSize: cryptsize,
+                cryptId: cryptid,
+                is64Bit: cmd == _lcEncryptionInfo64,
+              );
             }
           }
         case _lcUuid:
@@ -954,6 +1041,7 @@ class MachOParser {
       symtab: symtab,
       symbols: symbols,
       symbolsRead: symbolsRead,
+      encryption: encryption,
     );
   }
 
