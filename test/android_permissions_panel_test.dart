@@ -73,6 +73,20 @@ void main() {
     expect(tooltip, contains('0x1'));
   });
 
+  testWidgets('标志位跟着界面语言翻译，不留英文标识符', (tester) async {
+    // CAMERA 的原始值是 0x1001：dangerous 位 + instant 标志位。
+    await pump(tester, const ['android.permission.CAMERA']);
+
+    final chip = find.byWidgetPredicate((widget) =>
+        widget is Tooltip &&
+        (widget.message ?? '').startsWith('Protection level: Dangerous'));
+    expect(chip, findsOneWidget);
+    final tooltip = tester.widget<Tooltip>(chip).message!;
+    expect(tooltip, contains('0x1001'));
+    expect(tooltip, contains('Instant'));
+    expect(tooltip, isNot(contains('instant,')));
+  });
+
   testWidgets('空清单明确说没有，而不是留白', (tester) async {
     await pump(tester, const []);
     expect(find.text('-'), findsOneWidget);

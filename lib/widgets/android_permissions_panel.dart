@@ -257,7 +257,7 @@ class _ProtectionChip extends StatelessWidget {
     };
     final details = [
       '0x${protection.raw.toRadixString(16)}',
-      ...protection.flags,
+      ...protection.flags.map((flag) => _flagLabel(flag, t)),
     ].join(', ');
     return Tooltip(
       message: t.apk_info.permission_protection(level: '$level ($details)'),
@@ -278,6 +278,37 @@ class _ProtectionChip extends StatelessWidget {
     );
   }
 }
+
+/// protectionLevel 的标志位（`privileged`、`runtime`…）在数据里是稳定标识符，
+/// 界面按语言翻译；遇到未知标志位原样显示，而不是吞掉它。
+String _flagLabel(String flag, Translations t) => switch (flag) {
+      'privileged' => t.apk_info.protection_flag_privileged,
+      'development' => t.apk_info.protection_flag_development,
+      'appop' => t.apk_info.protection_flag_appop,
+      'pre23' => t.apk_info.protection_flag_pre23,
+      'installer' => t.apk_info.protection_flag_installer,
+      'verifier' => t.apk_info.protection_flag_verifier,
+      'preinstalled' => t.apk_info.protection_flag_preinstalled,
+      'setup' => t.apk_info.protection_flag_setup,
+      'instant' => t.apk_info.protection_flag_instant,
+      'runtime' => t.apk_info.protection_flag_runtime,
+      'oem' => t.apk_info.protection_flag_oem,
+      'vendorPrivileged' => t.apk_info.protection_flag_vendor_privileged,
+      'textClassifier' => t.apk_info.protection_flag_text_classifier,
+      'wellbeing' => t.apk_info.protection_flag_wellbeing,
+      'documenter' => t.apk_info.protection_flag_documenter,
+      'configurator' => t.apk_info.protection_flag_configurator,
+      'incidentReportApprover' =>
+        t.apk_info.protection_flag_incident_report_approver,
+      'appPredictor' => t.apk_info.protection_flag_app_predictor,
+      'module' => t.apk_info.protection_flag_module,
+      'companion' => t.apk_info.protection_flag_companion,
+      'retailDemo' => t.apk_info.protection_flag_retail_demo,
+      'recents' => t.apk_info.protection_flag_recents,
+      'role' => t.apk_info.protection_flag_role,
+      'knownSigner' => t.apk_info.protection_flag_known_signer,
+      _ => flag,
+    };
 
 class _RiskChip extends StatelessWidget {
   const _RiskChip({required this.risk, required this.label});
