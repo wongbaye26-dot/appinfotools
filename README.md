@@ -43,7 +43,7 @@
 
 | 平台 | 格式 | 能力 |
 |---|---|---|
-| Android | APK / XAPK / APKM / APKS | 应用名（多语言）、包名、版本、SDK 区间、屏幕与密度、ABI、权限、组件（Activity/Service/Receiver/Provider 及其导出状态）、分包与 OBB、文件结构（DEX / 原生库 / 顶层目录）|
+| Android | APK / XAPK / APKM / APKS | 应用名（多语言）、包名、版本、SDK 区间（含系统发布年月）、屏幕与密度、ABI、硬件/软件特性（必需与可选，带平台说明）、语言列表（标签 + 本地化名称 + 自称）、启动 Activity、权限、组件（Activity/Service/Receiver/Provider 及其导出状态）、分包与 OBB、文件结构（DEX / 原生库 / 顶层目录）|
 | iOS | IPA | Bundle ID、版本与 Build、最低系统版本、设备族、可执行文件、嵌套 Bundle 与 Framework、URL Scheme、设备能力、Mach-O 架构、**`Assets.car` 资产目录** |
 
 ### iOS 图标：从 `Assets.car` 里真的取出图
@@ -67,14 +67,17 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 能力 | 说明 |
 |---|---|
 | 权限审计 | 按权限逐条给出风险等级、用途与判定依据；`maxSdkVersion` 与 `uses-permission-sdk-23` 等版本条件不会被丢弃 |
+| 权限说明 | 权限 Tab 换成逐条表格：Android 官方标题与说明（跟随界面语言）、`protectionLevel` 原始位掩码与标志位（privileged / runtime / appop …）、以及按**能读到什么/能做什么**分出的五档风险分组。风险分级是本工具的策略，卡片里固定写明「不等于恶意」 |
 | OCR / 敏感数据线索 | 扫描 DEX 中的字符串标记，提示证件识别、截图、相册读取等能力 |
 | 代码级取证 | DEX 三层递进：**结构 → 方法引用 → 调用点**。「代码引用了」与「字符串里提到了」分开陈述，调用点还能回答「在哪个方法的哪个偏移」 |
 | 原生库符号 | 读取 ELF `.dynsym` 与 Mach-O `LC_SYMTAB`，按**精确符号名**匹配导入的系统能力（`system` / `dlopen` / `ptrace` / `socket` …）|
 | 原生库加固 | 逐个 `.so` 检查 `PT_GNU_STACK`（可执行栈）、`PT_GNU_RELRO`、`DT_FLAGS` / `DT_FLAGS_1`（BIND_NOW），并按 ABI 去重 |
 | 伪装检测 | `lib/<abi>/*.so` 的内容若实际是 DEX —— 运行时会 `DexClassLoader` 加载，静态分析的结论对那部分不成立 |
 | 签名方案 | 解析 APK Signing Block **与 `META-INF` 的 v1 两件套**，区分「未签名 / 只有 v1 / v2 / v3 / v3.1」—— 「有签名」「只有 v1」与「根本没签」是三件不同的事 |
+| 证书详情 | 不装 `apksigner`/Java 也能从包里直接读证书：v1 走 `META-INF/*.RSA` 的 PKCS#7，v2/v3/v3.1 走 Signing Block；展示主题/签发者 DN、序列号、有效期、签名与公钥算法、RSA/EC 位数、SHA-256 / SHA-1 / MD5 指纹。iOS 侧同一套渲染用于描述文件证书链 |
 | 清单配置 | `debuggable`、`allowBackup`、导出组件、**ContentProvider 专项**（authorities / `grantUriPermissions` / `readPermission`+`writePermission` 是否只护住一个方向）、`networkSecurityConfig`（**真的展开那份 XML**，不因属性被忽略就跳过）|
 | 第三方 SDK | 25 个服务类包名前缀（推送 / 统计 / 归因 / 支付 / 地图 / 验证码 / 风控 / 崩溃上报 …），按 DEX `string_ids` 精确索引而非字节扫描；**版本号**取自 `META-INF/maven/**/pom.properties` |
+| 库识别 | 内置 LibChecker-Rules（3053 条规则，Apache-2.0）离线匹配：按 `.so` 文件名认原生库并按 ABI 合并体积、按组件名/Intent action 认 SDK、按 DEX 包名前缀认 Java 库，另含 Kotlin / Jetpack Compose / 加固壳标记。未识别的原生库按体积单列，规则数据当前为上游 `dataVersion 50`，可随仓库数据更新重新生成（`python3 tool/sync_libchecker_rules.py <portable-v5 解包目录>`，见 `assets/libchecker/README.md`）；不含图标资源，界面上用首字母色块代替 |
 | 数据回传分析 | 识别网络库、上传接口与域名 / IP，标注「已确认 / 疑似 / 仅具备能力」 |
 | 隐私清单 | iOS 侧检查 `Info.plist` 用途说明、`PrivacyInfo.xcprivacy` 声明（含**必需理由 API** `NSPrivacyAccessedAPITypes`），以及「声明了权限但没调用 API」的双向对照 |
 | 权限请求 | iOS 侧从 `__TEXT,__objc_methname` 的**选择子表**读「代码真的会申请哪些权限」—— 比用途说明强一档；Android 侧区分 signature 级权限（声明了也拿不到） |
@@ -115,7 +118,7 @@ Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐
 ### 界面
 
 - **概览页**：一屏看完 —— 当前文件状态、平台/大小/签名/安全四个状态卡、统计与最近文件
-- **详情页**：六个 Tab（概览 / 应用 / 权限 / 结构 / 签名 / 安全），APK 与 IPA 语义一致
+- **详情页**：Android 九个 Tab（概览 / 清单 / 组件 / 权限 / 库识别 / 安全 / 签名 / 文件 / 诊断），iOS 为（概览 / Info.plist / 权限 / 框架 / 签名 / 安全 / 文件 / 诊断），两平台语义一致
 - **安装页**：选包 → 连设备（USB 自动出现 / 无线配对）→ 安装，带安装日志与分包选择
 - **版本对比**：选两个已解析的包做结构化差异（字段级 + 权限 / 组件 / 原生符号 / 域名等集合级），
   三态呈现，且把「我们没读到」与「文件里没有」严格分开；可导出 Markdown / JSON 对比报告
