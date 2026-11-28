@@ -642,13 +642,13 @@
     "grant_all_permissions_desc": "Pass -g so adb grants runtime permissions at install time; debugging only.",
     "installed_before": "Installed before",
     "never_installed": "Never installed",
-    "ios_section": "iOS 设备",
-    "ios_status_ready": "可用",
-    "ios_status_missing": "未安装工具",
-    "ios_toolchain_hint": "未找到 ideviceinstaller，无法安装 .ipa。需要 libimobiledevice：",
-    "ios_no_devices": "未发现 iOS 设备。用 USB 连接并在设备上「信任此电脑」。",
-    "ios_install": "安装",
-    "ios_installed": "已安装到设备"
+    "ios_section": "iOS device",
+    "ios_status_ready": "Ready",
+    "ios_status_missing": "Tool missing",
+    "ios_toolchain_hint": "ideviceinstaller not found — libimobiledevice is required to install .ipa files:",
+    "ios_no_devices": "No iOS device found. Connect over USB and trust this computer.",
+    "ios_install": "Install",
+    "ios_installed": "Installed on device"
   },
   "ios_info": {
     "architectures": "Architectures",
@@ -1528,7 +1528,8 @@
       "signature_verdict": "Signature",
       "security_highestSeverity": "Highest severity",
       "security_findingCount": "Findings",
-      "security_cryptoTheftLevel": "Crypto-theft chain level"
+      "security_cryptoTheftLevel": "Crypto-theft chain level",
+      "android_dexCount": "DEX count"
     },
     "sets": {
       "android_permissions": "Permissions",

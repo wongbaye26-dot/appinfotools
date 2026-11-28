@@ -642,13 +642,13 @@
     "grant_all_permissions_desc": "传 -g，让 adb 在安装时直接授予运行时权限；仅调试用。",
     "installed_before": "已安装过",
     "never_installed": "未安装过",
-    "ios_section": "iOS 기기",
-    "ios_status_ready": "준비됨",
-    "ios_status_missing": "도구 없음",
-    "ios_toolchain_hint": "ideviceinstaller를 찾을 수 없습니다. .ipa 설치에는 libimobiledevice가 필요합니다:",
-    "ios_no_devices": "iOS 기기를 찾을 수 없습니다. USB로 연결하고 기기에서 \"이 컴퓨터 신뢰\"를 선택하세요.",
-    "ios_install": "설치",
-    "ios_installed": "기기에 설치했습니다"
+    "ios_section": "iOS 设备",
+    "ios_status_ready": "可用",
+    "ios_status_missing": "未安装工具",
+    "ios_toolchain_hint": "未找到 ideviceinstaller，无法安装 .ipa。需要 libimobiledevice：",
+    "ios_no_devices": "未发现 iOS 设备。用 USB 连接并在设备上「信任此电脑」。",
+    "ios_install": "安装",
+    "ios_installed": "已安装到设备"
   },
   "ios_info": {
     "architectures": "架构",
@@ -1528,7 +1528,8 @@
       "signature_verdict": "签名结论",
       "security_highestSeverity": "最高风险等级",
       "security_findingCount": "发现条数",
-      "security_cryptoTheftLevel": "盗 U 证据链等级"
+      "security_cryptoTheftLevel": "盗 U 证据链等级",
+      "android_dexCount": "DEX 数量"
     },
     "sets": {
       "android_permissions": "权限",

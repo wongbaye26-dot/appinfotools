@@ -1528,7 +1528,8 @@
       "signature_verdict": "簽名結論",
       "security_highestSeverity": "最高風險等級",
       "security_findingCount": "發現筆數",
-      "security_cryptoTheftLevel": "盜 U 證據鏈等級"
+      "security_cryptoTheftLevel": "盜 U 證據鏈等級",
+      "android_dexCount": "DEX 數量"
     },
     "sets": {
       "android_permissions": "權限",

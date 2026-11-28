@@ -349,22 +349,44 @@ void main() {
     });
   });
 
-  // V2.4.2 任务 5.2：ja / ko **已补齐**的分组。
+  // 2.11.1 任务 3-C：ja / ko 从「部分分组补齐」升级为**全量键集一致**。
   //
-  // 这三组此前在 ja / ko 里整组缺失（回退成英文）。本轮的补法是逐条翻译，
-  // 这里把它们钉住：键集与 en 一致、不得是英文复制、占位符必须保留。
-  //
-  // **范围说明（重要）**：只覆盖**已补齐**的四组。`security` / `report` /
-  // `field_diagnostic` / `analysis_diagnostic` 等组仍未补齐（见
-  // `docs/plans/V2.4.2_PROGRESS.md` §14），因此这里**不**断言「六个语言键集全等」——
-  // 那样会立刻变红，而那是「还没做」而不是「做错了」。等那些组补齐后再扩这张表。
-  group('ja / ko 已补齐的分组', () {
-    const migratedGroups = ['coverage', 'diff', 'ios_info', 'security'];
-
+  // 历史：2.4.2 只补了四组，其余组（security / report / field_diagnostic /
+  // analysis_diagnostic / theft 等）在 ja / ko 里整组缺失、回退英文。2.11.1
+  // 把剩余 146 个键补齐后，这里改为断言「ja / ko 的键集与 en 完全一致」——
+  // 将来任何新增键忘了翻译，CI 会立刻变红，而不是悄悄回退英文。
+  group('ja / ko 与 en 键集一致（全量）', () {
     /// 本就不该翻译的项（文件名 / 算法名 / Apple 产品名 / 平台标识 /
     /// 纯占位符模板 / 目标语言本来就用 ASCII 标点）。
     /// **逐个列出理由**，避免「懒得翻就丢进白名单」。
     const allowSameAsEnglish = {
+      'title': '产品名 AppInfoTool',
+      'base.ok': '通用按钮 OK，六语言都用 OK 是惯例',
+      'overview.stat_hint_dex_size': '纯占位符模板 {size}',
+      'overview.stat_hint_abis': '纯占位符模板 {abis}',
+      'overview.pipeline_export': '导出格式缩写 MD · JSON',
+      'overview.entry_points_none': '空值占位符 —',
+      'settings.download_platform_tools': '包名 platform-tools (adb)',
+      'settings.download_build_tools': '包名 build-tools (aapt2 / apksigner)',
+      'settings.sample_dir_set': '纯占位符模板 {path}',
+      'file_info.md5': '算法名 MD5',
+      'file_info.sha1': '算法名 SHA-1',
+      'file_info.sha256': '算法名 SHA-256',
+      'file_info.platform_android': '平台名 Android',
+      'file_info.platform_ios': '平台名 iOS',
+      'apk_info.abi': '技术缩写 ABI',
+      'apk_info.protection_flag_oem': 'OEM 是通用缩写',
+      'apk_info.permission_group_header:ko':
+          '纯占位符模板 {risk}({count})，韩文沿用 ASCII 括号',
+      'icon.bitmap_label': '占位符模板 {format} ({dpi})',
+      'report.android_section': '平台名 Android',
+      'report.ios_section': '平台名 iOS',
+      'html_report.schema': '表头 SCHEMA，属架构术语',
+      'html_report.file': '表头 FILE，属文件标识',
+      'html_report.sha': '算法名 SHA-256',
+      'libraries.rule_version': '产品名 LibChecker-Rules + 版本号',
+      'locale.with_variant': '纯占位符模板',
+      'locale.variant_sep:ko': '韩文用 ASCII 逗号，与 en 相同是正常结果',
       'coverage.dimensions.ios_infoPlist': 'Info.plist 是文件名，不是术语',
       'coverage.summary_join:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
       'diff.fields.file_sha256': 'SHA-256 是算法名',
@@ -377,6 +399,7 @@ void main() {
       'ios_info.device_watch': 'Apple 产品名 Apple Watch',
       'ios_info.platform_badge': '平台标识 iOS (.ipa)',
       'ios_info.uuid': '技术缩写 UUID',
+      'detail_tab.infoPlist': '文件名 Info.plist',
       'security.list_join:ko': '韩文用 ASCII 逗号，与 en 相同是正常结果',
       'security.parts.join:ko': '韩文用 ASCII 分号，与 en 相同是正常结果',
       'security.native_symbols.line:ko': '韩文用 ASCII 括号，与 en 相同是正常结果',
@@ -437,24 +460,16 @@ void main() {
       return out;
     }
 
-    Iterable<String> groupKeys(Map<String, String> map, String group) =>
-        map.keys.where((k) => k.startsWith('$group.'));
-
-    test('四组在 ja / ko 里键集与 en 一致（逐键比对，不是只看总数）', () {
+    test('键集与 en 完全一致（逐键比对，不是只看总数）', () {
       final en = localeOf('en');
       for (final locale in ['ja', 'ko']) {
         final other = localeOf(locale);
-        for (final group in migratedGroups) {
-          final expected = groupKeys(en, group).toSet();
-          final actual = groupKeys(other, group).toSet();
-          expect(expected, isNotEmpty, reason: '$group 在 en 里一个键都没有？');
-          expect(actual.difference(expected), isEmpty,
-              reason: '$locale 的 $group 有多余键');
-          final missing = expected.difference(actual);
-          expect(missing, isEmpty,
-              reason: '$locale 的 $group 缺 ${missing.length} 个键：'
-                  '${missing.take(5).join(', ')}');
-        }
+        final extra = other.keys.toSet().difference(en.keys.toSet());
+        expect(extra, isEmpty, reason: '$locale 有 en 不存在的键：$extra');
+        final missing = en.keys.toSet().difference(other.keys.toSet());
+        expect(missing, isEmpty,
+            reason: '$locale 缺 ${missing.length} 个键：'
+                '${missing.take(5).join(', ')}');
       }
     });
 
@@ -462,17 +477,15 @@ void main() {
       final en = localeOf('en');
       for (final locale in ['ja', 'ko']) {
         final other = localeOf(locale);
-        for (final group in migratedGroups) {
-          for (final key in groupKeys(en, group)) {
-            final value = other[key];
-            if (value == null) continue; // 上一条测试负责报缺键
-            if (value != en[key]) continue;
-            if (allowSameAsEnglish.containsKey(key) ||
-                allowSameAsEnglish.containsKey('$key:$locale')) {
-              continue;
-            }
-            fail('$locale 的 $key 与英文完全相同，疑似英文复制充数：$value');
+        for (final key in en.keys) {
+          final value = other[key];
+          if (value == null) continue; // 上一条测试负责报缺键
+          if (value != en[key]) continue;
+          if (allowSameAsEnglish.containsKey(key) ||
+              allowSameAsEnglish.containsKey('$key:$locale')) {
+            continue;
           }
+          fail('$locale 的 $key 与英文完全相同，疑似英文复制充数：$value');
         }
       }
     });
@@ -485,13 +498,11 @@ void main() {
       final en = localeOf('en');
       for (final locale in ['ja', 'ko']) {
         final other = localeOf(locale);
-        for (final group in migratedGroups) {
-          for (final key in groupKeys(en, group)) {
-            final value = other[key];
-            if (value == null) continue;
-            expect(placeholdersOf(value), placeholdersOf(en[key]!),
-                reason: '$locale 的 $key 占位符不一致');
-          }
+        for (final key in en.keys) {
+          final value = other[key];
+          if (value == null) continue;
+          expect(placeholdersOf(value), placeholdersOf(en[key]!),
+              reason: '$locale 的 $key 占位符不一致');
         }
       }
     });
@@ -499,14 +510,11 @@ void main() {
     test('没有空串、没有未替换的插值对象', () {
       for (final locale in ['ja', 'ko']) {
         final other = localeOf(locale);
-        for (final group in migratedGroups) {
-          for (final key in groupKeys(other, group)) {
-            final value = other[key]!;
-            expect(value.trim(), isNotEmpty, reason: '$locale/$key 是空串');
-            expect(value, isNot(contains('Instance of')),
-                reason: '$locale/$key');
-            expect(value, isNot(contains('Closure:')), reason: '$locale/$key');
-          }
+        for (final key in other.keys) {
+          final value = other[key]!;
+          expect(value.trim(), isNotEmpty, reason: '$locale/$key 是空串');
+          expect(value, isNot(contains('Instance of')), reason: '$locale/$key');
+          expect(value, isNot(contains('Closure:')), reason: '$locale/$key');
         }
       }
     });
@@ -514,19 +522,17 @@ void main() {
     test('译文确实是该语言（ja 含非 ASCII / ko 含谚文），白名单除外', () {
       for (final locale in ['ja', 'ko']) {
         final other = localeOf(locale);
-        for (final group in migratedGroups) {
-          for (final key in groupKeys(other, group)) {
-            if (allowSameAsEnglish.containsKey(key) ||
-                allowSameAsEnglish.containsKey('$key:$locale')) {
-              continue;
-            }
-            final value = other[key]!;
-            expect(
-              looksLocalised(locale, value),
-              isTrue,
-              reason: '$locale 的 $key 看起来不是 $locale 的译文：$value',
-            );
+        for (final key in other.keys) {
+          if (allowSameAsEnglish.containsKey(key) ||
+              allowSameAsEnglish.containsKey('$key:$locale')) {
+            continue;
           }
+          final value = other[key]!;
+          expect(
+            looksLocalised(locale, value),
+            isTrue,
+            reason: '$locale 的 $key 看起来不是 $locale 的译文：$value',
+          );
         }
       }
     });
