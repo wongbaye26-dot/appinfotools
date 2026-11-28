@@ -2865,7 +2865,10 @@ class AnalysisReport {
   /// 10：新增 `application.permissionDetails`（权限风险与保护级别）与顶层
   ///     `libraries`（库识别分组）。两者都是**可选**键：没有采集到时整体不出现，
   ///     而不是输出空数组假装「没有权限 / 没有 SDK」。
-  static const int reportSchemaVersion = 10;
+  /// 11：`signatureSummary.certificates` —— 包内证书的完整字段（序列号、
+  ///     有效期、算法、密钥长度、SHA-256/SHA-1/MD5）。此前只有 apksigner
+  ///     的签名者与 iOS 证书链的四个公开字段，界面能看到、导出拿不到。
+  static const int reportSchemaVersion = 11;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -3051,6 +3054,12 @@ class AnalysisReport {
             'toolExecuted': s.toolExecuted,
             'exitCode': s.exitCode,
           },
+          // 证书事实（v11）：平台无关，Android 本地读取 + iOS 证书链。
+          // null = 没采集；空数组 = 采集过但没有证书。
+          if (extras?.certificates case final certificates?)
+            'certificates': [
+              for (final certificate in certificates) certificate.toJson(),
+            ],
           if (result.ios?.codeSign case final c?) ...{
             'codesignStatus': c.status.name,
             'toolExecuted': c.toolExecuted,

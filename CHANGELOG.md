@@ -22,6 +22,16 @@
 `idevice_id` 枚举设备、`ideviceinstaller -i` 安装，输出进同一个日志控制台。
 工具缺失时显示 `brew install libimobiledevice ideviceinstaller` 指引。
 
+### 报告补证书字段（schema v11）
+
+导出的 JSON 里现在有 `signatureSummary.certificates`：每张证书的
+平台、签名方案、主体、签发者、序列号、有效期、签名算法、公钥算法与长度、
+以及 SHA-256 / SHA-1 / MD5 三种指纹。此前这些只在界面上，归档后无法复现。
+
+- `null` 表示**没采集**（例如 XAPK 没做签名分析），空数组表示**采集过、
+  一个证书都没有** —— 两种语义必须分开。
+- Markdown 的签名小节本来就渲染证书详情，这次把 JSON 对齐到同一份事实。
+
 ### AAB 与分包
 
 - **AAB 解析**：`.aab` 现在可以打开 —— 手写 protobuf + proto XML + `resources.pb`，

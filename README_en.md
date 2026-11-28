@@ -124,7 +124,7 @@ it is not implemented.
   On Windows the app writes the registry itself (`HKCU`, no admin rights needed); on macOS it explains
   how to set it in Finder's *Get Info → Open with*, because macOS has no such settings pane and this
   project does not pretend otherwise
-- **Export** — analysis report (Markdown / JSON), app icons (PNG / SVG / original file)
+- **Export** — analysis report (Markdown / JSON / HTML, schema v11 with permission grades, library identification and in-package certificate fields), app icons (PNG / SVG / original file)
 - **Rename** — rename by app name, or name + version
 - **Light/dark themes** and a multilingual UI
 
