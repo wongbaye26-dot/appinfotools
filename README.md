@@ -46,7 +46,7 @@
 | Android | APK / XAPK / APKM / APKS / AAB | 应用名（多语言）、包名、版本、SDK 区间（含系统发布年月）、屏幕与密度、ABI、硬件/软件特性（必需与可选，带平台说明）、语言列表（标签 + 本地化名称 + 自称）、启动 Activity、权限、组件（Activity/Service/Receiver/Provider 及其导出状态）、分包与 OBB、文件结构（DEX / 原生库 / 顶层目录）|
 | iOS | IPA | Bundle ID、版本与 Build、最低系统版本、设备族、可执行文件、嵌套 Bundle 与 Framework、URL Scheme、设备能力、Mach-O 架构、**`Assets.car` 资产目录** |
 
-> **AAB 的范围**：`.aab` 是 Play 的分发格式，没有根级清单、没有 `resources.arsc`，也没有 APK Signing Block。因此对 AAB 只展示清单与资源表能支撑的信息（包名、版本、min/target SDK、多语言标签、图标、DEX 与原生库条目、结构统计），**不显示签名、库识别与安装入口** —— 那些结论对 AAB 不成立，显示「未签名」才是误导。
+> **AAB 的范围**：`.aab` 是 Play 的分发格式，没有根级清单、没有 `resources.arsc`，也没有 APK Signing Block。2.11.1 起从 proto 清单里解析权限、硬件/软件特性、组件（含导出状态与 intent-filter）与 compileSdkVersion，因此包名、版本、SDK 区间、多语言标签、图标、DEX 与原生库条目、结构统计、权限与组件都会展示；**签名与库识别仍然不显示** —— AAB 没有可验证的签名、库识别依赖的 DEX 布局也不等同 APK，显示「未签名」才是误导。安装入口同样不提供。
 
 ### iOS 图标：从 `Assets.car` 里真的取出图
 

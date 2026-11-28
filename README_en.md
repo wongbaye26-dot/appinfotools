@@ -46,6 +46,8 @@ It builds on the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTo
 | Android | APK / XAPK / APKM / APKS / AAB | App name (all locales), package ID, version, SDK range, screens & densities, ABIs, permissions, components (Activity/Service/Receiver/Provider with exported state), split APKs and OBB, file structure (DEX / native libs / top-level dirs) |
 | iOS | IPA | Bundle ID, version and build, minimum OS, device family, executable, nested bundles and frameworks, URL schemes, device capabilities, Mach-O architectures, and the **`Assets.car` asset catalog** |
 
+> **AAB scope**: `.aab` is Play's delivery format - no root manifest, no `resources.arsc`, no APK Signing Block. Since 2.11.1 the proto manifest is parsed for permissions, hardware/software features, components (with exported state and intent filters) and `compileSdkVersion`, so those are shown alongside package ID, version, SDK range, localized labels, icon, DEX/native entries and structure stats. **Signing and library identification stay hidden** - there is no verifiable signature in an AAB, and pretending otherwise would be misleading. No install entry either.
+
 ### iOS icons: actually decoding `Assets.car`
 
 On iOS 11+ the app icon lives in `Assets.car`, an undocumented private asset catalog,

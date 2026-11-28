@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### 功能补齐（2.11.1 第三阶段）
+
+- **AAB 清单字段**：从 `.aab` 的 proto 清单解析 `uses-permission`、`uses-feature`（必需/可选）、
+  四类组件（含 `exported`/`enabled`/权限/authorities/intent-filter）与 `compileSdkVersion`，
+  概览与组件/权限面板随之可用；签名与库识别仍按 AAB 语义隐藏。
+- **IPA 安装页元数据**：文件条显示应用名、版本、Bundle ID 与 Build（只读 `Info.plist`，
+  解析失败退回文件名，不阻塞选包）。
+- **ja / ko 语言包补齐**：六语言键集完全一致（ja/ko 各补 146 键），并把 CI 断言从
+  「四个分组」升级为「全量键集一致 + 无英文复制 + 占位符一致」。
+- **对比页 DEX 行**：字段差异表新增 `android.dexCount`（未读结构时显示「未读取」，不写 0）。
+
 ### 发布流程
 
 - 删除 `.github/allow-no-samples`：2.11.0 的文件式豁免不再适用，后续 tag
