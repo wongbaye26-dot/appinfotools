@@ -408,50 +408,60 @@ Future<ApkInfo?> getApkInfo(
             // 提取上限 50 时，剩下的分包不能因为没被提取就当不存在。
             splitDeclaredTotal: apkInfo.archiveApks.length - 1,
           );
+          var builtinApplied = false;
           try {
-            final aaptPath = CommandTools.findAapt2Path();
-            if (aaptPath == null || aaptPath.isEmpty) {
-              throw Exception(t.parse.please_set_path(name: 'aapt2'));
-            }
-            final aapt2Sw = Stopwatch()..start();
-            final result = await Aapt2Task.run(
-              aaptPath,
-              ['dump', 'badging', baseApkPath],
-              onStarted: onTaskStarted,
+            builtinApplied = await _applyBuiltInBaseMetadata(
+              baseApkPath,
+              apkInfo,
             );
-            aapt2Ms = aapt2Sw.elapsedMilliseconds;
-            // 取消：不是失败，也不该继续走后面的图标加载。
-            if (result.cancelled) {
-              throw const ApkParseCancelledException();
-            }
-            if (result.isSuccess) {
-              final originalPath = apkInfo.apkPath;
-              apkInfo.apkPath = baseApkPath;
-              final parseSw = Stopwatch()..start();
-              parseApkInfoFromOutput(result.stdout.toString(), apkInfo);
-              parseMs = parseSw.elapsedMilliseconds;
-              // 仅在打包文件不包含图标时，才从 base APK 加载图标
-              if (apkInfo.mainIconImage == null) {
-                iconSw
-                  ..reset()
-                  ..start();
-                final iconImage = await apkInfo.loadIcon();
-                if (iconImage != null) {
-                  apkInfo.mainIconImage = iconImage;
-                }
-                iconMs += iconSw.elapsedMilliseconds;
-              }
-              apkInfo.apkPath = originalPath;
-            }
-          } on ApkParseCancelledException {
-            // 用户取消不是「base APK 解析失败」—— 必须往上抛，否则会被记成
-            // 一条无关的警告，然后继续走后面的图标加载，白等一场。
-            rethrow;
           } catch (e) {
-            log.warning("getApkInfo: base APK parse failed: $e");
-            // aapt2 缺失/失败时改用内置解析器补齐元数据，避免把
-            // 「解析器没运行」显示成组件/ABI/语言不可用。
-            await _applyBuiltInBaseMetadata(baseApkPath, apkInfo);
+            log.warning('getApkInfo: builtin base parse failed: $e');
+          }
+          if (!builtinApplied) {
+            try {
+              final aaptPath = CommandTools.findAapt2Path();
+              if (aaptPath == null || aaptPath.isEmpty) {
+                throw Exception(t.parse.please_set_path(name: 'aapt2'));
+              }
+              final aapt2Sw = Stopwatch()..start();
+              final result = await Aapt2Task.run(
+                aaptPath,
+                ['dump', 'badging', baseApkPath],
+                onStarted: onTaskStarted,
+              );
+              aapt2Ms = aapt2Sw.elapsedMilliseconds;
+              // 取消：不是失败，也不该继续走后面的图标加载。
+              if (result.cancelled) {
+                throw const ApkParseCancelledException();
+              }
+              if (result.isSuccess) {
+                final originalPath = apkInfo.apkPath;
+                apkInfo.apkPath = baseApkPath;
+                final parseSw = Stopwatch()..start();
+                parseApkInfoFromOutput(result.stdout.toString(), apkInfo);
+                parseMs = parseSw.elapsedMilliseconds;
+                // 仅在打包文件不包含图标时，才从 base APK 加载图标
+                if (apkInfo.mainIconImage == null) {
+                  iconSw
+                    ..reset()
+                    ..start();
+                  final iconImage = await apkInfo.loadIcon();
+                  if (iconImage != null) {
+                    apkInfo.mainIconImage = iconImage;
+                  }
+                  iconMs += iconSw.elapsedMilliseconds;
+                }
+                apkInfo.apkPath = originalPath;
+              }
+            } on ApkParseCancelledException {
+              // 用户取消不是「base APK 解析失败」—— 必须往上抛，否则会被记成
+              // 一条无关的警告，然后继续走后面的图标加载，白等一场。
+              rethrow;
+            } catch (e) {
+              // 走到这里说明内置解析也没成：两条路都失败，界面上会显示
+              // 解析诊断，而不是把一个半空的包当成正常包。
+              log.warning("getApkInfo: base APK parse failed: $e");
+            }
           }
         }
       }
@@ -635,27 +645,41 @@ Future<ApkInfo?> getApkInfo(
 /// 无法取消。图标渲染必须留在主 isolate —— `ApkInfo` 持有 `dart:ui` 的
 /// `Image`，不能跨 isolate 传递。
 
-/// 用内置 `ApkReader` 给 XAPK base APK 补元数据（aapt2 缺失/失败时）。
-Future<void> _applyBuiltInBaseMetadata(
+/// 用内置 `ApkReader` 解析 XAPK/APKM/APKS 的 base APK。
+///
+/// 分包容器的元数据此前只来自 `aapt2 dump badging`，于是没装 Android SDK
+/// 的机器上分包包只剩 manifest.json 里那几个字段，图标与组件全缺。内置
+/// 解析器本来就能读 APK，这里把它提到前面：**aapt2 从必需变成兜底**。
+///
+/// 返回 `false` 表示内置解析没拿到清单 —— 调用方仍可退回 aapt2。
+Future<bool> _applyBuiltInBaseMetadata(
   String baseApkPath,
   ApkInfo apkInfo,
 ) async {
   final reader = apk_parser.ApkReader();
   try {
     final open = await reader.open(baseApkPath);
-    if (!open.isOk) return;
+    if (!open.isOk) return false;
     final meta = await reader.parse();
-    if (meta == null) return;
+    if (meta == null) return false;
     final originalPath = apkInfo.apkPath;
     apkInfo.apkPath = baseApkPath;
     _applyMetaToApkInfo(meta, apkInfo);
     if (apkInfo.mainIconImage == null) {
+      // 图标渲染要 arsc 资源表：不预先交给渲染器，XML/自适应图标就只能
+      // 依赖 aapt2 dump resources —— 那正是这里要摆脱的东西。
+      final arsc = reader.arscParser?.getAllResources() ??
+          const <int, apk_parser.ResourceInfo>{};
+      if (arsc.isNotEmpty) apkInfo.arscResources = arsc;
       final icon = await apkInfo.loadIcon();
+      apkInfo.arscResources = null;
       if (icon != null) apkInfo.mainIconImage = icon;
     }
     apkInfo.apkPath = originalPath;
+    return true;
   } catch (e) {
     log.warning('_applyBuiltInBaseMetadata failed: $e');
+    return false;
   } finally {
     reader.close();
   }
