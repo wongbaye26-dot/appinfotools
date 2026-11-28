@@ -66,7 +66,47 @@
 
 调大任何一条都必须同时改这份测试，否则 CI 红。
 
-## 3. 未验证项（本机无法完成）
+## 3. AOT 发布包内存（macOS，新增）
+
+上面的抓取发生在 `flutter_tester`（JIT、带调试栈），与用户实际运行的 AOT 包不是一回事。
+本节在**发布构建**上重新采样。
+
+### 方法
+
+- 脚本：`tool/bench/measure_release_rss.sh <App.app> <sample> [idle-seconds]`。
+  用 `open -n` 启动、`open -a <App> <sample>` 触发 Finder open-file（与双击包等价），
+  每 200 ms 采一次 `ps -o rss=`（共 100 次），输出 `idle_rss_kb / peak_rss_kb / delta_kb`；
+  `delta` 即「打开这个包带来的增量」。
+- 每次测量前 `pkill -f <CFBundleExecutable>`，并等到进程真的消失、且确认只剩 1 个实例，
+  避免复用已解析状态或采到旧进程。
+- 对照组：`git worktree add /tmp/ait-2106b 5c4db5a` 构建 2.10.6。
+  **坑**：首次 `flutter build macos --release` 报
+  `The setter 'state' isn't defined for the type 'PendingOpenRequest'` —— riverpod 的
+  `*.g.dart` 未生成；先 `dart run build_runner build --delete-conflicting-outputs`（14 s）
+  再构建成功（82.9 MB / 2.11.1 为 87.9 MB）。
+
+### 结果（同机、同文件，各 3 次）
+
+| 包 | 版本 | idle (MiB) | peak (MiB) | delta (MiB) | delta 中位 |
+| --- | --- | --- | --- | --- | --- |
+| 狐视频 10.09 MB | 2.10.6 | 148.1 | 218.6 | 63.9 / 65.3 / 73.8 | **65.3** |
+| 狐视频 10.09 MB | 2.11.1 | 199.1 | 268.7 | 73.0 / 51.9 / 68.0 | **68.0** |
+| F-Droid 11.90 MB | 2.10.6 | 146.7 | 256.4 | 100.4 / 106.0 / 103.6 | **103.6** |
+| F-Droid 11.90 MB | 2.11.1 | 188.1 | 282.7 | 105.3 / 106.8 / 83.9 | **105.3** |
+
+### 结论与限制
+
+- **解析增量没有回退**：狐视频 +2.7 MiB、F-Droid +1.7 MiB，都在同版本自身 ±10 MiB 的
+  波动范围内（三次测量里同版本极差 21–22 MiB）。
+- **但 idle 基线抬高了约 40–50 MiB**（148→199、147→188 MiB）。这是真实差异，不是噪声；
+  原因未隔离 —— 2.10.6 与 2.11.1 的界面与启动路径不同（V4 外壳、启动期加载的权限元数据
+  与 LibChecker 规则），本轮没有逐项拆解，**列为本阶段观察项**，不写成「已定位」。
+- 限制：只有 macOS AOT；Windows/Linux 发布包未测；样本只有 2 个（1 个第三方加固包 +
+  1 个 F-Droid 包）；`ps` 的 RSS 含共享页，绝对值偏大，横向对比同机同口径才有意义。
+- 原计划的第三个样本 `~/Downloads/217_0919155004.apk` 在测量期间被移出 Downloads
+  （此前两次 delta 为 51.8 / 80.5 MiB），因此未进入最终表格。
+
+## 4. 未验证项（本机无法完成）
 
 | 项 | 原因 | 影响 |
 | --- | --- | --- |
@@ -75,10 +115,11 @@
 | Linux 实机验收 | 无 Linux 机器 | 只有 CI 构建 + AppImage 冒烟 |
 | 真实样本矩阵 | `samples/` 为空 | 20 个真实样本测试 skip；`external-samples` job 在 CI 里只是「通过但跳过」 |
 | macOS 公证 | 无 Developer ID 证书 | 发布包仍是 ad-hoc 签名 |
-| 发布包（AOT）内存 | 需要交互式跑应用并采样 | 上表 RSS 只代表 flutter_tester |
+| 发布包（AOT）内存 | Windows/Linux 未测 | macOS AOT 已测（见第 3 节）；另发现 idle 基线抬高约 40–50 MiB，原因未隔离 |
 
-## 4. 本阶段判定
+## 5. 本阶段判定
 
-- 本地可验证部分：**PASS**（耗时/内存在噪声范围内无回退，预算阈值有守卫测试）。
+- 本地可验证部分：**PASS**（耗时与解析增量在噪声范围内无回退，预算阈值有守卫测试；
+  AOT idle 基线抬高 40–50 MiB 已记录为观察项，不影响「解析未回退」的结论）。
 - 整阶段：**PARTIAL** —— 真机与实机验收项仍未完成，必须在最终验收文档里作为
   未解决风险列出，不能因为「CI 绿」就写成已完成。

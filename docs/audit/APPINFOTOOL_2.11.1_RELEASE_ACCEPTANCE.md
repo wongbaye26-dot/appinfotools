@@ -26,7 +26,7 @@
 | 一 | 只读审计 12 项 | PASS | `APPINFOTOOL_2.11.1_REMEDIATION_BASELINE.md` |
 | 二 | 发布流程整改 | PASS | 合并 `f996a71`、门禁恢复 `9012032`、验收档案第 9 节 |
 | 三 | 功能补齐 A/B/C/D | PASS | `9ec88c3` / `2b3d76a` / `d8a59f3` / `a8cbdc3`；2011 + 310 tests |
-| 四 | 验证与性能（本地部分） | **PARTIAL** | `APPINFOTOOL_2.11.1_PHASE4_VERIFICATION.md`：耗时/内存在噪声内无回退；真机项未验证 |
+| 四 | 验证与性能（本地部分） | **PARTIAL** | `APPINFOTOOL_2.11.1_PHASE4_VERIFICATION.md`：耗时/解析增量无回退；macOS AOT idle 基线 +40–50 MiB 列观察项；真机/Windows/Linux 未验证 |
 | 五 | 核心能力专项核验 | PASS（带限制） | `APPINFOTOOL_2.11.1_PHASE5_CORE_CAPABILITIES.md` |
 
 ## 3. 未解决风险
@@ -39,7 +39,7 @@
 | 历史「重开」不读快照 | 历史条目无法原样复现上次结论，只能重新解析 | 见第五阶段文档「历史重开」 |
 | Network Clues 噪声 | 混淆 DEX 上出现 `:C:` 这类伪线索，信噪比差 | 线索扫描缺最小长度/字符集约束 |
 | macOS ad-hoc 签名 | 用户首次打开需手动放行，分发体验差 | 无 Developer ID 证书 |
-| AOT 内存未测 | 第四阶段 RSS 只代表 flutter_tester | 需交互式采样发布包 |
+| AOT 内存仅 macOS | 已补测 macOS 发布包（2.10.6 vs 2.11.1）：解析增量无回退，但 idle 基线抬高约 40–50 MiB，原因未隔离 | Windows/Linux 未测；idle 抬升需后续定位 |
 
 ## 4. 最终判定
 
