@@ -36,6 +36,7 @@ class DiffLabels {
         'android.maxSdkVersion' => t.diff.fields.android_maxSdkVersion,
         'android.debuggable' => t.diff.fields.android_debuggable,
         'android.archiveType' => t.diff.fields.android_archiveType,
+        'android.dexCount' => t.diff.fields.android_dexCount,
         'ios.bundleIdentifier' => t.diff.fields.ios_bundleIdentifier,
         'ios.displayName' => t.diff.fields.ios_displayName,
         'ios.shortVersion' => t.diff.fields.ios_shortVersion,

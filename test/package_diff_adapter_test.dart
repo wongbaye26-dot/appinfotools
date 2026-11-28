@@ -9,7 +9,7 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/models/analysis/package_diff_adapter.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_parser/apk_parser.dart'
-    show AndroidComponent, ComponentType;
+    show AndroidComponent, ComponentType, ContainerStructure, DexEntry;
 import 'package:flutter_test/flutter_test.dart';
 
 PackageAnalysisResult _android({
@@ -20,6 +20,7 @@ PackageAnalysisResult _android({
   SignatureAnalysis? signature,
   SecurityAnalysisResult? security,
   FieldSource manifestSource = FieldSource.builtinParser,
+  ContainerStructure? structure,
 }) =>
     AnalysisBuilder.buildAndroid(
       filePath: '/tmp/a.apk',
@@ -31,6 +32,7 @@ PackageAnalysisResult _android({
       components: components,
       signature: signature,
       security: security,
+      structure: structure,
     );
 
 /// 一条「命中原生符号」的安全发现，形状与引擎实际产出的一致
@@ -237,9 +239,12 @@ void main() {
       // 没算过的哈希不能被读成「两边一样」。
       //
       // 安全那三个标量同理：这个用例没传 `security`（= 设置里关了安全审计），
-      // 于是「最高等级 / 发现条数 / 五段链等级」都说不清。2 + 3 = 5。
-      // 不能因为「没审计」就少报几条 —— 那会让差异页看起来「安全这块没变化」。
-      expect(diff.unknownFieldCount, 5, reason: 'sha256、没查签名、没做安全审计都说不清');
+      // 于是「最高等级 / 发现条数 / 五段链等级」都说不清。
+      // DEX 数量也属同一类：没传 `structure`（没读容器结构），只能算 unknown。
+      // 2 + 3 + 1 = 6。不能因为「没读到」就少报几条 —— 那会让差异页看起来
+      // 「这块没变化」。
+      expect(diff.unknownFieldCount, 6,
+          reason: 'sha256、没查签名、没做安全审计、没读 DEX 都说不清');
       expect(
         diff.fields.firstWhere((f) => f.id == 'file.sha256').kind,
         DiffKind.unknown,
@@ -585,5 +590,28 @@ void main() {
       expect(level.left.value, 'suspicious');
       expect(level.right.value, 'strongEvidence');
     });
+  });
+
+  test('DEX 数量作为字段参与差异（缺结构时标未读取，不写 0）', () {
+    final withDex = diffSubjectOf(
+      _android(
+        structure: const ContainerStructure(
+          fileEntryCount: 3,
+          dexFiles: [
+            DexEntry(name: 'classes.dex', size: 10),
+            DexEntry(name: 'classes2.dex', size: 10)
+          ],
+        ),
+      ),
+    );
+    final field = withDex.fields.firstWhere((f) => f.id == 'android.dexCount');
+    expect(field.value.status, FieldStatus.extracted);
+    expect(field.value.value, 2);
+
+    final noStructure = diffSubjectOf(_android());
+    final absent =
+        noStructure.fields.firstWhere((f) => f.id == 'android.dexCount');
+    expect(absent.value.status, FieldStatus.unsupported,
+        reason: '结构没读到时必须显示「未读取」，不能伪造成 0');
   });
 }

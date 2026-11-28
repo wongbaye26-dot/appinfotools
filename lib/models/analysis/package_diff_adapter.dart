@@ -50,6 +50,9 @@ DiffSubject diffSubjectOf(PackageAnalysisResult result) {
         (id: 'android.maxSdkVersion', value: android.maxSdkVersion),
         (id: 'android.debuggable', value: android.debuggable),
         (id: 'android.archiveType', value: android.archiveType),
+        // DEX 数量是「安装包里真的有几个 dex」，与结构证据同源；
+        // 结构缺失时写 null（渲染成「未读取」），不写 0。
+        (id: 'android.dexCount', value: _dexCountOf(android)),
       ],
       // --- iOS 专属 ---
       if (ios != null) ...[
@@ -398,4 +401,18 @@ FieldValue<List<String>> _mapMembers<T>(
         source: fieldSource,
       ),
   };
+}
+
+/// DEX 数量字段。
+///
+/// 结构证据没读到时标 `unsupported`（界面显示「未读取」），**不写 0**：
+/// 这个页面上「没读到」和「真的没有 DEX」必须区分 —— 后者在合法 APK 里不存在。
+FieldValue<int> _dexCountOf(AndroidPackageInfo android) {
+  final count = android.structure?.dexFileCount;
+  if (count == null) {
+    return const FieldValue<int>.unsupported(
+      diagnostic: 'container structure was not read',
+    );
+  }
+  return FieldValue<int>.extracted(count, source: FieldSource.builtinParser);
 }
