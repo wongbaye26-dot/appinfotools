@@ -296,12 +296,18 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     _currentTask = null;
 
     // 初始化文件状态
-    final isXapk = filePath.toLowerCase().endsWith('.xapk');
+    //
+    // AAB 与 XAPK 一样不是「可直接安装的 APK」：签名分析器按 APK 的签名块 /
+    // META-INF 结构判断安装语义，对 AAB 没有意义，跳过比给出误导性的
+    // 「未签名」更诚实。
+    final lowerPath = filePath.toLowerCase();
+    final isXapk = lowerPath.endsWith('.xapk');
+    final skipSignature = isXapk || lowerPath.endsWith('.aab');
     fileState.update(FileState(
       filePath: filePath,
       fileSize: File(filePath).lengthSync(),
       isComputingHash: enableHash,
-      isComputingSignature: enableSignature && !isXapk,
+      isComputingSignature: enableSignature && !skipSignature,
     ));
     final runFuture = _beginAnalysisRun(filePath, PackagePlatform.android);
 
@@ -331,7 +337,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     }
 
     // 如果启用签名检查，异步获取签名信息（与 APK 解析并行）
-    if (enableSignature && !isXapk) {
+    if (enableSignature && !skipSignature) {
       SignatureAnalyzer.analyze(filePath).then((analysis) {
         if (!mounted || _loadGeneration != gen) return;
         fileState.update(ref.read(currentFileStateProvider).copyWith(
@@ -2813,7 +2819,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           (v) => getSdkVersionText(v as int),
         ),
       )),
-      if (apkInfo?.isXapk ?? false)
+      // 归档类型：XAPK/APKM/APKS/ZIP/AAB 都会设置 archiveType，普通 APK 为 null。
+      if (apkInfo?.archiveType != null)
         Card(
             child: TitleValueLayout(
           title: t.apk_info.archive_type,
@@ -2904,7 +2911,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       ..._buildPermissionCards(fileState),
       // 库识别。XAPK 的外层是归档、不是 APK，`apkInfo.apkPath` 指向的那个
       // 文件不能被 `ApkReader` 当 APK 打开 —— 那种情况不显示这一组。
-      if (apkInfo != null && !apkInfo.isXapk) ...[
+      // AAB 同理：清单在 base/manifest 下、没有根级 AndroidManifest.xml，
+      // 库识别区按 APK 结构扫描只会得到空结果。
+      if (apkInfo != null &&
+          !apkInfo.isXapk &&
+          apkInfo.archiveType != 'AAB') ...[
         _SectionHeader(
             title: detailTabLabel(DetailTab.libraries, t),
             tab: DetailTab.libraries),
@@ -2972,7 +2983,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         )),
       // 签名单独一个 Tab：证书信息（DN/序列号/有效期/指纹）比文件哈希
       // 更值得单独看，混在「文件」里每次都得多滚两屏。
-      if (enableSignature && !(apkInfo?.isXapk ?? false)) ...[
+      // AAB 没有安装语义，签名分析已在 loadApkInfo 里跳过；这里同步隐藏，
+      // 否则会出现一个永远「未计算」的空面板。
+      if (enableSignature &&
+          !(apkInfo?.isXapk ?? false) &&
+          apkInfo?.archiveType != 'AAB') ...[
         _SectionHeader(
             title: t.apk_info.signature_info, tab: DetailTab.signature),
         AndroidSignaturePanel(

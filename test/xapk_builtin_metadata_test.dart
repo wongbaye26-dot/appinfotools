@@ -46,7 +46,8 @@ void main() {
     addTearDown(() async {
       if (await dir.exists()) await dir.delete(recursive: true);
     });
-    final baseBytes = await File('test/fixtures/apk/icon-png.apk').readAsBytes();
+    final baseBytes =
+        await File('test/fixtures/apk/icon-png.apk').readAsBytes();
     final archive = Archive()
       ..addFile(ArchiveFile('base.apk', baseBytes.length, baseBytes))
       ..addFile(ArchiveFile.string(
@@ -54,17 +55,18 @@ void main() {
         jsonEncode({'package_name': 'com.example.iconfixture'}),
       ));
     final xapkPath = '${dir.path}/icon-fixture.xapk';
-    await File(xapkPath).writeAsBytes(ZipEncoder().encode(archive)!);
+    await File(xapkPath).writeAsBytes(ZipEncoder().encode(archive));
 
     final info = await getApkInfo(xapkPath);
     expect(info, isNotNull);
-    addTearDown(() => info!.dispose());
+    final parsed = info!;
+    addTearDown(parsed.dispose);
 
     expect(
-      info!.mainIconImage,
+      parsed.mainIconImage,
       isNotNull,
       reason: '内置 arsc 资源表必须能支撑图标渲染',
     );
-    expect(info.icons, isNotEmpty);
+    expect(parsed.icons, isNotEmpty);
   });
 }

@@ -23,7 +23,7 @@ namespace {
 /// 这里决定「要不要从命令行接过来」。两处不一致的话，
 /// 会出现「关联了但拒收」这种最难查的现象。
 const wchar_t* kSupportedExtensions[] = {
-    L".apk", L".ipa", L".xapk", L".apks", L".apkm",
+    L".apk", L".ipa", L".xapk", L".apks", L".apkm", L".aab",
 };
 
 /// 「推送 fileOpened」的结果回调。
@@ -346,6 +346,7 @@ std::string FileAssociationChannel::RegisterAssociations() {
       {L".xapk", L"AppInfoTool.xapk", L"Android Package (XAPK)"},
       {L".apks", L"AppInfoTool.apks", L"Android Package Set"},
       {L".apkm", L"AppInfoTool.apkm", L"Android App Bundle (APKM)"},
+      {L".aab", L"AppInfoTool.aab", L"Android App Bundle (AAB)"},
   };
 
   int failures = 0;

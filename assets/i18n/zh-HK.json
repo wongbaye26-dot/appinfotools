@@ -1283,7 +1283,8 @@
       "ios_reference_tables_unsupported": "類 / 選擇子引用表解不出來（{reason}），因此無法區分「程式碼引用了這個類」與「這個詞在包裏出現過」。",
       "android_split_apk_partial": "這是分包安裝包。split APK 的 DEX、資源字串和原生庫已納入審計，但製品清單、載入鏈和載荷探測仍只基於 base APK 計算。",
       "android_split_apk_cert_mismatch": "base APK 與至少一個 split APK 的簽名證書不一致。Android 通常會拒絕這種安裝組合；不要把這個包當成匹配的官方安裝集。",
-      "android_manifest_string_pool_prefix": "AXML 字串池前有 {count} 個非標準 chunk（字串池從位元組 {offset} 開始，標準是 8）；已略過它們，清單仍正常解析。"
+      "android_manifest_string_pool_prefix": "AXML 字串池前有 {count} 個非標準 chunk（字串池從位元組 {offset} 開始，標準是 8）；已略過它們，清單仍正常解析。",
+      "android_aab_resources_unresolved": "AAB 資源表未能解析：{failure}。標籤、圖示與版本名的資源引用可能缺失。"
     },
     "findings": "發現項",
     "sdk_categories": {

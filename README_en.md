@@ -20,7 +20,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Flutter-Dart-blue?style=flat-square" alt="Flutter">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platforms">
-  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS-3DDC84?style=flat-square" alt="Android">
+  <img src="https://img.shields.io/badge/Android-APK%20%7C%20XAPK%20%7C%20APKM%20%7C%20APKS%20%7C%20AAB-3DDC84?style=flat-square" alt="Android">
   <img src="https://img.shields.io/badge/iOS-IPA-000000?style=flat-square" alt="iOS">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
@@ -43,7 +43,7 @@ It builds on the open-source [ApkInfoTool](https://github.com/huanfeng/ApkInfoTo
 
 | Platform | Formats | What you get |
 |---|---|---|
-| Android | APK / XAPK / APKM / APKS | App name (all locales), package ID, version, SDK range, screens & densities, ABIs, permissions, components (Activity/Service/Receiver/Provider with exported state), split APKs and OBB, file structure (DEX / native libs / top-level dirs) |
+| Android | APK / XAPK / APKM / APKS / AAB | App name (all locales), package ID, version, SDK range, screens & densities, ABIs, permissions, components (Activity/Service/Receiver/Provider with exported state), split APKs and OBB, file structure (DEX / native libs / top-level dirs) |
 | iOS | IPA | Bundle ID, version and build, minimum OS, device family, executable, nested bundles and frameworks, URL schemes, device capabilities, Mach-O architectures, and the **`Assets.car` asset catalog** |
 
 ### iOS icons: actually decoding `Assets.car`

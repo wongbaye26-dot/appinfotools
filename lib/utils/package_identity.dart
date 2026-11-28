@@ -92,6 +92,12 @@ Future<PackageIdentity> readPackageIdentity(String path) async {
 Future<PackageIdentity> readPackageIdentityInIsolate(String path) async {
   final extension = p.extension(path).toLowerCase();
   if (extension == '.ipa') return _readIpa(path);
+  // AAB 没有根级 AndroidManifest.xml，走 _readApk 只会得到「清单读不出来」。
+  // 批量重命名的选择器已经放行 .aab，这里必须能给出真正的名字。
+  if (_isAabPath(path)) {
+    final aabIdentity = await _readAab(path);
+    if (aabIdentity != null) return aabIdentity;
+  }
   if (_archiveExtensions.contains(extension)) {
     final archiveIdentity = await _readArchiveManifest(path);
     if (archiveIdentity != null) return archiveIdentity;
@@ -99,6 +105,45 @@ Future<PackageIdentity> readPackageIdentityInIsolate(String path) async {
     // APK 读，而不是直接放弃。
   }
   return _readApk(path);
+}
+
+/// `.aab` 以及下载器加的重名后缀 `.aab.1`（此时 `p.extension` 是 `.1`）。
+bool _isAabPath(String path) {
+  final lower = path.toLowerCase();
+  return lower.endsWith('.aab') ||
+      RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
+}
+
+/// 读 AAB 的应用名与版本；读不出有效信息时返回 null，交给 [readPackageIdentityInIsolate]
+/// 继续按 APK 尝试。
+Future<PackageIdentity?> _readAab(String path) async {
+  try {
+    final reader = AabReader();
+    final info = await reader.read(path);
+    if (info == null) return null;
+    final name = info.label?.trim() ?? '';
+    final version = info.versionName?.trim() ?? '';
+    if (name.isEmpty && version.isEmpty) {
+      return PackageIdentity(
+        appName: '',
+        version: '',
+        platform: PackageIdentityPlatform.android,
+        failure: info.failureReason ??
+            info.resourceFailure ??
+            'the AAB manifest carries no label or versionName',
+      );
+    }
+    return PackageIdentity(
+      appName: name,
+      version: version,
+      platform: PackageIdentityPlatform.android,
+      // 资源表失败只是解不出版本/名字引用，清单本身仍然读出来了。
+      failure: info.failureReason ?? info.resourceFailure,
+    );
+  } catch (e) {
+    log.warning('_readAab: $path failed: $e');
+    return null;
+  }
 }
 
 /// 带 `manifest.json` 的容器格式。

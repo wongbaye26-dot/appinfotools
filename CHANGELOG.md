@@ -22,6 +22,15 @@
 `idevice_id` 枚举设备、`ideviceinstaller -i` 安装，输出进同一个日志控制台。
 工具缺失时显示 `brew install libimobiledevice ideviceinstaller` 指引。
 
+### AAB 与分包
+
+- **AAB 解析**：`.aab` 现在可以打开 —— 手写 protobuf + proto XML + `resources.pb`，
+  纯 Dart、无新依赖。可读出包名、版本、min/target SDK、多语言标签、图标、
+  DEX 与原生库条目、结构统计；AAB 没有安装语义，因此不显示签名与库识别区块。
+- **分包解析去 aapt2 化**：XAPK / APKM / APKS 的标签、图标、组件、ABI 改为
+  **内置解析器优先**，`aapt2` 退居兜底 —— 没装 Android SDK 的机器上也能完整
+  显示分包信息。
+
 ### 库识别
 
 - **离线导入规则包**：设置 → 安全与诊断 →「库识别规则」可直接选择上游
@@ -2702,8 +2711,6 @@ stride ∈ {3,4}、**各行数之和必须等于 ISTC 高度**，否则整体放
   2. `matchCodeMarkers` 里 23 个标记中有 16 个的字面量既不含 `/` 也不含 `.`，
      而归一化只把 `/` 换成 `.` —— 对它们**比一次就够**，每个文本少跑 16 次
      子串搜索。12.9 → 10.5 秒。
-
-### 新增
 
 - **ICP 备案号（`京ICP备16016397号-49A` 这种）会显示在分析页「概览 → 应用信息」
   里，没有的就不显示。** `AndroidManifest.xml` 里**没有**标准字段放它，各家

@@ -2289,6 +2289,8 @@ class AnalysisReport {
     final size = a['size'];
     // 字符串池实际偏移（标准 AXML 为 8；加固包会被诱饵 chunk 推后）。
     final offset = a['offset'];
+    // AAB 资源表的失败原因（清单字段仍可信，只是资源引用没落点）。
+    final aabFailure = a['failure'];
 
     final String? localized = switch (note.code) {
       'ios.url_schemes.unreadable' =>
@@ -2427,6 +2429,10 @@ class AnalysisReport {
                 largest: largest,
                 standard: standard,
               ),
+      // AAB 资源表失败：清单字段仍然可信，只是资源引用没有落点。
+      'android.aab_resources_unresolved' => aabFailure == null
+          ? null
+          : n.android_aab_resources_unresolved(failure: aabFailure),
       'android.manifest.unknown_chunk' => (count == null || chunks == null)
           ? null
           : n.android_manifest_unknown_chunk(count: count, chunks: chunks),
@@ -3081,7 +3087,8 @@ class AnalysisReport {
       },
 
       if (!securityOnly)
-        if (extras?.libraries case final libs?) 'libraries': _librariesJson(libs),
+        if (extras?.libraries case final libs?)
+          'libraries': _librariesJson(libs),
 
       'securitySummary': security == null
           ? null

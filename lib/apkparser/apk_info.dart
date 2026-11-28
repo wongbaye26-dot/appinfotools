@@ -131,6 +131,17 @@ bool _isArchiveApk(String apkPath) {
   return extension == '.xapk' || extension == '.apkm' || extension == '.apks';
 }
 
+/// 路径是不是 AAB（含 `app.aab.1` 这类重名后缀）。
+///
+/// 不能只看 `path.extension`：下载器把重名文件存成 `app.aab.1` 时，扩展名是
+/// `.1`，但内容仍然是 AAB。白名单已经接受这种路径，解析分支必须跟上，
+/// 否则它会掉进 APK 流程并报「清单缺失」，层次就错了。
+bool _isAabPath(String apkPath) {
+  final lower = apkPath.toLowerCase();
+  return lower.endsWith('.aab') ||
+      RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
+}
+
 String _archiveTypeFromExtension(String extension) {
   if (extension == '.apkm') return 'APKM';
   if (extension == '.apks') return 'APKS';
@@ -309,6 +320,16 @@ Future<ApkInfo?> getApkInfo(
   // ZIP 文件智能检测：区分重命名的 APK 和包含多个 APK 的压缩包
   final extension = path.extension(apk).toLowerCase();
   bool zipAsArchive = false;
+
+  // AAB 单独一条路：它没有 manifest.json（不是 XAPK），也不能 adb install
+  // （不是可分发的 APK 集合），所以必须在下面的 `.zip` 检测与
+  // `_isArchiveApk` 分支**之前**拦下来。
+  //
+  // 也刻意不看 Config.parserEngine：aapt2 只认 AXML，而 AAB 的清单是
+  // protobuf XML，外部工具读不了，只有内置解析器能解释它。
+  if (_isAabPath(apk)) {
+    return await _getAabInfo(apk, apkInfo, onStage: onStage);
+  }
 
   if (extension == '.zip') {
     final zipType = await _detectZipContentType(apk);
@@ -1219,6 +1240,77 @@ Future<SplitConsistencyReport> _checkSplitConsistency({
   );
 }
 
+/// 解析 AAB（Android App Bundle）。
+///
+/// AAB 与 APK 的差别不只是「多一层目录」：它没有根级清单、没有
+/// `resources.arsc`、也没有 APK Signing Block，因此不能进 `parse_task` 的
+/// APK 流程。这里只做三件事：解包条目、读 proto 清单、读 `resources.pb`。
+///
+/// 失败也返回 [ApkInfo] 而不是 null —— 调用方把 null 当成「用户选错了
+/// 文件」，而这里的失败是「文件存在但读不了」，两者必须能分开。
+Future<ApkInfo> _getAabInfo(
+  String apk,
+  ApkInfo apkInfo, {
+  void Function(ApkParseStage stage)? onStage,
+}) async {
+  apkInfo.archiveType = 'AAB';
+  // AAB 是分发格式，不能安装；isXapk 保持 false，界面据此关闭签名、原生库、
+  // 分包区块 —— 这些区块对 AAB 本来就不适用（它没有根级签名/清单/dex）。
+  onStage?.call(ApkParseStage.openContainer);
+
+  final reader = apk_parser.AabReader();
+  final info = await reader.read(apk);
+  if (info == null) {
+    apkInfo.parseFailureReason =
+        reader.lastFailure ?? 'the AAB archive could not be opened';
+    apkInfo.totalSize = apkInfo.apkSize;
+    onStage?.call(ApkParseStage.done);
+    return apkInfo;
+  }
+
+  apkInfo.packageName = info.packageName;
+  apkInfo.versionCode = info.versionCode;
+  apkInfo.versionName = info.versionName;
+  // AabInfo 用 minSdkVersion 这个名字；ApkInfo 的历史字段叫 sdkVersion。
+  apkInfo.sdkVersion = info.minSdkVersion;
+  apkInfo.targetSdkVersion = info.targetSdkVersion;
+  apkInfo.label = info.label;
+  apkInfo.labels.addAll(info.labels);
+  apkInfo.icons.addAll(info.iconPaths);
+  apkInfo.mainIconPath = info.mainIconPath;
+  apkInfo.nativeCodes = List<String>.of(info.structure.abis);
+  apkInfo.locales = List<String>.of(info.locales);
+  apkInfo.densities =
+      info.densities.map((density) => '$density').toList(growable: true);
+  apkInfo.structure = info.structure;
+  apkInfo.totalSize = apkInfo.apkSize;
+
+  // 只有清单本身读出来时，字段才有来源可言；否则保持 unknown。
+  if (info.failureReason == null) {
+    apkInfo.manifestSource = FieldSource.builtinParser;
+  }
+  apkInfo.parseFailureReason = info.failureReason;
+  // resources.pb 失败是「部分成功」：清单字段仍然可信，只有 label / icon /
+  // versionName 的引用解不出来。单独记录原因，不能混进 parseFailureReason
+  // （那会让诊断说成「AndroidManifest.xml 读不出来」，层次就错了）。
+  apkInfo.aabResourceFailure = info.resourceFailure;
+
+  if (info.failureReason == null) {
+    try {
+      // AAB 本身就是 ZIP，位图图标可以从条目路径直接解码；proto XML 图标
+      // 没有 AXML 的结构，渲染器会失败并写入 iconResolutionNotes。
+      final icon = await apkInfo.loadIcon();
+      if (icon != null) apkInfo.mainIconImage ??= icon;
+    } catch (e) {
+      // 图标只是展示层信息，失败不能反过来毁掉已经读到的清单。
+      log.warning('_getAabInfo: 图标加载失败: $e');
+    }
+  }
+
+  onStage?.call(ApkParseStage.done);
+  return apkInfo;
+}
+
 Future<ApkInfo?> _getApkInfoBuiltin(
   String apk,
   ApkInfo apkInfo, {
@@ -1612,6 +1704,13 @@ class ApkInfo {
   /// 分开是因为界面上必须能区分「没查到」与「没查」。
   String? parseFailureReason;
 
+  /// AAB 的 `base/resources.pb` 读不出来 / 解析失败的原因。
+  ///
+  /// 与 [parseFailureReason] 分开：资源表失败时清单字段（包名、版本、
+  /// minSdk…）**仍然可信**，只是 label / icon / versionName 的引用解析不出来。
+  /// 混进 parseFailureReason 会让诊断误报成「Manifest 读不出来」。
+  String? aabResourceFailure;
+
   /// 分包（XAPK / APKM / APKS）一致性校验的结果。
   ///
   /// `null` 表示**没查**（单 APK，或没有可用的解包目录），与「查了、没发现
@@ -1640,6 +1739,19 @@ class ApkInfo {
         'AndroidManifest.xml could not be parsed: $failure',
         messageArgs: {'failure': failure},
         source: manifestSource,
+      ));
+    }
+
+    // AAB 资源表失败：清单读出来了，但 label / icon 的引用没有落点。
+    // 单独一条诊断，避免与「清单读不出来」混为一谈。
+    final aabResource = aabResourceFailure;
+    if (aabResource != null) {
+      out.add(AnalysisDiagnostic.warning(
+        'android.aab_resources_unresolved',
+        'The AAB resource table could not be resolved: $aabResource. '
+            'Label, icon and version name references may be missing.',
+        messageArgs: {'failure': aabResource},
+        source: FieldSource.builtinParser,
       ));
     }
 
@@ -2393,6 +2505,9 @@ class ApkInfo {
     totalSize = null;
     originalText = "";
     securityResult = null;
+    // 失败原因不清空的话，换一个能解析的文件后旧的「读不出来」仍会显示。
+    parseFailureReason = null;
+    aabResourceFailure = null;
   }
 }
 

@@ -31,6 +31,15 @@ export 'src/apk_reader.dart';
 // APK Signing Block：回答「有没有 v2/v3 签名块」，**不做**密码学验证。
 export 'src/apk_signing_block.dart';
 
+// AAB（Android App Bundle）解析。三个文件刻意分开：
+// - proto.dart 是通用 protobuf 字段读取（不依赖 protobuf 包）；
+// - aab_resources.dart 只认 `resources.pb`（Resources.proto）；
+// - aab_reader.dart 负责清单（proto XML）与 bundle 条目扫描。
+// AAB 没有根级清单 / arsc / 签名块，因此**不能**复用 ApkReader.parse。
+export 'src/aab/proto.dart';
+export 'src/aab/aab_resources.dart';
+export 'src/aab/aab_reader.dart';
+
 // 安全检测引擎（V1.1）：权限规则目录、DEX 字符串线索、Android 侧审计编排。
 // 产出的是 `analysis_model` 里的平台中立发现项模型，与平台自身的解析结果
 // 分开导出 ——「解析出了什么」和「据此判断有什么风险」是两个问题。

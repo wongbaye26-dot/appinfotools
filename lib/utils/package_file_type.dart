@@ -15,19 +15,22 @@ library;
 /// 文件选择器允许的扩展名。
 ///
 /// `apk.1` / `apk.1.1` 是某些下载渠道给重名文件加的后缀，用户手里真实存在，
-/// 因此一并接受。
+/// 因此一并接受。`.aab` 是 Android App Bundle（Play 的分发格式）—— 它不能
+/// 安装到设备，但可以分析，所以放在「能打开」这一侧。
 const List<String> kPickableExtensions = [
   'apk',
   'xapk',
   'apkm',
   'apks',
+  'aab',
   'ipa',
   'apk.1',
   'apk.1.1',
 ];
 
-/// 重名后缀：`xxx.apk.1` / `xxx.apk.1.1` / …
-final RegExp _renamedSuffix = RegExp(r'\.(apk|xapk|apkm|apks)(\.\d+)+$');
+/// 重名后缀：`xxx.apk.1` / `xxx.apk.1.1` / … / `xxx.aab.1`。
+final RegExp _renamedSuffix =
+    RegExp(r'\.(apk|xapk|apkm|apks|aab)(\.\d+)+$');
 
 /// 拖放进来的路径是不是本应用能打开的类型。
 ///
