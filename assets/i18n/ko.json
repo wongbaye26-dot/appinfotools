@@ -465,7 +465,8 @@
     "protection_flag_retail_demo": "매장 데모",
     "protection_flag_recents": "최근 앱",
     "protection_flag_role": "역할",
-    "protection_flag_known_signer": "알려진 서명"
+    "protection_flag_known_signer": "알려진 서명",
+    "cert_view_details": "인증서 세부정보 보기"
   },
   "icon": {
     "switch_icon": "아이콘 전환",

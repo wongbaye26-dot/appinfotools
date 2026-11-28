@@ -490,7 +490,8 @@
     "protection_flag_retail_demo": "Retail demo",
     "protection_flag_recents": "Recents",
     "protection_flag_role": "Role",
-    "protection_flag_known_signer": "Known signer"
+    "protection_flag_known_signer": "Known signer",
+    "cert_view_details": "View certificate details"
   },
   "icon": {
     "switch_icon": "Switch Icon",

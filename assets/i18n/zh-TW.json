@@ -490,7 +490,8 @@
     "protection_flag_retail_demo": "零售演示",
     "protection_flag_recents": "最近任務",
     "protection_flag_role": "角色",
-    "protection_flag_known_signer": "已知簽名"
+    "protection_flag_known_signer": "已知簽名",
+    "cert_view_details": "查看憑證詳情"
   },
   "icon": {
     "switch_icon": "切換圖示",

@@ -1,4 +1,5 @@
 import 'package:apk_info_tool/gen/strings.g.dart';
+import 'package:apk_info_tool/ui/detail_tab_bus.dart';
 import 'package:flutter/material.dart';
 
 /// 详情页 Tab 配置。
@@ -103,6 +104,21 @@ class _DetailTabViewState extends State<DetailTabView>
       vsync: this,
     );
     _tabController.addListener(_onTabChanged);
+    DetailTabBus.requests.addListener(_onTabRequest);
+  }
+
+  /// 响应别处（如概览里的「查看证书详情」）发来的跳转请求。
+  ///
+  /// 目标分组当前不可见时直接忽略 —— 解析尚未产出该分组、或窄屏把右栏
+  /// 收起来时，跳到不存在的 Tab 只会让人以为点击没生效。
+  void _onTabRequest() {
+    if (!mounted) return;
+    final request = DetailTabBus.requests.value;
+    if (request == null) return;
+    final ordered = _orderedTabs(_filteredTabs);
+    final index = ordered.indexWhere((e) => e.key.name == request.tab);
+    if (index < 0 || index >= _tabController.length) return;
+    if (_tabController.index != index) _tabController.animateTo(index);
   }
 
   /// Tab 分组会随解析进度增减：解析中「概览」可能还没有卡片，解析完成后
@@ -180,6 +196,7 @@ class _DetailTabViewState extends State<DetailTabView>
 
   @override
   void dispose() {
+    DetailTabBus.requests.removeListener(_onTabRequest);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();

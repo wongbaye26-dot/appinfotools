@@ -14,6 +14,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/main.dart';
 import 'package:apk_info_tool/pages/pages.dart';
 import 'package:apk_info_tool/pages/text_info.dart';
+import 'package:apk_info_tool/ui/detail_tab_bus.dart';
 import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/ui/shell/shell_navigation.dart';
 import 'package:apk_info_tool/providers/analysis_run_provider.dart';
@@ -3542,7 +3543,10 @@ class _SeverityCountChip extends StatelessWidget {
 class _AndroidBasicInfoCard extends StatelessWidget {
   final List<(String, String)> rows;
 
-  const _AndroidBasicInfoCard({required this.rows});
+  /// 卡片底部的可选动作（如「查看证书详情」跳到签名 Tab）。
+  final Widget? action;
+
+  const _AndroidBasicInfoCard({required this.rows, this.action});
 
   @override
   Widget build(BuildContext context) {
@@ -3659,12 +3663,18 @@ class _AndroidCertSummaryCard extends StatelessWidget {
         ? X509Parser.formatFingerprint(fingerprint)
         : (signer?.sha256Digest ?? '-');
 
-    return _AndroidBasicInfoCard(rows: [
-      (t.signature.schemes, schemes.isEmpty ? '-' : schemes),
-      (t.signature.subject, subject),
-      (t.signature.valid_until, validUntil),
-      (t.signature.sha256, sha256),
-    ]);
+    return _AndroidBasicInfoCard(
+      rows: [
+        (t.signature.schemes, schemes.isEmpty ? '-' : schemes),
+        (t.signature.subject, subject),
+        (t.signature.valid_until, validUntil),
+        (t.signature.sha256, sha256),
+      ],
+      action: TextButton(
+        onPressed: () => DetailTabBus.request(DetailTab.signature.name),
+        child: Text(t.apk_info.cert_view_details),
+      ),
+    );
   }
 }
 

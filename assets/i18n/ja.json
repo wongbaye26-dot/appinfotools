@@ -465,7 +465,8 @@
     "protection_flag_retail_demo": "店頭デモ",
     "protection_flag_recents": "最近使ったアプリ",
     "protection_flag_role": "ロール",
-    "protection_flag_known_signer": "既知の署名"
+    "protection_flag_known_signer": "既知の署名",
+    "cert_view_details": "証明書の詳細を見る"
   },
   "icon": {
     "switch_icon": "アイコン切替",
