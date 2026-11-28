@@ -3,11 +3,12 @@ import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
 import 'package:apk_info_tool/utils/analysis_report.dart';
 import 'package:apk_info_tool/utils/report_exporter.dart';
 import 'package:apk_info_tool/utils/report_extras.dart';
+import 'package:apk_info_tool/utils/sbom_builder.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
 /// 导出格式。
-enum ExportFormat { markdown, json, html }
+enum ExportFormat { markdown, json, html, sbom }
 
 /// 导出范围。
 enum ExportScope { full, securityOnly }
@@ -41,14 +42,23 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
         ExportFormat.markdown => 'md',
         ExportFormat.json => 'json',
         ExportFormat.html => 'html',
+        // CycloneDX 就是 JSON，扩展名用 json，文件名带 sbom 后缀便于区分。
+        ExportFormat.sbom => 'json',
       };
 
   String get _suggestedFileName {
     final base = widget.analysis.fileName.value ?? 'package';
     final stem = path.basenameWithoutExtension(base);
-    final suffix = switch (_scope) {
-      ExportScope.full => '${widget.analysis.platform.name}_report',
-      ExportScope.securityOnly => '${widget.analysis.platform.name}_security',
+    final suffix = switch (_format) {
+      // SBOM 只描述组件，范围选择对它没有意义；文件名单独标出。
+      ExportFormat.sbom when _scope == ExportScope.full =>
+        '${widget.analysis.platform.name}_sbom',
+      ExportFormat.sbom => '${widget.analysis.platform.name}_sbom',
+      _ => switch (_scope) {
+          ExportScope.full => '${widget.analysis.platform.name}_report',
+          ExportScope.securityOnly =>
+            '${widget.analysis.platform.name}_security',
+        },
     };
     return '${stem}_$suffix.$_fileExtension';
   }
@@ -87,6 +97,17 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
           t: t,
           securityOnly: securityOnly,
           extras: extras,
+        ),
+      ExportFormat.sbom => SbomBuilder.toJsonString(
+          SbomBuilder.buildCycloneDx(
+            appName: widget.analysis.appName.value ??
+                (widget.analysis.fileName.value ?? 'package'),
+            appVersion: widget.analysis.version.value,
+            packageName: widget.analysis.packageId.value,
+            packageSha256: widget.analysis.sha256.value,
+            components: SbomBuilder.fromLibraryReport(extras?.libraries),
+            timestamp: now,
+          ),
         ),
       ExportFormat.html => AnalysisReport.renderHtml(
           widget.analysis,
@@ -173,6 +194,11 @@ class _ExportReportDialogState extends State<ExportReportDialog> {
                         value: ExportFormat.html,
                         label: Text('HTML'),
                         icon: Icon(Icons.language),
+                      ),
+                      ButtonSegment(
+                        value: ExportFormat.sbom,
+                        label: Text('SBOM'),
+                        icon: Icon(Icons.inventory_2_outlined),
                       ),
                     ],
                     selected: {_format},

@@ -70,7 +70,7 @@ flutter test test/analysis_run_test.dart            # 12 passed
 | 3.1 | Android SDK → `Component` 映射（复用 LibChecker/LibraryReport） | ⬜ | |
 | 3.2 | iOS framework 身份识别（bundle id / 版本，可证实才填） | ⬜ | |
 | 3.3 | `PrivacySignal` 与 SDK↔权限↔API↔网络关系 | ⬜ | |
-| 3.4 | SBOM 生成器（CycloneDX 先行） | ⬜ | |
+| 3.4 | SBOM 生成器（CycloneDX 先行） | ✅ | `lib/utils/sbom_builder.dart` + 导出对话框新增 SBOM 格式；3 条单测 |
 | 3.5 | SPDX 输出 | ⬜ | |
 | 3.6 | Schema 校验测试 | ⬜ | |
 | 3.7 | SDK / Privacy / SBOM UI | ⬜ | |
