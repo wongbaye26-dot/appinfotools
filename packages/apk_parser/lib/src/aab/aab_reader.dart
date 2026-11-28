@@ -268,8 +268,7 @@ class AabXmlAttribute {
 }
 
 /// Android 属性命名空间。
-const String kAndroidNamespace =
-    'http://schemas.android.com/apk/res/android';
+const String kAndroidNamespace = 'http://schemas.android.com/apk/res/android';
 
 /// AAB 读取器。
 ///
@@ -376,8 +375,7 @@ class AabReader {
 
     // ---- manifest 字段 ----
     final packageName = _cleanString(root.attributeValue('package'));
-    final versionCode =
-        int.tryParse(root.attributeValue('versionCode') ?? '');
+    final versionCode = int.tryParse(root.attributeValue('versionCode') ?? '');
     final versionName = _resolveStringAttribute(
       root.attribute('versionName'),
       table,
@@ -401,7 +399,8 @@ class AabReader {
     if (labelId != null) {
       if (table != null) {
         label = table.resolveString(labelId);
-        for (final locale in table.localized[labelId]?.keys ?? const <String>[]) {
+        for (final locale
+            in table.localized[labelId]?.keys ?? const <String>[]) {
           final localized = table.resolveString(labelId, locale: locale);
           if (localized != null) labels[locale] = localized;
         }
@@ -462,7 +461,8 @@ class AabReader {
     }
     final table = AabResourceTable.parse(bytes);
     if (table == null) {
-      notes.add('$resourcesPath could not be parsed as a protobuf resource table');
+      notes.add(
+          '$resourcesPath could not be parsed as a protobuf resource table');
       return null;
     }
     if (table.isEmpty) {

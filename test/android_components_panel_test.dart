@@ -17,7 +17,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Future<void> pump(WidgetTester tester, List<AndroidComponent> components) async {
+  Future<void> pump(
+      WidgetTester tester, List<AndroidComponent> components) async {
     await tester.pumpWidget(
       ProviderScope(
         child: TranslationProvider(

@@ -12,7 +12,8 @@ void main() {
   testWidgets('相邻卡片之间保持 12px 间距', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildV4Theme(seed: V4Colors.violet, brightness: Brightness.light),
+        theme:
+            buildV4Theme(seed: V4Colors.violet, brightness: Brightness.light),
         home: Scaffold(
           body: ListView(
             children: const [

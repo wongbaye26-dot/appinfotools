@@ -89,7 +89,8 @@ void main() {
   group('文案与名称', () {
     test('框架权限有官方标题与说明', () {
       expect(meta.permissionLabel('android.permission.CAMERA'), isNotEmpty);
-      expect(meta.permissionDescription('android.permission.CAMERA'), isNotEmpty);
+      expect(
+          meta.permissionDescription('android.permission.CAMERA'), isNotEmpty);
     });
 
     test('自定义权限没有平台文案', () {
@@ -98,7 +99,8 @@ void main() {
 
     test('特性说明按完整名称查', () {
       expect(meta.featureDescription('android.hardware.camera'), isNotEmpty);
-      expect(meta.featureDescription('android.hardware.unknown_feature'), isNull);
+      expect(
+          meta.featureDescription('android.hardware.unknown_feature'), isNull);
     });
 
     test('语言名称与自称都能取到', () {

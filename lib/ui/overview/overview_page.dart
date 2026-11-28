@@ -164,8 +164,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         ? [
             if ((apkInfo?.packageName ?? '').isNotEmpty) apkInfo!.packageName,
             if ((apkInfo?.versionName ?? '').isNotEmpty) apkInfo!.versionName,
-            if (fileState.fileSize != null)
-              formatFileSize(fileState.fileSize!),
+            if (fileState.fileSize != null) formatFileSize(fileState.fileSize!),
           ].join(' · ')
         : t.overview.subtitle;
 
@@ -514,8 +513,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           for (var i = 0; i < rows.length; i++) ...[
             if (i > 0) Divider(height: 1, color: scheme.outlineVariant),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               child: Row(
                 children: [
                   Text(
@@ -638,7 +636,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 8, child: _buildRecentCard(context, recentFiles)),
+                Expanded(
+                    flex: 8, child: _buildRecentCard(context, recentFiles)),
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 4,
@@ -719,7 +718,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SelectableText(
-                      name.isEmpty ? p.basename(fileState.filePath ?? '') : name,
+                      name.isEmpty
+                          ? p.basename(fileState.filePath ?? '')
+                          : name,
                       maxLines: 1,
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
@@ -809,8 +810,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
                   size: 13, color: scheme.primary),
               label: Text(
                 t.rename.rename_file,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: scheme.primary),
+                style:
+                    theme.textTheme.labelSmall?.copyWith(color: scheme.primary),
               ),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
@@ -838,10 +839,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final componentsCount = android?.components.hasValue == true
         ? android!.components.value!.length
         : apkInfo?.components.length;
-    final exportedCount = apkInfo?.components
-            .where((c) => c.exported == true)
-            .length ??
-        0;
+    final exportedCount =
+        apkInfo?.components.where((c) => c.exported == true).length ?? 0;
 
     final signatureText = _signatureText(fileState, isIos);
     final entryPoints = apkInfo?.launchableActivity
@@ -867,7 +866,10 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
               .ifEmpty('—')
         ),
         (t.overview.field_signature, signatureText),
-        (t.overview.field_min_os, (ios?.minimumOSVersion.value ?? '').ifEmpty('—')),
+        (
+          t.overview.field_min_os,
+          (ios?.minimumOSVersion.value ?? '').ifEmpty('—')
+        ),
         (t.overview.field_frameworks, '$frameworks'),
         (t.overview.field_devices, devices),
       ];
@@ -937,7 +939,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final ios = fileState.ipaAnalysis;
 
     final permissionsField = android?.permissions;
-    final permissionsRead = permissionsField != null && permissionsField.hasValue;
+    final permissionsRead =
+        permissionsField != null && permissionsField.hasValue;
     final permissions =
         permissionsRead ? permissionsField.value! : const <String>[];
     final highRisk = permissions
@@ -946,8 +949,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
         .length;
 
     final componentsField = android?.components;
-    final componentsRead =
-        componentsField != null && componentsField.hasValue;
+    final componentsRead = componentsField != null && componentsField.hasValue;
     final components = componentsRead
         ? componentsField.value!
         : apkInfo?.components ?? const <AndroidComponent>[];
@@ -956,7 +958,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     final structure = apkInfo?.structure;
     final dexFiles = structure?.dexFiles ?? const <DexEntry>[];
     final dexBytes = dexFiles.fold<int>(0, (sum, d) => sum + d.size);
-    final nativeLibs = structure?.nativeLibraries ?? const <NativeLibraryEntry>[];
+    final nativeLibs =
+        structure?.nativeLibraries ?? const <NativeLibraryEntry>[];
     final abis = structure?.abis ?? const <String>[];
 
     final privacyCount =
@@ -1148,7 +1151,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
           _PostureLink(
             icon: Icons.layers_outlined,
             label: t.overview.field_details,
-            trailing: isParsing ? '…' : '${security?.coverage.applicable.length ?? 0}',
+            trailing: isParsing
+                ? '…'
+                : '${security?.coverage.applicable.length ?? 0}',
           ),
           _PostureLink(
             icon: Icons.download_outlined,
@@ -1246,8 +1251,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
             Column(
               children: [
                 for (var i = 0; i < recentFiles.length; i++) ...[
-                  if (i > 0)
-                    Divider(height: 1, color: scheme.outlineVariant),
+                  if (i > 0) Divider(height: 1, color: scheme.outlineVariant),
                   _RecentRow(
                     entry: recentFiles[i],
                     onTap: () =>
@@ -1347,7 +1351,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
       if (security != null)
         t.overview.session_security(
           count: '${security.findings.length}',
-          high: '${security.findings.where((f) => f.severity == SecuritySeverity.p0 || f.severity == SecuritySeverity.p1).length}',
+          high:
+              '${security.findings.where((f) => f.severity == SecuritySeverity.p0 || f.severity == SecuritySeverity.p1).length}',
         ),
       if (analysis?.android?.locales.hasValue == true)
         'locales · ${analysis!.android!.locales.value!.length}',
@@ -1847,8 +1852,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     if (analysis == null) return;
     final result = await showDialog(
       context: context,
-      builder: (_) =>
-          ExportReportDialog(analysis: analysis, archivePath: fileState.filePath),
+      builder: (_) => ExportReportDialog(
+          analysis: analysis, archivePath: fileState.filePath),
     );
     if (!mounted) return;
     if (result == true) {
@@ -1928,8 +1933,7 @@ class _Pill extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontFamily: mono ? 'monospace' : null,
-                fontFamilyFallback:
-                    mono ? const ['Menlo', 'Courier'] : null,
+                fontFamilyFallback: mono ? const ['Menlo', 'Courier'] : null,
                 fontSize: mono ? 10 : 11,
                 color: c,
                 fontWeight: FontWeight.w600,

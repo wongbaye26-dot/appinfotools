@@ -64,7 +64,8 @@ class _V4CommandPaletteState extends ConsumerState<_V4CommandPalette> {
     // 最近文件按路径名匹配 —— 这里没有索引可言，一次线性过滤足够了。
     final recent = ref
         .watch(recentFilesProvider)
-        .where((entry) => query.isEmpty || entry.path.toLowerCase().contains(query))
+        .where((entry) =>
+            query.isEmpty || entry.path.toLowerCase().contains(query))
         .take(6)
         .toList();
 

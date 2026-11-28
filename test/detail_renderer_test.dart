@@ -319,7 +319,8 @@ void main() {
           sha256Fingerprint:
               '3ffbedbaeb558314ee9532321acb12ffff1ac73a6eb3aad5ff76a909d1ab60dd',
           sha1Fingerprint: 'f03379ed9688b5aaa703029e45d1729702a9f085',
-          md5Fingerprint: 'f378a57e0633 3a8588ff80ba308a0ea9'.replaceAll(' ', ''),
+          md5Fingerprint:
+              'f378a57e0633 3a8588ff80ba308a0ea9'.replaceAll(' ', ''),
         );
 
     test('工具不可用时仍列出证书全部公开字段', () {

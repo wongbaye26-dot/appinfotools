@@ -132,8 +132,7 @@ class _DetailTabViewState extends State<DetailTabView>
         .where((e) => e.value.isNotEmpty)
         .map((e) => e.key)
         .toList(growable: false);
-    final newKeys =
-        _filteredTabs.map((e) => e.key).toList(growable: false);
+    final newKeys = _filteredTabs.map((e) => e.key).toList(growable: false);
     if (oldKeys.length == newKeys.length &&
         List.generate(newKeys.length, (i) => oldKeys[i] == newKeys[i])
             .every((same) => same)) {

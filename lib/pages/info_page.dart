@@ -42,7 +42,8 @@ import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show X509Parser;
-import 'package:ipa_parser/ipa_parser.dart' show IosBundle, IosSignatureMaterials;
+import 'package:ipa_parser/ipa_parser.dart'
+    show IosBundle, IosSignatureMaterials;
 import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
 import 'package:apk_info_tool/widgets/network_clues_card.dart';
@@ -944,8 +945,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
     // iOS 的 Hero 只放「身份」（名字/Bundle ID/版本/图标），
     // 系统要求、设备族、可执行文件这类**部署事实**放在这里，
     // 免得和信息 plist 的原始条目混在一起。
-    cards.add(_SectionHeader(
-        title: t.apk_info.basic_info, tab: DetailTab.overview));
+    cards.add(
+        _SectionHeader(title: t.apk_info.basic_info, tab: DetailTab.overview));
     cards.add(_AndroidBasicInfoCard(rows: [
       (t.ios_info.bundle_id, field(ios.bundleIdentifier)),
       (t.ios_info.executable, field(ios.executableName)),
@@ -2350,18 +2351,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
                         alignment: Alignment.center,
                         children: [
                           CircularProgressIndicator(
-                            value: fileState
-                                    .effectiveSecurityResult!
-                                    .coverage
-                                    .entries
-                                    .isEmpty
+                            value: fileState.effectiveSecurityResult!.coverage
+                                    .entries.isEmpty
                                 ? 0
-                                : (fileState.effectiveSecurityResult!.coverage.entries
-                                            .length -
-                                        fileState.effectiveSecurityResult!.coverage.gaps
-                                            .length) /
-                                    fileState.effectiveSecurityResult!.coverage.entries
-                                        .length,
+                                : (fileState.effectiveSecurityResult!.coverage
+                                            .entries.length -
+                                        fileState.effectiveSecurityResult!
+                                            .coverage.gaps.length) /
+                                    fileState.effectiveSecurityResult!.coverage
+                                        .entries.length,
                             strokeWidth: 6,
                             backgroundColor: scheme.surfaceContainerHighest,
                           ),
@@ -2780,7 +2778,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           minLines: 1,
           maxLines: 3,
         )),
-      if (fileState.effectiveSecurityResult != null) _buildOverviewEvidence(fileState),
+      if (fileState.effectiveSecurityResult != null)
+        _buildOverviewEvidence(fileState),
       // ===== 文件信息 =====
       _SectionHeader(title: t.file_info.group, tab: DetailTab.files),
       Card(
@@ -2850,12 +2849,10 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         title: t.apk_info.screen_density,
         value: _androidField(
           fileState.analysis?.android?.densities,
-          (v) => (v as List)
-              .map((d) {
-                final n = int.tryParse(d.toString());
-                return n == null ? d.toString() : androidDensityLabel(n);
-              })
-              .join(' '),
+          (v) => (v as List).map((d) {
+            final n = int.tryParse(d.toString());
+            return n == null ? d.toString() : androidDensityLabel(n);
+          }).join(' '),
         ),
       )),
       Card(
@@ -2868,7 +2865,8 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       )),
       // 语言列表改成「标签 + 本地化名称」逐行显示：只给 `zh-CN ja` 这种串，
       // 读者还得自己去查每个标签对应哪个语言/地区。
-      if (fileState.analysis?.android?.locales.status == FieldStatus.extracted &&
+      if (fileState.analysis?.android?.locales.status ==
+              FieldStatus.extracted &&
           (fileState.analysis?.android?.locales.value?.isNotEmpty ?? false))
         AndroidLocalesCard(
           locales: fileState.analysis!.android!.locales.value!
@@ -3660,8 +3658,7 @@ class _AndroidCertSummaryCard extends StatelessWidget {
         ? null
         : signature.localCertificates.first;
     final details = local?.details;
-    final signer =
-        signature.signers.isEmpty ? null : signature.signers.first;
+    final signer = signature.signers.isEmpty ? null : signature.signers.first;
 
     final schemes = <String>{
       ...signature.verifiedSchemes,

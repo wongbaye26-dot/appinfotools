@@ -39,7 +39,8 @@ void main() {
   }
 
   group('上游 matching-fixtures', () {
-    for (final case_ in (fixture['cases'] as List).cast<Map<String, dynamic>>()) {
+    for (final case_
+        in (fixture['cases'] as List).cast<Map<String, dynamic>>()) {
       test(case_['name'] as String, () {
         final rules = rulesOf(case_['rules'] as List);
         final hit = rules.find(
@@ -137,8 +138,20 @@ void main() {
         'regexIds': const [],
         'details': [
           {
-            'zh-Hans': ['Foo', '开发者甲', '说明甲', 'https://a', ['贡献者甲']],
-            'en': ['Foo', 'Dev A', 'Desc A', 'https://a', ['Contrib']],
+            'zh-Hans': [
+              'Foo',
+              '开发者甲',
+              '说明甲',
+              'https://a',
+              ['贡献者甲']
+            ],
+            'en': [
+              'Foo',
+              'Dev A',
+              'Desc A',
+              'https://a',
+              ['Contrib']
+            ],
           },
           {
             'fr': ['Bar', 'Dev B', 'Desc B', null, null],

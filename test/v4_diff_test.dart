@@ -274,7 +274,8 @@ void main() {
     expect(text, contains('36'));
   });
 
-  testWidgets('V4 右栏：SUMMARY / 无法比较 / REVIEW CHECKLIST / DIFF POLICY', (tester) async {
+  testWidgets('V4 右栏：SUMMARY / 无法比较 / REVIEW CHECKLIST / DIFF POLICY',
+      (tester) async {
     final files = _prototypePair();
     await _pump(tester, files);
     // 条数与模型同源（UI 与报告读同一份 `PackageDiff`），不写死原型里的 2。

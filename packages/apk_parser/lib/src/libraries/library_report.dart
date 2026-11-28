@@ -95,7 +95,8 @@ class LibraryReport {
   int get sdkCount {
     final keys = <String>{
       for (final group in nativeGroups) '${group.label}\u0000${group.iconId}',
-      for (final group in componentGroups) '${group.label}\u0000${group.iconId}',
+      for (final group in componentGroups)
+        '${group.label}\u0000${group.iconId}',
       for (final group in dexGroups) '${group.label}\u0000${group.iconId}',
     };
     return keys.length;
@@ -146,7 +147,8 @@ class LibraryDetector {
       if (!nativeGroups.contains(group)) nativeGroups.add(group);
       // 同一个 .so 在多个 ABI 目录各有一份：归到同一条命中里，而不是让
       // 「命中数」被 ABI 数量放大。
-      final existing = nativeByKey[key]?.where((h) => h.name == lib.name).firstOrNull;
+      final existing =
+          nativeByKey[key]?.where((h) => h.name == lib.name).firstOrNull;
       if (existing == null) {
         final hit = LibraryHit(
           kind: LibraryHitKind.nativeLibrary,
@@ -296,7 +298,9 @@ class LibraryDetector {
     String name,
   ) {
     final type = switch (component.type) {
-      ComponentType.activity || ComponentType.activityAlias => LibCheckerRuleType.activity,
+      ComponentType.activity ||
+      ComponentType.activityAlias =>
+        LibCheckerRuleType.activity,
       ComponentType.service => LibCheckerRuleType.service,
       ComponentType.receiver => LibCheckerRuleType.receiver,
       ComponentType.provider => LibCheckerRuleType.provider,
@@ -360,8 +364,12 @@ class LibraryDetector {
       'libjiagu_x86.so' ||
       'libjiagu_x64.so' =>
         dex.qihooShell,
-      'libDexHelper.so' || 'libDexHelper-x86.so' || 'libdexjni.so' => dex.secneoShell,
-      'libapp.so' => allLibNames.contains('libflutter.so') || dex.flutterInjector,
+      'libDexHelper.so' ||
+      'libDexHelper-x86.so' ||
+      'libdexjni.so' =>
+        dex.secneoShell,
+      'libapp.so' =>
+        allLibNames.contains('libflutter.so') || dex.flutterInjector,
       'libmain.so' => allLibNames.contains('libunity.so'),
       _ => true,
     };

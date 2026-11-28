@@ -18,7 +18,8 @@ Future<void> _pump(WidgetTester tester) async {
   await tester.pumpWidget(
     TranslationProvider(
       child: MaterialApp(
-        theme: buildV4Theme(seed: V4Colors.violet, brightness: Brightness.light),
+        theme:
+            buildV4Theme(seed: V4Colors.violet, brightness: Brightness.light),
         home: Scaffold(
           body: InstallPage(
             iosToolchain: const IosToolchain(),

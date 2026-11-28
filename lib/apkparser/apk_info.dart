@@ -138,8 +138,7 @@ bool _isArchiveApk(String apkPath) {
 /// 否则它会掉进 APK 流程并报「清单缺失」，层次就错了。
 bool _isAabPath(String apkPath) {
   final lower = apkPath.toLowerCase();
-  return lower.endsWith('.aab') ||
-      RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
+  return lower.endsWith('.aab') || RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
 }
 
 String _archiveTypeFromExtension(String extension) {

@@ -38,7 +38,9 @@ void main() {
         type: type,
         name: name,
         hasIntentFilter: actions.isNotEmpty,
-        intentFilters: [if (actions.isNotEmpty) IntentFilterInfo(actions: actions)],
+        intentFilters: [
+          if (actions.isNotEmpty) IntentFilterInfo(actions: actions)
+        ],
       );
 
   LibraryReport run({
@@ -122,7 +124,8 @@ void main() {
         lib('arm64-v8a', 'libsmall.so', size: 10),
         lib('arm64-v8a', 'libbig.so', size: 900),
       ]);
-      expect(report.unmatchedNative.map((l) => l.name), ['libbig.so', 'libsmall.so']);
+      expect(report.unmatchedNative.map((l) => l.name),
+          ['libbig.so', 'libsmall.so']);
     });
   });
 
@@ -137,7 +140,8 @@ void main() {
       expect(group.label, 'Foo SDK');
       expect(group.hits.map((h) => h.name),
           ['com.foo.SdkActivity', 'com.foo.SdkService']);
-      expect(group.hits.every((h) => h.source == LibraryMatchSource.exact), isTrue);
+      expect(group.hits.every((h) => h.source == LibraryMatchSource.exact),
+          isTrue);
     });
 
     test('组件名匹配不上时走 intent-filter action（只精确）', () {
@@ -169,7 +173,8 @@ void main() {
       expect(labels, ['OkHttp', 'Regex Lib']);
       expect(report.dexGroups.first.hits.single.name,
           'com.squareup.okhttp3.internal');
-      expect(report.dexGroups.last.hits.single.source, LibraryMatchSource.regex);
+      expect(
+          report.dexGroups.last.hits.single.source, LibraryMatchSource.regex);
     });
 
     test('DEX 包名升序输出', () {
@@ -193,7 +198,8 @@ void main() {
 
     test('组按命中数降序、label 升序', () {
       final report = run(
-        dex: signals(packages: {'com.squareup.okhttp3', 'com.regex.a', 'com.regex.b'}),
+        dex: signals(
+            packages: {'com.squareup.okhttp3', 'com.regex.a', 'com.regex.b'}),
       );
       expect(report.dexGroups.first.label, 'Regex Lib');
       expect(report.dexGroups.first.count, 2);
@@ -205,7 +211,8 @@ void main() {
       expect(run(entries: {'META-INF/main.kotlin_module'}).kotlin, isTrue);
       expect(run(entries: {'kotlin-tooling-metadata.json'}).kotlin, isTrue);
       expect(run(dex: signals(compose: true)).compose, isTrue);
-      expect(run(entries: {'META-INF/androidx.compose.ui_ui.version'}).compose, isTrue);
+      expect(run(entries: {'META-INF/androidx.compose.ui_ui.version'}).compose,
+          isTrue);
       expect(run().kotlin, isFalse);
     });
 

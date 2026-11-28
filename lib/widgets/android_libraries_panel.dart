@@ -28,7 +28,8 @@ class AndroidLibrariesSection extends StatefulWidget {
   final ContainerStructure structure;
 
   @override
-  State<AndroidLibrariesSection> createState() => _AndroidLibrariesSectionState();
+  State<AndroidLibrariesSection> createState() =>
+      _AndroidLibrariesSectionState();
 }
 
 class _AndroidLibrariesSectionState extends State<AndroidLibrariesSection> {
@@ -204,7 +205,8 @@ class _LibrariesView extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.inventory_2_outlined, color: theme.colorScheme.primary),
+                    Icon(Icons.inventory_2_outlined,
+                        color: theme.colorScheme.primary),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -218,7 +220,8 @@ class _LibrariesView extends StatelessWidget {
                 Text(
                   [
                     if (rules != null)
-                      t.libraries.rule_version(version: '${report.dataVersion}'),
+                      t.libraries
+                          .rule_version(version: '${report.dataVersion}'),
                     t.libraries.scanned(
                       classes: report.dexClasses,
                       dex: dexFileCount,
@@ -235,7 +238,8 @@ class _LibrariesView extends StatelessWidget {
                     runSpacing: 6,
                     children: [
                       if (report.kotlin) const _TechChip(label: 'Kotlin'),
-                      if (report.compose) const _TechChip(label: 'Jetpack Compose'),
+                      if (report.compose)
+                        const _TechChip(label: 'Jetpack Compose'),
                     ],
                   ),
                 ],
@@ -251,7 +255,8 @@ class _LibrariesView extends StatelessWidget {
                 if (report.dexTruncated) ...[
                   const SizedBox(height: 10),
                   Text(
-                    t.libraries.truncated(limit: '${DexLibraryScanner.maxClasses}'),
+                    t.libraries
+                        .truncated(limit: '${DexLibraryScanner.maxClasses}'),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.error,
                     ),
@@ -481,7 +486,8 @@ class _GroupSection extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        _SdkAvatar(label: group.label, size: 28, iconId: group.iconId),
+                        _SdkAvatar(
+                            label: group.label, size: 28, iconId: group.iconId),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(

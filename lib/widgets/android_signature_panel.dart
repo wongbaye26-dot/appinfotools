@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ipa_parser/ipa_parser.dart' show X509CertificateInfo, X509Parser;
+import 'package:ipa_parser/ipa_parser.dart'
+    show X509CertificateInfo, X509Parser;
 
 import '../gen/strings.g.dart';
 import '../utils/signature_analyzer.dart';
@@ -196,8 +197,8 @@ class _SummaryCard extends StatelessWidget {
                   SizedBox(
                     width: 132,
                     child: Text(
-                      t.signature.local_certificates(
-                          count: '${certificates.length}'),
+                      t.signature
+                          .local_certificates(count: '${certificates.length}'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
@@ -233,8 +234,10 @@ class _StatusChip extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final (label, color) = switch (status) {
       SignatureStatus.verified => (t.signature.status_verified, scheme.primary),
-      SignatureStatus.verificationFailed =>
-        (t.signature.status_failed, scheme.error),
+      SignatureStatus.verificationFailed => (
+          t.signature.status_failed,
+          scheme.error
+        ),
       SignatureStatus.toolUnavailable => (
           t.signature.status_tool_unavailable,
           scheme.tertiary

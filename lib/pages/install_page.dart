@@ -872,9 +872,9 @@ class _InstallPageState extends State<InstallPage> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           visualDensity: VisualDensity.compact,
           side: BorderSide(color: theme.colorScheme.outlineVariant),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-          textStyle: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+          textStyle:
+              const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -1260,8 +1260,7 @@ class _InstallPageState extends State<InstallPage> {
             _chip(
               ready ? t.install.ios_status_ready : t.install.ios_status_missing,
               color: ready ? V4Colors.mint : V4Colors.amber,
-              background:
-                  (ready ? V4Colors.mint : V4Colors.amber).withValues(
+              background: (ready ? V4Colors.mint : V4Colors.amber).withValues(
                 alpha: 0.09,
               ),
             ),
@@ -1394,7 +1393,8 @@ class _InstallPageState extends State<InstallPage> {
             style: FilledButton.styleFrom(
               minimumSize: const Size(0, 30),
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              textStyle:
+                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
             ),
             child: Text(t.install.ios_install),
           ),
@@ -1860,14 +1860,16 @@ class _InstallPageState extends State<InstallPage> {
           title: t.install.force_install,
           flag: '-r',
           value: _forceInstall,
-          onChanged:
-              _installing ? null : () => setState(() => _forceInstall = !_forceInstall),
+          onChanged: _installing
+              ? null
+              : () => setState(() => _forceInstall = !_forceInstall),
         ),
         _optionRow(
           theme,
           title: t.install.uninstall_first,
-          subtitle:
-              canUninstall ? t.install.uninstall_first_desc : t.install.app_info_failed,
+          subtitle: canUninstall
+              ? t.install.uninstall_first_desc
+              : t.install.app_info_failed,
           value: _uninstallFirst,
           // 没有包名就没法卸载 —— 灰掉而不是让用户点了才发现没生效。
           onChanged: (_installing || !canUninstall)
@@ -1888,8 +1890,9 @@ class _InstallPageState extends State<InstallPage> {
           title: t.install.allow_test,
           flag: '-t',
           value: _allowTest,
-          onChanged:
-              _installing ? null : () => setState(() => _allowTest = !_allowTest),
+          onChanged: _installing
+              ? null
+              : () => setState(() => _allowTest = !_allowTest),
         ),
         _optionRow(
           theme,
@@ -2088,8 +2091,9 @@ class _InstallPageState extends State<InstallPage> {
           width: double.infinity,
           height: 45,
           child: FilledButton.icon(
-            onPressed:
-                _installing ? _stopInstall : (_canInstall ? _startInstall : null),
+            onPressed: _installing
+                ? _stopInstall
+                : (_canInstall ? _startInstall : null),
             icon: Icon(
               _installing ? Icons.stop_rounded : Icons.upload_rounded,
               size: 15,

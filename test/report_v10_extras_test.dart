@@ -150,8 +150,8 @@ void main() {
       extras: ReportExtras(permissions: _facts(), libraries: _libraries()),
     );
 
-    final details = ((map['application'] as Map<String, dynamic>)
-        ['permissionDetails'] as List)
+    final details = ((map['application']
+            as Map<String, dynamic>)['permissionDetails'] as List)
         .cast<Map<String, dynamic>>();
     expect(details, hasLength(2));
     expect(details.first['name'], 'android.permission.READ_SMS');

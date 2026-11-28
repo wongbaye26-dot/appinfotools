@@ -124,8 +124,7 @@ class LibCheckerRules {
   /// 从 bundle JSON 构建。`rules` 的每一项是 7 元组：
   /// `[id, name, label, type, iconId, isSimpleColorIcon, detailIndex]`。
   factory LibCheckerRules.fromBundle(Map<String, dynamic> bundle) {
-    final meta =
-        (bundle['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final meta = (bundle['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
     final regexIds = {
       for (final id in (bundle['regexIds'] as List? ?? const [])) id as int,
     };
@@ -208,7 +207,9 @@ class LibCheckerRules {
       return null;
     }
     final entry = _details[rule.detailIndex];
-    return entry[locale] ?? entry['en'] ?? (entry.isEmpty ? null : entry.values.first);
+    return entry[locale] ??
+        entry['en'] ??
+        (entry.isEmpty ? null : entry.values.first);
   }
 
   /// 按类型统计（测试与「规则版本」提示用）。
@@ -220,7 +221,8 @@ class LibCheckerRules {
     return counts;
   }
 
-  static Map<String, LibCheckerDetail> _decodeDetail(Map<String, dynamic> entry) {
+  static Map<String, LibCheckerDetail> _decodeDetail(
+      Map<String, dynamic> entry) {
     final decoded = <String, LibCheckerDetail>{};
     for (final locale in entry.keys) {
       final values = entry[locale];
@@ -231,8 +233,8 @@ class LibCheckerRules {
         description: _stringAt(values, 2),
         sourceLink: _stringAt(values, 3),
         contributors: [
-          for (final item in (values.length > 4 ? values[4] as List? : null) ??
-              const [])
+          for (final item
+              in (values.length > 4 ? values[4] as List? : null) ?? const [])
             if (item is String) item,
         ],
       );

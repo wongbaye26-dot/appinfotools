@@ -38,10 +38,10 @@ void main() {
       final device = parseIosDeviceInfo(
         '00008030-001A2C3D4E5F6A7B',
         'DeviceName: 张三的 iPhone\n'
-        'ProductName: iPhone 15 Pro\n'
-        'ProductVersion: 18.1\n'
-        'ProductType: iPhone16,1\n'
-        'UniqueDeviceID: 00008030-001A2C3D4E5F6A7B\n',
+            'ProductName: iPhone 15 Pro\n'
+            'ProductVersion: 18.1\n'
+            'ProductType: iPhone16,1\n'
+            'UniqueDeviceID: 00008030-001A2C3D4E5F6A7B\n',
       );
       expect(device.udid, '00008030-001A2C3D4E5F6A7B');
       expect(device.name, '张三的 iPhone');

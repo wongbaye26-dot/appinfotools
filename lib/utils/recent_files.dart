@@ -47,7 +47,6 @@ class RecentFileEntry {
 
   /// 文件名（不含路径）。
   String get fileName => path.split(Platform.pathSeparator).last;
-
 }
 
 /// 最近分析文件管理器。

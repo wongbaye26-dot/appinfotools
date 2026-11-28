@@ -1300,7 +1300,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
               ? 'dataVersion $version · $count'
               : t.settings.rules_builtin_current,
           control: _ruleChip(
-            imported ? t.settings.rules_imported_chip : t.settings.rules_builtin_chip,
+            imported
+                ? t.settings.rules_imported_chip
+                : t.settings.rules_builtin_chip,
             accent: imported,
           ),
         ),
@@ -1308,7 +1310,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           title: t.settings.rules_import,
           desc: desc,
           control: _v4TextAction(
-            _ruleBusy ? t.settings.rules_importing : t.settings.rules_import_action,
+            _ruleBusy
+                ? t.settings.rules_importing
+                : t.settings.rules_import_action,
             _ruleBusy ? null : _importRulePack,
           ),
         ),

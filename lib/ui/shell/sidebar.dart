@@ -474,7 +474,6 @@ class _SidebarHint extends StatelessWidget {
   }
 }
 
-
 /// 导航下方的「最近分析」：最多三条，点条目直接打开。
 ///
 /// 只做入口，不重复概览页的表格信息 —— 侧栏窄，放名字和平台就够。

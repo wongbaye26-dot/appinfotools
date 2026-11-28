@@ -383,8 +383,8 @@ class AdbService {
   /// `Android Debug Bridge version 1.0.41` 与 `Version 35.0.2-13138477`。
   /// 取第一个匹配到的版本串；都匹配不上返回 `null`。
   static String? parseVersion(String output) {
-    final match = RegExp(r'[Vv]ersion\s+([0-9][0-9A-Za-z.\-]*)')
-        .firstMatch(output);
+    final match =
+        RegExp(r'[Vv]ersion\s+([0-9][0-9A-Za-z.\-]*)').firstMatch(output);
     return match?.group(1);
   }
 

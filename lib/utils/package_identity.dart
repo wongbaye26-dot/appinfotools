@@ -110,8 +110,7 @@ Future<PackageIdentity> readPackageIdentityInIsolate(String path) async {
 /// `.aab` 以及下载器加的重名后缀 `.aab.1`（此时 `p.extension` 是 `.1`）。
 bool _isAabPath(String path) {
   final lower = path.toLowerCase();
-  return lower.endsWith('.aab') ||
-      RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
+  return lower.endsWith('.aab') || RegExp(r'\.aab(\.\d+)+$').hasMatch(lower);
 }
 
 /// 读 AAB 的应用名与版本；读不出有效信息时返回 null，交给 [readPackageIdentityInIsolate]

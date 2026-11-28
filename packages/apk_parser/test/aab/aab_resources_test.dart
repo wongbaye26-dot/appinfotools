@@ -124,7 +124,8 @@ void main() {
         aabItemValue(
           messageOf(itemFile('feature1/res/a.png')),
           module: 'feature1',
-        )!.value,
+        )!
+            .value,
         'feature1/res/a.png',
       );
       expect(aabModulePath('base', 'base/res/a.png'), 'base/res/a.png');

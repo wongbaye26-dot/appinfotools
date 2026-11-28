@@ -13,7 +13,8 @@ import 'package:apk_parser/apk_parser.dart';
 import 'package:archive/archive.dart';
 
 /// Android 资源的属性都在这个命名空间下。
-const String kTestAndroidNamespace = 'http://schemas.android.com/apk/res/android';
+const String kTestAndroidNamespace =
+    'http://schemas.android.com/apk/res/android';
 
 /// 最小 protobuf 编码器。
 ///
@@ -317,7 +318,8 @@ Uint8List standardManifest({
       ),
     );
   }
-  children.add(xmlChild(xmlElement('application', attributes: applicationAttributes)));
+  children.add(
+      xmlChild(xmlElement('application', attributes: applicationAttributes)));
 
   final root = xmlElement(
     rootName,

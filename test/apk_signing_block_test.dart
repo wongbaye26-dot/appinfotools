@@ -319,7 +319,8 @@ void main() {
     });
 
     test('只有 v1 签名时完整证书链为空', () {
-      expect(_parse('test/fixtures/apk/signed-v1-only.apk').certificates, isEmpty);
+      expect(
+          _parse('test/fixtures/apk/signed-v1-only.apk').certificates, isEmpty);
     });
   });
 }

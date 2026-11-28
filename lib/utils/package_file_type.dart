@@ -29,8 +29,7 @@ const List<String> kPickableExtensions = [
 ];
 
 /// 重名后缀：`xxx.apk.1` / `xxx.apk.1.1` / … / `xxx.aab.1`。
-final RegExp _renamedSuffix =
-    RegExp(r'\.(apk|xapk|apkm|apks|aab)(\.\d+)+$');
+final RegExp _renamedSuffix = RegExp(r'\.(apk|xapk|apkm|apks|aab)(\.\d+)+$');
 
 /// 拖放进来的路径是不是本应用能打开的类型。
 ///

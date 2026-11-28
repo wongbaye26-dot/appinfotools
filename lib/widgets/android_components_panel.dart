@@ -70,7 +70,8 @@ class AndroidComponentsPanel extends StatelessWidget {
                     for (final type in ComponentType.values)
                       if (byType[type] != null)
                         _TypeChip(
-                          label: '${_typeLabel(t, type)} ${byType[type]!.length}',
+                          label:
+                              '${_typeLabel(t, type)} ${byType[type]!.length}',
                         ),
                   ],
                 ),
@@ -164,9 +165,8 @@ class _ComponentRow extends StatelessWidget {
     final chips = <Widget>[];
     if (component.exported != null) {
       chips.add(_FlagChip(
-        label: component.exported!
-            ? t.apk_info.exported
-            : t.apk_info.not_exported,
+        label:
+            component.exported! ? t.apk_info.exported : t.apk_info.not_exported,
         // 导出本身不是缺陷：带 permission 的导出是正常设计，没带才值得注意。
         tone: component.exported!
             ? (component.permission == null && component.readPermission == null

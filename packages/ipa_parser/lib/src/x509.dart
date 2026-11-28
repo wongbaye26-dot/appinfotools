@@ -363,11 +363,13 @@ class X509Parser {
     final reader = DerReader(keyBytes);
     final sequence = reader.at(0);
     if (sequence == null || !sequence.isUniversalTag(DerTag.sequence)) {
-      return const _PublicKey(oid: '1.2.840.113549.1.1.1', algorithm: algorithm);
+      return const _PublicKey(
+          oid: '1.2.840.113549.1.1.1', algorithm: algorithm);
     }
     final fields = reader.children(sequence, max: 4);
     if (fields.isEmpty || !fields[0].isUniversalTag(DerTag.integer)) {
-      return const _PublicKey(oid: '1.2.840.113549.1.1.1', algorithm: algorithm);
+      return const _PublicKey(
+          oid: '1.2.840.113549.1.1.1', algorithm: algorithm);
     }
     return _PublicKey(
       oid: '1.2.840.113549.1.1.1',

@@ -188,13 +188,13 @@ class _DiffPageState extends ConsumerState<DiffPage> {
                 ),
               ),
               const SizedBox(height: 14),
-          Text(
-            t.diff.pick_empty,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: pal.ink,
-            ),
-          ),
+              Text(
+                t.diff.pick_empty,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: pal.ink,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 t.diff.need_two,
@@ -440,8 +440,7 @@ class _DiffPageState extends ConsumerState<DiffPage> {
             changes: fieldChanges,
             showAll: _showAllFields,
             previewRows: _previewRows,
-            onToggle: () =>
-                setState(() => _showAllFields = !_showAllFields),
+            onToggle: () => setState(() => _showAllFields = !_showAllFields),
           ),
           const SizedBox(height: 14),
         ],
@@ -482,10 +481,12 @@ class _DiffPageState extends ConsumerState<DiffPage> {
     final addedFindings = addedOf['security.findings'] ?? 0;
 
     final findings = _setOf(setChanges, 'security.findings');
-    final findingsLeft =
-        findings == null ? null : findings.common.length + findings.removed.length;
-    final findingsRight =
-        findings == null ? null : findings.common.length + findings.added.length;
+    final findingsLeft = findings == null
+        ? null
+        : findings.common.length + findings.removed.length;
+    final findingsRight = findings == null
+        ? null
+        : findings.common.length + findings.added.length;
 
     final unknownCount = fieldUnknown.length + setUnknown.length;
 
@@ -739,8 +740,7 @@ class _SlotCard extends StatelessWidget {
         child: Row(
           children: [
             if (state == null || analysis == null)
-              Icon(Icons.add_circle_outline_rounded,
-                  size: 30, color: pal.ink3)
+              Icon(Icons.add_circle_outline_rounded, size: 30, color: pal.ink3)
             else
               _SlotIcon(state: state!, icon: icon, isIos: isIos, side: 38),
             const SizedBox(width: 12),
@@ -800,7 +800,8 @@ class _SlotCard extends StatelessWidget {
   /// 用应用名而不是文件名：两个版本的文件名常常只差一个数字，扫一眼分不开；
   /// 应用名 + 版本才是「这是哪个包的哪个版本」。名字缺失时退回文件名。
   static String _slotName(PackageAnalysisResult a, FileState state) {
-    final name = a.appName.value ?? a.fileName.value ?? p.basename(state.filePath ?? '');
+    final name =
+        a.appName.value ?? a.fileName.value ?? p.basename(state.filePath ?? '');
     final version = a.version.value;
     return version == null || version.isEmpty ? name : '$name · $version';
   }
@@ -989,7 +990,10 @@ class _SummaryStrip extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        _Stat(value: fieldCount, label: t.diff.stat_field_changes, color: pal.ink),
+        _Stat(
+            value: fieldCount,
+            label: t.diff.stat_field_changes,
+            color: pal.ink),
         const SizedBox(width: 26),
         _Stat(value: setCount, label: t.diff.stat_set_changes, color: pal.ink),
         const SizedBox(width: 26),
@@ -1124,15 +1128,20 @@ class _TabChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? pal.ink : (amber ? pal.amber.withValues(alpha: 0.10) : pal.surface2),
+          color: selected
+              ? pal.ink
+              : (amber ? pal.amber.withValues(alpha: 0.10) : pal.surface2),
           borderRadius: BorderRadius.circular(7),
           border: Border.all(
-            color: selected ? pal.ink : (amber ? pal.amber.withValues(alpha: 0.25) : pal.line),
+            color: selected
+                ? pal.ink
+                : (amber ? pal.amber.withValues(alpha: 0.25) : pal.line),
           ),
         ),
         child: Text(
           label,
-          style: _mono(fg, size: 9, weight: FontWeight.w700, spacing: 0.4, height: 1.1),
+          style: _mono(fg,
+              size: 9, weight: FontWeight.w700, spacing: 0.4, height: 1.1),
         ),
       ),
     );
@@ -1162,7 +1171,8 @@ class _FieldTableCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pal = _Pal.of(theme);
-    final hidden = showAll ? 0 : (changes.length - previewRows).clamp(0, changes.length);
+    final hidden =
+        showAll ? 0 : (changes.length - previewRows).clamp(0, changes.length);
     final visible = showAll ? changes : changes.take(previewRows).toList();
 
     return _V4Card(
@@ -1427,9 +1437,8 @@ class _SetRow extends StatelessWidget {
     final pal = _Pal.of(theme);
     final added = diff.added.take(DiffPage.maxMembersPerList).toList();
     final removed = diff.removed.take(DiffPage.maxMembersPerList).toList();
-    final truncated = diff.added.length - added.length +
-        diff.removed.length -
-        removed.length;
+    final truncated =
+        diff.added.length - added.length + diff.removed.length - removed.length;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -1461,7 +1470,8 @@ class _SetRow extends StatelessWidget {
                       _shortId(diff.id),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: _mono(pal.ink3, size: 9, spacing: 0.2, height: 1.2),
+                      style:
+                          _mono(pal.ink3, size: 9, spacing: 0.2, height: 1.2),
                     ),
                   ],
                 ),
@@ -1660,8 +1670,7 @@ class _UnknownCard extends StatelessWidget {
             ),
             for (final s in sets)
               Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1710,7 +1719,10 @@ class _UnknownCard extends StatelessWidget {
       return rest > 0 ? '$body ${t.diff.truncated_members(count: rest)}' : body;
     }
 
-    return '${t.diff.report_left}: ${side(s.removed.isEmpty && s.common.isEmpty ? const [] : [...s.removed, ...s.common])}\n'
+    return '${t.diff.report_left}: ${side(s.removed.isEmpty && s.common.isEmpty ? const [] : [
+            ...s.removed,
+            ...s.common
+          ])}\n'
         '${t.diff.report_right}: ${side([...s.added, ...s.common])}';
   }
 }

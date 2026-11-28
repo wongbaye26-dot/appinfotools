@@ -225,7 +225,8 @@ class AndroidMetadata {
       AndroidProtectionBase.normal => AndroidPermissionRisk.normal,
       AndroidProtectionBase.signature ||
       AndroidProtectionBase.signatureOrSystem ||
-      AndroidProtectionBase.internal => AndroidPermissionRisk.system,
+      AndroidProtectionBase.internal =>
+        AndroidPermissionRisk.system,
     };
   }
 

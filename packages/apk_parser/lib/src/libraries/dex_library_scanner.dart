@@ -156,9 +156,8 @@ class DexLibraryScanner {
 
   /// `Lcom/foo/Bar;` → `com.foo`；无包（`LBar;`）返回空串。
   static String _packageOf(String descriptor) {
-    final body = descriptor.substring(1, descriptor.endsWith(';')
-        ? descriptor.length - 1
-        : descriptor.length);
+    final body = descriptor.substring(1,
+        descriptor.endsWith(';') ? descriptor.length - 1 : descriptor.length);
     final slash = body.lastIndexOf('/');
     if (slash <= 0) return '';
     return body.substring(0, slash).replaceAll('/', '.');

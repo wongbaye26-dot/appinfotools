@@ -189,7 +189,8 @@ void main() {
 
       final info = await AabReader().read(path);
       expect(info, isNotNull);
-      expect(info!.failureReason, contains('base/manifest/AndroidManifest.xml'));
+      expect(
+          info!.failureReason, contains('base/manifest/AndroidManifest.xml'));
       expect(info.packageName, isNull);
       expect(info.dexEntries, ['base/dex/classes.dex']);
       expect(info.fileCount, 3);
@@ -212,7 +213,8 @@ void main() {
       final path = await write('feature-only.aab', fixture.build());
 
       final info = await AabReader().read(path);
-      expect(info!.failureReason, contains('is missing; module manifests found'));
+      expect(
+          info!.failureReason, contains('is missing; module manifests found'));
       expect(
         info.failureReason,
         contains('feature1/manifest/AndroidManifest.xml'),

@@ -41,7 +41,8 @@ class IosToolchain {
   ///
   /// 手动扫目录而不是起 `which` 子进程：探测要在首帧前跑完，起进程慢一个
   /// 量级；也便于测试注入。
-  factory IosToolchain.detect({String? pathEnv, bool Function(String)? exists}) {
+  factory IosToolchain.detect(
+      {String? pathEnv, bool Function(String)? exists}) {
     final env = pathEnv ?? Platform.environment['PATH'] ?? '';
     final check = exists ?? (String path) => File(path).existsSync();
     String? look(String name) {
@@ -149,7 +150,11 @@ class IosInstallService {
   }) async {
     final tool = toolchain.ideviceinstaller;
     if (tool == null) return false;
-    final args = ['-i', ipaPath, if (udid != null) ...['-u', udid]];
+    final args = [
+      '-i',
+      ipaPath,
+      if (udid != null) ...['-u', udid]
+    ];
     onLine?.call('$tool ${args.join(' ')}');
     final process = await Process.start(tool, args);
     final outSub = process.stdout

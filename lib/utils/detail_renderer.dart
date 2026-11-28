@@ -279,9 +279,7 @@ class DetailRenderer {
   static String _utcTimestamp(DateTime value) {
     final utc = value.toUtc();
     final iso = utc.toIso8601String();
-    return iso.endsWith('.000Z')
-        ? '${iso.substring(0, iso.length - 5)}Z'
-        : iso;
+    return iso.endsWith('.000Z') ? '${iso.substring(0, iso.length - 5)}Z' : iso;
   }
 
   /// 渲染容器结构概览（DEX 数量、原生库、ABI、顶层目录）。
@@ -593,9 +591,7 @@ class DetailRenderer {
           '${t.ios_info.certificate_count(count: chain.certificates.length)}');
       for (final certificate in chain.certificates) {
         sb.writeln('    ${t.ios_info.certificate_entry(
-          subject: certificate.subjectCommonName ??
-              certificate.subject ??
-              '-',
+          subject: certificate.subjectCommonName ?? certificate.subject ?? '-',
           issuer: certificate.issuerCommonName ?? certificate.issuer ?? '-',
         )}');
         // 主体/签发者已经在上面的 entry 行里，这里只补其余字段。

@@ -367,7 +367,8 @@ AabResourceValue? aabItemValue(PbMessage item, {String module = 'base'}) {
       final isAttribute = (reference.getInt(1) ?? 0) == 1;
       final hex = id.toRadixString(16);
       return AabResourceValue(
-        kind: isAttribute ? AabResourceKind.attribute : AabResourceKind.reference,
+        kind:
+            isAttribute ? AabResourceKind.attribute : AabResourceKind.reference,
         value: isAttribute ? '@attr/0x$hex' : '@res/0x$hex',
         referenceId: id,
       );
@@ -435,9 +436,13 @@ AabResourceValue? _primitiveValue(PbMessage primitive) {
   // 颜色字段 9..12。argb8 / argb4 本身已含 alpha；rgb8 / rgb4 不含，
   // 与 Android 的 `#aarrggbb` 表示对齐时补上不透明 alpha。
   final color = primitive.getInt(9) ??
-      (primitive.getInt(10) == null ? null : primitive.getInt(10)! | 0xff000000) ??
+      (primitive.getInt(10) == null
+          ? null
+          : primitive.getInt(10)! | 0xff000000) ??
       primitive.getInt(11) ??
-      (primitive.getInt(12) == null ? null : primitive.getInt(12)! | 0xff000000);
+      (primitive.getInt(12) == null
+          ? null
+          : primitive.getInt(12)! | 0xff000000);
   if (color != null) {
     return AabResourceValue(
       kind: AabResourceKind.color,
@@ -449,8 +454,7 @@ AabResourceValue? _primitiveValue(PbMessage primitive) {
 }
 
 /// primitive 里的 int32 用 varint 编码，负数会占满 10 字节；取回有符号值。
-int _asInt32(int value) =>
-    value > 0x7fffffff ? value - 0x100000000 : value;
+int _asInt32(int value) => value > 0x7fffffff ? value - 0x100000000 : value;
 
 /// `Primitive.float` 是 fixed32 存 IEEE-754 单精度。
 double _asFloat32(int bits) {

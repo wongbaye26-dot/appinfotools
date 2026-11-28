@@ -54,7 +54,8 @@ ApkInfo _apk({SecurityAnalysisResult? security}) => ApkInfo()
   ..securityResult = security;
 
 Future<void> _pump(WidgetTester tester, FileState state) async {
-  SharedPreferences.setMockInitialValues(<String, Object>{'recent_files': '[]'});
+  SharedPreferences.setMockInitialValues(
+      <String, Object>{'recent_files': '[]'});
   await Config.init();
   await Config.loadConfig();
   addTearDown(Config.flushAll);

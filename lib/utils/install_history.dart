@@ -80,11 +80,9 @@ class InstallHistoryManager {
 
   /// 记录一次安装尝试，返回最新列表。
   static Future<List<InstallRecord>> add(InstallRecord record) async {
-    final entries = load()
-      ..insert(0, record);
-    final trimmed = entries.length > _maxCount
-        ? entries.sublist(0, _maxCount)
-        : entries;
+    final entries = load()..insert(0, record);
+    final trimmed =
+        entries.length > _maxCount ? entries.sublist(0, _maxCount) : entries;
     await Config.installHistory.updateValue(
       jsonEncode(trimmed.map((e) => e.toJson()).toList()),
     );
