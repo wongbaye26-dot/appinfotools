@@ -204,4 +204,56 @@ void main() {
       expect(summary, contains('ios=2'));
     });
   });
+
+  group('自动探测', () {
+    test('显式环境变量优先，且不可用时不回退到候选目录', () {
+      final ghost = p.join(temp.path, 'not-created');
+      final scan = SampleDirectory.discover(
+        environment: {'APPINFOTOOL_SAMPLES': ghost},
+        candidates: [temp.path],
+      );
+
+      expect(scan.status, SampleDirStatus.missing);
+      expect(scan.source, 'env');
+      expect(scan.path, ghost);
+      expect(scan.skipReasonFor(SampleKind.android), contains(ghost));
+    });
+
+    test('未设置环境变量时按候选顺序取第一个有样本的目录', () {
+      final empty = Directory(p.join(temp.path, 'empty'))..createSync();
+      final samples = Directory(p.join(temp.path, 'samples'))..createSync();
+      File(p.join(samples.path, 'Demo.APK')).writeAsStringSync('x');
+
+      final scan = SampleDirectory.discover(
+        environment: const {},
+        candidates: [empty.path, samples.path],
+      );
+
+      expect(scan.status, SampleDirStatus.ready);
+      expect(scan.source, 'auto');
+      expect(scan.path, samples.path);
+      expect(scan.samplesOf(SampleKind.android), hasLength(1));
+    });
+
+    test('都没命中时报告探测过哪些位置', () {
+      final scan = SampleDirectory.discover(
+        environment: const {},
+        candidates: [p.join(temp.path, 'a'), p.join(temp.path, 'b')],
+      );
+
+      expect(scan.status, SampleDirStatus.notConfigured);
+      expect(scan.path, isNull);
+      final reason = scan.skipReasonFor(SampleKind.ios)!;
+      expect(reason, contains('找过'));
+      expect(reason, contains('a'));
+      expect(reason, contains('b'));
+      expect(scan.summary, contains('source=-'));
+    });
+
+    test('默认候选位置包含仓库内 samples 与用户下载目录', () {
+      final candidates = SampleDirectory.defaultCandidates();
+      expect(candidates, contains('samples'));
+      expect(candidates.any((path) => path.contains('Downloads')), isTrue);
+    });
+  });
 }

@@ -24,7 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/sample_directory.dart';
 
-final SampleDirectory _samples = SampleDirectory.fromEnvironment();
+final SampleDirectory _samples = SampleDirectory.discover();
 
 DateTime get _generatedAt => DateTime.utc(2026, 11, 27, 12);
 

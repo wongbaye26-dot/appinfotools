@@ -11,6 +11,24 @@ flutter test test/sample_regression_test.dart
 
 `APPINFOTOOL_SAMPLES` is optional; without it the manifest directory is used.
 
+## Auto-discovery (real-sample tests)
+
+The real-sample tests (`test/real_samples_test.dart`,
+`test/real_samples_smoke_test.dart`, `test/security_baseline_test.dart`) accept
+`APPINFOTOOL_SAMPLES`, and when it is unset they probe, in order:
+
+1. `samples/` (repository root)
+2. `test/samples/`
+3. `~/Downloads/AppInfoTool Samples`
+4. `~/Documents/AppInfoTool Samples`
+5. `~/Desktop/AppInfoTool Samples`
+
+The first directory that contains at least one supported package wins. An
+explicit `APPINFOTOOL_SAMPLES` always takes precedence — if it points at a
+missing directory the tests skip with that path in the reason instead of
+silently falling back, so a typo is visible. When nothing is found the skip
+reason lists every probed location.
+
 ## Format
 
 ```json
