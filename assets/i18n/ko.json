@@ -1790,5 +1790,15 @@
     "split_cert_mismatch_message": "기본 APK와 하나 이상의 분할 APK가 다른 인증서로 서명되었습니다({packageId}).",
     "split_cert_mismatch_review": "이 설치 세트를 신뢰하지 마세요. 공식 채널에서 다시 다운로드하세요. 일반적으로 Android는 분할 서명 불일치를 거부합니다.",
     "split_cert_mismatch_limitation": "인증서 불일치는 설치 세트가 일관되지 않다는 것만 증명하며 어느 분할이 변조되었는지는 밝히지 않습니다."
+  },
+  "browser": {
+    "title": "파일 브라우저",
+    "entries": "개 항목",
+    "search_hint": "경로 검색",
+    "empty": "일치하는 파일이 없습니다",
+    "truncated": "항목 한도 도달: {codes}",
+    "more_rows": "{count}개 항목 더 있음",
+    "copy_path": "경로 복사",
+    "unreadable": "항목을 읽을 수 없습니다"
   }
 }

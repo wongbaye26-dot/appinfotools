@@ -1790,5 +1790,15 @@
     "split_cert_mismatch_message": "ベース APK と少なくとも 1 つの分割 APK が異なる証明書で署名されています（{packageId}）。",
     "split_cert_mismatch_review": "このインストールセットを信頼しないでください。公式チャネルから再ダウンロードしてください。通常 Android は分割署名の不一致を拒否します。",
     "split_cert_mismatch_limitation": "証明書の不一致はインストールセットが不整合であることを示すだけで、どの分割が改変されたかは特定しません。"
+  },
+  "browser": {
+    "title": "ファイルブラウザ",
+    "entries": "件",
+    "search_hint": "パスを検索",
+    "empty": "一致するファイルはありません",
+    "truncated": "上限に達しました: {codes}",
+    "more_rows": "残り {count} 件は非表示",
+    "copy_path": "パスをコピー",
+    "unreadable": "エントリを読み取れません"
   }
 }

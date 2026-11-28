@@ -1790,5 +1790,15 @@
   "locale": {
     "with_variant": "{language}（{variant}）",
     "variant_sep": "，"
+  },
+  "browser": {
+    "title": "檔案瀏覽",
+    "entries": "個條目",
+    "search_hint": "搜尋路徑",
+    "empty": "沒有符合的檔案",
+    "truncated": "達到條目上限：{codes}",
+    "more_rows": "還有 {count} 個條目未顯示",
+    "copy_path": "複製路徑",
+    "unreadable": "無法讀取條目"
   }
 }

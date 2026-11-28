@@ -1790,5 +1790,15 @@
   "locale": {
     "with_variant": "{language} ({variant})",
     "variant_sep": ", "
+  },
+  "browser": {
+    "title": "File browser",
+    "entries": "entries",
+    "search_hint": "Search path",
+    "empty": "No matching files",
+    "truncated": "Entry limit reached: {codes}",
+    "more_rows": "{count} more entries not shown",
+    "copy_path": "Copy path",
+    "unreadable": "Cannot read entry"
   }
 }

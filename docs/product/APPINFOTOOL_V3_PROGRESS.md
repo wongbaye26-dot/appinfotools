@@ -55,7 +55,7 @@ flutter test test/analysis_run_test.dart            # 12 passed
 
 | 步骤 | 内容 | 状态 | 证据 |
 | --- | --- | --- | --- |
-| 2.1 | 虚拟归档文件系统（复用 `ApkReader` / `ZipHelper` + 预算） | 🟡 | `archive_safety/lib/src/file_tree.dart`（树 + 三重上限，46 条包测试）；读包接线待做 |
+| 2.1 | 虚拟归档文件系统（复用 `ApkReader` / `ZipHelper` + 预算） | ✅ | `archive_safety/lib/src/file_tree.dart` + `lib/utils/package_archive_tree.dart`（嵌套条目读取走同一 budget ledger） |
 | 2.2 | 文件树 / 搜索 / 筛选 / 导出 | ⬜ | |
 | 2.3 | 文本 / Hex / 图片查看器 | ⬜ | |
 | 2.4 | `SecretMatch` 模型 + 规则库（格式/上下文/校验） | 🟡 | `analysis_model/lib/src/v3/secret_{match,rules,scanner}.dart`（8 条规则，9 条测试）；DEX/文件喂入待做 |

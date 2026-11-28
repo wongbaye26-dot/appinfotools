@@ -1790,5 +1790,15 @@
   "locale": {
     "with_variant": "{language}（{variant}）",
     "variant_sep": "，"
+  },
+  "browser": {
+    "title": "文件浏览",
+    "entries": "个条目",
+    "search_hint": "搜索路径",
+    "empty": "没有匹配的文件",
+    "truncated": "达到条目上限：{codes}",
+    "more_rows": "还有 {count} 个条目未显示",
+    "copy_path": "复制路径",
+    "unreadable": "无法读取条目"
   }
 }

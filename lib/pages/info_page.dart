@@ -46,6 +46,7 @@ import 'package:ipa_parser/ipa_parser.dart'
     show IosBundle, IosSignatureMaterials;
 import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
+import 'package:apk_info_tool/widgets/package_browser_panel.dart';
 import 'package:apk_info_tool/widgets/network_clues_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_center.dart';
@@ -2979,6 +2980,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           maxLines: textMaxLines,
           selectable: true,
         )),
+      // 文件浏览（V3 F04）：树 + 搜索 + 预览。放在结构摘要之后，
+      // 先给「有什么」，再给「逐个看」。
+      if ((fileState.filePath ?? '').isNotEmpty) ...[
+        _SectionHeader(title: t.browser.title, tab: DetailTab.files),
+        PackageBrowserPanel(packagePath: fileState.filePath!),
+      ],
       // 签名单独一个 Tab：证书信息（DN/序列号/有效期/指纹）比文件哈希
       // 更值得单独看，混在「文件」里每次都得多滚两屏。
       // AAB 没有安装语义，签名分析已在 loadApkInfo 里跳过；这里同步隐藏，
