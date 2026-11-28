@@ -62,4 +62,47 @@ S:15
     expect(info!.brand, 'google');
     expect(info.model, 'Pixel 7');
   });
+
+  test('ABI 只取 abilist 的第一项', () {
+    final info = AdbService.parseDeviceInfo('B:google\nM:Pixel 8\n'
+        'A:arm64-v8a,armeabi-v7a,armeabi\n');
+    expect(info, isNotNull);
+    expect(info!.abi, 'arm64-v8a');
+  });
+
+  test('/data 可用空间按 1K 块换算成字节', () {
+    final info = AdbService.parseDeviceInfo('B:google\nM:Pixel 8\n'
+        'F:/dev/block/dm-4 115343360 45678912 69664448 40% /data\n');
+    expect(info, isNotNull);
+    expect(info!.freeBytes, 69664448 * 1024);
+  });
+
+  test('df 输出异常时不编空间数字', () {
+    final info = AdbService.parseDeviceInfo('B:google\nM:Pixel 8\n'
+        'F:df: /data: No such file or directory\n');
+    expect(info, isNotNull);
+    expect(info!.freeBytes, isNull);
+  });
+
+  test('adb version 两种输出都能取到版本号', () {
+    expect(
+      AdbService.parseVersion(
+          'Android Debug Bridge version 1.0.41\nVersion 35.0.2-13138477'),
+      '1.0.41',
+    );
+    expect(AdbService.parseVersion('Version 41.0.0'), '41.0.0');
+    expect(AdbService.parseVersion('command not found'), isNull);
+  });
+
+  test('ABI 与空间随 JSON 往返（已知设备重连时保留）', () {
+    final info = AdbDeviceInfo(
+      model: 'Pixel 8',
+      abi: 'arm64-v8a',
+      freeBytes: 123456789,
+    );
+    final restored = AdbDeviceInfo.fromJson(info.toJson());
+    expect(restored.model, 'Pixel 8');
+    expect(restored.abi, 'arm64-v8a');
+    expect(restored.freeBytes, 123456789);
+  });
 }

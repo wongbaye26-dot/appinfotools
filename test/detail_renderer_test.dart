@@ -25,7 +25,8 @@ import 'package:ipa_parser/ipa_parser.dart'
         IosUnresolvedIcon,
         IpaContainer,
         MachOFile,
-        PlistString;
+        PlistString,
+        X509CertificateInfo;
 
 /// 一个最小可用的 IosPackageInfo，便于逐个断言各段渲染。
 IosPackageInfo _iosInfo({
@@ -300,6 +301,87 @@ void main() {
       expect(text, contains(t.signature.status_unknown));
       expect(text, contains(t.signature.diagnostics));
       expect(text, contains('usage: apksigner verify'));
+    });
+  });
+
+  group('DetailRenderer.signature — 本地证书', () {
+    X509CertificateInfo certificate() => X509CertificateInfo(
+          subject: 'CN=Fixture',
+          issuer: 'CN=Fixture',
+          subjectCommonName: 'Fixture',
+          issuerCommonName: 'Fixture',
+          notBefore: DateTime.utc(2026, 10, 18, 16, 31, 1),
+          notAfter: DateTime.utc(2054, 3, 5, 16, 31, 1),
+          serialNumberHex: 'DF5D287C71A19C67',
+          signatureAlgorithm: 'SHA256withRSA',
+          publicKeyAlgorithm: 'RSA',
+          publicKeyBits: 2048,
+          sha256Fingerprint:
+              '3ffbedbaeb558314ee9532321acb12ffff1ac73a6eb3aad5ff76a909d1ab60dd',
+          sha1Fingerprint: 'f03379ed9688b5aaa703029e45d1729702a9f085',
+          md5Fingerprint: 'f378a57e0633 3a8588ff80ba308a0ea9'.replaceAll(' ', ''),
+        );
+
+    test('工具不可用时仍列出证书全部公开字段', () {
+      final analysis = SignatureAnalysis(
+        status: SignatureStatus.toolUnavailable,
+        localCertificates: [
+          SignatureCertificate(
+            scheme: 'v2',
+            signerIndex: 0,
+            details: certificate(),
+          ),
+        ],
+        error: 'apksigner not found',
+      );
+
+      final text = DetailRenderer.signature(analysis, t);
+
+      expect(text, contains(t.signature.status_tool_unavailable));
+      expect(text, contains(t.signature.local_certificates(count: 1)));
+      expect(text, contains('CN=Fixture'));
+      expect(text, contains('DF5D287C71A19C67'));
+      expect(text, contains('2026-10-18T16:31:01Z'));
+      expect(text, contains('2054-03-05T16:31:01Z'));
+      expect(text, contains('SHA256withRSA'));
+      expect(text, contains('RSA (2048 bits)'));
+      expect(text, contains('3F:FB:ED:BA'));
+      expect(text, contains('F0:33:79:ED'));
+      expect(text, contains('F3:78:A5:7E'));
+      expect(text, contains(t.signature.local_certificate_hint));
+      // 本地证书不是结论：不能出现「验证失败」。
+      expect(text, isNot(contains(t.signature.status_failed)));
+    });
+
+    test('同一张证书被多个方案各签一次时逐条列出', () {
+      final analysis = SignatureAnalysis(
+        status: SignatureStatus.verified,
+        verifiedSchemes: const {'v2', 'v3'},
+        localCertificates: [
+          for (final scheme in ['v2', 'v3'])
+            SignatureCertificate(
+              scheme: scheme,
+              signerIndex: 0,
+              details: certificate(),
+            ),
+        ],
+      );
+
+      final text = DetailRenderer.signature(analysis, t);
+      expect(text, contains('[v2]'));
+      expect(text, contains('[v3]'));
+      expect(text, contains(t.signature.local_certificates(count: 2)));
+    });
+
+    test('没有完整证书时退回旧的单一 SHA-256 文案', () {
+      final analysis = SignatureAnalysis(
+        status: SignatureStatus.toolUnavailable,
+        localCertificateSha256: 'abc123',
+      );
+
+      final text = DetailRenderer.signature(analysis, t);
+      expect(text, contains(t.signature.local_cert_sha256(value: 'abc123')));
+      expect(text, isNot(contains(t.signature.local_certificate_hint)));
     });
   });
 

@@ -134,6 +134,15 @@ class FileState {
   /// `null` 表示未启用安全检测，或分析尚未完成。
   final SecurityAnalysisResult? securityResult;
 
+  /// 本文件的安全检测结论。
+  ///
+  /// 两个平台把产物放在不同位置：iOS 由解析事件单独写进 [securityResult]，
+  /// Android 的审计结果挂在 [ApkInfo.securityResult] 上（worker 直接写在
+  /// 模型里）。概览页与分析页只想知道「这个文件有没有结论」，因此统一从
+  /// 这里取 —— 否则 Android 会一直渲染成「未做安全分析」。
+  SecurityAnalysisResult? get effectiveSecurityResult =>
+      securityResult ?? apkInfo?.securityResult;
+
   /// 当前解析对应的 AnalysisRun id。
   ///
   /// null 表示本轮没有成功创建 run（例如旧入口/存储不可用）；不能把

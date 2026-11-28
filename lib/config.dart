@@ -147,6 +147,9 @@ class Config {
   /// 都要重新问 adb。无线设备靠它免去重新输入 IP。
   static final knownDevices = ConfigItem("known_devices", "[]");
 
+  /// 安装页的最近安装记录（JSON 数组，见 `InstallHistoryManager`）。
+  static final installHistory = ConfigItem("install_history", "[]");
+
   static final List<ConfigItem> _globalItems = [
     aapt2Path,
     apksignerPath,
@@ -163,6 +166,7 @@ class Config {
     enableDebug,
     systemIconEnabled,
     knownDevices,
+    installHistory,
     maxLines,
     themeColor,
     titleWidth,

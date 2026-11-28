@@ -64,7 +64,25 @@ class AdbDeviceInfo {
   final String? model;
   final String? systemVersion;
 
-  const AdbDeviceInfo({this.brand, this.model, this.systemVersion});
+  /// 设备主 ABI（`ro.product.cpu.abilist` 的第一项，如 `arm64-v8a`）。
+  ///
+  /// 只取第一项：列表副行只有一格，完整 abilist 是给「装哪个分包」用的，
+  /// 那件事由分包选择器负责。取不到时留空，界面不编造。
+  final String? abi;
+
+  /// `/data` 可用空间（字节）。取不到时为 `null`。
+  ///
+  /// `df -k /data` 的第四列是 1K 块数，解析在 [AdbService.parseDeviceInfo]
+  /// 里做 —— 设备侧的 `awk` 在不同 ROM 上行为不一，宁可拿回原始行自己拆。
+  final int? freeBytes;
+
+  const AdbDeviceInfo({
+    this.brand,
+    this.model,
+    this.systemVersion,
+    this.abi,
+    this.freeBytes,
+  });
 
   bool get hasAny =>
       (brand?.isNotEmpty ?? false) ||
@@ -75,12 +93,16 @@ class AdbDeviceInfo {
         if (brand != null) 'brand': brand,
         if (model != null) 'model': model,
         if (systemVersion != null) 'system': systemVersion,
+        if (abi != null) 'abi': abi,
+        if (freeBytes != null) 'free': freeBytes,
       };
 
   static AdbDeviceInfo fromJson(Map<String, dynamic> json) => AdbDeviceInfo(
         brand: json['brand'] as String?,
         model: json['model'] as String?,
         systemVersion: json['system'] as String?,
+        abi: json['abi'] as String?,
+        freeBytes: (json['free'] as num?)?.toInt(),
       );
 
   @override
@@ -342,11 +364,35 @@ class AdbService {
     return parseDevices(result.output);
   }
 
+  /// `adb version` 的版本号（如 `1.0.41`）。
+  ///
+  /// 页脚要显示「ADB · LOCAL」时能带上真实版本 —— 用户报「adb 太旧」这类
+  /// 问题时，界面上有版本号才说得清。取不到返回 `null`，界面只写 `ADB`。
+  static Future<String?> version({Duration? timeout}) async {
+    final result = await _run(
+      ['version'],
+      timeout: timeout ?? const Duration(seconds: 5),
+    );
+    if (!result.ok) return null;
+    return parseVersion(result.output);
+  }
+
+  /// 从 `adb version` 的输出里取版本号。
+  ///
+  /// 两种输出都见过：
+  /// `Android Debug Bridge version 1.0.41` 与 `Version 35.0.2-13138477`。
+  /// 取第一个匹配到的版本串；都匹配不上返回 `null`。
+  static String? parseVersion(String output) {
+    final match = RegExp(r'[Vv]ersion\s+([0-9][0-9A-Za-z.\-]*)')
+        .firstMatch(output);
+    return match?.group(1);
+  }
+
   /// 读一台设备的品牌 / 型号 / 系统版本。
   ///
-  /// 一次 `adb shell` 拿三项：`echo B:$(...)` 这种带前缀的写法能容忍某个
-  /// 属性为空（部分 ROM 删掉了 `ro.product.brand`）—— 直接按行号取会在
-  /// 空值被折叠后错位。
+  /// 一次 `adb shell` 拿五项（品牌 / 厂商 / 型号 / 系统 / ABI / 可用空间）：
+  /// `echo B:$(...)` 这种带前缀的写法能容忍某个属性为空（部分 ROM 删掉了
+  /// `ro.product.brand`）—— 直接按行号取会在空值被折叠后错位。
   static Future<AdbDeviceInfo?> deviceInfo(
     String deviceId, {
     Duration? timeout,
@@ -360,7 +406,9 @@ class AdbService {
         r'echo B:$(getprop ro.product.brand); '
             r'echo N:$(getprop ro.product.manufacturer); '
             r'echo M:$(getprop ro.product.model); '
-            r'echo S:$(getprop ro.build.version.release)',
+            r'echo S:$(getprop ro.build.version.release); '
+            r'echo A:$(getprop ro.product.cpu.abilist); '
+            r'echo F:$(df -k /data | tail -n 1)',
       ],
       timeout: timeout ?? const Duration(seconds: 15),
     );
@@ -374,6 +422,8 @@ class AdbService {
     String? manufacturer;
     String? model;
     String? system;
+    String? abi;
+    int? freeBytes;
     for (final line in const LineSplitter().convert(output)) {
       final trimmed = line.trim();
       if (trimmed.length < 2 || trimmed[1] != ':') continue;
@@ -388,6 +438,17 @@ class AdbService {
           model = value;
         case 'S':
           system = value;
+        case 'A':
+          // `arm64-v8a,armeabi-v7a` —— 只要主 ABI。
+          abi = value.split(',').first.trim();
+        case 'F':
+          // `df -k /data | tail -n 1` 形如
+          // `/dev/block/dm-4 115343360 45678912 69664448 40% /data`
+          final cols = value.split(RegExp(r'\s+'));
+          if (cols.length >= 4) {
+            final blocks = int.tryParse(cols[3]);
+            if (blocks != null) freeBytes = blocks * 1024;
+          }
       }
     }
     // `ro.product.brand` 缺失时用厂商名兜底 —— 对用户来说两者都是「牌子」。
@@ -397,6 +458,8 @@ class AdbService {
       brand: resolvedBrand,
       model: model,
       systemVersion: system,
+      abi: abi,
+      freeBytes: freeBytes,
     );
   }
 

@@ -24,6 +24,9 @@ export 'src/native/elf.dart';
 export 'src/native/elf_hardening.dart';
 export 'src/hardening.dart';
 export 'src/container_structure.dart';
+export 'src/libraries/dex_library_scanner.dart';
+export 'src/libraries/libchecker_rules.dart';
+export 'src/libraries/library_report.dart';
 export 'src/apk_reader.dart';
 // APK Signing Block：回答「有没有 v2/v3 签名块」，**不做**密码学验证。
 export 'src/apk_signing_block.dart';

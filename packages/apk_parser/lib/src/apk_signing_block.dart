@@ -67,6 +67,32 @@ class ApkSignatureBlockId {
       };
 }
 
+/// 签名块里的一张证书。
+///
+/// 只记录「它在哪个方案的第几个签名者下」，不解析内容 —— X.509 的字段由
+/// 调用方交给证书解析器。一张签名者下面可能有多张证书（证书链），
+/// [signerIndex] 相同即属于同一条链。
+class ApkSigningCertificate {
+  /// 签名方案：`v2` / `v3` / `v3.1`。
+  final String scheme;
+
+  /// 签名者序号（从 0 开始）。
+  final int signerIndex;
+
+  /// X.509 DER 原始字节。
+  final Uint8List der;
+
+  const ApkSigningCertificate({
+    required this.scheme,
+    required this.signerIndex,
+    required this.der,
+  });
+
+  @override
+  String toString() =>
+      'ApkSigningCertificate($scheme #$signerIndex, ${der.length} bytes)';
+}
+
 /// 一次解析的结果。
 class ApkSigningSchemes {
   /// 块里出现的 pair id（按出现顺序，已去重）。
@@ -81,6 +107,14 @@ class ApkSigningSchemes {
   /// **这只是「证书长什么样」，不是「签名有效」** —— 有效性仍然要 apksigner
   /// 说了算，这里给出的指纹只用于「拿去和官方公布的比对」。
   final Uint8List? signingCertificate;
+
+  /// 所有方案、所有签名者的证书（按 v2 → v3 → v3.1、签名者顺序排列）。
+  ///
+  /// 与 [signingCertificate] 的区别：那个只留第一张，这个保留完整证书链，
+  /// 供界面展示「这台设备上这个包究竟带了几张证书、分别属于哪个方案」。
+  /// 同一张证书在多个方案里出现时会重复出现 —— 这是**事实**，不是冗余：
+  /// v2 和 v3 各签了一次，本来就各有一份。
+  final List<ApkSigningCertificate> certificates;
 
   /// v2 pair 的原始值（给内容摘要校验用）。
   final Uint8List? v2Value;
@@ -101,6 +135,7 @@ class ApkSigningSchemes {
     this.pairIds = const [],
     this.failure,
     this.signingCertificate,
+    this.certificates = const [],
     this.v2Value,
     this.v3Value,
     this.signingBlockOffset,
@@ -112,6 +147,7 @@ class ApkSigningSchemes {
       : pairIds = const [],
         failure = reason,
         signingCertificate = null,
+        certificates = const [],
         v2Value = null,
         v3Value = null,
         signingBlockOffset = null,
@@ -264,6 +300,25 @@ ApkSigningSchemes parseApkSigningBlock({
     if (certificate != null) break;
   }
 
+  // 完整证书链：按方案顺序收集每个签名者的每一张证书。
+  final certificates = <ApkSigningCertificate>[];
+  for (final id in const [
+    ApkSignatureBlockId.v2,
+    ApkSignatureBlockId.v3,
+    ApkSignatureBlockId.v31,
+  ]) {
+    final range = schemeValues[id];
+    if (range == null) continue;
+    final scheme = ApkSignatureBlockId.describe(id);
+    for (final entry in _schemeCertificates(block, range.$1, range.$2)) {
+      certificates.add(ApkSigningCertificate(
+        scheme: scheme,
+        signerIndex: entry.$1,
+        der: entry.$2,
+      ));
+    }
+  }
+
   Uint8List? v2Value;
   final v2Range = schemeValues[ApkSignatureBlockId.v2];
   if (v2Range != null && v2Range.$2 <= block.length) {
@@ -279,12 +334,64 @@ ApkSigningSchemes parseApkSigningBlock({
   return ApkSigningSchemes(
     pairIds: pairIds,
     signingCertificate: certificate,
+    certificates: certificates,
     v2Value: v2Value,
     v3Value: v3Value,
     signingBlockOffset: blockStart,
     centralDirOffset: cdOffset,
     eocdOffset: tailStart + eocdOffset,
   );
+}
+
+/// 收集一个方案里**所有签名者、所有证书**。
+///
+/// 与 [_firstCertificate] 走同一套结构，区别只是不提前返回：签名者序列可以
+/// 有多个（密钥轮换、多签名），每个签名者的 `signed-data` 里也可以有多张
+/// 证书（一条证书链）。上限（8 个签名者、每个 8 张证书）只是防伪造的长度
+/// 把内存撑爆，真实签名远小于这个量级。
+List<(int, Uint8List)> _schemeCertificates(
+  Uint8List block,
+  int start,
+  int end,
+) {
+  final out = <(int, Uint8List)>[];
+  final signers = _slice(block, start, end);
+  if (signers == null) return out;
+
+  var cursor = signers.$1;
+  var signerIndex = 0;
+  while (cursor < signers.$2 && signerIndex < 8) {
+    final signer = _slice(block, cursor, signers.$2);
+    if (signer == null) break;
+    cursor = signer.$2;
+
+    final signedData = _slice(block, signer.$1, signer.$2);
+    if (signedData != null) {
+      // signed-data 的第一个字段是 digests，第二个才是 certificates。
+      final digests = _slice(block, signedData.$1, signedData.$2);
+      if (digests != null) {
+        final certificates = _slice(block, digests.$2, signedData.$2);
+        if (certificates != null) {
+          var certCursor = certificates.$1;
+          var certIndex = 0;
+          while (certCursor < certificates.$2 && certIndex < 8) {
+            final cert = _slice(block, certCursor, certificates.$2);
+            if (cert == null) break;
+            certCursor = cert.$2;
+            if (cert.$2 - cert.$1 >= 32) {
+              out.add((
+                signerIndex,
+                Uint8List.sublistView(block, cert.$1, cert.$2),
+              ));
+            }
+            certIndex++;
+          }
+        }
+      }
+    }
+    signerIndex++;
+  }
+  return out;
 }
 
 /// 从 v2 / v3 的 pair 值里取出第一个签名者的证书（DER）。

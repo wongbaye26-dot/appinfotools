@@ -251,4 +251,60 @@ void main() {
       );
     });
   });
+
+  // 指纹基准值来自 openssl（不是本解析器），与签名块测试共用同一套夹具。
+  //   openssl pkcs7 -inform DER -in K.RSA -print_certs
+  //   openssl x509 -noout -subject -serial -fingerprint -sha256 ...
+  group('SignatureAnalyzer.readLocalCertificates', () {
+    const sha256Hex =
+        '3ffbedbaeb558314ee9532321acb12ffff1ac73a6eb3aad5ff76a909d1ab60dd';
+
+    test('v2/v3 夹具：两个方案各一份证书，v1 的 PKCS#7 也能读到', () async {
+      final certificates = await SignatureAnalyzer.readLocalCertificates(
+        'test/fixtures/apk/signed-v2-v3.apk',
+      );
+
+      expect(certificates, isNotEmpty);
+      expect(
+        certificates.map((c) => c.scheme).toSet(),
+        {'v1', 'v2', 'v3'},
+        reason: 'apksigner 默认同时产出 v1，证书在 META-INF/K.RSA 里',
+      );
+      expect(certificates.map((c) => c.sha256).toSet(), {sha256Hex});
+      expect(certificates.every((c) => c.signerIndex == 0), isTrue);
+
+      final details = certificates.first.details;
+      expect(details.subject, 'CN=Fixture');
+      expect(details.issuer, 'CN=Fixture');
+      expect(details.serialNumberHex, 'DF5D287C71A19C67');
+      expect(details.publicKeyAlgorithm, 'RSA');
+      expect(details.publicKeyBits, 2048);
+      expect(details.signatureAlgorithm, 'SHA256withRSA');
+      expect(details.notBefore, DateTime.utc(2026, 10, 18, 16, 31, 1));
+      expect(details.notAfter, DateTime.utc(2054, 3, 5, 16, 31, 1));
+    });
+
+    test('只有 v1 的夹具：证书只来自 PKCS#7', () async {
+      final certificates = await SignatureAnalyzer.readLocalCertificates(
+        'test/fixtures/apk/signed-v1-only.apk',
+      );
+
+      expect(certificates.map((c) => c.scheme).toSet(), {'v1'});
+      expect(certificates.single.sha256, sha256Hex);
+    });
+
+    test('未签名的夹具：列表为空，而不是伪造一张证书', () async {
+      final certificates = await SignatureAnalyzer.readLocalCertificates(
+        'test/fixtures/apk/signed-unsigned.apk',
+      );
+      expect(certificates, isEmpty);
+    });
+
+    test('路径不存在：返回空列表，不抛异常', () async {
+      final certificates = await SignatureAnalyzer.readLocalCertificates(
+        'test/fixtures/apk/does-not-exist.apk',
+      );
+      expect(certificates, isEmpty);
+    });
+  });
 }
