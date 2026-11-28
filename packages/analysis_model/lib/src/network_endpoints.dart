@@ -84,6 +84,30 @@ class NetworkEndpoints {
     return tlds.contains(labels.last.toLowerCase());
   }
 
+  /// 这个「IPv6」像不像真的地址。
+  ///
+  /// 为什么需要它：`_ipv6Pattern` 为了容忍压缩写法（`2001:db8::1`）允许每段
+  /// 为空，于是一个混淆 DEX 里的短字符串 `:C:` 会被匹配成「IPv6」并进入
+  /// 线索清单（第五阶段真实样本核验发现的伪线索）。真正的地址要么含 `::`
+  /// 且至少若干十六进制位，要么是完整的 8 段；只有一个十六进制位的 `:C:`
+  /// 两种都不是。
+  static bool _plausibleIpv6(String value) {
+    final text = value.trim();
+    if (text.length < 4) return false;
+    if (!RegExp(r'^[0-9a-fA-F:.]+$').hasMatch(text)) return false;
+    final colons = ':'.allMatches(text).length;
+    if (colons < 2) return false;
+    final hexDigits = RegExp(r'[0-9a-fA-F]').allMatches(text).length;
+    // `::1` 这类回环地址信息量太低，且短串里最容易误伤；要求至少 3 位十六进制。
+    if (hexDigits < 3) return false;
+    if (text.contains('::')) {
+      // 压缩写法只允许出现一处 `::`。
+      return text.indexOf('::') == text.lastIndexOf('::');
+    }
+    // 不含 `::` 时必须是完整 8 段（7 个冒号）。
+    return colons == 7;
+  }
+
   /// 逐条收集（供扫描器在遍历字符串时复用，避免先攒一个巨大列表）。
   static void collect(
     String value,
@@ -151,7 +175,7 @@ class NetworkEndpoints {
     if (clues != null) {
       for (final match in _ipv6Pattern.allMatches(value)) {
         final ip = match.group(0)!;
-        if (!ip.contains('::') && ':'.allMatches(ip).length < 2) continue;
+        if (!_plausibleIpv6(ip)) continue;
         _addClue(clues, NetworkClueType.ipv6, ip, sourcePath);
       }
     }

@@ -175,5 +175,48 @@ void _structuredClueTests() {
       expect(clues.where((c) => c.type == NetworkClueType.ipv6), isNotEmpty);
       expect(domains.any((d) => d.contains(':')), isFalse);
     });
+
+    test('混淆 DEX 里的 `:C:` 这类短串不算 IPv6 线索', () {
+      final domains = <String>{};
+      final ips = <String>{};
+      final clues = <NetworkClue>[];
+      NetworkEndpoints.collect(
+        'Lcom/x;\u0000:C:\u0000',
+        domains,
+        ips,
+        clues: clues,
+        sourcePath: 'classes.dex',
+      );
+      expect(clues.where((c) => c.type == NetworkClueType.ipv6), isEmpty);
+      expect(clues, isEmpty);
+    });
+
+    test('压缩与完整写法仍被收录', () {
+      final domains = <String>{};
+      final ips = <String>{};
+      final clues = <NetworkClue>[];
+      NetworkEndpoints.collect(
+        'fe80::1 2001:db8:0:0:0:0:0:1',
+        domains,
+        ips,
+        clues: clues,
+        sourcePath: 'classes.dex',
+      );
+      expect(clues.where((c) => c.type == NetworkClueType.ipv6), hasLength(2));
+    });
+
+    test('单个十六进制位与双 `::` 的畸形串被过滤', () {
+      final domains = <String>{};
+      final ips = <String>{};
+      final clues = <NetworkClue>[];
+      NetworkEndpoints.collect(
+        '::1 ::dead::beef :ab:',
+        domains,
+        ips,
+        clues: clues,
+        sourcePath: 'classes.dex',
+      );
+      expect(clues.where((c) => c.type == NetworkClueType.ipv6), isEmpty);
+    });
   });
 }
