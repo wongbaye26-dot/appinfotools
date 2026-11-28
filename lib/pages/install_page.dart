@@ -9,6 +9,7 @@ import 'package:apk_info_tool/ui/shell/page_header.dart';
 import 'package:apk_info_tool/utils/adb_install_error.dart';
 import 'package:apk_info_tool/utils/adb_service.dart';
 import 'package:apk_info_tool/utils/install_history.dart';
+import 'package:apk_info_tool/utils/ipa_install_metadata.dart';
 import 'package:apk_info_tool/utils/ios_install_service.dart';
 import 'package:apk_info_tool/utils/known_devices.dart';
 import 'package:apk_info_tool/utils/logger.dart';
@@ -54,6 +55,7 @@ class InstallPage extends StatefulWidget {
     this.deviceInfoLoader,
     this.apkInfoLoader,
     this.iosToolchain,
+    this.ipaMetaLoader,
   });
 
   /// 设备枚举实现。
@@ -75,6 +77,12 @@ class InstallPage extends StatefulWidget {
   /// fake-async 区留下悬挂的 Timer。
   final IosToolchain? iosToolchain;
 
+  /// `.ipa` 元数据（应用名 / Bundle ID / 版本）的读取实现。
+  ///
+  /// 默认真实读 Info.plist；测试注入固定值，避免在 fake-async 区里做真实
+  /// 文件 IO（实测会互相等待、把测试挂住）。
+  final Future<IpaInstallMetadata> Function(String path)? ipaMetaLoader;
+
   @override
   State<InstallPage> createState() => _InstallPageState();
 }
@@ -84,6 +92,9 @@ class _InstallPageState extends State<InstallPage> {
   String? _filePath;
   bool _isXapk = false;
   ApkInfo? _apkInfo;
+
+  /// .ipa 的应用名 / Bundle ID / 版本（只读 Info.plist，解析失败为 null）。
+  IpaInstallMetadata? _ipaMeta;
   bool _parsing = false;
   bool _parseFailed = false;
 
@@ -206,12 +217,14 @@ class _InstallPageState extends State<InstallPage> {
       setState(() {
         _apkInfo?.dispose();
         _apkInfo = null;
+        _ipaMeta = null;
         _filePath = path;
         _isXapk = false;
         _parsing = false;
         _parseFailed = false;
         _selectedSplits.clear();
       });
+      unawaited(_loadIpaMeta(path));
       await _refreshIos();
       return;
     }
@@ -230,6 +243,14 @@ class _InstallPageState extends State<InstallPage> {
 
     if (isXapk) unawaited(_loadSplits(path));
     await _loadApkInfo(path, generation);
+  }
+
+  /// 读 IPA 的 Info.plist。失败静默（文件条退回文件名），只记日志。
+  Future<void> _loadIpaMeta(String path) async {
+    final loader = widget.ipaMetaLoader ?? IpaInstallMetadata.read;
+    final meta = await loader(path);
+    if (!mounted || _filePath != path) return; // 期间换了包
+    setState(() => _ipaMeta = meta);
   }
 
   Future<void> _loadSplits(String path) async {
@@ -278,6 +299,7 @@ class _InstallPageState extends State<InstallPage> {
     setState(() {
       _apkInfo?.dispose();
       _apkInfo = null;
+      _ipaMeta = null;
       _filePath = null;
       _isXapk = false;
       _parsing = false;
@@ -1030,13 +1052,23 @@ class _InstallPageState extends State<InstallPage> {
     }
 
     final info = _apkInfo;
-    final name =
-        (info?.label?.isNotEmpty ?? false) ? info!.label! : p.basename(path);
-    final version = info?.versionName;
+    final ipa = _ipaMeta;
+    // .ipa 的元数据来自 Info.plist（`_ipaMeta`），APK 来自 aapt2/内置解析。
+    // 两侧都取不到时退回文件名 —— 不显示空标题。
+    final name = _isIpa
+        ? ((ipa?.displayName?.isNotEmpty ?? false)
+            ? ipa!.displayName!
+            : p.basename(path))
+        : ((info?.label?.isNotEmpty ?? false)
+            ? info!.label!
+            : p.basename(path));
+    final version = _isIpa ? ipa?.version : info?.versionName;
     final title =
         (version == null || version.isEmpty) ? name : '$name · $version';
-    final abis = info?.nativeCodes ?? const <String>[];
-    final minSdk = info?.sdkVersion;
+    final abis =
+        _isIpa ? const <String>[] : (info?.nativeCodes ?? const <String>[]);
+    final minSdk = _isIpa ? null : info?.sdkVersion;
+    final packageId = _isIpa ? ipa?.bundleIdentifier : info?.packageName;
     return _card(
       theme,
       padding: const EdgeInsets.fromLTRB(16, 13, 12, 13),
@@ -1056,7 +1088,13 @@ class _InstallPageState extends State<InstallPage> {
                       _formatBadge(theme),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: _fileText(theme, title, info?.packageName, abis),
+                        child: _fileText(
+                          theme,
+                          title,
+                          packageId,
+                          abis,
+                          build: _isIpa ? ipa?.buildNumber : null,
+                        ),
                       ),
                     ],
                   ),
@@ -1069,10 +1107,10 @@ class _InstallPageState extends State<InstallPage> {
               const SizedBox(width: 6),
               _chip('minSdk $minSdk'),
             ],
-            if (info?.packageName != null && info!.packageName!.isNotEmpty) ...[
+            if (packageId != null && packageId.isNotEmpty) ...[
               const SizedBox(width: 6),
               _chip(
-                _installedBefore(info.packageName!)
+                _installedBefore(packageId)
                     ? t.install.installed_before
                     : t.install.never_installed,
               ),
@@ -1147,13 +1185,15 @@ class _InstallPageState extends State<InstallPage> {
     ThemeData theme,
     String title,
     String? package,
-    List<String> abis,
-  ) {
+    List<String> abis, {
+    String? build,
+  }) {
     final info = _apkInfo;
     final size = _formatBytes(info?.apkSize ?? _fileSize(_filePath));
     final meta = <String>[
       if (package != null && package.isNotEmpty) package,
       if (size.isNotEmpty) size,
+      if (build != null && build.isNotEmpty) 'build $build',
       if (_parsing) t.install.app_parsing,
       if (!_parsing && _parseFailed) t.install.app_info_failed,
       if (abis.isNotEmpty) abis.take(2).join(' + '),

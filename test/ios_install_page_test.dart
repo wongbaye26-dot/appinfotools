@@ -7,6 +7,7 @@ import 'package:apk_info_tool/gen/strings.g.dart';
 import 'package:apk_info_tool/pages/install_page.dart';
 import 'package:apk_info_tool/theme/v4_theme.dart';
 import 'package:apk_info_tool/utils/ios_install_service.dart';
+import 'package:apk_info_tool/utils/ipa_install_metadata.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,12 @@ Future<void> _pump(WidgetTester tester) async {
             // 这里全部注入空实现，只验证 iOS 分支的渲染。
             deviceLoader: () async => const [],
             apkInfoLoader: (_) async => null,
+            ipaMetaLoader: (_) async => const IpaInstallMetadata(
+              displayName: 'Demo App',
+              bundleIdentifier: 'com.example.demo',
+              version: '1.2.3',
+              buildNumber: '45',
+            ),
           ),
         ),
       ),
@@ -68,5 +75,14 @@ void main() {
     await _dropIpa(tester, '/tmp/samples/Demo.apk');
 
     expect(find.text(t.install.ios_section), findsNothing);
+  });
+
+  testWidgets('文件条显示 IPA 的应用名、版本与 Bundle ID', (tester) async {
+    await _pump(tester);
+    await _dropIpa(tester, '/tmp/samples/Demo.ipa');
+    await tester.pump();
+
+    expect(find.text('Demo App · 1.2.3'), findsOneWidget);
+    expect(find.textContaining('com.example.demo'), findsWidgets);
   });
 }
