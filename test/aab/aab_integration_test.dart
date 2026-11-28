@@ -5,6 +5,7 @@
 import 'dart:io';
 
 import 'package:apk_info_tool/apkparser/apk_info.dart';
+import 'package:apk_parser/apk_parser.dart' show ComponentType;
 import 'package:apk_info_tool/utils/package_file_type.dart';
 import 'package:apk_info_tool/utils/package_identity.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +63,68 @@ void main() {
 
     expect(info.parseFailureReason, isNull);
     expect(info.aabResourceFailure, isNull);
+  });
+
+  test('AAB 清单：权限、组件、特性、debuggable、compileSdk 进入模型', () async {
+    final path = await write(
+      'decls.aab',
+      buildStandardAab(
+        manifest: standardManifest(
+          compileSdk: 35,
+          debuggable: true,
+          usesCleartextTraffic: false,
+          permissions: const [
+            'android.permission.INTERNET',
+            'android.permission.CAMERA',
+          ],
+          requiredFeatures: const ['android.hardware.camera'],
+          optionalFeatures: const ['android.hardware.touchscreen'],
+          componentElements: [
+            xmlChild(xmlElement('activity', attributes: [
+              xmlAttribute('name', rawValue: '.MainActivity'),
+              xmlAttribute('exported', rawValue: 'true'),
+              xmlAttribute('enabled', rawValue: 'false'),
+            ], children: [
+              xmlChild(xmlElement('intent-filter', children: [
+                xmlChild(xmlElement('action', attributes: [
+                  xmlAttribute('name', rawValue: 'android.intent.action.VIEW'),
+                ])),
+                xmlChild(xmlElement('data', attributes: [
+                  xmlAttribute('scheme', rawValue: 'https'),
+                ])),
+              ])),
+            ])),
+            xmlChild(xmlElement('service', attributes: [
+              xmlAttribute('name', rawValue: '.SyncService'),
+              xmlAttribute('exported', rawValue: 'false'),
+            ])),
+          ],
+        ),
+      ),
+    );
+    final info = await getApkInfo(path);
+
+    expect(info, isNotNull);
+    info!;
+    expect(info.usesPermissions, [
+      'android.permission.INTERNET',
+      'android.permission.CAMERA',
+    ]);
+    expect(info.userFeatures, ['android.hardware.camera']);
+    expect(info.userFeaturesNotRequired, ['android.hardware.touchscreen']);
+    expect(info.applicationDebuggable, isTrue);
+    expect(info.compileSdkVersion, 35);
+
+    expect(info.components.length, 2);
+    final activity =
+        info.components.firstWhere((c) => c.type == ComponentType.activity);
+    expect(activity.name, '.MainActivity');
+    expect(activity.exported, isTrue);
+    expect(activity.enabled, isFalse);
+    expect(activity.intentFilters.single.schemes, ['https']);
+    final service =
+        info.components.firstWhere((c) => c.type == ComponentType.service);
+    expect(service.exported, isFalse);
   });
 
   test('损坏的 .aab 返回带失败原因的 ApkInfo，而不是 null', () async {

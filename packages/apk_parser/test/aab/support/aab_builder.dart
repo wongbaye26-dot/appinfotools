@@ -267,6 +267,13 @@ Uint8List standardManifest({
   String? inlineLabel,
   String? inlineIcon,
   String rootName = 'manifest',
+  int? compileSdk,
+  List<String> permissions = const [],
+  List<String> requiredFeatures = const [],
+  List<String> optionalFeatures = const [],
+  bool? debuggable,
+  bool? usesCleartextTraffic,
+  List<PbOut> componentElements = const [],
 }) {
   final attributes = <PbOut>[
     // package 是 manifest 自己的属性，没有 android: 命名空间。
@@ -280,8 +287,31 @@ Uint8List standardManifest({
   if (versionName != null) {
     attributes.add(xmlAttribute('versionName', rawValue: versionName));
   }
+  if (compileSdk != null) {
+    attributes.add(
+      xmlAttribute('compileSdkVersion', compiledItem: itemInt(compileSdk)),
+    );
+  }
 
   final children = <PbOut>[];
+
+  for (final permission in permissions) {
+    children.add(xmlChild(xmlElement('uses-permission', attributes: [
+      xmlAttribute('name', rawValue: permission),
+    ])));
+  }
+  for (final feature in requiredFeatures) {
+    children.add(xmlChild(xmlElement('uses-feature', attributes: [
+      xmlAttribute('name', rawValue: feature),
+      xmlAttribute('required', rawValue: 'true'),
+    ])));
+  }
+  for (final feature in optionalFeatures) {
+    children.add(xmlChild(xmlElement('uses-feature', attributes: [
+      xmlAttribute('name', rawValue: feature),
+      xmlAttribute('required', rawValue: 'false'),
+    ])));
+  }
   if (minSdk != null || targetSdk != null || minSdkCodename != null) {
     children.add(
       xmlChild(xmlElement('uses-sdk', attributes: [
@@ -318,8 +348,25 @@ Uint8List standardManifest({
       ),
     );
   }
-  children.add(
-      xmlChild(xmlElement('application', attributes: applicationAttributes)));
+  if (debuggable != null) {
+    applicationAttributes.add(
+      xmlAttribute('debuggable', rawValue: debuggable ? 'true' : 'false'),
+    );
+  }
+  if (usesCleartextTraffic != null) {
+    applicationAttributes.add(
+      xmlAttribute(
+        'usesCleartextTraffic',
+        rawValue: usesCleartextTraffic ? 'true' : 'false',
+      ),
+    );
+  }
+
+  children.add(xmlChild(xmlElement(
+    'application',
+    attributes: applicationAttributes,
+    children: componentElements,
+  )));
 
   final root = xmlElement(
     rootName,

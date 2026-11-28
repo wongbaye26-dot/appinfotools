@@ -4,6 +4,7 @@ import 'package:archive_safety/archive_safety.dart';
 
 import '../apk_reader.dart';
 import '../container_structure.dart';
+import '../models.dart';
 import 'aab_resources.dart';
 import 'proto.dart';
 
@@ -32,6 +33,12 @@ class AabInfo {
     this.densities = const [],
     this.mainIconPath,
     this.resourceFailure,
+    this.usesPermissions = const [],
+    this.features = const [],
+    this.components = const [],
+    this.applicationDebuggable,
+    this.compileSdkVersion,
+    this.applicationUsesCleartextTraffic,
   });
 
   /// `<manifest package="...">`。
@@ -97,6 +104,27 @@ class AabInfo {
   /// 与 [failureReason] 分开：资源表坏了仍然能展示包名 / 版本 / 结构，
   /// 只是 label / icon 的引用解析不了 —— 这点必须说清楚，而不是显示空白。
   final String? resourceFailure;
+
+  /// `<uses-permission android:name>`，按清单顺序去重。
+  ///
+  /// AAB 的清单与 APK 根级清单同构，只是位于 `base/manifest/` 下 ——
+  /// 「AAB 没有根级 AndroidManifest.xml」不等于「AAB 没有清单」。
+  final List<String> usesPermissions;
+
+  /// `<uses-feature>`：名字 + 是否必需。
+  final List<AabFeature> features;
+
+  /// `<application>` 下的组件（含 `activity-alias`）。
+  final List<AndroidComponent> components;
+
+  /// `<application android:debuggable>`；未声明为 `null`。
+  final bool? applicationDebuggable;
+
+  /// `<manifest android:compileSdkVersion>`；未声明或非数字为 `null`。
+  final int? compileSdkVersion;
+
+  /// `<application android:usesCleartextTraffic>`；未声明为 `null`。
+  final bool? applicationUsesCleartextTraffic;
 
   @override
   String toString() => 'AabInfo($packageName, $versionName($versionCode), '
@@ -275,6 +303,22 @@ const String kAndroidNamespace = 'http://schemas.android.com/apk/res/android';
 /// 复用 [ApkReader] 的 ZIP 打开与解压预算逻辑：AAB 也是 ZIP，安全边界完全
 /// 相同（有界读取、结构损坏检测、总解压体积上限），重写一遍只会让两套预算
 /// 慢慢漂移。
+/// `<uses-feature>` 的一条声明。
+class AabFeature {
+  const AabFeature({required this.name, required this.required});
+
+  final String name;
+
+  /// `android:required`；未声明时按平台默认 `true`。
+  ///
+  /// Android 文档的默认值是 `true`（与 `uses-permission` 的 `maxSdkVersion`
+  /// 不同），所以这里不保留三态：读不到 `required` 属性就是必需。
+  final bool required;
+
+  @override
+  String toString() => 'AabFeature($name, required: $required)';
+}
+
 class AabReader {
   /// base 模块的清单条目。
   static const String manifestPath = 'base/manifest/AndroidManifest.xml';
@@ -435,6 +479,78 @@ class AabReader {
       }
     }
 
+    // ---- 权限 / 特性 / 组件 / 开关 ----
+    final usesPermissions = <String>[];
+    for (final element in root.children) {
+      if (element.name != 'uses-permission') continue;
+      final name = _cleanString(element.attributeValue('name'));
+      if (name == null || usesPermissions.contains(name)) continue;
+      usesPermissions.add(name);
+    }
+
+    final features = <AabFeature>[];
+    for (final element in root.children) {
+      if (element.name != 'uses-feature') continue;
+      final name = _cleanString(element.attributeValue('name'));
+      if (name == null) continue;
+      features.add(AabFeature(
+        name: name,
+        required: _boolAttribute(element, 'required') ?? true,
+      ));
+    }
+
+    final components = <AndroidComponent>[];
+    for (final element in application?.children ?? const <AabXmlElement>[]) {
+      final type = ComponentType.fromElementName(element.name);
+      if (type == null) continue;
+      final filters = <IntentFilterInfo>[];
+      for (final filter in element.children) {
+        if (filter.name != 'intent-filter') continue;
+        final actions = <String>[];
+        final categories = <String>[];
+        final schemes = <String>[];
+        for (final node in filter.children) {
+          switch (node.name) {
+            case 'action':
+              final action = _cleanString(node.attributeValue('name'));
+              if (action != null) actions.add(action);
+            case 'category':
+              final category = _cleanString(node.attributeValue('name'));
+              if (category != null) categories.add(category);
+            case 'data':
+              final scheme = _cleanString(node.attributeValue('scheme'));
+              if (scheme != null && !schemes.contains(scheme)) {
+                schemes.add(scheme);
+              }
+          }
+        }
+        if (actions.isEmpty && categories.isEmpty && schemes.isEmpty) {
+          // 空 filter 不携带任何「谁能唤起我」的信息，保留它只会让
+          // hasIntentFilter 变成噪声。
+          continue;
+        }
+        filters.add(IntentFilterInfo(
+          actions: actions,
+          categories: categories,
+          schemes: schemes,
+        ));
+      }
+      components.add(AndroidComponent(
+        type: type,
+        name: _cleanString(element.attributeValue('name')),
+        exported: _boolAttribute(element, 'exported'),
+        permission: _cleanString(element.attributeValue('permission')),
+        hasIntentFilter: filters.isNotEmpty,
+        intentFilters: filters,
+        enabled: _boolAttribute(element, 'enabled'),
+        authorities: _cleanString(element.attributeValue('authorities')),
+        readPermission: _cleanString(element.attributeValue('readPermission')),
+        writePermission:
+            _cleanString(element.attributeValue('writePermission')),
+        grantUriPermissions: _boolAttribute(element, 'grantUriPermissions'),
+      ));
+    }
+
     return scan.toInfo(
       packageName: packageName,
       versionCode: versionCode,
@@ -448,6 +564,14 @@ class AabReader {
       locales: table?.locales ?? const [],
       densities: table?.densities ?? const [],
       resourceFailure: resourceNotes.isEmpty ? null : resourceNotes.join('; '),
+      usesPermissions: usesPermissions,
+      features: features,
+      components: components,
+      applicationDebuggable: _boolAttribute(application, 'debuggable'),
+      compileSdkVersion:
+          int.tryParse(root.attributeValue('compileSdkVersion') ?? ''),
+      applicationUsesCleartextTraffic:
+          _boolAttribute(application, 'usesCleartextTraffic'),
     );
   }
 
@@ -545,6 +669,20 @@ class AabReader {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  /// 读布尔属性；不是 `true` / `false` 时返回 `null`。
+  ///
+  /// proto XML 里的编译值是字符串（`"true"` / `"false"`），偶见 `"1"` / `"0"`；
+  /// 除此之外的值不猜，交给调用方按「未声明」处理。
+  static bool? _boolAttribute(AabXmlElement? element, String name) {
+    if (element == null) return null;
+    final value = element.attributeValue(name)?.trim().toLowerCase();
+    return switch (value) {
+      'true' || '1' => true,
+      'false' || '0' => false,
+      _ => null,
+    };
+  }
+
   static bool _looksLikeReference(String value) =>
       value.startsWith('@') || value.startsWith('?');
 
@@ -602,6 +740,12 @@ class _AabScan {
     List<int> densities = const [],
     String? failureReason,
     String? resourceFailure,
+    List<String> usesPermissions = const [],
+    List<AabFeature> features = const [],
+    List<AndroidComponent> components = const [],
+    bool? applicationDebuggable,
+    int? compileSdkVersion,
+    bool? applicationUsesCleartextTraffic,
   }) {
     return AabInfo(
       packageName: packageName,
@@ -622,6 +766,12 @@ class _AabScan {
       densities: densities,
       mainIconPath: mainIconPath,
       resourceFailure: resourceFailure,
+      usesPermissions: usesPermissions,
+      features: features,
+      components: components,
+      applicationDebuggable: applicationDebuggable,
+      compileSdkVersion: compileSdkVersion,
+      applicationUsesCleartextTraffic: applicationUsesCleartextTraffic,
     );
   }
 }

@@ -1284,6 +1284,22 @@ Future<ApkInfo> _getAabInfo(
   apkInfo.structure = info.structure;
   apkInfo.totalSize = apkInfo.apkSize;
 
+  // AAB 的清单与 APK 根级清单同构，只是位于 `base/manifest/` 下。这些字段
+  // 读得到就如实填，读不到保持空 —— 界面据此显示而不是靠「AAB 所以没有」
+  // 的假设。
+  apkInfo.usesPermissions = List<String>.of(info.usesPermissions);
+  apkInfo.components = List<apk_parser.AndroidComponent>.of(info.components);
+  apkInfo.userFeatures = [
+    for (final feature in info.features)
+      if (feature.required) feature.name,
+  ];
+  apkInfo.userFeaturesNotRequired = [
+    for (final feature in info.features)
+      if (!feature.required) feature.name,
+  ];
+  apkInfo.applicationDebuggable = info.applicationDebuggable;
+  apkInfo.compileSdkVersion = info.compileSdkVersion;
+
   // 只有清单本身读出来时，字段才有来源可言；否则保持 unknown。
   if (info.failureReason == null) {
     apkInfo.manifestSource = FieldSource.builtinParser;

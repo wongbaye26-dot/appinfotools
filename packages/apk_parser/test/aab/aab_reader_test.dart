@@ -271,6 +271,144 @@ void main() {
     });
   });
 
+  group('清单：权限 / 特性 / 组件 / 开关', () {
+    Uint8List manifestWithComponents() => standardManifest(
+          compileSdk: 35,
+          debuggable: true,
+          usesCleartextTraffic: false,
+          permissions: const [
+            'android.permission.INTERNET',
+            'android.permission.CAMERA',
+            'android.permission.CAMERA',
+          ],
+          requiredFeatures: const ['android.hardware.camera'],
+          optionalFeatures: const ['android.hardware.touchscreen'],
+          componentElements: [
+            xmlChild(xmlElement('activity', attributes: [
+              xmlAttribute('name', rawValue: '.MainActivity'),
+              xmlAttribute('exported', rawValue: 'true'),
+              xmlAttribute('enabled', rawValue: 'false'),
+            ], children: [
+              xmlChild(xmlElement('intent-filter', children: [
+                xmlChild(xmlElement('action', attributes: [
+                  xmlAttribute('name', rawValue: 'android.intent.action.VIEW'),
+                ])),
+                xmlChild(xmlElement('category', attributes: [
+                  xmlAttribute(
+                    'name',
+                    rawValue: 'android.intent.category.DEFAULT',
+                  ),
+                ])),
+                xmlChild(xmlElement('data', attributes: [
+                  xmlAttribute('scheme', rawValue: 'https'),
+                ])),
+              ])),
+            ])),
+            xmlChild(xmlElement('service', attributes: [
+              xmlAttribute('name', rawValue: '.SyncService'),
+              xmlAttribute('exported', rawValue: 'false'),
+              xmlAttribute(
+                'permission',
+                rawValue: 'com.example.aab.permission.SYNC',
+              ),
+            ])),
+            xmlChild(xmlElement('provider', attributes: [
+              xmlAttribute('name', rawValue: '.Files'),
+              xmlAttribute('authorities', rawValue: 'com.example.aab.files'),
+              xmlAttribute('readPermission', rawValue: 'READ'),
+              xmlAttribute('writePermission', rawValue: 'WRITE'),
+              xmlAttribute('grantUriPermissions', rawValue: 'true'),
+            ])),
+            xmlChild(xmlElement('activity-alias', attributes: [
+              xmlAttribute('name', rawValue: '.Alias'),
+              xmlAttribute('targetActivity', rawValue: '.MainActivity'),
+            ])),
+          ],
+        );
+
+    test('权限去重且保序；特性区分必需/可选', () async {
+      final path = await write(
+        'manifest-decls.aab',
+        buildStandardAab(manifest: manifestWithComponents()),
+      );
+
+      final info = await AabReader().read(path);
+      expect(info!.usesPermissions, [
+        'android.permission.INTERNET',
+        'android.permission.CAMERA',
+      ]);
+      expect(info.features.map((f) => f.name), [
+        'android.hardware.camera',
+        'android.hardware.touchscreen',
+      ]);
+      expect(info.features.map((f) => f.required), [true, false]);
+    });
+
+    test('组件：类型、导出三态、权限、intent-filter 明细', () async {
+      final path = await write(
+        'manifest-components.aab',
+        buildStandardAab(manifest: manifestWithComponents()),
+      );
+
+      final info = await AabReader().read(path);
+      final components = info!.components;
+      expect(components.length, 4);
+
+      final activity =
+          components.firstWhere((c) => c.type == ComponentType.activity);
+      expect(activity.name, '.MainActivity');
+      expect(activity.exported, isTrue);
+      expect(activity.enabled, isFalse);
+      expect(activity.hasIntentFilter, isTrue);
+      expect(activity.intentFilters.single.actions,
+          ['android.intent.action.VIEW']);
+      expect(activity.intentFilters.single.categories,
+          ['android.intent.category.DEFAULT']);
+      expect(activity.intentFilters.single.schemes, ['https']);
+
+      final service =
+          components.firstWhere((c) => c.type == ComponentType.service);
+      expect(service.exported, isFalse);
+      expect(service.permission, 'com.example.aab.permission.SYNC');
+      expect(service.hasIntentFilter, isFalse);
+
+      final provider =
+          components.firstWhere((c) => c.type == ComponentType.provider);
+      expect(provider.authorities, 'com.example.aab.files');
+      expect(provider.readPermission, 'READ');
+      expect(provider.writePermission, 'WRITE');
+      expect(provider.grantUriPermissions, isTrue);
+
+      final alias =
+          components.firstWhere((c) => c.type == ComponentType.activityAlias);
+      expect(alias.name, '.Alias');
+      expect(alias.exported, isNull);
+    });
+
+    test('compileSdk / debuggable / cleartext 三态', () async {
+      final path = await write(
+        'manifest-switches.aab',
+        buildStandardAab(manifest: manifestWithComponents()),
+      );
+
+      final info = await AabReader().read(path);
+      expect(info!.compileSdkVersion, 35);
+      expect(info.applicationDebuggable, isTrue);
+      expect(info.applicationUsesCleartextTraffic, isFalse);
+    });
+
+    test('未声明的开关保持 null，不猜平台默认值', () async {
+      final path = await write('manifest-plain.aab', buildStandardAab());
+
+      final info = await AabReader().read(path);
+      expect(info!.compileSdkVersion, isNull);
+      expect(info.applicationDebuggable, isNull);
+      expect(info.applicationUsesCleartextTraffic, isNull);
+      expect(info.usesPermissions, isEmpty);
+      expect(info.components, isEmpty);
+    });
+  });
+
   test(
     '解析真实 .aab 样本',
     () async {
