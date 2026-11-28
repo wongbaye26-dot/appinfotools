@@ -77,7 +77,7 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 证书详情 | 不装 `apksigner`/Java 也能从包里直接读证书：v1 走 `META-INF/*.RSA` 的 PKCS#7，v2/v3/v3.1 走 Signing Block；展示主题/签发者 DN、序列号、有效期、签名与公钥算法、RSA/EC 位数、SHA-256 / SHA-1 / MD5 指纹。iOS 侧同一套渲染用于描述文件证书链 |
 | 清单配置 | `debuggable`、`allowBackup`、导出组件、**ContentProvider 专项**（authorities / `grantUriPermissions` / `readPermission`+`writePermission` 是否只护住一个方向）、`networkSecurityConfig`（**真的展开那份 XML**，不因属性被忽略就跳过）|
 | 第三方 SDK | 25 个服务类包名前缀（推送 / 统计 / 归因 / 支付 / 地图 / 验证码 / 风控 / 崩溃上报 …），按 DEX `string_ids` 精确索引而非字节扫描；**版本号**取自 `META-INF/maven/**/pom.properties` |
-| 库识别 | 内置 LibChecker-Rules（3053 条规则，Apache-2.0）离线匹配：按 `.so` 文件名认原生库并按 ABI 合并体积、按组件名/Intent action 认 SDK、按 DEX 包名前缀认 Java 库，另含 Kotlin / Jetpack Compose / 加固壳标记。未识别的原生库按体积单列，规则数据当前为上游 `dataVersion 50`，可随仓库数据更新重新生成（`python3 tool/sync_libchecker_rules.py <portable-v5 解包目录>`，见 `assets/libchecker/README.md`）。SDK 图标随包内置 197 个 SVG（`assets/libchecker/icons.json`，`flutter_svg` 渲染）；没有图标的规则回退到首字母色块 |
+| 库识别 | 内置 LibChecker-Rules（3053 条规则，Apache-2.0）离线匹配：按 `.so` 文件名认原生库并按 ABI 合并体积、按组件名/Intent action 认 SDK、按 DEX 包名前缀认 Java 库，另含 Kotlin / Jetpack Compose / 加固壳标记。未识别的原生库按体积单列，规则数据当前为上游 `dataVersion 50`，可在**设置 → 安全与诊断 → 库识别规则**里直接导入上游 `portable-v5.zip`（离线、立即生效，坏包会报错并保留原规则），也可在打包时用 `python3 tool/sync_libchecker_rules.py <portable-v5 解包目录>` 重新生成（见 `assets/libchecker/README.md`）。SDK 图标随包内置 197 个 SVG（`assets/libchecker/icons.json`，`flutter_svg` 渲染）；没有图标的规则回退到首字母色块 |
 | 数据回传分析 | 识别网络库、上传接口与域名 / IP，标注「已确认 / 疑似 / 仅具备能力」 |
 | 隐私清单 | iOS 侧检查 `Info.plist` 用途说明、`PrivacyInfo.xcprivacy` 声明（含**必需理由 API** `NSPrivacyAccessedAPITypes`），以及「声明了权限但没调用 API」的双向对照 |
 | 权限请求 | iOS 侧从 `__TEXT,__objc_methname` 的**选择子表**读「代码真的会申请哪些权限」—— 比用途说明强一档；Android 侧区分 signature 级权限（声明了也拿不到） |

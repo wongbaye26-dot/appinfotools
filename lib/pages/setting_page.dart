@@ -9,6 +9,8 @@ import 'package:apk_info_tool/providers/ui_config_provider.dart';
 import 'package:apk_info_tool/theme/theme_manager.dart';
 import 'package:apk_info_tool/utils/app_links.dart';
 import 'package:apk_info_tool/utils/cache_manager.dart';
+import 'package:apk_info_tool/utils/libchecker_data.dart';
+import 'package:apk_info_tool/utils/libchecker_rules_import.dart';
 import 'package:apk_info_tool/utils/file_association.dart';
 import 'package:apk_info_tool/utils/logger.dart';
 import 'package:apk_info_tool/utils/platform.dart';
@@ -40,7 +42,7 @@ class SettingPage extends ConsumerStatefulWidget {
 class _SettingPageState extends ConsumerState<SettingPage> {
   final _maxLinesController = TextEditingController();
   final _settingsScroll = ScrollController();
-  final _sectionKeys = List.generate(6, (_) => GlobalKey());
+  final _sectionKeys = List.generate(7, (_) => GlobalKey());
   int _activeSection = 0;
 
   /// 文件关联是否已登记；`null` 表示还没试过（Windows 之外的平台一直是 `null`）。
@@ -68,6 +70,10 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   /// 首次在 [initState] 里盘点，清理后重算。取不到目录时保持 0。
   CacheUsage _cacheUsage = const CacheUsage();
 
+  /// 导入规则的元信息（`null` = 用内置资产）。
+  Map<String, dynamic>? _ruleMeta;
+  bool _ruleBusy = false;
+
   /// `codesign` 的路径；非 macOS 或确实没有时为 `null`。
   ///
   /// 不提供配置项：macOS 上它固定在 `/usr/bin/codesign`，配错只会更糟。
@@ -81,6 +87,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         uiConfigStateProvider.select((value) => value.textMaxLines.toString()));
     _loadThumbnailStatus();
     _loadCacheUsage();
+    _loadRuleMeta();
     // codesign 是纯文件系统判断（不拉子进程），同步做完即可 —— 异步化反而会
     // 在 widget 测试里留下未完成的 Timer。Java 的探测跟着配置走，放在
     // `_buildEnvironmentSection` 里（`JavaRuntime.detect` 自己带缓存）。
@@ -1187,6 +1194,136 @@ class _SettingPageState extends ConsumerState<SettingPage> {
 
   /// 隐私分组：原型里是独立卡片，内容只有「本机」与「外部样本目录」两行，
   /// 都是只读陈述，因此没有可交互控件。
+  Future<void> _loadRuleMeta() async {
+    final meta = await LibCheckerRuleStore.loadMeta();
+    if (!mounted) return;
+    setState(() => _ruleMeta = meta);
+  }
+
+  /// 导入上游 `portable-v5.zip`。成功后清掉规则缓存，下次打开「库识别」
+  /// 就用新数据 —— 不需要重启，也不联网。
+  Future<void> _importRulePack() async {
+    if (_ruleBusy) return;
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      withData: true,
+    );
+    final file = picked?.files.single;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
+    setState(() => _ruleBusy = true);
+    try {
+      final result = await LibCheckerRulesImporter.fromPortableZip(bytes);
+      await LibCheckerRuleStore.save(result, fileName: file.name);
+      LibCheckerData.reload();
+      await _loadRuleMeta();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            t.settings.rules_import_success(version: '${result.dataVersion}'),
+          ),
+        ),
+      );
+    } on LibCheckerImportException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t.settings.rules_import_failed(reason: e.toString())),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t.settings.rules_import_failed(reason: '$e')),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _ruleBusy = false);
+    }
+  }
+
+  Future<void> _restoreBuiltinRules() async {
+    await LibCheckerRuleStore.clear();
+    LibCheckerData.reload();
+    await _loadRuleMeta();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(t.settings.rules_restored)),
+    );
+  }
+
+  Widget _ruleChip(String label, {bool accent = false}) {
+    final theme = Theme.of(context);
+    final color = accent ? theme.colorScheme.primary : theme.hintColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontFamilyFallback: const ['Menlo', 'Courier'],
+          fontSize: 8.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRulesSection() {
+    final imported = _ruleMeta != null;
+    final version = _ruleMeta?['dataVersion'];
+    final count = _ruleMeta?['ruleCount'];
+    final importedAt = _ruleMeta?['importedAt'] as String?;
+    final desc = imported
+        ? t.settings.rules_imported_at(
+            date: importedAt != null && importedAt.length >= 10
+                ? importedAt.substring(0, 10)
+                : '-',
+          )
+        : t.settings.rules_builtin_hint;
+    return _V4SetCard(
+      title: t.settings.rules_library,
+      icon: Icons.extension_outlined,
+      children: [
+        _V4SetRow(
+          title: t.settings.rules_current,
+          desc: imported
+              ? 'dataVersion $version · $count'
+              : t.settings.rules_builtin_current,
+          control: _ruleChip(
+            imported ? t.settings.rules_imported_chip : t.settings.rules_builtin_chip,
+            accent: imported,
+          ),
+        ),
+        _V4SetRow(
+          title: t.settings.rules_import,
+          desc: desc,
+          control: _v4TextAction(
+            _ruleBusy ? t.settings.rules_importing : t.settings.rules_import_action,
+            _ruleBusy ? null : _importRulePack,
+          ),
+        ),
+        _V4SetRow(
+          title: t.settings.rules_restore,
+          desc: t.settings.rules_restore_desc,
+          control: _v4TextAction(
+            t.settings.rules_restore_action,
+            imported && !_ruleBusy ? _restoreBuiltinRules : null,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPrivacySection() {
     return _V4SetCard(
       title: t.settings.privacy,
@@ -1650,6 +1787,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       _buildEnvironmentSection(),
       _buildDebugSection(),
       _buildPrivacySection(),
+      _buildRulesSection(),
       _buildAboutSection(),
     ];
     if (width < 680) {
@@ -1678,11 +1816,15 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                   child: KeyedSubtree(key: _sectionKeys[i], child: cards[i]),
                 ),
                 const SizedBox(width: 12),
+                // 卡片数为奇数时最后一行只有一张，右侧留空 —— 不能索引
+                // `_sectionKeys[i + 1]`，否则会抛 RangeError。
                 Expanded(
-                  child: KeyedSubtree(
-                    key: _sectionKeys[i + 1],
-                    child: cards[i + 1],
-                  ),
+                  child: i + 1 < cards.length
+                      ? KeyedSubtree(
+                          key: _sectionKeys[i + 1],
+                          child: cards[i + 1],
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),

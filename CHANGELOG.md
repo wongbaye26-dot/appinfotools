@@ -16,7 +16,11 @@
   其余按 dangerous / normal / system 归类，界面上固定写明「不等于恶意」。
 - 官方标题与说明跟随界面语言，缺失时回退英文短名，不伪造文案。
 
-### 库识别（LibChecker）
+### 库识别
+
+- **离线导入规则包**：设置 → 安全与诊断 →「库识别规则」可直接选择上游
+  `portable-v5.zip`，校验 schema 后落盘并立即生效；坏包给出错误码并保留原规则，
+  可一键恢复内置。规则更新不再需要重新发版。（LibChecker）
 
 按 LibChecker-Rules（Apache-2.0，`dataVersion 50`）做 SDK 识别，规则随包内置：
 
