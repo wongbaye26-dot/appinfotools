@@ -33,6 +33,10 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/dist/
+
+# 子 package 的本地构建产物（`flutter test` 会在 packages/*/build 下生成）。
+packages/*/build/
 
 # Symbolication related
 app.*.symbols
