@@ -446,4 +446,40 @@ void main() {
       expect(text, contains(t.file_info.platform_ios));
     });
   });
+
+  group('IPA 概览 — 基本信息与证书摘要', () {
+    testWidgets('概览给出发行商关注的字段，而不是把清单里的值藏起来', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      final text = _visibleText(tester);
+      // 与 Android 的「基本信息」对位：这几项是打开包第一眼要看的东西。
+      for (final label in [
+        t.apk_info.basic_info,
+        t.ios_info.bundle_id,
+        t.ios_info.executable,
+        t.ios_info.minimum_os,
+        t.ios_info.device_family,
+        t.ios_info.architectures,
+      ]) {
+        expect(text, contains(label), reason: '概览缺少「$label」');
+      }
+
+      // 基本信息卡是「标签 + 值」的行表（不是 TitleValueLayout），
+      // 所以按可见文本断言值，而不是按控件类型。
+      expect(text, contains('com.example.demo'));
+    });
+
+    testWidgets('没有签名材料时说「没有」，而不是画一张空卡', (tester) async {
+      await _pumpPage(tester, _ipaState(analysis: _ipa()));
+
+      final text = _visibleText(tester);
+      expect(text, contains(t.ios_info.certificate_chain));
+      // 合成数据里没有 certificateChain：必须落到「暂无数据」。
+      expect(
+        find.text(t.base.no_data),
+        findsWidgets,
+        reason: '缺少材料时应给出明确空态',
+      );
+    });
+  });
 }

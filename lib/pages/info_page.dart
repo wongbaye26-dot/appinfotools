@@ -41,7 +41,7 @@ import 'package:apk_info_tool/utils/recent_icon_cache.dart';
 import 'package:apk_info_tool/utils/signature_analyzer.dart';
 import 'package:apk_info_tool/utils/zip_helper.dart';
 import 'package:ipa_parser/ipa_parser.dart' show X509Parser;
-import 'package:ipa_parser/ipa_parser.dart' show IosBundle;
+import 'package:ipa_parser/ipa_parser.dart' show IosBundle, IosSignatureMaterials;
 import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
 import 'package:apk_info_tool/widgets/network_clues_card.dart';
@@ -930,6 +930,35 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         (t.ios_info.architectures, architectureLabelOf(result) ?? '-'),
         (t.ios_info.executable, field(ios.executableName)),
       ]),
+    ));
+
+    // ===== 基本信息（概要，与 Android 概览的「基本信息」对位）=====
+    //
+    // iOS 的 Hero 只放「身份」（名字/Bundle ID/版本/图标），
+    // 系统要求、设备族、可执行文件这类**部署事实**放在这里，
+    // 免得和信息 plist 的原始条目混在一起。
+    cards.add(_SectionHeader(
+        title: t.apk_info.basic_info, tab: DetailTab.overview));
+    cards.add(_AndroidBasicInfoCard(rows: [
+      (t.ios_info.bundle_id, field(ios.bundleIdentifier)),
+      (t.ios_info.executable, field(ios.executableName)),
+      (t.ios_info.minimum_os, field(ios.minimumOSVersion)),
+      (
+        t.ios_info.device_family,
+        ios.deviceFamily.hasValue
+            ? DetailRenderer.deviceFamily(ios.deviceFamily.value, t)
+            : field(ios.deviceFamily),
+      ),
+      (t.ios_info.architectures, architectureLabelOf(result) ?? '-'),
+      (t.ios_info.nested_binaries, '${ios.nestedBinaries.length}'),
+    ]));
+
+    // ===== 证书（静态材料，与 Android 的「证书信息」对位）=====
+    cards.add(_SectionHeader(
+        title: t.ios_info.certificate_chain, tab: DetailTab.overview));
+    cards.add(_IosCertSummaryCard(
+      materials: ios.signatureMaterials,
+      codeSign: ios.codeSign,
     ));
 
     if (fileState.effectiveSecurityResult != null) {
@@ -3553,6 +3582,50 @@ class _AndroidBasicInfoCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// iOS 概览的证书摘要：与 Android 侧的四行保持同一形状。
+///
+/// 这里只说**材料**（证书自称是谁、有效期到哪天、指纹是多少），
+/// 不把「有证书」说成「签名有效」—— 后者要 codesign 的结论，
+/// 而 codesign 只在 macOS 上可用。
+class _IosCertSummaryCard extends StatelessWidget {
+  final IosSignatureMaterials? materials;
+  final IosCodeSignResult? codeSign;
+
+  const _IosCertSummaryCard({required this.materials, required this.codeSign});
+
+  @override
+  Widget build(BuildContext context) {
+    final certificates = materials?.certificateChain?.certificates;
+    if (certificates == null || certificates.isEmpty) {
+      return Card(
+        child: ListTile(
+          title: Text(t.ios_info.certificate_chain),
+          subtitle: Text(t.base.no_data),
+        ),
+      );
+    }
+
+    final first = certificates.first;
+    final subject = first.subject ?? first.subjectCommonName ?? '-';
+    final issuer = first.issuer ?? first.issuerCommonName ?? '-';
+    final notAfter = first.notAfter;
+    final validUntil = notAfter != null
+        ? notAfter.toUtc().toIso8601String().substring(0, 10)
+        : '-';
+    final fingerprint = first.sha256Fingerprint;
+
+    return _AndroidBasicInfoCard(rows: [
+      (t.ios_info.certificate_count(count: '${certificates.length}'), subject),
+      (t.signature.issuer, issuer),
+      (t.signature.valid_until, validUntil),
+      (
+        t.signature.sha256,
+        fingerprint == null ? '-' : X509Parser.formatFingerprint(fingerprint),
+      ),
+    ]);
   }
 }
 
