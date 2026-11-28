@@ -1369,7 +1369,8 @@
     "structure": "結構",
     "signature": "簽章",
     "security": "安全",
-    "libraries": "庫識別"
+    "libraries": "庫識別",
+    "secrets": "敏感資訊"
   },
   "coverage": {
     "title": "分析覆蓋",
@@ -1800,5 +1801,24 @@
     "more_rows": "還有 {count} 個條目未顯示",
     "copy_path": "複製路徑",
     "unreadable": "無法讀取條目"
+  },
+  "secrets": {
+    "title": "敏感資訊",
+    "scanning": "正在掃描敏感資訊…",
+    "failed": "無法掃描這個套件",
+    "empty": "未發現明顯的敏感資訊",
+    "scope": "已掃描 {entries} 個文字條目 · {dex} 個 DEX 檔案",
+    "heuristic_note": "啟發式規則：命中只是線索，不是結論；沒命中也不代表一定安全。",
+    "truncated": "預算已截斷",
+    "copy_fingerprint": "複製指紋",
+    "copied": "已複製指紋",
+    "kind_aws": "AWS Access Key",
+    "kind_google": "Google API Key",
+    "kind_github": "GitHub token",
+    "kind_slack": "Slack token",
+    "kind_stripe": "Stripe key",
+    "kind_private_key": "私鑰",
+    "kind_jwt": "JWT",
+    "kind_generic": "憑證賦值"
   }
 }

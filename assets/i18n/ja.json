@@ -1272,7 +1272,8 @@
     "structure": "構造",
     "signature": "署名",
     "security": "セキュリティ",
-    "libraries": "ライブラリ"
+    "libraries": "ライブラリ",
+    "secrets": "機密情報"
   },
   "coverage": {
     "all_covered": "該当するすべての項目が完全にカバーされています",
@@ -1800,5 +1801,24 @@
     "more_rows": "残り {count} 件は非表示",
     "copy_path": "パスをコピー",
     "unreadable": "エントリを読み取れません"
+  },
+  "secrets": {
+    "title": "機密情報",
+    "scanning": "機密情報をスキャンしています…",
+    "failed": "このパッケージをスキャンできません",
+    "empty": "明らかな機密情報は見つかりませんでした",
+    "scope": "{entries} 件のテキストと {dex} 件の DEX をスキャン",
+    "heuristic_note": "ヒューリスティックな規則です。検出は手がかりであり、断定ではありません。未検出でも安全とは限りません。",
+    "truncated": "予算で打ち切り",
+    "copy_fingerprint": "指紋をコピー",
+    "copied": "指紋をコピーしました",
+    "kind_aws": "AWS アクセスキー",
+    "kind_google": "Google API キー",
+    "kind_github": "GitHub トークン",
+    "kind_slack": "Slack トークン",
+    "kind_stripe": "Stripe キー",
+    "kind_private_key": "秘密鍵",
+    "kind_jwt": "JWT",
+    "kind_generic": "認証情報の代入"
   }
 }

@@ -50,6 +50,7 @@ import 'package:apk_info_tool/widgets/package_browser_panel.dart';
 import 'package:apk_info_tool/widgets/network_clues_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_center.dart';
+import 'package:apk_info_tool/widgets/secret_scan_panel.dart';
 import 'package:apk_info_tool/widgets/security_notice_banner.dart';
 import 'package:apk_info_tool/widgets/android_detail_widgets.dart';
 import 'package:apk_info_tool/widgets/android_components_panel.dart';
@@ -1192,6 +1193,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
 
     // ===== 安全检测 =====
     cards.addAll(_buildSecurityCards(result.security, isIos: true));
+
+    // ===== 敏感信息（V3 F01） =====
+    // 单独一个 Tab：和「安全发现」分开，避免把「有密钥」和「有风险规则命中」
+    // 混成一条列表。
+    if ((fileState.filePath ?? '').isNotEmpty) {
+      cards.add(_SectionHeader(title: t.secrets.title, tab: DetailTab.secrets));
+      cards.add(SecretScanPanel(packagePath: fileState.filePath!));
+    }
 
     return cards;
   }
@@ -2486,6 +2495,7 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       DetailTab.permissions,
       DetailTab.libraries,
       DetailTab.security,
+      DetailTab.secrets,
       DetailTab.signature,
       DetailTab.files,
       DetailTab.diagnostics,
@@ -3040,6 +3050,12 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
           selectable: true,
         )),
       ..._buildSecurityCards(fileState.analysis?.security),
+      // 敏感信息（V3 F01）单独一个 Tab：和「安全发现」分开，避免把
+      // 「有密钥」和「有风险规则命中」混成一条列表。
+      if ((fileState.filePath ?? '').isNotEmpty) ...[
+        _SectionHeader(title: t.secrets.title, tab: DetailTab.secrets),
+        SecretScanPanel(packagePath: fileState.filePath!),
+      ],
     ];
   }
 

@@ -1272,7 +1272,8 @@
     "structure": "구조",
     "signature": "서명",
     "security": "보안",
-    "libraries": "라이브러리"
+    "libraries": "라이브러리",
+    "secrets": "민감 정보"
   },
   "coverage": {
     "all_covered": "해당되는 모든 항목이 완전히 커버되었습니다",
@@ -1800,5 +1801,24 @@
     "more_rows": "{count}개 항목 더 있음",
     "copy_path": "경로 복사",
     "unreadable": "항목을 읽을 수 없습니다"
+  },
+  "secrets": {
+    "title": "민감 정보",
+    "scanning": "민감 정보를 스캔하는 중…",
+    "failed": "이 패키지를 스캔할 수 없습니다",
+    "empty": "뚜렷한 민감 정보가 없습니다",
+    "scope": "텍스트 {entries}개 · DEX {dex}개 스캔",
+    "heuristic_note": "휴리스틱 규칙입니다. 탐지는 단서일 뿐 결론이 아니며, 미탐지가 안전을 뜻하지 않습니다.",
+    "truncated": "예산으로 잘림",
+    "copy_fingerprint": "지문 복사",
+    "copied": "지문을 복사했습니다",
+    "kind_aws": "AWS 액세스 키",
+    "kind_google": "Google API 키",
+    "kind_github": "GitHub 토큰",
+    "kind_slack": "Slack 토큰",
+    "kind_stripe": "Stripe 키",
+    "kind_private_key": "개인 키",
+    "kind_jwt": "JWT",
+    "kind_generic": "자격 증명 할당"
   }
 }

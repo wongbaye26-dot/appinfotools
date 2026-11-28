@@ -1369,7 +1369,8 @@
     "structure": "结构",
     "signature": "签名",
     "security": "安全",
-    "libraries": "库识别"
+    "libraries": "库识别",
+    "secrets": "敏感信息"
   },
   "coverage": {
     "title": "分析覆盖",
@@ -1800,5 +1801,24 @@
     "more_rows": "还有 {count} 个条目未显示",
     "copy_path": "复制路径",
     "unreadable": "无法读取条目"
+  },
+  "secrets": {
+    "title": "敏感信息",
+    "scanning": "正在扫描敏感信息…",
+    "failed": "无法扫描这个包",
+    "empty": "未发现明显的敏感信息",
+    "scope": "已扫描 {entries} 个文本条目 · {dex} 个 DEX 文件",
+    "heuristic_note": "启发式规则：命中只是线索，不是结论；没命中也不代表一定安全。",
+    "truncated": "预算已截断",
+    "copy_fingerprint": "复制指纹",
+    "copied": "已复制指纹",
+    "kind_aws": "AWS Access Key",
+    "kind_google": "Google API Key",
+    "kind_github": "GitHub token",
+    "kind_slack": "Slack token",
+    "kind_stripe": "Stripe key",
+    "kind_private_key": "私钥",
+    "kind_jwt": "JWT",
+    "kind_generic": "凭据赋值"
   }
 }

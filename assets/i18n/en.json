@@ -1369,7 +1369,8 @@
     "structure": "Structure",
     "signature": "Signature",
     "security": "Security",
-    "libraries": "Libraries"
+    "libraries": "Libraries",
+    "secrets": "Secrets"
   },
   "coverage": {
     "title": "Analysis coverage",
@@ -1800,5 +1801,24 @@
     "more_rows": "{count} more entries not shown",
     "copy_path": "Copy path",
     "unreadable": "Cannot read entry"
+  },
+  "secrets": {
+    "title": "Secrets",
+    "scanning": "Scanning for secrets…",
+    "failed": "Cannot scan this package",
+    "empty": "No obvious secrets found",
+    "scope": "Scanned {entries} text entries · {dex} DEX files",
+    "heuristic_note": "Heuristic rules: a hit is a lead, not proof; a miss is not a guarantee.",
+    "truncated": "Budget truncated",
+    "copy_fingerprint": "Copy fingerprint",
+    "copied": "Fingerprint copied",
+    "kind_aws": "AWS Access Key",
+    "kind_google": "Google API Key",
+    "kind_github": "GitHub token",
+    "kind_slack": "Slack token",
+    "kind_stripe": "Stripe key",
+    "kind_private_key": "Private key",
+    "kind_jwt": "JWT",
+    "kind_generic": "Credential assignment"
   }
 }
