@@ -1826,5 +1826,14 @@
     "reveal_failed": "値を再読み込みできません（エントリ変更または予算超過）",
     "copy_value": "平文をコピー",
     "value_copied": "平文をコピーしました"
+  },
+  "privacy": {
+    "title": "プライバシー概要",
+    "permission_count": "権限 {count} 件",
+    "not_read": "権限を読み取れませんでした",
+    "more": "他 {count} 件",
+    "usage_count": "用途の宣言 {count} 件",
+    "sdk_count": "SDK {count} 件を検出（ライブラリ参照）",
+    "sdk_hint": "SDK 一覧は「ライブラリ」タブにあります"
   }
 }

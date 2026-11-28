@@ -1826,5 +1826,14 @@
     "reveal_failed": "无法重新读取该值（条目已变化或超出预算）",
     "copy_value": "复制明文",
     "value_copied": "已复制明文"
+  },
+  "privacy": {
+    "title": "隐私概览",
+    "permission_count": "{count} 项权限",
+    "not_read": "权限未读取",
+    "more": "另有 {count} 项",
+    "usage_count": "{count} 项用途声明",
+    "sdk_count": "识别到 {count} 个 SDK（详见库识别）",
+    "sdk_hint": "SDK 清单见「库识别」Tab"
   }
 }

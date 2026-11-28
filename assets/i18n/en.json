@@ -1826,5 +1826,14 @@
     "reveal_failed": "Cannot re-read the value (entry changed or budget refused)",
     "copy_value": "Copy value",
     "value_copied": "Value copied"
+  },
+  "privacy": {
+    "title": "Privacy overview",
+    "permission_count": "{count} permissions",
+    "not_read": "Permissions were not read",
+    "more": "+{count} more",
+    "usage_count": "{count} usage declarations",
+    "sdk_count": "{count} SDKs identified (see Libraries)",
+    "sdk_hint": "SDK list lives in the Libraries tab"
   }
 }

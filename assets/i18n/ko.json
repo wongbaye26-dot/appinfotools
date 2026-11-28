@@ -1826,5 +1826,14 @@
     "reveal_failed": "값을 다시 읽을 수 없습니다(항목 변경 또는 예산 초과)",
     "copy_value": "평문 복사",
     "value_copied": "평문을 복사했습니다"
+  },
+  "privacy": {
+    "title": "개인정보 개요",
+    "permission_count": "권한 {count}개",
+    "not_read": "권한을 읽지 못했습니다",
+    "more": "외 {count}개",
+    "usage_count": "용도 선언 {count}개",
+    "sdk_count": "SDK {count}개 식별(라이브러리 참조)",
+    "sdk_hint": "SDK 목록은 라이브러리 탭에 있습니다"
   }
 }

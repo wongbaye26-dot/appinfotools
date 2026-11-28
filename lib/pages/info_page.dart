@@ -47,6 +47,8 @@ import 'package:ipa_parser/ipa_parser.dart'
 import 'package:apk_info_tool/widgets/analysis_state_panel.dart';
 import 'package:apk_info_tool/widgets/manifest_partial_banner.dart';
 import 'package:apk_info_tool/widgets/package_browser_panel.dart';
+import 'package:apk_info_tool/utils/privacy_inventory.dart';
+import 'package:apk_info_tool/widgets/privacy_summary_card.dart';
 import 'package:apk_info_tool/widgets/network_clues_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_card.dart';
 import 'package:apk_info_tool/widgets/security_evidence_center.dart';
@@ -970,6 +972,14 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
       materials: ios.signatureMaterials,
       codeSign: ios.codeSign,
     ));
+    if (fileState.analysis case final analysis?) {
+      cards.add(PrivacySummaryCard(
+        inventory: PrivacyInventory.collect(
+          result: analysis,
+          infoPlist: fileState.ipaAnalysis?.infoPlist,
+        ),
+      ));
+    }
 
     if (fileState.effectiveSecurityResult != null) {
       cards.add(_buildOverviewEvidence(fileState));
@@ -2765,6 +2775,11 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         _SectionHeader(title: t.apk_info.cert_info, tab: DetailTab.overview),
       if (apkInfo != null && fileState.signature != null)
         _AndroidCertSummaryCard(signature: fileState.signature!),
+      // 隐私概览：权限风险分布与高敏权限；SDK 指向「库识别」Tab。
+      if (fileState.analysis case final analysis?)
+        PrivacySummaryCard(
+          inventory: PrivacyInventory.collect(result: analysis),
+        ),
       // 硬件/软件特性在宽屏时移到右侧栏底部（见 _buildAnalysisAside）；
       // 窄屏没有右侧栏，就在这里继续显示，避免信息直接消失。
       if (apkInfo != null && MediaQuery.sizeOf(context).width < 1180)
