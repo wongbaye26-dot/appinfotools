@@ -1130,7 +1130,13 @@
     "conclusion_app_id": "アプリの宣言",
     "conclusion_profile_id": "プロファイルの許可",
     "conclusion_top_findings": "重大度順の主な検出項目",
-    "conclusion_more_findings": "他 {count} 件の検出項目は本文を参照"
+    "conclusion_more_findings": "他 {count} 件の検出項目は本文を参照",
+    "column_permission": "権限",
+    "column_risk": "リスク",
+    "column_protection": "保護レベル",
+    "column_description": "説明",
+    "dex_classes": "{count} クラス",
+    "tech_markers": "技術マーカー"
   },
   "detail_tab": {
     "overview": "概要",

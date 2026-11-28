@@ -6,9 +6,15 @@ import 'package:apk_info_tool/utils/analysis_diagnostic_text.dart';
 import 'package:apk_info_tool/models/analysis/hardening.dart';
 import 'package:apk_info_tool/models/analysis/analysis_run.dart';
 import 'package:apk_info_tool/models/analysis/package_analysis_result.dart';
+import 'package:apk_info_tool/utils/android_metadata.dart'
+    show AndroidPermissionRisk, AndroidProtectionBase;
+import 'package:apk_info_tool/utils/format.dart';
 import 'package:apk_info_tool/utils/html_report.dart';
 import 'package:apk_info_tool/utils/detail_renderer.dart';
+import 'package:apk_info_tool/utils/report_extras.dart';
 import 'package:apk_info_tool/utils/field_value_text.dart';
+import 'package:apk_parser/apk_parser.dart'
+    show LibraryGroup, LibraryHit, LibraryReport, NativeLibraryEntry;
 import 'package:ipa_parser/ipa_parser.dart'
     show IosAuthorizationVerdict, IosIconConfiguration;
 import 'package:path/path.dart' as path;
@@ -43,6 +49,7 @@ class AnalysisReport {
     Translations t, {
     required DateTime generatedAt,
     bool securityOnly = false,
+    ReportExtras? extras,
   }) {
     final sb = StringBuffer();
 
@@ -52,11 +59,16 @@ class AnalysisReport {
       _conclusion(sb, result, t);
       switch (result.platform) {
         case PackagePlatform.android:
-          _androidSection(sb, result, t);
+          _androidSection(sb, result, t, extras);
         case PackagePlatform.ios:
           _iosSection(sb, result, t);
         case PackagePlatform.unknown:
           break;
+      }
+      // 库识别与权限说明都是「界面有、导出没有」的事实。放在平台段之后：
+      // 它们描述的是包里的内容，不是风险结论。
+      if (result.platform == PackagePlatform.android) {
+        _librariesSection(sb, t, extras?.libraries);
       }
       // 分包一致性单列一节。放在平台段之后、安全段之前：它是**结构事实**，
       // 不是风险结论 —— 混进安全段会被读成「发现了风险」。
@@ -222,6 +234,7 @@ class AnalysisReport {
     StringBuffer sb,
     PackageAnalysisResult result,
     Translations t,
+    ReportExtras? extras,
   ) {
     final android = result.android;
     if (android == null) return;
@@ -260,7 +273,23 @@ class AnalysisReport {
     // 权限现在是 `FieldValue`：只有**确实读到**才列清单。
     // 「这个来源不报权限」不能渲染成「没有声明权限」。
     final permissions = android.permissions.value ?? const <String>[];
-    if (permissions.isNotEmpty) {
+    final facts = extras?.permissions;
+    if (facts != null && facts.isNotEmpty) {
+      sb
+        ..writeln()
+        ..writeln('### ${t.apk_info.permissions} (${facts.length})')
+        ..writeln()
+        ..writeln('| ${t.report.column_permission} | ${t.report.column_risk} '
+            '| ${t.report.column_protection} | ${t.report.column_description} |')
+        ..writeln('| --- | --- | --- | --- |');
+      for (final fact in facts) {
+        sb.writeln(
+          '| `${_cell(fact.name)}` | ${_riskLabel(t, fact.risk)} '
+          '| ${_protectionLabel(t, fact)} '
+          '| ${_cell(fact.description ?? t.apk_info.permission_no_description)} |',
+        );
+      }
+    } else if (permissions.isNotEmpty) {
       sb
         ..writeln()
         ..writeln('### ${t.apk_info.permissions} (${permissions.length})')
@@ -310,6 +339,154 @@ class AnalysisReport {
 
     sb.writeln();
   }
+
+  /// Markdown 表格单元格里的 `|` 与换行必须转义，否则一行会拆成多列。
+  static String _cell(String value) =>
+      value.replaceAll('|', r'\|').replaceAll('\n', ' ').trim();
+
+  static String _riskLabel(Translations t, AndroidPermissionRisk risk) =>
+      switch (risk) {
+        AndroidPermissionRisk.high => t.apk_info.permission_risk_high,
+        AndroidPermissionRisk.sensitive => t.apk_info.permission_risk_sensitive,
+        AndroidPermissionRisk.normal => t.apk_info.permission_risk_normal,
+        AndroidPermissionRisk.system => t.apk_info.permission_risk_system,
+        AndroidPermissionRisk.unknown => t.apk_info.permission_risk_unknown,
+      };
+
+  /// 保护级别原文：等级 + 原始位掩码。没有记录时写 `—`，不写成 normal。
+  static String _protectionLabel(Translations t, PermissionFact fact) {
+    final base = fact.base;
+    if (base == null) return '—';
+    final label = switch (base) {
+      AndroidProtectionBase.normal => t.apk_info.permission_base_normal,
+      AndroidProtectionBase.dangerous => t.apk_info.permission_base_dangerous,
+      AndroidProtectionBase.signature => t.apk_info.permission_base_signature,
+      AndroidProtectionBase.signatureOrSystem =>
+        t.apk_info.permission_base_signature_or_system,
+      AndroidProtectionBase.internal => t.apk_info.permission_base_internal,
+    };
+    final raw = fact.raw;
+    return raw == null ? label : '$label · 0x${raw.toRadixString(16)}';
+  }
+
+  static String _hitText(LibraryHit hit) {
+    final details = <String>[
+      if (hit.abis.isNotEmpty) hit.abis.join(', '),
+      if (hit.size > 0) formatFileSize(hit.size),
+    ];
+    return details.isEmpty ? hit.name : '${hit.name} (${details.join(', ')})';
+  }
+
+  static void _libraryGroupLines(
+    StringBuffer sb,
+    String heading,
+    List<LibraryGroup> groups,
+  ) {
+    if (groups.isEmpty) return;
+    sb
+      ..writeln()
+      ..writeln('### $heading')
+      ..writeln();
+    for (final group in groups) {
+      sb.writeln(
+        '- ${group.label} (${group.count}): '
+        '${group.hits.map(_hitText).join('; ')}',
+      );
+    }
+  }
+
+  /// 「库识别」一节。`null` 表示**没有采集**，此时整节不出现 ——
+  /// 输出「未识别到 SDK」会把「没跑」说成「没有」。
+  static void _librariesSection(
+    StringBuffer sb,
+    Translations t,
+    LibraryReport? libs,
+  ) {
+    if (libs == null) return;
+    sb
+      ..writeln()
+      ..writeln('## ${t.detail_tab.libraries}')
+      ..writeln()
+      ..writeln('- ${t.libraries.identified_sdks(count: libs.sdkCount)}')
+      ..writeln('- ${t.libraries.rule_version(version: libs.dataVersion)}');
+    if (libs.dexScanned) {
+      sb.writeln('- ${t.report.dex_classes(count: libs.dexClasses)}');
+    }
+    if (libs.dexTruncated) {
+      sb.writeln('- ${t.libraries.truncated(limit: 400000)}');
+    }
+    final tech = <String>[
+      if (libs.kotlin) 'Kotlin',
+      if (libs.compose) 'Jetpack Compose',
+    ];
+    if (tech.isNotEmpty) {
+      sb.writeln('- ${t.report.tech_markers}: ${tech.join(' · ')}');
+    }
+    if (libs.sdkCount == 0 &&
+        libs.unmatchedNative.isEmpty &&
+        libs.dexClasses == 0) {
+      sb
+        ..writeln()
+        ..writeln(t.libraries.no_hits);
+    }
+
+    _libraryGroupLines(sb, t.libraries.native_section, libs.nativeGroups);
+    _libraryGroupLines(
+      sb,
+      t.libraries.components_section,
+      libs.componentGroups,
+    );
+    _libraryGroupLines(sb, t.libraries.dex_section, libs.dexGroups);
+
+    if (libs.unmatchedNative.isNotEmpty) {
+      sb
+        ..writeln()
+        ..writeln('### ${t.libraries.unmatched_section}')
+        ..writeln()
+        ..writeln(t.libraries.unmatched_hint);
+      for (final lib in libs.unmatchedNative) {
+        sb.writeln(
+          '- ${lib.name} (${lib.abi}, ${formatFileSize(lib.size)})',
+        );
+      }
+    }
+    sb.writeln();
+  }
+
+  static Map<String, dynamic> _libraryGroupJson(LibraryGroup group) => {
+        'label': group.label,
+        'ruleId': group.rule.id,
+        'iconId': group.iconId,
+        'hits': [
+          for (final hit in group.hits)
+            {
+              'name': hit.name,
+              'source': hit.source.name,
+              'abis': hit.abis,
+              'sizeBytes': hit.size,
+              if (hit.componentType != null)
+                'componentType': hit.componentType!.name,
+            },
+        ],
+      };
+
+  static Map<String, dynamic> _librariesJson(LibraryReport libs) => {
+        'dataVersion': libs.dataVersion,
+        'identifiedSdkCount': libs.sdkCount,
+        'dexClasses': libs.dexClasses,
+        'dexTruncated': libs.dexTruncated,
+        'kotlin': libs.kotlin,
+        'compose': libs.compose,
+        'native': [for (final g in libs.nativeGroups) _libraryGroupJson(g)],
+        'components': [
+          for (final g in libs.componentGroups) _libraryGroupJson(g),
+        ],
+        'dex': [for (final g in libs.dexGroups) _libraryGroupJson(g)],
+        'unmatchedNative': [
+          for (final NativeLibraryEntry lib in libs.unmatchedNative)
+            {'name': lib.name, 'abi': lib.abi, 'sizeBytes': lib.size},
+        ],
+      };
 
   static void _iosSection(
     StringBuffer sb,
@@ -2678,7 +2855,11 @@ class AnalysisReport {
   ///    entitlements、URL scheme、嵌套 bundle…），每个字段自带 status / source。
   /// 8：新增顶层 `security`（盗 U 评估/制品清单/加载链/密封/官方基线）；
   ///    既有键名/类型不变。
-  static const int reportSchemaVersion = 9;
+  /// 9：新增 `fieldStatus` 之外的契约文件（`docs/contracts`），结构未破坏。
+  /// 10：新增 `application.permissionDetails`（权限风险与保护级别）与顶层
+  ///     `libraries`（库识别分组）。两者都是**可选**键：没有采集到时整体不出现，
+  ///     而不是输出空数组假装「没有权限 / 没有 SDK」。
+  static const int reportSchemaVersion = 10;
 
   /// 一个字段的状态投影（JSON 用）。
   ///
@@ -2699,6 +2880,7 @@ class AnalysisReport {
     required DateTime generatedAt,
     bool securityOnly = false,
     AnalysisRun? analysisRun,
+    ReportExtras? extras,
   }) =>
       HtmlReport.render(
         jsonDecode(renderJson(
@@ -2707,6 +2889,7 @@ class AnalysisReport {
           t: t,
           securityOnly: securityOnly,
           analysisRun: analysisRun,
+          extras: extras,
         )) as Map<String, dynamic>,
         t,
       );
@@ -2717,6 +2900,7 @@ class AnalysisReport {
     required Translations t,
     bool securityOnly = false,
     AnalysisRun? analysisRun,
+    ReportExtras? extras,
   }) {
     final security = result.security;
     final findings = <Map<String, dynamic>>[
@@ -2820,6 +3004,21 @@ class AnalysisReport {
           // 此前它只散落在逐权限的发现项里，消费者要拿这份清单
           // 得先解析 findings —— 那是把结构化数据当文本用。
           'permissions': result.android?.permissions.value ?? const <String>[],
+          // 权限的**分级**不是界面装饰：同一个权限名在不同版本里的保护级别会变，
+          // 归档时只存名字，半年后无法解释「当时为什么把它算作敏感」。
+          // 只有采集到说明时才出现 —— 缺失不等于空数组。
+          if (extras?.permissions case final facts?)
+            'permissionDetails': [
+              for (final fact in facts)
+                {
+                  'name': fact.name,
+                  'shortName': fact.shortName,
+                  'risk': fact.risk.name,
+                  'protection': fact.base?.name,
+                  'protectionLevel': fact.raw,
+                  'flags': fact.flags,
+                },
+            ],
         },
 
         // 签名只给**结论**：平台特有的细节（方案、指纹、退出码）留在各自的
@@ -2880,6 +3079,9 @@ class AnalysisReport {
           },
         },
       },
+
+      if (!securityOnly)
+        if (extras?.libraries case final libs?) 'libraries': _librariesJson(libs),
 
       'securitySummary': security == null
           ? null

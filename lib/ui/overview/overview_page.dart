@@ -1847,7 +1847,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage> {
     if (analysis == null) return;
     final result = await showDialog(
       context: context,
-      builder: (_) => ExportReportDialog(analysis: analysis),
+      builder: (_) =>
+          ExportReportDialog(analysis: analysis, archivePath: fileState.filePath),
     );
     if (!mounted) return;
     if (result == true) {

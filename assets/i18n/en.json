@@ -756,7 +756,13 @@
     "conclusion_app_id": "app declares",
     "conclusion_profile_id": "profile grants",
     "conclusion_top_findings": "Top findings by severity",
-    "conclusion_more_findings": "{count} more finding(s) below"
+    "conclusion_more_findings": "{count} more finding(s) below",
+    "column_permission": "Permission",
+    "column_risk": "Risk",
+    "column_protection": "Protection",
+    "column_description": "Description",
+    "dex_classes": "{count} classes",
+    "tech_markers": "Tech markers"
   },
   "about": {
     "features": {

@@ -756,7 +756,13 @@
     "conclusion_app_id": "應用宣告",
     "conclusion_profile_id": "描述檔授權",
     "conclusion_top_findings": "按等級排序的主要發現",
-    "conclusion_more_findings": "另有 {count} 條發現，見下文"
+    "conclusion_more_findings": "另有 {count} 條發現，見下文",
+    "column_permission": "權限",
+    "column_risk": "風險",
+    "column_protection": "保護級別",
+    "column_description": "說明",
+    "dex_classes": "{count} 個類",
+    "tech_markers": "技術標記"
   },
   "about": {
     "features": {

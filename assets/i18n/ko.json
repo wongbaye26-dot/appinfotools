@@ -1130,7 +1130,13 @@
     "conclusion_app_id": "앱 선언",
     "conclusion_profile_id": "프로파일 허용",
     "conclusion_top_findings": "심각도순 주요 발견 항목",
-    "conclusion_more_findings": "그 외 {count}건은 본문 참조"
+    "conclusion_more_findings": "그 외 {count}건은 본문 참조",
+    "column_permission": "권한",
+    "column_risk": "위험",
+    "column_protection": "보호 수준",
+    "column_description": "설명",
+    "dex_classes": "{count}개 클래스",
+    "tech_markers": "기술 마커"
   },
   "detail_tab": {
     "overview": "개요",

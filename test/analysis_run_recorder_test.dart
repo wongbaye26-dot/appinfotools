@@ -102,7 +102,7 @@ void main() {
     expect(finished.appName, 'Aurora Notes');
     expect(finished.packageSha256, 'a' * 64);
     expect(finished.snapshot, isNotNull);
-    expect(finished.snapshot!['reportSchemaVersion'], 9);
+    expect(finished.snapshot!['reportSchemaVersion'], 10);
     expect(finished.snapshot!['application'], isNotNull);
   });
 }

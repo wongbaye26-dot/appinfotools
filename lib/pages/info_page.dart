@@ -3384,11 +3384,15 @@ class _APKInfoPageState extends ConsumerState<APKInfoPage> {
         }
         break;
       case 'export_report':
-        final analysis = ref.read(currentFileStateProvider).analysis;
+        final fileState = ref.read(currentFileStateProvider);
+        final analysis = fileState.analysis;
         if (analysis != null && mounted) {
           final result = await showDialog(
             context: context,
-            builder: (_) => ExportReportDialog(analysis: analysis),
+            builder: (_) => ExportReportDialog(
+              analysis: analysis,
+              archivePath: fileState.filePath,
+            ),
           );
           if (result == true && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

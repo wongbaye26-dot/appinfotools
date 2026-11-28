@@ -756,7 +756,13 @@
     "conclusion_app_id": "应用声明",
     "conclusion_profile_id": "描述文件授权",
     "conclusion_top_findings": "按等级排序的主要发现",
-    "conclusion_more_findings": "另有 {count} 条发现，见下文"
+    "conclusion_more_findings": "另有 {count} 条发现，见下文",
+    "column_permission": "权限",
+    "column_risk": "风险",
+    "column_protection": "保护级别",
+    "column_description": "说明",
+    "dex_classes": "{count} 个类",
+    "tech_markers": "技术标记"
   },
   "about": {
     "features": {

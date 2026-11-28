@@ -226,5 +226,11 @@ P1-1、P1-2 已处理：
 - **版本**：`pubspec.yaml` 升到 **2.11.0**，CHANGELOG 补 2.11.0 条目（权限说明 / 库识别 / 证书详情 / 概览补充 / V4 界面 / 国际化）。
 - **复验**：`flutter analyze` 无问题；`flutter test` **1,957 通过 / 20 跳过**。
 
-仍待处理：P1-3（macOS 公证）、P1-4（报告 schema v10）、P2-1/P2-2（README 数字与 iOS 概览对齐）、P2-3（检查更新改名）。
+P1-4 已处理：报告 **schema v10** 收录 `application.permissionDetails`（风险 / protectionLevel /
+位掩码 / 标志位）与顶层 `libraries`（SDK 分组、未识别原生库、Kotlin/Compose），
+Markdown 增加权限分级表与「库识别」小节；契约文件 `docs/contracts/analysis-report-v10.schema.json`。
+采集失败或缺少安装包路径时整块不输出 —— 不用空数组把「没跑」写成「没有」。
+复验：`flutter test` **1,961 通过 / 20 跳过**。
+
+仍待处理：P1-3（macOS 公证）、P2-1/P2-2（README 数字与 iOS 概览对齐）、P2-3（检查更新改名）。
 
