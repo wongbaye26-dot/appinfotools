@@ -4,7 +4,7 @@ homepage: https://feng.to
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
 # Git release 时会自动从tag同步
-version: 2.10.6
+version: 2.11.0
 
 environment:
   sdk: ">=3.0.6 <4.0.0"
@@ -56,6 +56,7 @@ dependencies:
   # 能合成自适应图标），但一致性测试要拿两者对照（规格 5.2）。
   app_icon_extractor:
     path: packages/app_icon_extractor
+  flutter_svg: ^2.5.1
 
 dev_dependencies:
   flutter_test:
@@ -74,6 +75,22 @@ flutter:
   assets:
     - assets/image/icon.png
     - assets/baseline/official_baseline_v1.json
+    # Android 平台元数据（权限保护级别/官方文案、特性名称、语言名称）。
+    # 生成来源与许可见 assets/data/android/README.md。
+    - assets/data/android/README.md
+    - assets/data/android/autonyms.json
+    - assets/data/android/protection.json
+    - assets/data/android/text.en.json
+    - assets/data/android/text.ja.json
+    - assets/data/android/text.ko.json
+    - assets/data/android/text.zh-CN.json
+    - assets/data/android/text.zh-HK.json
+    - assets/data/android/text.zh-TW.json
+    # LibChecker 规则（库识别）。数据来源与许可见 assets/libchecker/README.md。
+    - assets/libchecker/LICENSE
+    - assets/libchecker/README.md
+    - assets/libchecker/libchecker_v5.json
+    - assets/libchecker/icons.json
 
 # 安装包不再由 `inno_bundle` 生成，脚本在 `windows/installer/appinfotool.iss`
 # 自己维护（CI 直接调 ISCC）。原因见那份文件头：它的生成器把「安装目录页 /
