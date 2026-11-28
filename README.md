@@ -77,7 +77,7 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 证书详情 | 不装 `apksigner`/Java 也能从包里直接读证书：v1 走 `META-INF/*.RSA` 的 PKCS#7，v2/v3/v3.1 走 Signing Block；展示主题/签发者 DN、序列号、有效期、签名与公钥算法、RSA/EC 位数、SHA-256 / SHA-1 / MD5 指纹。iOS 侧同一套渲染用于描述文件证书链 |
 | 清单配置 | `debuggable`、`allowBackup`、导出组件、**ContentProvider 专项**（authorities / `grantUriPermissions` / `readPermission`+`writePermission` 是否只护住一个方向）、`networkSecurityConfig`（**真的展开那份 XML**，不因属性被忽略就跳过）|
 | 第三方 SDK | 25 个服务类包名前缀（推送 / 统计 / 归因 / 支付 / 地图 / 验证码 / 风控 / 崩溃上报 …），按 DEX `string_ids` 精确索引而非字节扫描；**版本号**取自 `META-INF/maven/**/pom.properties` |
-| 库识别 | 内置 LibChecker-Rules（3053 条规则，Apache-2.0）离线匹配：按 `.so` 文件名认原生库并按 ABI 合并体积、按组件名/Intent action 认 SDK、按 DEX 包名前缀认 Java 库，另含 Kotlin / Jetpack Compose / 加固壳标记。未识别的原生库按体积单列，规则数据当前为上游 `dataVersion 50`，可随仓库数据更新重新生成（`python3 tool/sync_libchecker_rules.py <portable-v5 解包目录>`，见 `assets/libchecker/README.md`）；不含图标资源，界面上用首字母色块代替 |
+| 库识别 | 内置 LibChecker-Rules（3053 条规则，Apache-2.0）离线匹配：按 `.so` 文件名认原生库并按 ABI 合并体积、按组件名/Intent action 认 SDK、按 DEX 包名前缀认 Java 库，另含 Kotlin / Jetpack Compose / 加固壳标记。未识别的原生库按体积单列，规则数据当前为上游 `dataVersion 50`，可随仓库数据更新重新生成（`python3 tool/sync_libchecker_rules.py <portable-v5 解包目录>`，见 `assets/libchecker/README.md`）。SDK 图标随包内置 197 个 SVG（`assets/libchecker/icons.json`，`flutter_svg` 渲染）；没有图标的规则回退到首字母色块 |
 | 数据回传分析 | 识别网络库、上传接口与域名 / IP，标注「已确认 / 疑似 / 仅具备能力」 |
 | 隐私清单 | iOS 侧检查 `Info.plist` 用途说明、`PrivacyInfo.xcprivacy` 声明（含**必需理由 API** `NSPrivacyAccessedAPITypes`），以及「声明了权限但没调用 API」的双向对照 |
 | 权限请求 | iOS 侧从 `__TEXT,__objc_methname` 的**选择子表**读「代码真的会申请哪些权限」—— 比用途说明强一档；Android 侧区分 signature 级权限（声明了也拿不到） |
@@ -88,7 +88,7 @@ iOS 11+ 的应用图标不在 `Info.plist` 里，而在 `Assets.car` —— 一�
 | 分析覆盖 | 逐维度给出「已覆盖 / 部分覆盖 / 未覆盖 / 本次不适用」，界面、Markdown 与 JSON 读同一份数据 |
 | 风险分级 | P0–P3 / INFO / **UNKNOWN** —— 「无法确认」与「低风险」严格分开，覆盖不足不会被显示成绿色 |
 
-Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐权限条目、iOS 侧 30 条；分级按**来源稀有度**而非一律高危 ——
+Android 侧 **47 个规则 id**（含 7 条组合规则及其升级变体）+ 33 条逐权限条目、iOS 侧 **44 个规则 id**（按代码里 `ANDROID-*` / `IOS-*` 去重统计）；分级按**来源稀有度**而非一律高危 ——
 设备标识 / 定位 / 剪贴板这类几乎每个应用都有的能力给 P3，通讯录 / 短信 / 录音 + 上传才给 P2。
 组合规则 C 的等级**跟着证据强度走**：同一方法体内两个调用点给 P1，只有整包层面共现给 P2。
 
@@ -127,7 +127,7 @@ Android 侧 21 条规则（其中 7 条是跨字段的组合规则）+ 33 条逐
   Windows 上安装包会写一份机器级关联，程序每次启动再补一份用户级关联（`HKCU`，无需管理员），
   macOS 提示在 Finder 的「显示简介 → 打开方式」里设置 —— 系统里没有对应的设置面板，所以不会假装能跳过去
 - **单实例**：Windows 上双击第二个包不会开新窗口 —— 路径交给已经开着的窗口，直接在里面换文件
-- **导出**：分析报告（Markdown / JSON）、应用图标（PNG / SVG / 原始文件）
+- **导出**：分析报告（Markdown / JSON / HTML，**schema v10** 含权限分级与库识别）、应用图标（PNG / SVG / 原始文件）
 - **重命名**：按应用名或「名称+版本」批量命名
 - **明暗主题** + 多语言界面
 

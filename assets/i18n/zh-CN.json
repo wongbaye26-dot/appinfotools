@@ -306,7 +306,9 @@
     "installer_registration_help": "说明",
     "installer_registration_help_body": "Windows 的默认打开方式由安装器注册决定（MSIX/商店或 HKCU\\Software\\Classes）。AppInfoTool 在构建时把 .apk/.ipa 登记为候选打开方式；只有当没有其他程序占据默认值时，Windows 才会路由给它。macOS/Linux 的关联由打包本身决定（Info.plist / .desktop），运行时不改动。",
     "sample_dir_desc": "由测试环境变量 APPINFOTOOL_SAMPLES 指定；应用本体不会下载样本。",
-    "sample_dir_set": "{path}"
+    "sample_dir_set": "{path}",
+    "releases_action": "发行版",
+    "releases_hint": "在浏览器中打开发行版页面；应用不会自动联网检查更新。"
   },
   "signature": {
     "status_verified": "签名验证通过",

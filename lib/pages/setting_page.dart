@@ -1512,7 +1512,9 @@ class _SettingPageState extends ConsumerState<SettingPage> {
         IconButton.outlined(
           onPressed: _openReleasesPage,
           icon: const Icon(Icons.system_update_alt, size: 16),
-          tooltip: 'Check for updates',
+          // 这个按钮只打开发行版页面，不做版本比较 —— 应用不自动联网，
+          // 因此不能叫「检查更新」；名字必须和行为一致。
+          tooltip: t.settings.releases_hint,
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 34, minHeight: 34),

@@ -287,7 +287,9 @@
     "installer_registration_help": "詳細",
     "installer_registration_help_body": "Windows の既定の関連付けはインストーラーの登録（MSIX/ストアまたは HKCU\\Software\\Classes）で決まります。AppInfoTool はビルド時に .apk/.ipa を候補として登録し、他のアプリが既定を占めていない場合にのみ Windows がこのアプリへ振り分けます。macOS/Linux ではパッケージ側（Info.plist / .desktop）が関連付けを定義するため、実行時には変更しません。",
     "sample_dir_desc": "テスト用環境変数 APPINFOTOOL_SAMPLES で指定します。アプリ本体はサンプルを取得しません。",
-    "sample_dir_set": "{path}"
+    "sample_dir_set": "{path}",
+    "releases_action": "リリース",
+    "releases_hint": "ブラウザで GitHub のリリースページを開きます。アプリが自動で更新を確認することはありません。"
   },
   "signature": {
     "status_verified": "署名を検証しました",

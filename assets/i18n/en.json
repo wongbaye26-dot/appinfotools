@@ -299,7 +299,9 @@
     "installer_registration_help": "Details",
     "installer_registration_help_body": "Windows picks the default handler from installer registrations (MSIX/Store or HKCU\\Software\\Classes). AppInfoTool registers .apk/.ipa as a candidate opener at build time; Windows routes to it only when no other app holds the default. On macOS/Linux the association comes from the package itself (Info.plist / .desktop), so nothing changes at runtime.",
     "sample_dir_desc": "Set by the APPINFOTOOL_SAMPLES environment variable; the app itself never downloads samples.",
-    "sample_dir_set": "{path}"
+    "sample_dir_set": "{path}",
+    "releases_action": "Releases",
+    "releases_hint": "Open the GitHub releases page in your browser. The app never checks for updates automatically."
   },
   "signature": {
     "status_verified": "Signature verified",

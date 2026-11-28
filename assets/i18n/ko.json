@@ -287,7 +287,9 @@
     "installer_registration_help": "자세히",
     "installer_registration_help_body": "Windows는 설치 프로그램 등록(MSIX/스토어 또는 HKCU\\Software\\Classes)으로 기본 연결 프로그램을 정합니다. AppInfoTool은 빌드 시 .apk/.ipa를 후보로 등록하며, 다른 앱이 기본값을 차지하지 않을 때만 Windows가 이 앱으로 연결합니다. macOS/Linux에서는 패키지 자체(Info.plist / .desktop)가 연결을 정의하므로 실행 시에는 바꾸지 않습니다.",
     "sample_dir_desc": "테스트 환경 변수 APPINFOTOOL_SAMPLES로 지정합니다. 앱 자체는 샘플을 내려받지 않습니다.",
-    "sample_dir_set": "{path}"
+    "sample_dir_set": "{path}",
+    "releases_action": "릴리스",
+    "releases_hint": "브라우저에서 GitHub 릴리스 페이지를 엽니다. 앱은 자동으로 업데이트를 확인하지 않습니다."
   },
   "signature": {
     "status_verified": "서명이 검증되었습니다",

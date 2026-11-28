@@ -237,5 +237,16 @@ P2-2 已处理：iOS 概览补齐「基本信息」（Bundle ID / 可执行文�
 缺材料时显示「暂无数据」而不是空卡）。测试 +2：`test/ios_detail_page_test.dart`
 「IPA 概览 — 基本信息与证书摘要」。复验：`flutter test` **1,963 通过 / 20 跳过**。
 
-仍待处理：P1-3（macOS 公证）、P2-1（README 数字口径）、P2-3（检查更新改名）。
+P2-1 已处理：README 的规则数量改为按代码去重的真实口径（**Android 47 / iOS 44 个规则 id**），
+「不含图标资源」的旧说法改为「内置 197 个 SVG，flutter_svg 渲染，无图回退首字母」，
+导出条目补上 **schema v10**；`docs/notes/security-confidence-review.md` 加注说明 59 条是
+当时的快照。
+
+P2-3 已处理：设置页右上按钮的英文硬编码 tooltip 改为本地化的
+`settings.releases_hint`，并把语义从「检查更新」改成「打开发行版页面」——
+应用不自动联网，所以行为与名字必须一致（六语言新增 `releases_action` / `releases_hint`）。
+
+仍待处理：P1-3（macOS 公证）—— 本机 `security find-identity -v -p codesigning` 返回
+**0 valid identities**，没有 Developer ID Application 证书，无法签名 / 公证；
+需要证书 + Apple ID（app-specific password）或 App Store Connect API Key。
 
