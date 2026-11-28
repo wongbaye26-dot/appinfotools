@@ -1,7 +1,19 @@
 # Changelog
 
-> **真实样本未验证**：本次发布由仓库内 `.github/allow-no-samples` 显式豁免，
+## Unreleased
+
+### 发布流程
+
+- 删除 `.github/allow-no-samples`：2.11.0 的文件式豁免不再适用，后续 tag
+  在未配置真实样本时会直接失败，而不是继续沿用旧豁免。
+- `feature/2.11.0` 已合并回 `main`，主分支与 `v2.11.0` 内容一致；`v2.11.0`
+  tag 与 Release 未移动。
+- fork 仓库的 Homebrew / Scoop 发布限制已写入 README（两个 job 带上游仓库守卫）。
+
+
+> **真实样本未验证**（2.11.0）：该次发布由仓库内 `.github/allow-no-samples` 显式豁免，
 > 单元测试与各平台构建通过，但没有跑真实 APK/IPA 端到端样本测试。
+> 该文件已在 2.11.1 开发周期删除；具体见下方 Unreleased。
 
 ## 2.11.0 — 2026-11-28
 

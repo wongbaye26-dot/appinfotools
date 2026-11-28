@@ -191,6 +191,14 @@ Android 侧 **47 个规则 id**（含 7 条组合规则及其升级变体）+ 33
 > xattr -dr com.apple.quarantine "/Applications/AppInfoTool.app"
 > ```
 
+### Fork 与自动发布（Homebrew / Scoop）
+
+如果你 fork 本仓库并打 tag， GitHub Actions 只会产出 **Releases 附件**
+（DMG / Setup.exe / zip / AppImage）；`publish-homebrew` 与 `publish-scoop`
+两个 job 在 fork 里**永远跳过** —— 它们带 `github.repository == 'huanfeng/ApkInfoTool'`
+的守卫，避免 fork 的构建往上游的软件源里发版。需要包管理器分发时，请在你自己的
+仓库里另写 job，并使用你自己的 tap / bucket。
+
 ### 让 `.apk` / `.ipa` 双击打开本程序
 
 | 平台 | 做法 |

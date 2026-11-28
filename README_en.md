@@ -187,6 +187,15 @@ Get the latest build from [Releases](https://github.com/wongbaye26-dot/appinfoto
 > xattr -dr com.apple.quarantine "/Applications/AppInfoTool.app"
 > ```
 
+### Forks and automated publishing (Homebrew / Scoop)
+
+A forked repository that pushes a tag only produces **GitHub Release assets**
+(DMG / Setup.exe / zip / AppImage). The `publish-homebrew` and `publish-scoop`
+jobs always skip on forks: they are guarded by
+`github.repository == 'huanfeng/ApkInfoTool'`, so a fork cannot publish into
+the upstream package managers. For package-manager distribution, add your own
+job and use your own tap / bucket.
+
 ### Making `.apk` / `.ipa` open in this app
 
 | Platform | How |

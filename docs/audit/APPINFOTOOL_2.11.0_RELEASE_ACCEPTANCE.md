@@ -159,3 +159,55 @@ CI：
 - “重新打开”统一改为“重新分析”：历史快照只作审计，不注入当前 UI；重新分析原包。
 - 因此原第 3 项阻断（历史页 widget 测试缺失）已解除。
 - 发布结论仍为 **NO-GO**：Windows/Linux 实机、CI 样本门禁、全量手工验收仍未完成。
+
+## 9. 2026-11-28 追加：2.11.0 实际发布记录（有条件发布）
+
+> 本节记录既成事实，**并取代**前文「NO-GO」作为 2.11.0 的最终状态说明。
+> 前文的 NO-GO 结论保留，作为当时门禁未满足的证据。
+
+### 9.1 发布事实
+
+- Tag：`v2.11.0`（annotated，`0cf0060` → commit `cfcbaa5`），**发布后未再移动**。
+- Release：`v2.11.0`，`draft=false`、`prerelease=false`，发布时间 2026-11-28T08:11:59Z。
+- 产物（5 个）：
+  - `AppInfoTool-2.11.0-Linux-x86_64.AppImage`（13,224,440 B）
+  - `AppInfoTool-2.11.0-macOS-universal.dmg`（37,137,674 B）
+  - `AppInfoTool-2.11.0-Windows-x86_64-Setup.exe`（16,431,822 B）
+  - `AppInfoTool-2.11.0-Windows-x86_64.zip`（18,807,820 B）
+  - `AppInfoTool-2.11.0-Windows-x86_64-thumbnail-selftest.zip`（3,231,280 B）
+- CI：tag 运行（`46123792627`）全绿，含 `create-release`。
+- Release 正文首段自动带「真实样本未验证」警告与豁免理由。
+
+### 9.2 当时的门禁状态
+
+- 豁免方式：仓库内文件 `.github/allow-no-samples`（不是仓库变量）。
+- 语义：`external-samples` 置 `APPINFOTOOL_REQUIRE_SAMPLES=0` 并输出 warning；
+  `create-release` 仍要求该 job `success`，因此发布得以继续。
+- 这不是「样本通过」，而是**书面豁免**：真实 APK/IPA 的端到端样本测试在 CI 中从未执行。
+
+### 9.3 发布后的整改动作
+
+1. `feature/2.11.0` 已合并回 `main`（merge commit `f996a71`），`main` 与 `v2.11.0` 内容一致。
+2. `.github/allow-no-samples` **已删除**：后续正式 tag 在未配置真实样本时会直接失败在
+   `Require samples or explicit exemption`，不再有长期豁免文件。
+3. 仓库变量 `APPINFOTOOL_ALLOW_NO_SAMPLES=1` 的临时豁免路径保留（需仓库管理权限，
+   会产生同样的 warning 与 Release 警告），但默认不存在。
+4. 发布后审计与整改基线：
+   - `docs/audit/2026-11-28-post-release-audit.md`
+   - `docs/audit/APPINFOTOOL_2.11.1_REMEDIATION_BASELINE.md`
+
+### 9.4 2.11.0 的最终判定
+
+**CONDITIONAL GO（有条件发布）**：功能与单元/包级测试、三平台构建、产物可用；
+真实样本 E2E、Windows/Linux 实机验收、macOS 公证仍未完成，已在 Release 正文公开标注。
+
+### 9.5 2.11.1 的 GO 条件（未满足即 NO-GO）
+
+- [ ] `main` 已包含全部整改提交（当前已满足：`f996a71`）。
+- [ ] 真实样本进入 CI（`APPINFOTOOL_SAMPLES` 或 `APPINFOTOOL_SAMPLES_ARCHIVE_URL`），
+      `external-samples` 在 tag 运行中为**真实执行且通过**。
+- [ ] 仓库内不存在 `.github/allow-no-samples`，且未设置 `APPINFOTOOL_ALLOW_NO_SAMPLES=1`。
+- [ ] Windows / Linux 至少在实机完成「安装 → 启动 → 打开一个包 → 导出报告」，
+      或验收文档明确写「未执行」并给出风险接受人。
+- [ ] ja / ko 缺失键清零，六语言键集一致。
+- [ ] 报告 schema 契约与实现一致（当前 v11）。
