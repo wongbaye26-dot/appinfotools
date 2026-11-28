@@ -1709,7 +1709,9 @@
   "shell": {
     "search_hint": "搜索或跳转…",
     "command_title": "跳转到",
-    "command_empty": "没有匹配的页面"
+    "command_empty": "没有匹配的页面",
+    "command_pages": "页面",
+    "command_recent_files": "最近分析"
   },
   "history": {
     "title": "分析历史",

@@ -1709,7 +1709,9 @@
   "shell": {
     "search_hint": "Search or jump…",
     "command_title": "Jump to",
-    "command_empty": "No matching page"
+    "command_empty": "No matching page",
+    "command_pages": "Pages",
+    "command_recent_files": "Recent analyses"
   },
   "history": {
     "title": "Analysis history",

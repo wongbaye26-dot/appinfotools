@@ -1559,7 +1559,9 @@
   "shell": {
     "search_hint": "검색 또는 이동…",
     "command_title": "이동",
-    "command_empty": "일치하는 페이지가 없습니다"
+    "command_empty": "일치하는 페이지가 없습니다",
+    "command_pages": "페이지",
+    "command_recent_files": "최근 분석"
   },
   "history": {
     "title": "분석 기록",

@@ -1559,7 +1559,9 @@
   "shell": {
     "search_hint": "検索または移動…",
     "command_title": "移動先",
-    "command_empty": "一致するページがありません"
+    "command_empty": "一致するページがありません",
+    "command_pages": "ページ",
+    "command_recent_files": "最近の分析"
   },
   "history": {
     "title": "分析履歴",
