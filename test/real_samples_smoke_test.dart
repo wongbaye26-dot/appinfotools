@@ -137,13 +137,49 @@ void main() {
         reason: 'APPINFOTOOL_REQUIRE_SAMPLES=1，但样本目录不可用：'
             '${_samples.summary}',
       );
-      for (final kind in SampleKind.values) {
+
+      // 默认要求两个平台；显式声明平台列表时只对清单内的平台负责。
+      //
+      // 为什么允许收窄：CI 能合法获取的公开样本目前只有 Android 侧
+      // （F-Droid 的版本化仓库）。iOS 侧没有可再分发的真实 .ipa，
+      // 平台列表收窄时必须由调用方写清"哪个平台这次不覆盖"，
+      // 而不是让整套门禁悄悄通过 —— 收窄本身也会在 CI 日志里 warning。
+      final raw = Platform.environment['APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS'];
+      final requiredKinds = <SampleKind>[];
+      if (raw == null || raw.trim().isEmpty) {
+        requiredKinds.addAll(SampleKind.values);
+      } else {
+        for (final token in raw.split(',')) {
+          final name = token.trim().toLowerCase();
+          if (name.isEmpty) continue;
+          final kind =
+              SampleKind.values.where((k) => k.name == name).firstOrNull;
+          expect(
+            kind,
+            isNotNull,
+            reason: 'APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS 含未知平台：$name',
+          );
+          requiredKinds.add(kind!);
+        }
+        expect(requiredKinds, isNotEmpty,
+            reason: 'APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS 不能为空');
+      }
+
+      for (final kind in requiredKinds) {
         expect(
           _samples.samplesOf(kind),
           isNotEmpty,
           reason: 'APPINFOTOOL_REQUIRE_SAMPLES=1，但缺少 ${kind.label} 样本；'
               '不能把「没有样本」当成「通过」',
         );
+      }
+      for (final kind in SampleKind.values) {
+        if (!requiredKinds.contains(kind)) {
+          // ignore: avoid_print
+          print('[samples] 本次不要求 ${kind.label} 样本（'
+              'APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS=${raw!.trim()}）；'
+              '该平台的端到端覆盖未包含在本次门禁里');
+        }
       }
     });
   });

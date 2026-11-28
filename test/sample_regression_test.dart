@@ -107,6 +107,10 @@ Future<dynamic> _androidResult(String path) async {
     components: info?.components ?? const [],
     hardeningObservations: info?.hardeningObservations ?? const [],
     structure: info?.structure,
+    // 安全审计结论必须带进来：清单里的 expectedFindingRules 断言的就是
+    // 这些规则，不带 security 的话 findings 永远为空、断言形同虚设。
+    security: info?.securityResult,
+    diagnostics: info?.diagnostics ?? const [],
   );
 }
 

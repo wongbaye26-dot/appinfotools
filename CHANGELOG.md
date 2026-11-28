@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 真实样本门禁接入公开样本：`test/samples/manifest.json` 固定两个 F-Droid 真实
+  APK（url + SHA-256），`external-samples` 自动下载校验后真实执行；iOS 侧无公开
+  `.ipa`，按平台收窄并在 CI 日志中 warning。
+- `sample_regression_test` 现在把安全审计结论传进分析模型，清单里的
+  `expectedFindingRules` 断言不再形同虚设。
+
 ### 功能补齐（2.11.1 第三阶段）
 
 - **AAB 清单字段**：从 `.aab` 的 proto 清单解析 `uses-permission`、`uses-feature`（必需/可选）、

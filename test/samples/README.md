@@ -11,6 +11,25 @@ flutter test test/sample_regression_test.dart
 
 `APPINFOTOOL_SAMPLES` is optional; without it the manifest directory is used.
 
+## CI: public samples from `manifest.json`
+
+`test/samples/manifest.json` lists **redistributable** public samples (currently
+two F-Droid apps: the F-Droid client and FFUpdater, a Flutter app). Each entry
+carries a pinned `url` and `sha256`, so CI can download the exact bytes the
+assertions were written against:
+
+- the `external-samples` job fetches them when no private archive is configured,
+  verifies SHA-256, and exports `APPINFOTOOL_SAMPLES`;
+- a download or checksum mismatch **fails the job** — the gate never degrades
+  silently;
+- `APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS` scopes which platforms the gate
+  enforces. CI sets `android` (public samples only exist for Android today) and
+  prints a warning that iOS is not covered; when an `.ipa` is present it requires
+  `android,ios` instead.
+
+Private / non-redistributable samples still use `APPINFOTOOL_SAMPLES_ARCHIVE_URL`
+(a secret) or a local directory, and the manifest file name stays the same.
+
 ## Auto-discovery (real-sample tests)
 
 The real-sample tests (`test/real_samples_test.dart`,

@@ -1,34 +1,31 @@
 {
+  "_comment": [
+    "公开可再分发的真实样本清单。样本本身不进仓库：CI 按 url 字段下载并校验 sha256。",
+    "两个样本都是自由软件（GPL/ MIT），来自 F-Droid 的版本化仓库地址，版本固定、内容不变。",
+    "expected* 只写稳定的结构断言，不钉数字 —— 数字随规则版本变化。"
+  ],
   "samples": [
     {
-      "file": "217_0919155004.apk",
+      "file": "org.fdroid.fdroid_1021051.apk",
       "kind": "android",
-      "sha256": "44a7db70c445a0d776bcf745b0792e8030e0afb72a7a195de64f16d0acd1ded5"
+      "sha256": "b64651849eceb57459049e7017e043008fce8f146aad1d34d98f0027d87e4eef",
+      "url": "https://f-droid.org/repo/org.fdroid.fdroid_1021051.apk",
+      "license": "GPL-3.0-or-later",
+      "note": "F-Droid 客户端 1.21.1：纯 Java/多 DEX、含 networkSecurityConfig 与大量第三方组件名。",
+      "expectedFindingRules": ["ANDROID-PERMISSION-INTERNET", "ANDROID-NETWORK-ENDPOINTS"],
+      "expectedEvidenceSources": ["manifest", "dexString"],
+      "expectedCoverageIds": ["android.manifest", "android.dex.structure", "android.signature"]
     },
     {
-      "file": "狐⤷狸⊻视⭏频⧙8-v3.20.apk",
+      "file": "ffupdater.apk",
       "kind": "android",
-      "sha256": "4a5bfde2000ddf4ba3f8b44a9b7562017c416fbed1cdeec1a2d15fa493ce1d07"
-    },
-    {
-      "file": "95-v1.8.7.ipa",
-      "kind": "ios",
-      "sha256": "a6f5c2174f948743b51542dbb31e47e2a191f0fe7bffacfaf079450094a73fe1"
-    },
-    {
-      "file": "sun_nosigned.ipa",
-      "kind": "ios",
-      "sha256": "d35a8ce310f695ec3120b8fac0d130f4d60346db879a8d63717d64615dc4d1ae"
-    },
-    {
-      "file": "sun_signed.ipa",
-      "kind": "ios",
-      "sha256": "736fa5d3b0998665babe8e031c8db0e63f07a6537b15a9bc0999d67a8b675903"
-    },
-    {
-      "file": "wnsr_signed.ipa",
-      "kind": "ios",
-      "sha256": "caae73b963c41467e4d9f5c553e1b79ed7267f435ab3bc51dd63d784ef1ac04a"
+      "sha256": "3cafb450642c0b01c02dfeca7ff444a5b0cf76759452e7a51c0867caae991267",
+      "url": "https://f-droid.org/repo/de.marmaro.krt.ffupdater_179.apk",
+      "license": "MIT",
+      "note": "FFUpdater 81.0.0：Flutter 应用（libflutter.so + libapp.so），覆盖原生符号与原生库覆盖维度。",
+      "expectedFindingRules": ["ANDROID-NATIVE-SYMBOLS", "ANDROID-PERMISSION-INTERNET"],
+      "expectedEvidenceSources": ["manifest", "nativeSymbol"],
+      "expectedCoverageIds": ["android.nativeLibraries", "android.nativeSymbols", "android.manifest"]
     }
   ]
 }

@@ -183,6 +183,67 @@ jobs:
           echo "APPINFOTOOL_SAMPLES=$root" >> "$GITHUB_ENV"
           echo "::notice::真实样本已下载：$root"
 
+      - name: Fetch public CI samples
+        # 仓库内 `test/samples/manifest.json` 声明了可再分发的公开样本
+        # （F-Droid 的版本化 URL + SHA-256）。没有外部样本压缩包时用它
+        # 把真实样本拉到 runner 上 —— 这样 main 与 tag 都能真实执行样本
+        # 测试，而不是靠 `allow-no-samples` 豁免通过。
+        # 下载失败、文件缺失或 SHA-256 不符都直接失败：门禁不允许静默降级。
+        if: ${{ env.APPINFOTOOL_SAMPLES == '' }}
+        run: |
+          set -euo pipefail
+          manifest="test/samples/manifest.json"
+          if [ ! -f "$manifest" ]; then
+            echo "::error title=缺少样本清单::$manifest 不存在，无法准备真实样本。"
+            exit 1
+          fi
+          python3 - "$manifest" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          import urllib.request
+
+          manifest_path = sys.argv[1]
+          with open(manifest_path, encoding="utf-8") as handle:
+              manifest = json.load(handle)
+
+          root = os.path.join(os.environ["RUNNER_TEMP"], "public-samples")
+          os.makedirs(root, exist_ok=True)
+          for sample in manifest["samples"]:
+              name = sample["file"]
+              url = sample.get("url")
+              expected = sample["sha256"].lower()
+              if not url:
+                  raise SystemExit(
+                      f"::error title=样本缺少下载地址::{name} 没有 url 字段"
+                  )
+              target = os.path.join(root, name)
+              error = None
+              for _ in range(3):
+                  try:
+                      urllib.request.urlretrieve(url, target)
+                      error = None
+                      break
+                  except Exception as exc:  # noqa: BLE001 - 网络错误统一重试
+                      error = exc
+              if error is not None:
+                  raise SystemExit(
+                      f"::error title=样本下载失败::{name}: {error}"
+                  )
+              digest = hashlib.sha256(open(target, "rb").read()).hexdigest()
+              if digest != expected:
+                  raise SystemExit(
+                      f"::error title=样本校验失败::{name} SHA-256 不匹配："
+                      f"期望 {expected}，实际 {digest}"
+                  )
+              print(f"::notice::样本已就绪：{name} ({os.path.getsize(target)} B)")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"APPINFOTOOL_SAMPLES={root}\n")
+          print(f"::notice::真实样本目录：{root}")
+          PY
+
       - name: Require samples or explicit exemption
         # 没有样本时不能静默绿。普通分支显式警告后跳过；tag 直接阻断，
         # 除非仓库变量 APPINFOTOOL_ALLOW_NO_SAMPLES=1 明确豁免。
@@ -196,7 +257,17 @@ jobs:
               exit 1
             fi
             echo "APPINFOTOOL_REQUIRE_SAMPLES=1" >> "$GITHUB_ENV"
-            echo "::notice::真实样本已配置：${APPINFOTOOL_SAMPLES}"
+            # 公开样本目前只有 Android 侧（F-Droid）。有 .ipa 时才连带要求
+            # iOS；否则显式写清"本次不覆盖 iOS"，让门禁范围可见。
+            if compgen -G "${APPINFOTOOL_SAMPLES}/*.ipa" >/dev/null 2>&1; then
+              echo "APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS=android,ios" >> "$GITHUB_ENV"
+              echo "::notice::真实样本已配置（Android + iOS）：${APPINFOTOOL_SAMPLES}"
+            else
+              echo "APPINFOTOOL_REQUIRED_SAMPLE_PLATFORMS=android" >> "$GITHUB_ENV"
+              echo "::warning title=本次门禁不含 iOS 样本::\
+          样本目录里没有 .ipa，真实样本门禁只覆盖 Android；\
+          iOS 端到端安装/解析仍未在 CI 验证。"
+            fi
           elif [ "${APPINFOTOOL_ALLOW_NO_SAMPLES:-}" = "1" ] || [ -f .github/allow-no-samples ]; then
             # 两种豁免机制，语义相同：仓库变量（无需改代码，适合临时用）
             # 与仓库内文件（能进 git 历史，谁豁免、为什么豁免有据可查）。
