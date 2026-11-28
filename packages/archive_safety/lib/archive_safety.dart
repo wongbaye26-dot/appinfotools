@@ -9,3 +9,4 @@ export 'src/archive_open.dart';
 export 'src/bounded_read.dart';
 export 'src/zip_budget.dart';
 export 'src/zip_structure.dart';
+export 'src/file_tree.dart';

@@ -39,3 +39,6 @@ export 'src/crypto_theft.dart';
 export 'src/v3/component.dart';
 export 'src/v3/finding_fingerprint.dart';
 export 'src/v3/scan_profile.dart';
+export 'src/v3/secret_match.dart';
+export 'src/v3/secret_rules.dart';
+export 'src/v3/secret_scanner.dart';

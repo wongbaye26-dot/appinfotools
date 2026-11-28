@@ -20,7 +20,7 @@
 | --- | --- | --- | --- | --- |
 | 0 | 基线审计 | ✅ | `docs/audit/APPINFOTOOL_V3_BASELINE_AUDIT.md`（`01971a2`） | 十项功能有状态与证据 |
 | 1 | 分析基础设施 | ✅ | `docs/architecture/APPINFOTOOL_V3_ANALYSIS_ARCHITECTURE.md` | 新模型可序列化；旧数据可读；ID 唯一 |
-| 2 | F04 文件浏览器 + F01 敏感信息 | ⬜ | 代码 + 样本回归 | 真样本命中；无明文落盘 |
+| 2 | F04 文件浏览器 + F01 敏感信息 | 🟡 | 代码 + 样本回归 | 真样本命中；无明文落盘 |
 | 3 | F02 SDK/隐私 + F03 SBOM | ⬜ | 代码 + Schema 校验 | CycloneDX/SPDX 过校验 |
 | 4 | F05 深度差异 + F06 处置 | ⬜ | 代码 + 历史 run 对比 | 处置不污染原始结果 |
 | 5 | F07 API 调用关系 | ⬜ | 代码 + 图查询 | 关系有证据、预算生效 |
@@ -55,11 +55,11 @@ flutter test test/analysis_run_test.dart            # 12 passed
 
 | 步骤 | 内容 | 状态 | 证据 |
 | --- | --- | --- | --- |
-| 2.1 | 虚拟归档文件系统（复用 `ApkReader` / `ZipHelper` + 预算） | ⬜ | |
+| 2.1 | 虚拟归档文件系统（复用 `ApkReader` / `ZipHelper` + 预算） | 🟡 | `archive_safety/lib/src/file_tree.dart`（树 + 三重上限，46 条包测试）；读包接线待做 |
 | 2.2 | 文件树 / 搜索 / 筛选 / 导出 | ⬜ | |
 | 2.3 | 文本 / Hex / 图片查看器 | ⬜ | |
-| 2.4 | `SecretMatch` 模型 + 规则库（格式/上下文/校验） | ⬜ | |
-| 2.5 | 脱敏管道与显式查看流程 | ⬜ | |
+| 2.4 | `SecretMatch` 模型 + 规则库（格式/上下文/校验） | 🟡 | `analysis_model/lib/src/v3/secret_{match,rules,scanner}.dart`（8 条规则，9 条测试）；DEX/文件喂入待做 |
+| 2.5 | 脱敏管道与显式查看流程 | 🟡 | `SecretRedactor` + 上下文替换明文；显式查看 UI 待做 |
 | 2.6 | 敏感信息 UI + 报告节 | ⬜ | |
 | 2.7 | 安全设计评审（明文不落盘/不入日志） | ⬜ | |
 
