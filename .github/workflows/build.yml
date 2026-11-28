@@ -291,15 +291,25 @@ jobs:
           fi
 
       - name: Resolve sample manifest
-        # 清单本身可以进仓库（只有文件名和 SHA，不含样本内容）。
+        # 清单本身可以进仓库（只有文件名、SHA 与下载地址，不含样本内容）。
+        #
+        # 注意：`$GITHUB_ENV` 的写入**对当前 step 不生效**。旧实现里"设置清单"
+        # 与"没设置清单就报错"两个 if 写在一起，于是配了样本时会先写 env
+        # 再被第二个 if 判成"没有清单"直接失败 —— 一旦真的启用样本就红。
         run: |
           set -euo pipefail
-          if [ -z "${APPINFOTOOL_SAMPLE_MANIFEST:-}" ]              && [ -f test/samples/manifest.json ]              && [ -n "${APPINFOTOOL_SAMPLES:-}" ]; then
+          if [ -z "${APPINFOTOOL_SAMPLES:-}" ]; then
+            echo "::notice::未配置真实样本目录，样本测试将跳过（非发布分支允许）。"
+            exit 0
+          fi
+          if [ -n "${APPINFOTOOL_SAMPLE_MANIFEST:-}" ]; then
+            echo "::notice::使用外部样本清单：${APPINFOTOOL_SAMPLE_MANIFEST}"
+          elif [ -f test/samples/manifest.json ]; then
             echo "APPINFOTOOL_SAMPLE_MANIFEST=test/samples/manifest.json" >> "$GITHUB_ENV"
             echo "::notice::使用仓库内样本清单 test/samples/manifest.json"
-          fi
-          if [ -n "${APPINFOTOOL_SAMPLES:-}" ]              && [ -z "${APPINFOTOOL_SAMPLE_MANIFEST:-}" ]; then
-            echo "::error title=真实样本缺少清单::已配置样本目录，但没有 \`APPINFOTOOL_SAMPLE_MANIFEST\` 或 test/samples/manifest.json。"
+          else
+            echo "::error title=真实样本缺少清单::已配置样本目录，但没有 \
+          \`APPINFOTOOL_SAMPLE_MANIFEST\` 或 test/samples/manifest.json。"
             exit 1
           fi
 

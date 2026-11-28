@@ -106,6 +106,15 @@ void main() {
 
   test('真实样本的安全结论与基线一致', () {
     final actual = _collect(dir);
+    if (actual.isEmpty) {
+      // 基线是**iOS 语料**（12 个 IPA）。样本目录里只有 APK 时无从比对，
+      // 明确跳过而不是把「没有 IPA」判成「基线样本被删了」——
+      // 后者会让 Android 侧的 CI 样本门禁永远红着，等于变相逼人删基线。
+      markTestSkipped(
+        '样本目录里没有 .ipa，安全语料基线（iOS）本次未比对：$samplesPath',
+      );
+      return;
+    }
 
     if (Platform.environment['REGEN_SECURITY_BASELINE'] == '1') {
       File(_baselinePath).writeAsStringSync(
